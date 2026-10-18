@@ -17,7 +17,7 @@ import java.util.Map;
  *
  * <p>It exists BESIDE the TOKA set and shares nothing with it: its own source file, its own descriptor, its own
  * entry points. The TOKA descriptor, {@link TokaSource} and the baked container image are untouched by it. The
- * source lives under {@code src/test/resources/keten/} rather than {@code examples/}, because
+ * source lives under {@code src/test/resources/chain/} rather than {@code examples/}, because
  * {@code CorpusVuurTest} partitions {@code examples/**.rgs} with exact bucket counts (the same reason the
  * overerving-port carried its wrakrecht source inline).
  *
@@ -29,7 +29,7 @@ public final class ChainSource {
     private ChainSource() {}
 
     static final String SOURCE = "chain/jutterswet-strandvondsten.rgs";
-    static final String DESCRIPTOR = "chain/jutterswet.dienst.json";
+    static final String DESCRIPTOR = "chain/jutterswet.service.json";
 
     static String read(String source) {
         try (InputStream in = ChainSource.class.getClassLoader().getResourceAsStream(source)) {

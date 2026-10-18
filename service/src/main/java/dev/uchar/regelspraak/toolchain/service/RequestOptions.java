@@ -29,8 +29,8 @@ public record RequestOptions(boolean uitleg, String vocabulary, String invoervoc
     public List<String> detailFlags() {
         List<String> sink = new ArrayList<>();
         if (trace) sink.add("trace");
-        if (coverage) sink.add("dekking");
-        if (fixpoint) sink.add("fixpunt");
+        if (coverage) sink.add("coverage");
+        if (fixpoint) sink.add("fixpoint");
         return sink;
     }
 }

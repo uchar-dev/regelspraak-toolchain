@@ -36,12 +36,12 @@ class VocabularyHttpTest {
     private static final Path GOLDEN = dev.uchar.regelspraak.toolchain.service.TokaSource.REPO
             .resolve("uchar/corpus/golden/jutterswet-vocabulaires");
     private static final String DESCRIPTOR = """
-            { "dienst": {"naam":"vocabulaires","versie":"1"},
+            { "service": {"name":"vocabularies","version":"1"},
               "entrypoints": [
-                { "naam":"premie","pad":"premie","scope": {"regelgroepen": ["premieberekening"]},
-                  "invoer": ["Jutter"], "uitvoer": ["Jutter.vondstbedrag"] },
-                { "naam":"premie cgm","pad":"premie-cgm","scope": {"regelgroepen": ["premieberekening"]},
-                  "invoer": ["Jutter"], "uitvoer": ["Jutter.vondstbedrag"], "vocabulaire": "cgm" } ],
+                { "name":"premie","path":"premie","scope": {"ruleGroups": ["premieberekening"]},
+                  "input": ["Jutter"], "output": ["Jutter.vondstbedrag"] },
+                { "name":"premie cgm","path":"premie-cgm","scope": {"ruleGroups": ["premieberekening"]},
+                  "input": ["Jutter"], "output": ["Jutter.vondstbedrag"], "vocabulary": "cgm" } ],
               "parameters": {} }""";
     private static final String INCOMPLETE = """
             Vocabulaire handboek (taal: nl)
@@ -62,12 +62,12 @@ class VocabularyHttpTest {
         golden = ServiceHttp.bind(DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", Files.readString(GOLDEN.resolve("bron.rgs"))),
                 CoreConfig.strict(), cl), "127.0.0.1", 0).start();
         incomplete = ServiceHttp.bind(DecisionCore.assemble("""
-                { "dienst": {"naam":"onvolledig","versie":"1"}, "entrypoints": [ { "naam":"premie","pad":"premie",
-                  "scope": {"regelnamen": ["premie"]}, "invoer": ["Jutter"], "uitvoer": ["Jutter.premie"] } ],
+                { "service": {"name":"onvolledig","version":"1"}, "entrypoints": [ { "name":"premie","path":"premie",
+                  "scope": {"ruleNames": ["premie"]}, "input": ["Jutter"], "output": ["Jutter.premie"] } ],
                   "parameters": {} }""", Map.of("o.rgs", INCOMPLETE), CoreConfig.strict(), cl), "127.0.0.1", 0).start();
         without = ServiceHttp.bind(DecisionCore.assemble("""
-                { "dienst": {"naam":"zonder","versie":"1"}, "entrypoints": [ { "naam":"premie","pad":"premie",
-                  "scope": {"regelnamen": ["premie"]}, "invoer": ["Jutter"], "uitvoer": ["Jutter.premie"] } ],
+                { "service": {"name":"zonder","version":"1"}, "entrypoints": [ { "name":"premie","path":"premie",
+                  "scope": {"ruleNames": ["premie"]}, "input": ["Jutter"], "output": ["Jutter.premie"] } ],
                   "parameters": {} }""", Map.of("z.rgs", """
                 Objecttype de Jutter (mv: Jutters) (bezield)
                     het vondstbedrag Numeriek (getal met 2 decimalen);
@@ -101,63 +101,63 @@ class VocabularyHttpTest {
     }
 
     private static final String REQUEST = """
-            { "instanties": [ { "type": "strandjutter", "id": "J1", "rollen": { "GEMELDE_VONDST": ["V1"] } },
-                              { "type": "Vondst", "id": "V1", "attributen": { "soort": "amber", "gewicht": 2 } } ],
+            { "instances": [ { "type": "strandjutter", "id": "J1", "roles": { "GEMELDE_VONDST": ["V1"] } },
+                              { "type": "Vondst", "id": "V1", "attributes": { "soort": "amber", "gewicht": 2 } } ],
               "parameters": { "premietarief": 5 } }""";
 
     @Test
     void the_query_parameters_choose_the_vocabulary() throws Exception {
-        Answer a = post(golden, "/premie?vocabulaire=handboek", REQUEST);
+        Answer a = post(golden, "/premie?vocabulary=handboek", REQUEST);
         assertEquals(200, a.status(), a.body().toString());
-        assertEquals("strandjutter", a.body().at("/instanties/0/type").asText());
-        assertEquals(10, a.body().at("/instanties/0/attributen/totale premie").asInt(), a.body().toString());
+        assertEquals("strandjutter", a.body().at("/instances/0/type").asText());
+        assertEquals(10, a.body().at("/instances/0/attributes/totale premie").asInt(), a.body().toString());
 
         Answer defaultAnswer = post(golden, "/premie-cgm", REQUEST);
-        assertEquals(10, defaultAnswer.body().at("/instanties/0/attributen/VONDST_BEDRAG").asInt(), defaultAnswer.body().toString());
+        assertEquals(10, defaultAnswer.body().at("/instances/0/attributes/VONDST_BEDRAG").asInt(), defaultAnswer.body().toString());
 
-        Answer unknown = post(golden, "/premie?vocabulaire=wetboek&invoervocabulaire=cgm", REQUEST);
+        Answer unknown = post(golden, "/premie?vocabulary=wetboek&inputVocabulary=cgm", REQUEST);
         assertEquals(400, unknown.status());
-        assertEquals("ONBEKEND_VOCABULAIRE", unknown.body().at("/schendingen/0/soort").asText());
-        assertEquals("vocabulaire", unknown.body().at("/schendingen/0/veld").asText());
-        assertEquals(1, unknown.body().get("schendingen").size(), "het invoervocabulaire cgm bestaat");
+        assertEquals("UNKNOWN_VOCABULARY", unknown.body().at("/violations/0/kind").asText());
+        assertEquals("vocabulary", unknown.body().at("/violations/0/field").asText());
+        assertEquals(1, unknown.body().get("violations").size(), "het invoervocabulaire cgm bestaat");
 
-        Answer fixed = post(golden, "/premie?invoervocabulaire=cgm", REQUEST);
+        Answer fixed = post(golden, "/premie?inputVocabulary=cgm", REQUEST);
         assertEquals(400, fixed.status(), fixed.body().toString());
-        assertTrue(fixed.body().get("schendingen").toString()
+        assertTrue(fixed.body().get("violations").toString()
                 .contains("\"onbekend objecttype 'strandjutter' (invoervocabulaire 'cgm')\""), fixed.body().toString());
     }
 
     @Test
     void the_query_is_read_like_uitleg() {
         assertEquals(RequestOptions.DEFAULT, ServiceHttp.options(null));
-        assertEquals(RequestOptions.DEFAULT, ServiceHttp.options("uitleg=false&iets=anders"));
-        assertEquals(new RequestOptions(true, "cgm", "hand boek"), ServiceHttp.options("uitleg&Vocabulaire=cgm&invoervocabulaire=hand%20boek"));
-        assertEquals("", ServiceHttp.queryValue("vocabulaire", "vocabulaire"), "een kale parameter is de lege naam");
-        assertNull(ServiceHttp.queryValue("uitleg=true", "vocabulaire"));
+        assertEquals(RequestOptions.DEFAULT, ServiceHttp.options("explanation=false&iets=anders"));
+        assertEquals(new RequestOptions(true, "cgm", "hand boek"), ServiceHttp.options("explanation&Vocabulary=cgm&inputVocabulary=hand%20boek"));
+        assertEquals("", ServiceHttp.queryValue("vocabulary", "vocabulary"), "een kale parameter is de lege naam");
+        assertNull(ServiceHttp.queryValue("explanation=true", "vocabulary"));
     }
 
     @Test
     void info_names_the_completeness_per_vocabulary() throws Exception {
-        JsonNode vocabularies = info(golden).get("vocabulaires");
+        JsonNode vocabularies = info(golden).get("vocabularies");
         assertEquals(2, vocabularies.size(), vocabularies.toString());
-        assertEquals("handboek", vocabularies.at("/0/naam").asText());
-        assertEquals("nl", vocabularies.at("/0/taal").asText());
-        assertFalse(vocabularies.at("/0/standaard").asBoolean());
-        assertTrue(vocabularies.at("/0/volledig").asBoolean());
-        assertEquals(0, vocabularies.at("/0/zonderBenaming").size());
-        assertTrue(vocabularies.at("/1/standaard").asBoolean());
-        assertEquals("cgm", info(golden).at("/entrypoints/1/vocabulaire").asText());
-        assertFalse(info(golden).at("/entrypoints/0").has("vocabulaire"));
+        assertEquals("handboek", vocabularies.at("/0/name").asText());
+        assertEquals("nl", vocabularies.at("/0/language").asText());
+        assertFalse(vocabularies.at("/0/default").asBoolean());
+        assertTrue(vocabularies.at("/0/complete").asBoolean());
+        assertEquals(0, vocabularies.at("/0/withoutDesignation").size());
+        assertTrue(vocabularies.at("/1/default").asBoolean());
+        assertEquals("cgm", info(golden).at("/entrypoints/1/vocabulary").asText());
+        assertFalse(info(golden).at("/entrypoints/0").has("vocabulary"));
 
-        JsonNode onv = info(incomplete).get("vocabulaires");
-        assertFalse(onv.at("/0/volledig").asBoolean(), onv.toString());
+        JsonNode onv = info(incomplete).get("vocabularies");
+        assertFalse(onv.at("/0/complete").asBoolean(), onv.toString());
         assertEquals(MAPPER.readTree("""
-                [ {"soort":"OBJECTTYPE","naam":"Jutter"},
-                  {"soort":"ATTRIBUUT","eigenaar":"Jutter","naam":"premie"},
-                  {"soort":"VORM","naam":"premie"} ]"""), onv.at("/0/zonderBenaming"));
-        assertTrue(onv.at("/1/volledig").asBoolean(), "het standaardvocabulaire is volledig (WF-119)");
-        assertFalse(onv.at("/1").has("taal"), "zonder taal geen taal");
+                [ {"kind":"OBJECTTYPE","name":"Jutter"},
+                  {"kind":"ATTRIBUUT","owner":"Jutter","name":"premie"},
+                  {"kind":"VORM","name":"premie"} ]"""), onv.at("/0/withoutDesignation"));
+        assertTrue(onv.at("/1/complete").asBoolean(), "het standaardvocabulaire is volledig (WF-119)");
+        assertFalse(onv.at("/1").has("language"), "zonder taal geen taal");
 
-        assertFalse(info(without).has("vocabulaires"), "een model zonder vocabulaires krijgt geen blok");
+        assertFalse(info(without).has("vocabularies"), "een model zonder vocabulaires krijgt geen blok");
     }
 }

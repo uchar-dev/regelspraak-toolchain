@@ -100,7 +100,7 @@ EXPECTED_REPLAY_PLAYED=225
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
 # tijdsafhankelijk attribuut (uchars peildatumconventie legt die in de emmer van de peildatum; de dienst weigert elk
-# tijdsafhankelijk attribuut als invoer, NIET_ONDERSTEUND).
+# tijdsafhankelijk attribuut als invoer, UNSUPPORTED).
 REPLAY_UITGESLOTEN=(
   "anchor/jutterswet-borgdeel|tijdlijn als invoerwaarde"
   "anchor/jutterswet-dagentelling|kenmerk met perioden"
@@ -119,13 +119,13 @@ REPLAY_UITGESLOTEN=(
   "jutterswet-keurploeg|tijdlijn als invoerwaarde"
   "jutterswet-klipwacht|tijdlijn als invoerwaarde"
   "jutterswet-muntbewaring|tijdlijn als invoerwaarde"
-  "jutterswet-penningjaar|scalaire waarde op een tijdsafhankelijk attribuut (NIET_ONDERSTEUND in de dienst)"
+  "jutterswet-penningjaar|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-ploegpremie|tijdlijn als invoerwaarde"
   "jutterswet-reddingsvloot|tijdlijn als invoerwaarde"
   "jutterswet-seinjaar|kenmerk met perioden"
   "jutterswet-sleepvloot|tijdlijn als invoerwaarde"
   "jutterswet-tegenwacht|tijdlijn als invoerwaarde"
-  "jutterswet-tempototaal|scalaire waarde op een tijdsafhankelijk attribuut (NIET_ONDERSTEUND in de dienst)"
+  "jutterswet-tempototaal|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-tempovouw|tijdlijn als invoerwaarde"
   "jutterswet-vast-startpunt|tijdlijn als invoerwaarde"
   "synth-gehelejaarkenmerk|kenmerk met perioden"

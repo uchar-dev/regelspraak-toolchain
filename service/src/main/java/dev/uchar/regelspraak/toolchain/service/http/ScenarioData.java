@@ -56,44 +56,44 @@ final class ScenarioData {
      *  situation. Every assignment carries its source line ({@code line}). */
     static ObjectNode situation(ResolvedScenario s, RegelSpraakModel model, Naming ng) {
         ObjectNode n = NF.objectNode();
-        if (s.asOfDate() == null) n.putNull("peildatum"); else n.put("peildatum", s.asOfDate().toString());
-        ArrayNode objects = n.putArray("objecten");
+        if (s.asOfDate() == null) n.putNull("asOfDate"); else n.put("asOfDate", s.asOfDate().toString());
+        ArrayNode objects = n.putArray("objects");
         for (Instance i : s.situation().instances()) {
             Objecttype ot = i.objectType();
             ObjectNode on = objects.addObject();
             on.put("label", i.label());
-            name(on, "objecttype", ng.objectType(ot.naam), ot.naam);
-            ArrayNode attributes = on.putArray("attributen");
+            name(on, "objectType", ng.objectType(ot.naam), ot.naam);
+            ArrayNode attributes = on.putArray("attributes");
             for (AttributeValue a : i.attributen()) {
                 ObjectNode an = attributes.addObject();
-                name(an, "attribuut", ng.attribute(ot, a.attribute()), a.attribute());
+                name(an, "attribute", ng.attribute(ot, a.attribute()), a.attribute());
                 Datatype dt = ot.attribute(a.attribute());
-                if (a.tijdlijn() != null) an.set("tijdlijn", timeline(a.tijdlijn(), dt, ng));
+                if (a.tijdlijn() != null) an.set("timeline", timeline(a.tijdlijn(), dt, ng));
                 else value(an, a.value(), dt, ng);
                 unit(an, dt);
-                an.put("regel", a.line());
+                an.put("line", a.line());
             }
-            ArrayNode characteristics = on.putArray("kenmerken");
+            ArrayNode characteristics = on.putArray("characteristics");
             for (CharacteristicValue k : i.kenmerken()) {
                 ObjectNode kn = characteristics.addObject();
-                name(kn, "kenmerk", ng.characteristic(ot, k.characteristic()), k.characteristic());
+                name(kn, "characteristic", ng.characteristic(ot, k.characteristic()), k.characteristic());
                 if (k.periods() != null) {
-                    ArrayNode periods = kn.putArray("perioden");
+                    ArrayNode periods = kn.putArray("periods");
                     for (TimeWindow p : k.periods())
-                        periods.addObject().put("van", p.van().toString()).put("tot", p.until().toString());
+                        periods.addObject().put("from", p.van().toString()).put("to", p.until().toString());
                 }
-                kn.put("regel", k.line());
+                kn.put("line", k.line());
             }
-            ArrayNode roles = on.putArray("rollen");
+            ArrayNode roles = on.putArray("roles");
             for (RoleValue r : i.rollen()) {
                 ObjectNode rn = roles.addObject();
-                name(rn, "rol", ng.roleFrom(ot, r.key()), r.key());
-                name(rn, "feittype", ng.factType(r.factType().naam), r.factType().naam);
-                name(rn, "doeltype", ng.objectType(r.targetType().naam), r.targetType().naam);
+                name(rn, "role", ng.roleFrom(ot, r.key()), r.key());
+                name(rn, "factType", ng.factType(r.factType().naam), r.factType().naam);
+                name(rn, "targetType", ng.objectType(r.targetType().naam), r.targetType().naam);
                 ArrayNode labels = rn.putArray("labels");
                 for (String l : r.targetLabels()) labels.add(l);
-                rn.put("meervoudig", r.meervoudig());
-                rn.put("regel", r.line());
+                rn.put("multiple", r.meervoudig());
+                rn.put("line", r.line());
             }
         }
         ArrayNode parameters = n.putArray("parameters");
@@ -101,10 +101,10 @@ final class ScenarioData {
             ObjectNode pn = parameters.addObject();
             name(pn, "parameter", ng.parameter(p.parameter()), p.parameter());
             Datatype dt = parameterType(model, p.parameter());
-            if (p.tijdlijn() != null) pn.set("tijdlijn", timeline(p.tijdlijn(), dt, ng));
+            if (p.tijdlijn() != null) pn.set("timeline", timeline(p.tijdlijn(), dt, ng));
             else value(pn, p.value(), dt, ng);
             unit(pn, dt);
-            pn.put("regel", p.line());
+            pn.put("line", p.line());
         }
         return n;
     }
@@ -123,8 +123,8 @@ final class ScenarioData {
         if (line < 1 || line > sourceLines.size())
             throw new IllegalStateException("de verwachting " + v.position() + " van het scenario '" + s.naam()
                     + "' staat volgens uchar op regel " + line + ", en de bron telt " + sourceLines.size() + " regels");
-        vn.put("regel", line);
-        vn.put("regeltekst", sourceLines.get(line - 1).strip());
+        vn.put("line", line);
+        vn.put("lineText", sourceLines.get(line - 1).strip());
     }
 
     /**
@@ -146,7 +146,7 @@ final class ScenarioData {
             for (AttributeValue a : i.attributen()) {
                 Datatype dt = ot.attribute(a.attribute());
                 ObjectNode an = NF.objectNode();
-                if (a.tijdlijn() != null) an.set("tijdlijn", timeline(a.tijdlijn(), dt, ng));
+                if (a.tijdlijn() != null) an.set("timeline", timeline(a.tijdlijn(), dt, ng));
                 else value(an, a.value(), dt, ng);
                 attributes.put(a.attribute(), an);
             }
@@ -166,11 +166,11 @@ final class ScenarioData {
 
     /** A value of the situation under {@code waarde}: the case value as uchar's resolver normalised it. */
     private static void value(ObjectNode n, ScenarioValue w, Datatype dt, Naming ng) {
-        if (w.number() != null) n.put("waarde", w.number());
-        else if (w.date() != null) n.put("waarde", w.date().toString());
-        else if (w.dateTime() != null) n.put("waarde", w.dateTime().toString());
-        else if (w.bool() != null) n.put("waarde", w.bool());
-        else if (w.tekst() != null) n.put("waarde", w.tekst());
+        if (w.number() != null) n.put("value", w.number());
+        else if (w.date() != null) n.put("value", w.date().toString());
+        else if (w.dateTime() != null) n.put("value", w.dateTime().toString());
+        else if (w.bool() != null) n.put("value", w.bool());
+        else if (w.tekst() != null) n.put("value", w.tekst());
         else if (w.enumValue() != null) enumValue(n, w.enumValue(), dt, ng);
         else throw new IllegalStateException("uchars resolver gaf een waarde zonder variant");
     }
@@ -179,8 +179,8 @@ final class ScenarioData {
         ArrayNode sink = NF.arrayNode();
         for (Segment seg : segments) {
             ObjectNode sn = sink.addObject();
-            sn.put("van", seg.van().toString());
-            sn.put("tot", seg.until().toString());
+            sn.put("from", seg.van().toString());
+            sn.put("to", seg.until().toString());
             value(sn, seg.value(), dt, ng);
         }
         return sink;

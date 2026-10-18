@@ -68,36 +68,36 @@ class OpenApiVocabularyTest {
     @Test
     void every_property_value_and_entrypoint_names_its_other_spellings() {
         ObjectNode doc = OpenApiEmitter.emit(DESCRIPTOR, MODEL, "cgm");
-        assertEquals("cgm", doc.at("/info/x-vocabulaire").asText());
+        assertEquals("cgm", doc.at("/info/x-vocabulary").asText());
         JsonNode vondst = doc.at("/components/schemas/Vondst");
         JsonNode kind = vondst.at("/properties/VONDST_SOORT");
         assertEquals("[\"WRAKHOUT\",\"BARNSTEEN\",\"FLESSENPOST\"]", kind.get("enum").toString());
-        assertEquals("soort", kind.at("/x-spellingen/canoniek").asText());
-        assertEquals("soort vondst", kind.at("/x-spellingen/handboek").asText());
-        assertFalse(kind.get("x-spellingen").has("cgm"), "het eigen vocabulaire is geen andere spelling");
-        assertEquals("amber", kind.at("/x-waardespellingen/BARNSTEEN/handboek").asText());
-        assertEquals("barnsteen", kind.at("/x-waardespellingen/BARNSTEEN/canoniek").asText());
-        assertEquals("De dienst neemt ook 'soort' (canoniek) en 'soort vondst' (handboek) aan.",
+        assertEquals("soort", kind.at("/x-spellings/canonical").asText());
+        assertEquals("soort vondst", kind.at("/x-spellings/handboek").asText());
+        assertFalse(kind.get("x-spellings").has("cgm"), "het eigen vocabulaire is geen andere spelling");
+        assertEquals("amber", kind.at("/x-valueSpellings/BARNSTEEN/handboek").asText());
+        assertEquals("barnsteen", kind.at("/x-valueSpellings/BARNSTEEN/canonical").asText());
+        assertEquals("De dienst neemt ook 'soort' (canonical) en 'soort vondst' (handboek) aan.",
                 kind.get("description").asText());
-        assertEquals("aangespoeld voorwerp", vondst.at("/x-spellingen/handboek").asText());
+        assertEquals("aangespoeld voorwerp", vondst.at("/x-spellings/handboek").asText());
         JsonNode post = doc.at("/paths/~1premie/post");
-        assertEquals("[\"Jutter\",\"Vondst\"]", post.at("/x-spellingen/canoniek/invoer").toString());
-        assertEquals("strandjutter:komt in aanmerking voor premie", post.at("/x-spellingen/handboek/uitvoer/5").asText());
-        assertEquals("vocabulaire", post.at("/parameters/0/name").asText());
-        assertEquals("[\"canoniek\",\"handboek\",\"cgm\"]", post.at("/parameters/1/schema/enum").toString());
+        assertEquals("[\"Jutter\",\"Vondst\"]", post.at("/x-spellings/canonical/input").toString());
+        assertEquals("strandjutter:komt in aanmerking voor premie", post.at("/x-spellings/handboek/output/5").asText());
+        assertEquals("vocabulary", post.at("/parameters/0/name").asText());
+        assertEquals("[\"canonical\",\"handboek\",\"cgm\"]", post.at("/parameters/1/schema/enum").toString());
         assertTrue(doc.at("/paths/~1premie-cgm/post/parameters/0/description").asText().contains("'cgm', de standaard"),
                 doc.at("/paths/~1premie-cgm/post/parameters/0/description").asText());
 
-        ObjectNode canonical = OpenApiEmitter.emit(DESCRIPTOR, MODEL, "canoniek");
+        ObjectNode canonical = OpenApiEmitter.emit(DESCRIPTOR, MODEL, "canonical");
         assertEquals(OpenApiEmitter.emit(DESCRIPTOR, MODEL), canonical);
-        assertEquals("VONDST_SOORT", canonical.at("/components/schemas/Vondst/properties/soort/x-spellingen/cgm").asText());
+        assertEquals("VONDST_SOORT", canonical.at("/components/schemas/Vondst/properties/soort/x-spellings/cgm").asText());
     }
 
     @Test
     void a_model_without_vocabularies_gets_no_extension() throws IOException {
         ServiceDescriptor d = DescriptorLoader.MAPPER.readValue(ChainSource.descriptorJson(), ServiceDescriptor.class);
         String doc = new String(OpenApiEmitter.toBytes(OpenApiEmitter.emit(d, ChainSource.model())), StandardCharsets.UTF_8);
-        for (String trace : new String[]{"x-spellingen", "x-waardespellingen", "x-vocabulaire", "invoervocabulaire"})
+        for (String trace : new String[]{"x-spellings", "x-valueSpellings", "x-vocabulary", "inputVocabulary"})
             assertFalse(doc.contains(trace), "'" + trace + "' in een document zonder vocabulaires");
         assertThrows(Naming.VocabularyError.class, () -> OpenApiEmitter.emit(d, ChainSource.model(), "cgm"));
         assertThrows(Naming.VocabularyError.class, () -> OpenApiEmitter.emit(DESCRIPTOR, MODEL, "wetboek"));

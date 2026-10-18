@@ -72,12 +72,12 @@ class NegationStratificationTest {
      *  {@code Kenmerktoekenning herleefbaar} before {@code Blokkade door maandloon}). The maandloon is a
      *  caller-supplied element; herleefbaar and geblokkeerd are outputs. */
     static final String DESCRIPTOR = """
-            { "dienst": { "naam": "negatie-test", "versie": "1" },
+            { "service": { "name": "negatie-test", "version": "1" },
               "entrypoints": [
-                { "naam": "herleefbaar", "pad": "herleefbaar",
-                  "scope": { "regelnamen": [ "Kenmerktoekenning herleefbaar", "Blokkade door maandloon" ] },
-                  "invoer": [ "Werknemer" ],
-                  "uitvoer": [ "Werknemer:herleefbaar", "Werknemer:geblokkeerd" ] } ] }
+                { "name": "herleefbaar", "path": "herleefbaar",
+                  "scope": { "ruleNames": [ "Kenmerktoekenning herleefbaar", "Blokkade door maandloon" ] },
+                  "input": [ "Werknemer" ],
+                  "output": [ "Werknemer:herleefbaar", "Werknemer:geblokkeerd" ] } ] }
             """;
 
     /** The EXEC-model reference: build the FULL-model KieBase through uchar and fire the same fact through uchar's
@@ -124,12 +124,12 @@ class NegationStratificationTest {
                 Thread.currentThread().getContextClassLoader());
 
         String request = """
-            { "instanties": [
-                { "type": "Werknemer", "id": "W1", "attributen": { "maandloon nieuw": 150 } } ] }""";
+            { "instances": [
+                { "type": "Werknemer", "id": "W1", "attributes": { "maandloon nieuw": 150 } } ] }""";
         ObjectNode answer = core.process("herleefbaar", parse(request));
 
-        JsonNode blocked = find(answer, "W1", "kenmerken", "geblokkeerd");
-        JsonNode herleefbaar = find(answer, "W1", "kenmerken", "herleefbaar");
+        JsonNode blocked = find(answer, "W1", "characteristics", "geblokkeerd");
+        JsonNode herleefbaar = find(answer, "W1", "characteristics", "herleefbaar");
         assertTrue(blocked != null && blocked.asBoolean(), "B moet vuren: " + answer);
         assertTrue(herleefbaar != null, "herleefbaar hoort in het antwoord te staan: " + answer);
         assertFalse(herleefbaar.asBoolean(),
@@ -139,7 +139,7 @@ class NegationStratificationTest {
     // ---- helpers ----
 
     private static JsonNode find(ObjectNode answer, String id, String group, String member) {
-        for (JsonNode inst : answer.get("instanties"))
+        for (JsonNode inst : answer.get("instances"))
             if (id.equals(inst.path("id").asText()))
                 return inst.path(group).get(member);
         return null;

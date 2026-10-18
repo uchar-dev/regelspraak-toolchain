@@ -40,13 +40,13 @@ class ParameterSetLoaderTest {
     @Test void happy_named_sets_unit_object_form_open_bounds_and_canonical_name() {
         // mixed-case parameternaam ("Volwassenleeftijd") moet naar de canonieke "volwassenleeftijd" normaliseren.
         String json = """
-            { "parametersets": [
-                { "naam": "2025", "waarden": {
-                    "Volwassenleeftijd": [ { "waarde": {"waarde": 18, "eenheid": "jr"}, "vanaf": "2025-01-01", "tot": "2025-12-31" } ],
-                    "tarief": [ { "waarde": 100 } ]
+            { "parameterSets": [
+                { "name": "2025", "values": {
+                    "Volwassenleeftijd": [ { "value": {"value": 18, "unit": "jr"}, "from": "2025-01-01", "to": "2025-12-31" } ],
+                    "tarief": [ { "value": 100 } ]
                 }},
-                { "naam": "2026", "waarden": {
-                    "volwassenleeftijd": [ { "waarde": {"waarde": 21, "eenheid": "jr"}, "vanaf": "2026-01-01" } ]
+                { "name": "2026", "values": {
+                    "volwassenleeftijd": [ { "value": {"value": 21, "unit": "jr"}, "from": "2026-01-01" } ]
                 }}
             ]}
             """;
@@ -77,8 +77,8 @@ class ParameterSetLoaderTest {
 
     @Test void unknown_parameter_names_the_offender() {
         String json = """
-            { "parametersets": [ { "naam": "s", "waarden": {
-                "spookparameter": [ { "waarde": 1, "vanaf": "2025-01-01", "tot": "2025-12-31" } ] } } ] }
+            { "parameterSets": [ { "name": "s", "values": {
+                "spookparameter": [ { "value": 1, "from": "2025-01-01", "to": "2025-12-31" } ] } } ] }
             """;
         ParameterSetError f = assertThrows(ParameterSetError.class, () -> ParameterSetLoader.load(json, model()));
         assertTrue(f.errors().stream().anyMatch(m -> m.contains("spookparameter")), f::getMessage);
@@ -87,8 +87,8 @@ class ParameterSetLoaderTest {
     @Test void ill_typed_value_names_the_field() {
         // tarief is Numeriek maar krijgt tekst
         String json = """
-            { "parametersets": [ { "naam": "s", "waarden": {
-                "tarief": [ { "waarde": "geen getal", "vanaf": "2025-01-01", "tot": "2025-12-31" } ] } } ] }
+            { "parameterSets": [ { "name": "s", "values": {
+                "tarief": [ { "value": "geen getal", "from": "2025-01-01", "to": "2025-12-31" } ] } } ] }
             """;
         ParameterSetError f = assertThrows(ParameterSetError.class, () -> ParameterSetLoader.load(json, model()));
         assertTrue(f.errors().stream().anyMatch(m -> m.contains("tarief") && m.contains("getal")), f::getMessage);
@@ -96,8 +96,8 @@ class ParameterSetLoaderTest {
 
     @Test void wrong_unit_names_the_declared_one() {
         String json = """
-            { "parametersets": [ { "naam": "s", "waarden": {
-                "volwassenleeftijd": [ { "waarde": {"waarde": 18, "eenheid": "mnd"}, "vanaf": "2025-01-01", "tot": "2025-12-31" } ] } } ] }
+            { "parameterSets": [ { "name": "s", "values": {
+                "volwassenleeftijd": [ { "value": {"value": 18, "unit": "mnd"}, "from": "2025-01-01", "to": "2025-12-31" } ] } } ] }
             """;
         ParameterSetError f = assertThrows(ParameterSetError.class, () -> ParameterSetLoader.load(json, model()));
         assertTrue(f.errors().stream().anyMatch(m -> m.contains("mnd") && m.contains("jr")), f::getMessage);
@@ -105,10 +105,10 @@ class ParameterSetLoaderTest {
 
     @Test void overlap_names_the_parameter() {
         String json = """
-            { "parametersets": [ { "naam": "s", "waarden": {
+            { "parameterSets": [ { "name": "s", "values": {
                 "tarief": [
-                    { "waarde": 1, "vanaf": "2025-01-01", "tot": "2025-12-31" },
-                    { "waarde": 2, "vanaf": "2025-06-01", "tot": "2026-06-30" } ] } } ] }
+                    { "value": 1, "from": "2025-01-01", "to": "2025-12-31" },
+                    { "value": 2, "from": "2025-06-01", "to": "2026-06-30" } ] } } ] }
             """;
         ParameterSetError f = assertThrows(ParameterSetError.class, () -> ParameterSetLoader.load(json, model()));
         assertTrue(f.errors().stream().anyMatch(m -> m.contains("tarief") && m.toLowerCase().contains("overlap")),
@@ -117,8 +117,8 @@ class ParameterSetLoaderTest {
 
     @Test void from_after_to_names_both() {
         String json = """
-            { "parametersets": [ { "naam": "s", "waarden": {
-                "tarief": [ { "waarde": 1, "vanaf": "2026-01-01", "tot": "2025-12-31" } ] } } ] }
+            { "parameterSets": [ { "name": "s", "values": {
+                "tarief": [ { "value": 1, "from": "2026-01-01", "to": "2025-12-31" } ] } } ] }
             """;
         ParameterSetError f = assertThrows(ParameterSetError.class, () -> ParameterSetLoader.load(json, model()));
         assertTrue(f.errors().stream().anyMatch(m -> m.contains("2026-01-01") && m.contains("2025-12-31")),

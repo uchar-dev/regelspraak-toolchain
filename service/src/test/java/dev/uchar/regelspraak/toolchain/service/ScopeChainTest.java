@@ -80,10 +80,10 @@ class ScopeChainTest {
 
     private static String descriptor(String type, String extra) {
         return """
-            { "dienst": {"naam":"scope-keten","versie":"1"},
-              "entrypoints": [ { "naam":"bepaal korting","pad":"bepaal-korting",
-                "scope": {"regelnamen": ["bepaal korting"]},
-                "invoer": ["%s"], "uitvoer": ["%s.korting"]%s } ],
+            { "service": {"name":"scope-keten","version":"1"},
+              "entrypoints": [ { "name":"bepaal korting","path":"bepaal-korting",
+                "scope": {"ruleNames": ["bepaal korting"]},
+                "input": ["%s"], "output": ["%s.korting"]%s } ],
               "parameters": {} }""".formatted(type, type, extra);
     }
 
@@ -93,8 +93,8 @@ class ScopeChainTest {
     }
 
     private static void assertScopeViolation(ServiceError f) {
-        assertTrue(f.violations().stream().anyMatch(s -> s.kind() == Violation.Kind.SCOPE_ONVOLLEDIG),
-                () -> "verwacht SCOPE_ONVOLLEDIG: " + f.violations());
+        assertTrue(f.violations().stream().anyMatch(s -> s.kind() == Violation.Kind.INCOMPLETE_SCOPE),
+                () -> "verwacht INCOMPLETE_SCOPE: " + f.violations());
         assertTrue(f.violations().stream().anyMatch(s -> s.message().contains("volwassen")),
                 () -> "de schending hoort het element te noemen: " + f.violations());
         assertTrue(f.violations().stream().anyMatch(s -> s.message().contains("bepaal volwassen")),
@@ -115,18 +115,18 @@ class ScopeChainTest {
         // Precies de situatie die de poort liet passeren, nu volledig gescoopt: 30 jaar -> volwassen -> 5,00 EUR.
         // De stille doorlaat antwoordde hier null, want het geërfde kenmerk evalueerde als onwaar.
         String complete = """
-            { "dienst": {"naam":"scope-keten-vol","versie":"1"},
-              "entrypoints": [ { "naam":"bepaal korting","pad":"bepaal-korting",
-                "scope": {"regelnamen": ["bepaal korting", "bepaal volwassen"]},
-                "invoer": ["Student"], "uitvoer": ["Student.korting"] } ],
+            { "service": {"name":"scope-keten-vol","version":"1"},
+              "entrypoints": [ { "name":"bepaal korting","path":"bepaal-korting",
+                "scope": {"ruleNames": ["bepaal korting", "bepaal volwassen"]},
+                "input": ["Student"], "output": ["Student.korting"] } ],
               "parameters": {} }""";
         DecisionCore core = assemble(complete, source(MODEL_CHAIN, PRODUCER_SUPER, CONSUMER_SUB));
         ObjectNode a = core.process("bepaal-korting", parse("""
-            { "instanties": [
-                { "type": "Student", "id": "S1", "attributen": { "leeftijd": 30, "collegejaar": 2 } } ] }"""));
+            { "instances": [
+                { "type": "Student", "id": "S1", "attributes": { "leeftijd": 30, "collegejaar": 2 } } ] }"""));
         JsonNode korting = null;
-        for (JsonNode i : a.get("instanties"))
-            if ("S1".equals(i.path("id").asText())) korting = i.path("attributen").get("korting");
+        for (JsonNode i : a.get("instances"))
+            if ("S1".equals(i.path("id").asText())) korting = i.path("attributes").get("korting");
         assertNotNull(korting, () -> "antwoord: " + a);
         assertFalse(korting.isNull(), () -> "de geërfde kenmerktoekenning hoort te vuren: " + a);
         assertEquals(0, new BigDecimal("5.00").compareTo(korting.decimalValue()), () -> "antwoord: " + a);
@@ -149,7 +149,7 @@ class ScopeChainTest {
 
     @Test
     void the_input_element_may_be_on_the_declaring_type() {
-        DecisionCore core = assemble(descriptor("Student", ", \"invoerElementen\": [\"Persoon:volwassen\"]"),
+        DecisionCore core = assemble(descriptor("Student", ", \"inputElements\": [\"Persoon:volwassen\"]"),
                 source(MODEL_CHAIN, PRODUCER_SUPER, CONSUMER_SUB));
         assertNotNull(core.entrypoint("bepaal-korting"));
     }
@@ -158,7 +158,7 @@ class ScopeChainTest {
     void the_input_element_may_also_be_on_the_subtype() {
         // Dezelfde consumptie, in de andere spelling gedeclareerd. Een ontsnappingsluik dat wél bestaat maar niet
         // te spellen is, is geen ontsnappingsluik.
-        DecisionCore core = assemble(descriptor("Student", ", \"invoerElementen\": [\"Student:volwassen\"]"),
+        DecisionCore core = assemble(descriptor("Student", ", \"inputElements\": [\"Student:volwassen\"]"),
                 source(MODEL_CHAIN, PRODUCER_SUPER, CONSUMER_SUB));
         assertNotNull(core.entrypoint("bepaal-korting"));
     }

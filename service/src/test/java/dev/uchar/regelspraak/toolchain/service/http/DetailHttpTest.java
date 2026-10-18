@@ -57,10 +57,10 @@ class DetailHttpTest {
             Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
             """;
     private static final String BERGING_DESCRIPTOR = """
-            { "dienst": {"naam":"berging","versie":"1"},
-              "entrypoints": [ { "naam":"berging","pad":"berging",
-                "scope": {"regelnamen": ["premie van een berging", "helpersdeel van een berging"]},
-                "invoer": ["Berging"], "uitvoer": ["Berging.premie"] } ],
+            { "service": {"name":"berging","version":"1"},
+              "entrypoints": [ { "name":"berging","path":"berging",
+                "scope": {"ruleNames": ["premie van een berging", "helpersdeel van een berging"]},
+                "input": ["Berging"], "output": ["Berging.premie"] } ],
               "parameters": {} }""";
     private static final String SITUATION = """
             Situatie basis:
@@ -79,11 +79,11 @@ class DetailHttpTest {
      *  amounts are whole: the service reads a JSON number such as {@code 20.00} as {@code 20}, so a fixpoint of the
      *  service shows an input amount without the scale the situation writes, where the playground keeps it. */
     private static final String STRANDMELDING_DESCRIPTOR = """
-            { "dienst": {"naam":"strandmelding","versie":"1"},
-              "entrypoints": [ { "naam":"melding","pad":"melding",
-                "scope": {"regelnamen": ["maak een strandrecht bij elke melding", "uitkering van een wrakrecht",
+            { "service": {"name":"strandmelding","version":"1"},
+              "entrypoints": [ { "name":"melding","path":"melding",
+                "scope": {"ruleNames": ["maak een strandrecht bij elke melding", "uitkering van een wrakrecht",
                                          "lees de gemelde uitkering"]},
-                "invoer": ["Melding"], "uitvoer": ["Melding.gemelde uitkering"] } ],
+                "input": ["Melding"], "output": ["Melding.gemelde uitkering"] } ],
               "parameters": {} }""";
     private static final String MELDINGEN = """
 
@@ -132,46 +132,46 @@ class DetailHttpTest {
     void trace_coverage_and_fixpoint_at_an_answer() throws Exception {
         String request = bergingRequest("B7", 2);
         HttpResponse<String> without = post(withDetail, "berging", "", request);
-        HttpResponse<String> extended = post(withDetail, "berging", "trace=true&dekking=true&fixpunt=true", request);
+        HttpResponse<String> extended = post(withDetail, "berging", "trace=true&coverage=true&fixpoint=true", request);
         assertEquals(200, extended.statusCode(), extended.body());
         ObjectNode a = (ObjectNode) ServiceHttp.MAPPER.readTree(extended.body());
-        assertEquals(List.of("instanties", "inconsistenties", "inconsistentieDetails", "trace", "dekking", "fixpunt"),
+        assertEquals(List.of("instances", "inconsistencies", "inconsistencyDetails", "trace", "coverage", "fixpoint"),
                 fields(a));
 
         ObjectNode bare = a.deepCopy();
-        bare.remove(List.of("trace", "dekking", "fixpunt"));
+        bare.remove(List.of("trace", "coverage", "fixpoint"));
         assertEquals(ServiceHttp.MAPPER.readTree(without.body()), bare, "het antwoord zelf blijft gelijk");
 
         // the trace in the order a rule of a form first fired, the coverage in the order of the manifest
         JsonNode trace = a.get("trace");
-        assertEquals(Set.of("premie van een berging", "helpersdeel van een berging"), Set.copyOf(text(trace, "regel")));
+        assertEquals(Set.of("premie van een berging", "helpersdeel van een berging"), Set.copyOf(text(trace, "rule")));
         assertEquals(2, trace.size(), trace.toString());
         for (JsonNode t : trace) {
             assertEquals("[\"B7\"]", t.get("labels").toString(), t.toString());
-            assertEquals(1, t.get("aantal").asInt(), t.toString());
+            assertEquals(1, t.get("count").asInt(), t.toString());
         }
-        JsonNode coverage = a.get("dekking");
+        JsonNode coverage = a.get("coverage");
         assertEquals(Set.of("premie van een berging", "helpersdeel van een berging"),
-                Set.copyOf(text(coverage, "regel")));
-        assertEquals(List.of("GEVUURD", "GEVUURD"), text(coverage, "soort"));
+                Set.copyOf(text(coverage, "rule")));
+        assertEquals(List.of("FIRED", "FIRED"), text(coverage, "kind"));
 
-        JsonNode b = a.at("/fixpunt/objecten/0");
+        JsonNode b = a.at("/fixpoint/objects/0");
         assertEquals("B7", b.get("object").asText());
-        assertEquals("Berging", b.get("objecttype").asText());
+        assertEquals("Berging", b.get("objectType").asText());
         List<String> rows = new ArrayList<>();
-        for (JsonNode w : b.get("waarden"))
-            rows.add(w.get("attribuut").asText() + "=" + w.get("waarde").asText() + " " + w.get("herkomst").asText());
-        assertEquals(List.of("opbrengst=100 invoer", "helpersaantal=2 invoer", "helpersdeel=50 afgeleid",
-                "premie=20 afgeleid"), rows);
-        assertEquals("EUR", b.at("/waarden/0/eenheid").asText(), b.toString());
+        for (JsonNode w : b.get("values"))
+            rows.add(w.get("attribute").asText() + "=" + w.get("value").asText() + " " + w.get("origin").asText());
+        assertEquals(List.of("opbrengst=100 input", "helpersaantal=2 input", "helpersdeel=50 derived",
+                "premie=20 derived"), rows);
+        assertEquals("EUR", b.at("/values/0/unit").asText(), b.toString());
     }
 
     /** Only what is asked: the trace alone, after the explanation. */
     @Test
     void only_what_is_asked() throws Exception {
-        HttpResponse<String> r = post(withDetail, "berging", "uitleg=true&trace", bergingRequest("B", 2));
+        HttpResponse<String> r = post(withDetail, "berging", "explanation=true&trace", bergingRequest("B", 2));
         assertEquals(200, r.statusCode(), r.body());
-        assertEquals(List.of("instanties", "inconsistenties", "inconsistentieDetails", "uitleg", "trace"),
+        assertEquals(List.of("instances", "inconsistencies", "inconsistencyDetails", "explanation", "trace"),
                 fields(ServiceHttp.MAPPER.readTree(r.body())));
     }
 
@@ -181,19 +181,19 @@ class DetailHttpTest {
     void a_422_gets_the_fixpoint() throws Exception {
         String request = bergingRequest("B", 0);
         HttpResponse<String> without = post(withDetail, "berging", "", request);
-        HttpResponse<String> extended = post(withDetail, "berging", "fixpunt=true&trace=true", request);
+        HttpResponse<String> extended = post(withDetail, "berging", "fixpoint=true&trace=true", request);
         assertEquals(422, extended.statusCode(), extended.body());
         ObjectNode a = (ObjectNode) ServiceHttp.MAPPER.readTree(extended.body());
-        assertEquals(List.of("status", "fout", "fouten", "trace", "fixpunt"), fields(a));
+        assertEquals(List.of("status", "error", "faults", "trace", "fixpoint"), fields(a));
         ObjectNode bare = a.deepCopy();
-        bare.remove(List.of("trace", "fixpunt"));
+        bare.remove(List.of("trace", "fixpoint"));
         assertEquals(ServiceHttp.MAPPER.readTree(without.body()), bare, "de fouten blijven gelijk");
-        JsonNode error = a.at("/fixpunt/fouten/0");
-        assertEquals("DELING_DOOR_NUL", error.get("soort").asText(), a.toString());
-        assertEquals("helpersdeel van een berging", error.get("regel").asText());
-        assertEquals("B", error.get("onderwerp").asText());
-        assertEquals(a.at("/fouten/0/fout").asText(), error.get("zin").asText());
-        assertEquals(1, a.at("/fixpunt/fouten").size());
+        JsonNode error = a.at("/fixpoint/faults/0");
+        assertEquals("DIVISION_BY_ZERO", error.get("kind").asText(), a.toString());
+        assertEquals("helpersdeel van een berging", error.get("rule").asText());
+        assertEquals("B", error.get("subject").asText());
+        assertEquals(a.at("/faults/0/error").asText(), error.get("sentence").asText());
+        assertEquals(1, a.at("/fixpoint/faults").size());
     }
 
     // ---------------- the form of the playground ----------------
@@ -203,11 +203,11 @@ class DetailHttpTest {
     @Test
     void the_same_form_as_the_playground() throws Exception {
         String source = BERGING + SITUATION.formatted("2");
-        JsonNode playground = Playground.analyseer(source).at("/scenario/resultaten/0");
+        JsonNode playground = Playground.analyseer(source).at("/scenario/results/0");
         JsonNode service = detailOf(withDetail, "berging", source);
-        assertEquals(playground.get("fixpunt"), service.get("fixpunt"));
+        assertEquals(playground.get("fixpoint"), service.get("fixpoint"));
         assertEquals(playground.get("trace"), service.get("trace"));
-        assertEquals(playground.get("dekking"), service.get("dekking"));
+        assertEquals(playground.get("coverage"), service.get("coverage"));
     }
 
     /** The fault as data: the playground's fixpoint of a case uchar's replay does not play out, and the service's of
@@ -215,9 +215,9 @@ class DetailHttpTest {
     @Test
     void the_same_fault_as_the_playground() throws Exception {
         String source = BERGING + SITUATION.formatted("0");
-        JsonNode playground = Playground.analyseer(source).at("/scenario/resultaten/0");
+        JsonNode playground = Playground.analyseer(source).at("/scenario/results/0");
         JsonNode service = detailOf(withDetail, "berging", source);
-        assertEquals(playground.get("fixpunt"), service.get("fixpunt"));
+        assertEquals(playground.get("fixpoint"), service.get("fixpoint"));
     }
 
     /** Made objects and the links of their creation, as the playground names them: after the input, by their
@@ -225,11 +225,11 @@ class DetailHttpTest {
     @Test
     void made_objects_like_the_playground() throws Exception {
         String source = strandmeldingSource + MELDINGEN;
-        JsonNode playground = Playground.analyseer(source).at("/scenario/resultaten/0");
+        JsonNode playground = Playground.analyseer(source).at("/scenario/results/0");
         JsonNode service = detailOf(strandmelding, "melding", source);
-        assertEquals(List.of("M2", "M1", "#1", "#2"), text(service.at("/fixpunt/objecten"), "object"));
-        assertEquals(2, service.at("/fixpunt/koppelingen").size(), service.toString());
-        assertEquals(playground.get("fixpunt"), service.get("fixpunt"));
+        assertEquals(List.of("M2", "M1", "#1", "#2"), text(service.at("/fixpoint/objects"), "object"));
+        assertEquals(2, service.at("/fixpoint/links").size(), service.toString());
+        assertEquals(playground.get("fixpoint"), service.get("fixpoint"));
         assertEquals(playground.get("trace"), service.get("trace"));
     }
 
@@ -238,12 +238,12 @@ class DetailHttpTest {
     @Test
     void the_core_without_http_gives_the_form_of_the_playground() {
         String source = strandmeldingSource + MELDINGEN.replace(" is 20", " is 20,00").replace(" is 10", " is 10,00");
-        JsonNode playground = Playground.analyseer(source).at("/scenario/resultaten/0");
+        JsonNode playground = Playground.analyseer(source).at("/scenario/results/0");
         var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
         ObjectNode service = strandmeldingKern.process("melding", SituationToRequest.assemble(bundle.scenarios().get(0)),
                 new RequestOptions(false, null, null, true, true, true));
-        assertEquals("20.00", service.at("/fixpunt/objecten/0/waarden/0/waarde").asText(), service.toString());
-        assertEquals(playground.get("fixpunt"), service.get("fixpunt"));
+        assertEquals("20.00", service.at("/fixpoint/objects/0/values/0/value").asText(), service.toString());
+        assertEquals(playground.get("fixpoint"), service.get("fixpoint"));
         assertEquals(playground.get("trace"), service.get("trace"));
     }
 
@@ -253,13 +253,13 @@ class DetailHttpTest {
      *  true asks nothing. */
     @Test
     void without_detail_a_400_with_the_name_of_the_flag() throws Exception {
-        HttpResponse<String> r = post(withoutDetail, "berging", "fixpunt=true&trace&dekking=TRUE", "{}");
+        HttpResponse<String> r = post(withoutDetail, "berging", "fixpoint=true&trace&coverage=TRUE", "{}");
         assertEquals(400, r.statusCode(), r.body());
-        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).get("schendingen");
-        assertEquals(List.of("trace", "dekking", "fixpunt"), text(s, "veld"));
+        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).get("violations");
+        assertEquals(List.of("trace", "coverage", "fixpoint"), text(s, "field"));
         for (JsonNode n : s) {
-            assertEquals("NIET_ONDERSTEUND", n.get("soort").asText(), n.toString());
-            assertTrue(n.get("fout").asText().contains("DETAIL"), n.toString());
+            assertEquals("UNSUPPORTED", n.get("kind").asText(), n.toString());
+            assertTrue(n.get("error").asText().contains("DETAIL"), n.toString());
         }
         HttpResponse<String> sink = post(withoutDetail, "berging", "trace=false", bergingRequest("B", 2));
         assertEquals(200, sink.statusCode(), sink.body());
@@ -284,9 +284,9 @@ class DetailHttpTest {
 
     @Test
     void the_flags_and_the_startup_setting() {
-        RequestOptions o = ServiceHttp.options("Trace=TRUE&dekking&fixpunt=nee&uitleg=true");
+        RequestOptions o = ServiceHttp.options("Trace=TRUE&coverage&fixpoint=nee&explanation=true");
         assertEquals(new RequestOptions(true, null, null, true, true, false), o);
-        assertEquals(List.of("trace", "dekking"), o.detailFlags());
+        assertEquals(List.of("trace", "coverage"), o.detailFlags());
         assertEquals(RequestOptions.DEFAULT, ServiceHttp.options("trace=false"));
         assertTrue(ServiceMain.parseArgs(new String[]{"d.json", "x.rgs", "--detail"}).detail());
         assertFalse(ServiceMain.parseArgs(new String[]{"d.json", "x.rgs"}).detail());
@@ -298,8 +298,8 @@ class DetailHttpTest {
 
     private static String bergingRequest(String id, int helpers) {
         return """
-                { "instanties": [ { "type": "Berging", "id": "%s",
-                                    "attributen": { "opbrengst": 100, "helpersaantal": %d } } ],
+                { "instances": [ { "type": "Berging", "id": "%s",
+                                    "attributes": { "opbrengst": 100, "helpersaantal": %d } } ],
                   "parameters": { "premiepercentage": 20 }, "rekendatum": "2026-01-01" }""".formatted(id, helpers);
     }
 
@@ -308,7 +308,7 @@ class DetailHttpTest {
         var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
         assertTrue(bundle.isOk(), () -> String.valueOf(bundle.model().errors()));
         String request = ServiceHttp.MAPPER.writeValueAsString(SituationToRequest.assemble(bundle.scenarios().get(0)));
-        HttpResponse<String> r = post(service, path, "trace=true&dekking=true&fixpunt=true", request);
+        HttpResponse<String> r = post(service, path, "trace=true&coverage=true&fixpoint=true", request);
         assertTrue(Set.of(200, 422).contains(r.statusCode()), r.body());
         return ServiceHttp.MAPPER.readTree(r.body());
     }

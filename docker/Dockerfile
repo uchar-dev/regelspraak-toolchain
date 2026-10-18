@@ -49,8 +49,8 @@ COPY docker/marker/ /app/rules/marker/
 # The kind smoke's rollout step rebuilds the image with another descriptor through this build argument; the file
 # must lie in the build context (under docker/ or examples/, see .dockerignore). It lands on top of the TOKA
 # descriptor copied above.
-ARG DESCRIPTOR_SRC=examples/toka/toka.dienst.json
-COPY ${DESCRIPTOR_SRC} /app/rules/toka/toka.dienst.json
+ARG DESCRIPTOR_SRC=examples/toka/toka.service.json
+COPY ${DESCRIPTOR_SRC} /app/rules/toka/toka.service.json
 
 COPY docker/entrypoint.sh /app/entrypoint.sh
 
@@ -71,7 +71,7 @@ RUN chmod +x /app/entrypoint.sh /app/bin/regelspraak \
 # set from the same image. REGELSPRAAK_JAR points bin/regelspraak at the jar of stage 1; it never builds here.
 ENV POORT=8080 \
     ALLOW_MARKERS=false \
-    DESCRIPTOR=/app/rules/toka/toka.dienst.json \
+    DESCRIPTOR=/app/rules/toka/toka.service.json \
     BRONNEN_MANIFEST=/app/rules/toka-manifest.txt \
     REGELSPRAAK_JAR=/app/regelspraak.jar
 

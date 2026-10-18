@@ -36,7 +36,7 @@ import java.util.TreeSet;
 
 /**
  * What stands at the fixpoint of a session ({@link Fixpoint}, as uchar's entry reads it with {@code DroolsBackend.fixpointOf})
- * as JSON: the playground gives it per scenario and the decision service per request ({@code ?fixpunt=true}), so both
+ * as JSON: the playground gives it per scenario and the decision service per request ({@code ?fixpoint=true}), so both
  * render it here. The input of the session is a list of {@link InputObject}s: the playground makes them of a
  * scenario's situation, the service of the instances of a request ({@link #input}).
  *
@@ -175,48 +175,48 @@ public final class FixpointGivens {
         for (int i = 0; i < madeObjects.size(); i++) ref.put(madeObjects.get(i), "#" + (i + 1));
 
         ObjectNode n = NF.objectNode();
-        ArrayNode objects = n.putArray("objecten");
+        ArrayNode objects = n.putArray("objects");
         List<Object> all = new ArrayList<>(inputObjects);
         all.addAll(madeObjects);
         for (Object o : all) {
             ObjectNode on = objects.addObject();
             on.put("object", ref.get(o));
-            name(on, "objecttype", ng.objectType(type.get(o).naam), type.get(o).naam);
-            on.set("waarden", members.get(o)[0]);
-            on.set("kenmerken", members.get(o)[1]);
+            name(on, "objectType", ng.objectType(type.get(o).naam), type.get(o).naam);
+            on.set("values", members.get(o)[0]);
+            on.set("characteristics", members.get(o)[1]);
         }
-        ArrayNode madeNode = n.putArray("gemaakteObjecten");
+        ArrayNode madeNode = n.putArray("madeObjects");
         for (Object o : madeObjects) {
             MadeObject g = made.get(o);
             ObjectNode gn = madeNode.addObject();
             gn.put("object", ref.get(o));
-            name(gn, "objecttype", ng.objectType(type.get(o).naam), type.get(o).naam);
-            name(gn, "creatie", ng.form(g.creation()), g.creation());
-            gn.put("onderwerp", refOf(g.onderwerp(), ref));
+            name(gn, "objectType", ng.objectType(type.get(o).naam), type.get(o).naam);
+            name(gn, "creation", ng.form(g.creation()), g.creation());
+            gn.put("subject", refOf(g.onderwerp(), ref));
         }
         List<MadeLink> links = new ArrayList<>(f.links());
         links.sort(Comparator.comparing(MadeLink::factType).thenComparing(MadeLink::firstRole)
                 .thenComparing(k -> refOf(k.first(), ref)).thenComparing(MadeLink::secondRole)
                 .thenComparing(k -> refOf(k.second(), ref)));
-        ArrayNode linkNode = n.putArray("koppelingen");
+        ArrayNode linkNode = n.putArray("links");
         for (MadeLink k : links) {
             ObjectNode kn = linkNode.addObject();
-            name(kn, "feittype", ng.factType(k.factType()), k.factType());
-            name(kn, "eersteRol", ng.role(k.factType(), k.firstRole()), k.firstRole());
-            kn.put("eerste", refOf(k.first(), ref));
-            name(kn, "tweedeRol", ng.role(k.factType(), k.secondRole()), k.secondRole());
-            kn.put("tweede", refOf(k.second(), ref));
+            name(kn, "factType", ng.factType(k.factType()), k.factType());
+            name(kn, "firstRole", ng.role(k.factType(), k.firstRole()), k.firstRole());
+            kn.put("first", refOf(k.first(), ref));
+            name(kn, "secondRole", ng.role(k.factType(), k.secondRole()), k.secondRole());
+            kn.put("second", refOf(k.second(), ref));
         }
         List<Fault> errors = new ArrayList<>(f.faults());
         errors.sort(Comparator.comparing(Fault::regel).thenComparing(Fault::message)
                 .thenComparing(x -> refOf(x.onderwerp(), ref)));
-        ArrayNode faultNode = n.putArray("fouten");
+        ArrayNode faultNode = n.putArray("faults");
         for (Fault x : errors) {
             ObjectNode fn = faultNode.addObject();
-            name(fn, "regel", ng.form(x.regel()), x.regel());
-            fn.put("onderwerp", refOf(x.onderwerp(), ref));
-            fn.put("soort", EvaluationFault.kind(x.fault()).name());
-            fn.put("zin", x.message());
+            name(fn, "rule", ng.form(x.regel()), x.regel());
+            fn.put("subject", refOf(x.onderwerp(), ref));
+            fn.put("kind", EvaluationFault.kind(x.fault()).name());
+            fn.put("sentence", x.message());
         }
         List<String[]> inconsistencies = new ArrayList<>();
         for (Object o : f.inconsistencies()) {
@@ -228,11 +228,11 @@ public final class FixpointGivens {
         Comparator<String> emptyFirst = Comparator.nullsFirst(Comparator.naturalOrder());
         inconsistencies.sort(Comparator.<String[], String>comparing(x -> x[0], emptyFirst)
                 .thenComparing(x -> x[1], emptyFirst));
-        ArrayNode incNode = n.putArray("inconsistenties");
+        ArrayNode incNode = n.putArray("inconsistencies");
         for (String[] x : inconsistencies) {
             ObjectNode in = incNode.addObject();
-            if (x[0] == null) in.putNull("regel"); else name(in, "regel", ng.form(x[0]), x[0]);
-            if (x[1] == null) in.putNull("onderwerp"); else in.put("onderwerp", x[1]);
+            if (x[0] == null) in.putNull("rule"); else name(in, "rule", ng.form(x[0]), x[0]);
+            if (x[1] == null) in.putNull("subject"); else in.put("subject", x[1]);
         }
         return n;
     }
@@ -257,17 +257,17 @@ public final class FixpointGivens {
             if (opBean instanceof List<?> l && l.isEmpty()) opBean = null;
             if (w == null && in == null && opBean == null) continue;
             ObjectNode rn = sink.addObject();
-            name(rn, "attribuut", ng.attribute(ot, a), a);
+            name(rn, "attribute", ng.attribute(ot, a), a);
             if (w != null) {
                 java(rn, w.value(), dt, ng);
-                rn.put("herkomst", "afgeleid");
-                if (in != null) rn.set("invoer", in.has("tijdlijn") ? in.get("tijdlijn") : in.get("waarde"));
+                rn.put("origin", "derived");
+                if (in != null) rn.set("input", in.has("timeline") ? in.get("timeline") : in.get("value"));
             } else if (in != null) {
                 rn.setAll(in);
-                rn.put("herkomst", "invoer");
+                rn.put("origin", "input");
             } else {
                 java(rn, opBean, dt, ng);
-                rn.put("herkomst", "creatie");
+                rn.put("origin", "creation");
             }
             unit(rn, dt);
         }
@@ -288,9 +288,9 @@ public final class FixpointGivens {
             boolean a = derived.contains(k), i = entered.contains(k);
             if (!a && !i) continue;
             ObjectNode kn = sink.addObject();
-            name(kn, "kenmerk", ng.characteristic(ot, k), k);
-            kn.put("herkomst", a ? "afgeleid" : "invoer");
-            if (a && i) kn.put("invoer", true);
+            name(kn, "characteristic", ng.characteristic(ot, k), k);
+            kn.put("origin", a ? "derived" : "input");
+            if (a && i) kn.put("input", true);
         }
         return sink;
     }
@@ -338,14 +338,14 @@ public final class FixpointGivens {
     /** Puts {@code gekozen} under {@code key}, and {@code canonical} beside it when it differs. */
     public static void name(ObjectNode n, String key, String chosen, String canonical) {
         n.put(key, chosen);
-        if (!chosen.equals(canonical)) n.put(key + "Canoniek", canonical);
+        if (!chosen.equals(canonical)) n.put(key + "Canonical", canonical);
     }
 
     /** A value in the form its bean field takes it: under {@code waarde}, a timeline under {@code tijdlijn} and a
      *  dimensioned value under {@code dimensies}. */
     private static void java(ObjectNode n, Object v, Datatype dt, Naming ng) {
         if (v instanceof List<?> segments) {
-            ArrayNode tl = n.putArray("tijdlijn");
+            ArrayNode tl = n.putArray("timeline");
             for (Object seg : segments) {
                 ObjectNode sn = tl.addObject();
                 sn.set("van", scalar(CaseSession.read(seg, "getVan"), null));
@@ -353,12 +353,12 @@ public final class FixpointGivens {
                 sn.set("waarde", scalar(CaseSession.read(seg, "getWaarde"), dt));
             }
         } else if (v instanceof Map<?, ?> perCoordinate) {
-            ObjectNode d = n.putObject("dimensies");
+            ObjectNode d = n.putObject("dimensions");
             new TreeMap<>(perCoordinate).forEach((c, w) -> d.set(String.valueOf(c), scalar(w, dt)));
         } else if (v instanceof String s && dt instanceof Datatype.Enumeratie) {
             enumValue(n, s, dt, ng);
         } else {
-            n.set("waarde", scalar(v, dt));
+            n.set("value", scalar(v, dt));
         }
     }
 
@@ -375,13 +375,13 @@ public final class FixpointGivens {
 
     /** An enumeration value under {@code waarde}, in the chosen vocabulary, with its canonical spelling beside it. */
     public static void enumValue(ObjectNode n, String value, Datatype dt, Naming ng) {
-        if (dt instanceof Datatype.Enumeratie e) name(n, "waarde", ng.value(e, value), value);
-        else n.put("waarde", value);
+        if (dt instanceof Datatype.Enumeratie e) name(n, "value", ng.value(e, value), value);
+        else n.put("value", value);
     }
 
     /** The declared unit of a number under {@code unit}, when it has one. */
     public static void unit(ObjectNode n, Datatype dt) {
         Unit e = dt == null ? null : dt.unitOf();
-        if (e != null) n.put("eenheid", e.rendering());
+        if (e != null) n.put("unit", e.rendering());
     }
 }

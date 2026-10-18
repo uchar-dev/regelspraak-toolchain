@@ -43,7 +43,7 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * {@code POST /playground/analyse?via=dienst}: the scenarios of a document computed by the service the process runs,
+ * {@code POST /playground/analyse?via=service}: the scenarios of a document computed by the service the process runs,
  * the verdict uchar's comparison over the session of a request ({@code DecisionCore.assess}). On a document within
  * the scope of an entry point the verdict is that of the ordinary route, in the same shape, with the {@code pad} it ran
  * on. A source that is not the service's own, a service without {@code DETAIL} and another value of {@code via} are a
@@ -70,17 +70,17 @@ class PlaygroundViaServiceTest {
             Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
             """;
     private static final String BERGING_DESCRIPTOR = """
-            { "dienst": {"naam":"berging","versie":"1"},
-              "entrypoints": [ { "naam":"berging","pad":"berging",
-                "scope": {"regelnamen": ["premie van een berging", "helpersdeel van een berging"]},
-                "invoer": ["Berging"], "uitvoer": ["Berging.premie"] } ],
+            { "service": {"name":"berging","version":"1"},
+              "entrypoints": [ { "name":"berging","path":"berging",
+                "scope": {"ruleNames": ["premie van een berging", "helpersdeel van een berging"]},
+                "input": ["Berging"], "output": ["Berging.premie"] } ],
               "parameters": {} }""";
     /** An entry point that carries one of the two rules: a scenario without a scope runs on both. */
     private static final String PREMIE_DESCRIPTOR = """
-            { "dienst": {"naam":"premie","versie":"1"},
-              "entrypoints": [ { "naam":"premie","pad":"premie",
-                "scope": {"regelnamen": ["premie van een berging"]},
-                "invoer": ["Berging"], "uitvoer": ["Berging.premie"] } ],
+            { "service": {"name":"premie","version":"1"},
+              "entrypoints": [ { "name":"premie","path":"premie",
+                "scope": {"ruleNames": ["premie van een berging"]},
+                "input": ["Berging"], "output": ["Berging.premie"] } ],
               "parameters": {} }""";
     private static final String SCENARIO = """
             Situatie basis:
@@ -95,10 +95,10 @@ class PlaygroundViaServiceTest {
             - de premie van B is %s €
             """;
     private static final String DAY_COUNT_DESCRIPTOR = """
-            { "dienst": {"naam":"dagentelling","versie":"1"},
-              "entrypoints": [ { "naam":"dagen","pad":"dagen",
-                "scope": {"regelnamen": ["borgdagen van een jutter", "jaardagen van een jutter"]},
-                "invoer": ["Jutter"], "uitvoer": ["Jutter.borgdagen"] } ],
+            { "service": {"name":"dagentelling","version":"1"},
+              "entrypoints": [ { "name":"dagen","path":"dagen",
+                "scope": {"ruleNames": ["borgdagen van een jutter", "jaardagen van een jutter"]},
+                "input": ["Jutter"], "output": ["Jutter.borgdagen"] } ],
               "parameters": {} }""";
 
     /** The golden TOKA scenarios uchar's scenario resolver refuses ({@code GoldenOverHttpTest.UCHAR_REFUSES}). */
@@ -163,25 +163,25 @@ class PlaygroundViaServiceTest {
                         CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
                 ObjectNode ordinary = Playground.analyseer(document.toString(), null);
                 ObjectNode service = Playground.analyseer(document.toString(), null, core);
-                JsonNode rg = ordinary.path("scenario").path("resultaten");
-                JsonNode rd = service.path("scenario").path("resultaten");
+                JsonNode rg = ordinary.path("scenario").path("results");
+                JsonNode rd = service.path("scenario").path("results");
                 assertTrue(rg.size() > 0, () -> "de gewone route gaf geen scenario: " + ordinary.path("resolver"));
                 assertEquals(rg.size(), rd.size());
                 for (int i = 0; i < rg.size(); i++) {
                     JsonNode g = rg.get(i), d = rd.get(i);
-                    String ctx = scenario.getFileName() + " / " + g.path("naam").asText();
+                    String ctx = scenario.getFileName() + " / " + g.path("name").asText();
                     assertEquals(g.path("status"), d.path("status"), ctx + "\ngewoon: " + g + "\ndienst: " + d);
-                    assertEquals(g.path("diagnose"), d.path("diagnose"), ctx);
-                    assertEquals(g.path("verwachtingen"), d.path("verwachtingen"), ctx);
-                    assertEquals(g.path("situatie"), d.path("situatie"), ctx);
+                    assertEquals(g.path("diagnosis"), d.path("diagnosis"), ctx);
+                    assertEquals(g.path("expectations"), d.path("expectations"), ctx);
+                    assertEquals(g.path("situation"), d.path("situation"), ctx);
                     List<String> keys = new ArrayList<>();
                     d.fieldNames().forEachRemaining(keys::add);
-                    keys.remove("pad");
+                    keys.remove("path");
                     List<String> ordinaryKeys = new ArrayList<>();
                     g.fieldNames().forEachRemaining(ordinaryKeys::add);
                     assertEquals(ordinaryKeys, keys, ctx);
-                    assertEquals(pathForScope(core, g.path("naam").asText(), document.toString()),
-                            d.path("pad").asText(), ctx);
+                    assertEquals(pathForScope(core, g.path("name").asText(), document.toString()),
+                            d.path("path").asText(), ctx);
                     compared.incrementAndGet();
                     if ("PASS".equals(d.path("status").asText())) pass.incrementAndGet();
                 }
@@ -204,7 +204,7 @@ class PlaygroundViaServiceTest {
         ArrayNode kept = ServiceHttp.MAPPER.createArrayNode();
         for (JsonNode ep : descriptor.get("entrypoints")) {
             boolean all = true;
-            for (JsonNode name : ep.path("scope").path("regelnamen")) all &= forms.exists(name.asText());
+            for (JsonNode name : ep.path("scope").path("ruleNames")) all &= forms.exists(name.asText());
             if (all) kept.add(ep);
         }
         descriptor.set("entrypoints", kept);
@@ -231,17 +231,17 @@ class PlaygroundViaServiceTest {
     @Test
     void a_fail_has_the_diagnostic_of_the_ordinary_route() {
         String source = BERGING + "\n" + SCENARIO.formatted("4", "30,00");
-        JsonNode g = Playground.analyseer(source, null).path("scenario").path("resultaten").get(0);
-        JsonNode d = Playground.analyseer(source, null, berging).path("scenario").path("resultaten").get(0);
+        JsonNode g = Playground.analyseer(source, null).path("scenario").path("results").get(0);
+        JsonNode d = Playground.analyseer(source, null, berging).path("scenario").path("results").get(0);
         assertEquals("FAIL", d.path("status").asText());
-        assertEquals(g.path("diagnose"), d.path("diagnose"));
-        assertTrue(d.path("diagnose").asText().startsWith("case1-berging.json: "), d.path("diagnose").asText());
-        assertEquals(g.path("verwachtingen"), d.path("verwachtingen"));
-        assertFalse(d.path("verwachtingen").get(0).path("ok").asBoolean());
-        assertEquals("berging", d.path("pad").asText());
-        assertEquals(g.path("fixpunt"), d.path("fixpunt"));
+        assertEquals(g.path("diagnosis"), d.path("diagnosis"));
+        assertTrue(d.path("diagnosis").asText().startsWith("case1-berging.json: "), d.path("diagnosis").asText());
+        assertEquals(g.path("expectations"), d.path("expectations"));
+        assertFalse(d.path("expectations").get(0).path("ok").asBoolean());
+        assertEquals("berging", d.path("path").asText());
+        assertEquals(g.path("fixpoint"), d.path("fixpoint"));
         assertEquals(g.path("trace"), d.path("trace"));
-        assertEquals(g.path("dekking"), d.path("dekking"));
+        assertEquals(g.path("coverage"), d.path("coverage"));
     }
 
     // ---------------- what the service does not compute ----------------
@@ -251,17 +251,17 @@ class PlaygroundViaServiceTest {
     @Test
     void an_evaluation_fault_is_a_fail_with_the_diagnostic_of_the_uchar_report() {
         String source = BERGING + "\n" + SCENARIO.formatted("0", "20,00");
-        JsonNode g = Playground.analyseer(source, null).path("scenario").path("resultaten").get(0);
-        JsonNode d = Playground.analyseer(source, null, berging).path("scenario").path("resultaten").get(0);
+        JsonNode g = Playground.analyseer(source, null).path("scenario").path("results").get(0);
+        JsonNode d = Playground.analyseer(source, null, berging).path("scenario").path("results").get(0);
         assertEquals("FAIL", g.path("status").asText());
         assertEquals("FAIL", d.path("status").asText());
-        assertEquals(g.path("diagnose"), d.path("diagnose"));
-        assertTrue(d.path("diagnose").asText().startsWith("case1-berging.json: ERROR DelingDoorNul: "),
-                d.path("diagnose").asText());
-        assertEquals(0, d.path("verwachtingen").size());
-        assertEquals(1, d.path("fixpunt").path("fouten").size(), d.toString());
+        assertEquals(g.path("diagnosis"), d.path("diagnosis"));
+        assertTrue(d.path("diagnosis").asText().startsWith("case1-berging.json: ERROR DelingDoorNul: "),
+                d.path("diagnosis").asText());
+        assertEquals(0, d.path("expectations").size());
+        assertEquals(1, d.path("fixpoint").path("faults").size(), d.toString());
         assertTrue(d.path("trace").size() > 0, d.toString());
-        assertTrue(d.has("uitlegFout"), d.toString());
+        assertTrue(d.has("explanationError"), d.toString());
     }
 
     /** A characteristic with periods has no request form: MARKER with the sentence of {@code SituationToRequest}, where
@@ -273,15 +273,15 @@ class PlaygroundViaServiceTest {
         DecisionCore core = DecisionCore.assemble(DAY_COUNT_DESCRIPTOR, Map.of("bron.rgs", rgs),
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
         String source = rgs + "\n" + Files.readString(golden.resolve("scenario.rgs"));
-        JsonNode g = Playground.analyseer(source, null).path("scenario").path("resultaten").get(0);
-        JsonNode d = Playground.analyseer(source, null, core).path("scenario").path("resultaten").get(0);
-        assertEquals("voorbeeld", d.path("naam").asText());
+        JsonNode g = Playground.analyseer(source, null).path("scenario").path("results").get(0);
+        JsonNode d = Playground.analyseer(source, null, core).path("scenario").path("results").get(0);
+        assertEquals("voorbeeld", d.path("name").asText());
         assertEquals("PASS", g.path("status").asText());
         assertEquals("MARKER", d.path("status").asText());
         assertEquals("kenmerk 'borgplichtig' van J1 is tijdsafhankelijk; het verzoek van de dienst draagt geen perioden",
-                d.path("diagnose").asText());
-        assertEquals("dagen", d.path("pad").asText());
-        assertEquals(0, d.path("verwachtingen").size());
+                d.path("diagnosis").asText());
+        assertEquals("dagen", d.path("path").asText());
+        assertEquals(0, d.path("expectations").size());
     }
 
     /** A scenario without a scope runs on every form of the model; an entry point that carries one of the two is no
@@ -291,12 +291,12 @@ class PlaygroundViaServiceTest {
         DecisionCore premie = DecisionCore.assemble(PREMIE_DESCRIPTOR, Map.of("berging.rgs", BERGING),
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
         JsonNode d = Playground.analyseer(BERGING + "\n" + SCENARIO.formatted("4", "20,00"), null, premie)
-                .path("scenario").path("resultaten").get(0);
+                .path("scenario").path("results").get(0);
         assertEquals("MARKER", d.path("status").asText());
-        assertTrue(d.path("pad").isNull(), d.toString());
+        assertTrue(d.path("path").isNull(), d.toString());
         assertEquals("het scenario noemt geen scope en rekent dus met alle 2 vormen van het model; geen ingangspunt van"
-                + " de dienst draagt ze alle: 'premie' mist [helpersdeel van een berging]", d.path("diagnose").asText());
-        assertTrue(d.has("situatie"));
+                + " de dienst draagt ze alle: 'premie' mist [helpersdeel van een berging]", d.path("diagnosis").asText());
+        assertTrue(d.has("situation"));
     }
 
     // ---------------- the request as a whole ----------------
@@ -306,24 +306,24 @@ class PlaygroundViaServiceTest {
     @Test
     void other_sources_than_that_of_the_service_a_400() throws Exception {
         String different = BERGING.replace("gedeeld door", "maal") + "\n" + SCENARIO.formatted("4", "20,00");
-        HttpResponse<String> r = post(withDetail, "?via=dienst", different);
+        HttpResponse<String> r = post(withDetail, "?via=service", different);
         assertEquals(400, r.statusCode(), r.body());
-        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).path("schendingen").get(0);
-        assertEquals("bron", s.path("veld").asText());
-        assertEquals("NIET_ONDERSTEUND", s.path("soort").asText());
-        assertTrue(s.path("fout").asText().startsWith("via=dienst rekent met de bronnen waarmee de dienst gestart is, en"
+        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).path("violations").get(0);
+        assertEquals("source", s.path("field").asText());
+        assertEquals("UNSUPPORTED", s.path("kind").asText());
+        assertTrue(s.path("error").asText().startsWith("via=service rekent met de bronnen waarmee de dienst gestart is, en"
                 + " het uchar-ir-v1-document van de geposte bronnen is niet dat van de dienst; eerste verschil /rules/"),
-                s.path("fout").asText());
+                s.path("error").asText());
 
-        HttpResponse<String> own = post(withDetail, "?via=dienst", BERGING + "\n" + SCENARIO.formatted("4", "20,00"));
+        HttpResponse<String> own = post(withDetail, "?via=service", BERGING + "\n" + SCENARIO.formatted("4", "20,00"));
         assertEquals(200, own.statusCode(), own.body());
-        JsonNode result = ServiceHttp.MAPPER.readTree(own.body()).path("scenario").path("resultaten").get(0);
+        JsonNode result = ServiceHttp.MAPPER.readTree(own.body()).path("scenario").path("results").get(0);
         assertEquals("PASS", result.path("status").asText(), result.toString());
-        assertEquals("berging", result.path("pad").asText());
+        assertEquals("berging", result.path("path").asText());
 
         // the core refuses the same, without HTTP
         ServiceError error = assertThrows(ServiceError.class, () -> Playground.analyseer(different, null, berging));
-        assertEquals(Violation.Kind.NIET_ONDERSTEUND, error.violations().get(0).kind());
+        assertEquals(Violation.Kind.UNSUPPORTED, error.violations().get(0).kind());
     }
 
     /** The difference is named by a JSON pointer, a missing key and the length of an array as well. */
@@ -339,17 +339,17 @@ class PlaygroundViaServiceTest {
                 ServiceHttp.MAPPER.readTree("{\"x\": [1, {\"y\": \"a\"}]}"), ""));
     }
 
-    /** A service started without detail answers {@code via=dienst} with a 400 that names {@code DETAIL}; its
+    /** A service started without detail answers {@code via=service} with a 400 that names {@code DETAIL}; its
      *  playground without the flag answers as before. */
     @Test
     void without_detail_a_400_that_names_DETAIL() throws Exception {
         String source = BERGING + "\n" + SCENARIO.formatted("4", "20,00");
-        HttpResponse<String> r = post(withoutDetail, "?via=dienst", source);
+        HttpResponse<String> r = post(withoutDetail, "?via=service", source);
         assertEquals(400, r.statusCode(), r.body());
-        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).path("schendingen").get(0);
-        assertEquals("via", s.path("veld").asText());
-        assertEquals("NIET_ONDERSTEUND", s.path("soort").asText());
-        assertTrue(s.path("fout").asText().contains("DETAIL=true"), s.path("fout").asText());
+        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).path("violations").get(0);
+        assertEquals("via", s.path("field").asText());
+        assertEquals("UNSUPPORTED", s.path("kind").asText());
+        assertTrue(s.path("error").asText().contains("DETAIL=true"), s.path("error").asText());
         assertEquals(200, post(withoutDetail, "", source).statusCode());
     }
 
@@ -358,25 +358,25 @@ class PlaygroundViaServiceTest {
     void another_value_of_via_is_a_400() throws Exception {
         HttpResponse<String> r = post(withDetail, "?via=playground", BERGING);
         assertEquals(400, r.statusCode(), r.body());
-        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).path("schendingen").get(0);
-        assertEquals("via", s.path("veld").asText());
-        assertEquals("via kent alleen de waarde 'dienst', niet 'playground'", s.path("fout").asText());
+        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).path("violations").get(0);
+        assertEquals("via", s.path("field").asText());
+        assertEquals("via kent alleen de waarde 'service', niet 'playground'", s.path("error").asText());
     }
 
-    /** Over HTTP the answer of {@code via=dienst} has the keys of the ordinary one, the scenario part included. */
+    /** Over HTTP the answer of {@code via=service} has the keys of the ordinary one, the scenario part included. */
     @Test
     void the_same_form_over_http() throws Exception {
         String source = BERGING + "\n" + SCENARIO.formatted("4", "20,00");
         JsonNode ordinary = ServiceHttp.MAPPER.readTree(post(withDetail, "", source).body());
-        JsonNode service = ServiceHttp.MAPPER.readTree(post(withDetail, "?via=dienst", source).body());
+        JsonNode service = ServiceHttp.MAPPER.readTree(post(withDetail, "?via=service", source).body());
         assertEquals(keys(ordinary), keys(service));
-        JsonNode g = ordinary.path("scenario").path("resultaten").get(0);
-        JsonNode d = service.path("scenario").path("resultaten").get(0);
+        JsonNode g = ordinary.path("scenario").path("results").get(0);
+        JsonNode d = service.path("scenario").path("results").get(0);
         List<String> withPath = keys(g);
-        withPath.add(withPath.indexOf("regel") + 1, "pad");
+        withPath.add(withPath.indexOf("line") + 1, "path");
         assertEquals(withPath, keys(d));
         assertEquals(g.path("status"), d.path("status"));
-        assertNotNull(d.get("fixpunt"));
+        assertNotNull(d.get("fixpoint"));
     }
 
     private static List<String> keys(JsonNode n) {

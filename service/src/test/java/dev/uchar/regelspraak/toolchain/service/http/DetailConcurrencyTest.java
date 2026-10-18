@@ -56,7 +56,7 @@ class DetailConcurrencyTest {
 
     private static final int CONCURRENT = 60;
     private static final int REPETITIONS = 3;
-    private static final String DETAIL = "trace=true&dekking=true&fixpunt=true";
+    private static final String DETAIL = "trace=true&coverage=true&fixpoint=true";
 
     private static ServiceHttp service;
     private static final HttpClient CLIENT =
@@ -138,11 +138,11 @@ class DetailConcurrencyTest {
             for (JsonNode l : t.get("labels"))
                 assertTrue(v.ids.contains(l.asText()), where + " (/" + v.path + "): de trace noemt '" + l.asText()
                         + "', geen id van dit verzoek " + v.ids + ": een vuring van een andere sessie");
-        JsonNode f = answer.get("fixpunt");
+        JsonNode f = answer.get("fixpoint");
         List<String> objects = new ArrayList<>();
-        for (JsonNode o : f.get("objecten")) objects.add(o.get("object").asText());
-        for (JsonNode k : f.get("koppelingen")) { objects.add(k.get("eerste").asText()); objects.add(k.get("tweede").asText()); }
-        for (JsonNode inc : f.get("inconsistenties")) if (inc.hasNonNull("onderwerp")) objects.add(inc.get("onderwerp").asText());
+        for (JsonNode o : f.get("objects")) objects.add(o.get("object").asText());
+        for (JsonNode k : f.get("links")) { objects.add(k.get("first").asText()); objects.add(k.get("second").asText()); }
+        for (JsonNode inc : f.get("inconsistencies")) if (inc.hasNonNull("subject")) objects.add(inc.get("subject").asText());
         for (String o : objects)
             assertTrue(o.startsWith("#") || v.ids.contains(o), where + " (/" + v.path + "): het fixpunt noemt '" + o
                     + "', geen id van dit verzoek " + v.ids);
@@ -160,7 +160,7 @@ class DetailConcurrencyTest {
             this.path = path;
             this.body = body;
             this.ids = new HashSet<>();
-            for (JsonNode i : body.get("instanties")) ids.add(i.get("id").asText());
+            for (JsonNode i : body.get("instances")) ids.add(i.get("id").asText());
         }
     }
 
@@ -171,9 +171,9 @@ class DetailConcurrencyTest {
         String pathA = pathForScope(descriptor, "bepaal leeftijd");
         for (String geboorte : new String[]{"1990-06-15", "1985-01-01", "2000-12-31", "1970-03-03"}) {
             ObjectNode body = ownIds(a0, "R" + n++ + "-");
-            for (JsonNode inst : body.get("instanties"))
+            for (JsonNode inst : body.get("instances"))
                 if ("Natuurlijk persoon".equalsIgnoreCase(inst.path("type").asText()))
-                    ((ObjectNode) inst.get("attributen")).put("geboortedatum", geboorte);
+                    ((ObjectNode) inst.get("attributes")).put("geboortedatum", geboorte);
             sink.add(new RequestCase(pathA, body));
         }
         ObjectNode b0 = situationRequest("examples/toka-scenarios/scenario-toka-20-totaal-te-betalen.rgs");
@@ -181,18 +181,18 @@ class DetailConcurrencyTest {
         for (String[] pair : new String[][]{{"30.00", "20.00"}, {"10.00", "5.00"}, {"100.00", "0.00"}, {"1.00", "2.00"}}) {
             ObjectNode body = ownIds(b0, "R" + n++ + "-");
             int p = 0;
-            for (JsonNode inst : body.get("instanties"))
+            for (JsonNode inst : body.get("instances"))
                 if ("Natuurlijk persoon".equalsIgnoreCase(inst.path("type").asText()) && p < pair.length)
-                    ((ObjectNode) inst.get("attributen")).put("te betalen belasting", new java.math.BigDecimal(pair[p++]));
+                    ((ObjectNode) inst.get("attributes")).put("te betalen belasting", new java.math.BigDecimal(pair[p++]));
             sink.add(new RequestCase(pathB, body));
         }
         ObjectNode c0 = situationRequest("examples/toka-scenarios/scenario-toka-30-geen-rondvlucht.rgs");
         String pathC = pathForScope(descriptor, "Controleer of vlucht geen rondvlucht is");
         for (String lh : new String[]{"Amsterdam Schiphol", "Parijs Charles de Gaulle", "Londen Heathrow"}) {
             ObjectNode body = ownIds(c0, "R" + n++ + "-");
-            for (JsonNode inst : body.get("instanties"))
+            for (JsonNode inst : body.get("instances"))
                 if ("Vlucht".equalsIgnoreCase(inst.path("type").asText())) {
-                    ObjectNode attr = (ObjectNode) inst.get("attributen");
+                    ObjectNode attr = (ObjectNode) inst.get("attributes");
                     attr.put("luchthaven van vertrek", lh);
                     attr.put("luchthaven van bestemming", lh);
                 }
@@ -204,9 +204,9 @@ class DetailConcurrencyTest {
     /** A copy of {@code verzoek} with {@code prefix} before every id, on the instances and in their roles. */
     private static ObjectNode ownIds(ObjectNode request, String prefix) {
         ObjectNode sink = request.deepCopy();
-        for (JsonNode inst : sink.get("instanties")) {
+        for (JsonNode inst : sink.get("instances")) {
             ((ObjectNode) inst).put("id", prefix + inst.get("id").asText());
-            JsonNode roles = inst.get("rollen");
+            JsonNode roles = inst.get("roles");
             if (roles == null) continue;
             for (var e : roles.properties()) {
                 if (e.getValue().isArray())
@@ -215,7 +215,7 @@ class DetailConcurrencyTest {
                 else ((ObjectNode) roles).put(e.getKey(), prefix + e.getValue().asText());
             }
         }
-        assertFalse(sink.has("relaties"), "SituatieNaarVerzoek schrijft geen relaties");
+        assertFalse(sink.has("relations"), "SituatieNaarVerzoek schrijft geen relaties");
         return sink;
     }
 

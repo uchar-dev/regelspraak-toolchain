@@ -33,7 +33,7 @@ class VocabularyAnswerTest {
     }
 
     private static JsonNode instance(ObjectNode answer, String id) {
-        for (JsonNode i : answer.get("instanties")) if (id.equals(i.get("id").asText())) return i;
+        for (JsonNode i : answer.get("instances")) if (id.equals(i.get("id").asText())) return i;
         throw new AssertionError("geen instantie " + id + " in " + answer);
     }
 
@@ -43,30 +43,30 @@ class VocabularyAnswerTest {
                 new RequestOptions(true, "handboek", null));
         JsonNode v1 = instance(a, "V1");
         assertEquals("aangespoeld voorwerp", v1.get("type").asText());
-        assertEquals("amber", v1.at("/attributen/soort vondst").asText());
-        assertEquals(0, new BigDecimal("9").compareTo(v1.at("/attributen/premie voor de vondst").decimalValue()),
+        assertEquals("amber", v1.at("/attributes/soort vondst").asText());
+        assertEquals(0, new BigDecimal("9").compareTo(v1.at("/attributes/premie voor de vondst").decimalValue()),
                 v1.toString());
-        assertTrue(v1.at("/kenmerken/van waarde").asBoolean(), v1.toString());
+        assertTrue(v1.at("/characteristics/van waarde").asBoolean(), v1.toString());
         JsonNode j1 = instance(a, "J1");
         assertEquals("strandjutter", j1.get("type").asText());
-        assertEquals(0, new BigDecimal("12.6").compareTo(j1.at("/attributen/totale premie").decimalValue()),
+        assertEquals(0, new BigDecimal("12.6").compareTo(j1.at("/attributes/totale premie").decimalValue()),
                 j1.toString());
-        assertEquals(1, j1.at("/attributen/aantal vondsten van waarde").asInt());
-        assertTrue(j1.at("/kenmerken/komt in aanmerking voor premie").asBoolean(), j1.toString());
-        assertTrue(a.get("uitleg").toString().contains("V1 is van waarde, omdat zijn soort (amber · barnsteen)"
+        assertEquals(1, j1.at("/attributes/aantal vondsten van waarde").asInt());
+        assertTrue(j1.at("/characteristics/komt in aanmerking voor premie").asBoolean(), j1.toString());
+        assertTrue(a.get("explanation").toString().contains("V1 is van waarde, omdat zijn soort (amber · barnsteen)"
                 + " is gelijk aan amber · barnsteen"),
-                a.get("uitleg").toString());
+                a.get("explanation").toString());
     }
 
     @Test
     void the_default_vocabulary_of_an_entrypoint_and_canonical_as_choice() {
         JsonNode v1 = instance(GOLDEN.process("premie-cgm", VocabularySource.json(VocabularySource.CASE1)), "V1");
         assertEquals("VONDST", v1.get("type").asText());
-        assertEquals("BARNSTEEN", v1.at("/attributen/VONDST_SOORT").asText());
-        assertTrue(v1.at("/kenmerken/WAARDEVOL").asBoolean(), v1.toString());
+        assertEquals("BARNSTEEN", v1.at("/attributes/VONDST_SOORT").asText());
+        assertTrue(v1.at("/characteristics/WAARDEVOL").asBoolean(), v1.toString());
 
         ObjectNode canonical = GOLDEN.process("premie-cgm", VocabularySource.json(VocabularySource.CASE1),
-                new RequestOptions(false, "canoniek", null));
+                new RequestOptions(false, "canonical", null));
         assertEquals(GOLDEN.process("premie", VocabularySource.json(VocabularySource.CASE1)), canonical,
                 "canoniek gekozen is het antwoord van het entrypoint zonder standaard");
     }
@@ -75,17 +75,17 @@ class VocabularyAnswerTest {
     void a_declaration_without_designation_carries_its_canonical_name_and_an_inconsistency_its_designation() {
         // 'toeslag' is ambiguous here unless the canonical reading is pinned
         ObjectNode a = AMBIGUOUS.process("uitkering", VocabularySource.json("""
-            { "instanties": [ { "type": "Jutter", "id": "J1",
-                "attributen": { "vondstbedrag": 2, "premiebedrag": 2, "basisbedrag": 1, "toeslag": 1, "houtsoort": "wrakhout" } } ] }"""),
-                new RequestOptions(false, "cgm", "canoniek"));
+            { "instances": [ { "type": "Jutter", "id": "J1",
+                "attributes": { "vondstbedrag": 2, "premiebedrag": 2, "basisbedrag": 1, "toeslag": 1, "houtsoort": "wrakhout" } } ] }"""),
+                new RequestOptions(false, "cgm", "canonical"));
         JsonNode j1 = instance(a, "J1");
         assertEquals("JUTTER", j1.get("type").asText());
-        assertEquals(0, new BigDecimal("6").compareTo(j1.at("/attributen/UITKERING").decimalValue()), j1.toString());
-        assertEquals("WRAKHOUT", j1.at("/attributen/houtsoort").asText(), "houtsoort heeft in cgm geen benaming");
-        assertTrue(j1.at("/kenmerken/HOUTJUTTER").asBoolean(), j1.toString());
-        assertEquals("C_BEDRAGEN", a.at("/inconsistenties/0").asText(), a.toString());
-        assertEquals("C_BEDRAGEN", a.at("/inconsistentieDetails/0/regel").asText(), a.toString());
-        assertEquals("J1", a.at("/inconsistentieDetails/0/onderwerp").asText(), a.toString());
+        assertEquals(0, new BigDecimal("6").compareTo(j1.at("/attributes/UITKERING").decimalValue()), j1.toString());
+        assertEquals("WRAKHOUT", j1.at("/attributes/houtsoort").asText(), "houtsoort heeft in cgm geen benaming");
+        assertTrue(j1.at("/characteristics/HOUTJUTTER").asBoolean(), j1.toString());
+        assertEquals("C_BEDRAGEN", a.at("/inconsistencies/0").asText(), a.toString());
+        assertEquals("C_BEDRAGEN", a.at("/inconsistencyDetails/0/rule").asText(), a.toString());
+        assertEquals("J1", a.at("/inconsistencyDetails/0/subject").asText(), a.toString());
     }
 
     @Test
@@ -95,26 +95,26 @@ class VocabularyAnswerTest {
                 getClass().getClassLoader(), null);
         ObjectNode a = core.process("premie", VocabularySource.json(VocabularySource.CASE1_HANDBOEK),
                 new RequestOptions(false, "cgm", null));
-        assertEquals("BARNSTEEN", instance(a, "V1").at("/attributen/VONDST_SOORT").asText(), a.toString());
-        assertEquals(0, new BigDecimal("12.6").compareTo(instance(a, "J1").at("/attributen/VONDST_BEDRAG").decimalValue()),
+        assertEquals("BARNSTEEN", instance(a, "V1").at("/attributes/VONDST_SOORT").asText(), a.toString());
+        assertEquals(0, new BigDecimal("12.6").compareTo(instance(a, "J1").at("/attributes/VONDST_BEDRAG").decimalValue()),
                 a.toString());
     }
 
     @Test
     void an_unknown_default_vocabulary_refuses_the_start() {
-        String descriptor = VocabularySource.descriptorJson().replace("\"vocabulaire\": \"cgm\"", "\"vocabulaire\": \"wetboek\"");
+        String descriptor = VocabularySource.descriptorJson().replace("\"vocabulary\": \"cgm\"", "\"vocabulary\": \"wetboek\"");
         ServiceError f = assertThrows(ServiceError.class, () -> DecisionCore.assemble(descriptor,
                 Map.of("bron.rgs", VocabularySource.source()), CoreConfig.strict(), getClass().getClassLoader()));
         assertEquals(1, f.violations().size(), f.getMessage());
-        assertEquals(Violation.Kind.ONBEKEND_VOCABULAIRE, f.violations().get(0).kind());
-        assertEquals("entrypoints[1].vocabulaire", f.violations().get(0).field());
+        assertEquals(Violation.Kind.UNKNOWN_VOCABULARY, f.violations().get(0).kind());
+        assertEquals("entrypoints[1].vocabulary", f.violations().get(0).field());
     }
 
     @Test
     void a_vocabulary_with_the_name_canonical_refuses_the_start() {
         String source = """
-            Vocabulaire canoniek
-            Objecttype de Jutter (mv: Jutters) (canoniek: strandjutter)
+            Vocabulaire canonical
+            Objecttype de Jutter (mv: Jutters) (canonical: strandjutter)
                 de naam Tekst;
                 de groet Tekst;
             Regel groet
@@ -122,13 +122,13 @@ class VocabularyAnswerTest {
                     De groet van een Jutter moet gesteld worden op zijn naam.
             """;
         String descriptor = """
-            { "dienst": {"naam":"gereserveerd","versie":"1"},
-              "entrypoints": [ { "naam":"groet","pad":"groet", "scope": {"regelnamen": ["groet"]},
-                "invoer": ["Jutter"], "uitvoer": ["Jutter.groet"] } ], "parameters": {} }""";
+            { "service": {"name":"gereserveerd","version":"1"},
+              "entrypoints": [ { "name":"groet","path":"groet", "scope": {"ruleNames": ["groet"]},
+                "input": ["Jutter"], "output": ["Jutter.groet"] } ], "parameters": {} }""";
         ServiceError f = assertThrows(ServiceError.class, () -> DecisionCore.assemble(descriptor, Map.of("g.rgs", source),
                 CoreConfig.strict(), getClass().getClassLoader()));
         assertEquals(Violation.Kind.MALFORMED, f.violations().get(0).kind(), f.getMessage());
-        assertEquals("het model declareert een vocabulaire 'canoniek', en 'canoniek' kiest de canonieke namen; geef"
+        assertEquals("het model declareert een vocabulaire 'canonical', en 'canonical' kiest de canonieke namen; geef"
                 + " het vocabulaire een andere naam", f.violations().get(0).message());
     }
 }

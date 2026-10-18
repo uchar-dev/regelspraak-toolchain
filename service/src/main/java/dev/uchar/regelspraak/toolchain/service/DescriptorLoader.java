@@ -16,7 +16,7 @@ import java.util.List;
 import java.util.Set;
 
 /**
- * Reads a {@code <naam>.dienst.json} descriptor and validates it against the RESOLVED model — every regel,
+ * Reads a {@code <naam>.service.json} descriptor and validates it against the RESOLVED model — every regel,
  * regelgroep, objecttype, attribuut, kenmerk and parameter it names must exist, or the load fails naming the
  * offending value. ALL violations are collected first, then thrown together as a single {@link ServiceError},
  * so a malformed descriptor surfaces its complete diagnostic set in one round trip (decision 1).
@@ -65,10 +65,10 @@ public final class DescriptorLoader {
         List<Violation> sink = new ArrayList<>();
         if (d == null) { sink.add(Violation.van(Violation.Kind.MALFORMED, "", "leeg descriptor")); return sink; }
         if (d.service() == null || d.service().name() == null || d.service().name().isBlank())
-            sink.add(Violation.van(Violation.Kind.MALFORMED, "dienst.naam", "dienst.naam ontbreekt"));
+            sink.add(Violation.van(Violation.Kind.MALFORMED, "service.name", "service.name ontbreekt"));
         // 'canoniek' chooses the canonical names in a request, so a vocabulary of that name could never be chosen
         String reserved = Naming.reserved(model);
-        if (reserved != null) sink.add(Violation.van(Violation.Kind.MALFORMED, "vocabulaires", reserved));
+        if (reserved != null) sink.add(Violation.van(Violation.Kind.MALFORMED, "vocabularies", reserved));
 
         Set<String> groupNames = new java.util.LinkedHashSet<>();
         for (var g : model.ruleGroups) groupNames.add(g.naam());
@@ -77,7 +77,7 @@ public final class DescriptorLoader {
         if (d.parameters() != null)
             for (String p : d.parameters().keySet())
                 if (parameter(model, p) == null)
-                    sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, "parameters." + p,
+                    sink.add(Violation.van(Violation.Kind.UNKNOWN_REFERENCE, "parameters." + p,
                             "onbekende parameter '" + p + "'"));
 
         List<ServiceDescriptor.Entrypoint> eps = d.entrypoints() == null ? List.of() : d.entrypoints();
@@ -85,14 +85,14 @@ public final class DescriptorLoader {
             ServiceDescriptor.Entrypoint ep = eps.get(i);
             String path = "entrypoints[" + i + "]";
             if (ep.name() == null || ep.name().isBlank())
-                sink.add(Violation.van(Violation.Kind.MALFORMED, path + ".naam", "entrypoint-naam ontbreekt"));
+                sink.add(Violation.van(Violation.Kind.MALFORMED, path + ".name", "entrypoint-naam ontbreekt"));
             if (ep.path() == null || ep.path().isBlank())
-                sink.add(Violation.van(Violation.Kind.MALFORMED, path + ".pad", "entrypoint-pad ontbreekt"));
+                sink.add(Violation.van(Violation.Kind.MALFORMED, path + ".path", "entrypoint-pad ontbreekt"));
             if (ep.vocabulary() != null && reserved == null) {
                 try {
                     Naming.van(model, ep.vocabulary());
                 } catch (Naming.VocabularyError f) {
-                    sink.add(Violation.van(Violation.Kind.ONBEKEND_VOCABULAIRE, path + ".vocabulaire", f.getMessage()));
+                    sink.add(Violation.van(Violation.Kind.UNKNOWN_VOCABULARY, path + ".vocabulary", f.getMessage()));
                 }
             }
 
@@ -105,36 +105,36 @@ public final class DescriptorLoader {
                 List<String> rn = ep.scope().ruleNamesOrEmpty();
                 for (int j = 0; j < rn.size(); j++)
                     if (!forms.exists(rn.get(j)))
-                        sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING,
-                                path + ".scope.regelnamen[" + j + "]", "onbekende regel '" + rn.get(j) + "'"));
+                        sink.add(Violation.van(Violation.Kind.UNKNOWN_REFERENCE,
+                                path + ".scope.ruleNames[" + j + "]", "onbekende regel '" + rn.get(j) + "'"));
                 List<String> rg = ep.scope().ruleGroupsOrEmpty();
                 for (int j = 0; j < rg.size(); j++)
                     if (!groupNames.contains(rg.get(j)))
-                        sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING,
-                                path + ".scope.regelgroepen[" + j + "]", "onbekende regelgroep '" + rg.get(j) + "'"));
+                        sink.add(Violation.van(Violation.Kind.UNKNOWN_REFERENCE,
+                                path + ".scope.ruleGroups[" + j + "]", "onbekende regelgroep '" + rg.get(j) + "'"));
             }
 
             // invoer objecttypen
             List<String> inv = ep.input() == null ? List.of() : ep.input();
             for (int j = 0; j < inv.size(); j++)
                 if (objectType(model, inv.get(j)) == null)
-                    sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, path + ".invoer[" + j + "]",
+                    sink.add(Violation.van(Violation.Kind.UNKNOWN_REFERENCE, path + ".input[" + j + "]",
                             "onbekend objecttype '" + inv.get(j) + "'"));
 
-            // uitvoer: "Objecttype.attribuut" | "Objecttype:kenmerk"
+            // uitvoer: "Objecttype.attribute" | "Objecttype:kenmerk"
             List<String> outputs = ep.output() == null ? List.of() : ep.output();
             for (int j = 0; j < outputs.size(); j++)
-                validateOutput(model, outputs.get(j), path + ".uitvoer[" + j + "]", sink);
+                validateOutput(model, outputs.get(j), path + ".output[" + j + "]", sink);
 
             // inputElements: same selector syntax as uitvoer — element-level scope-completeness opt-outs
             List<String> invEl = ep.inputElementsOrEmpty();
             for (int j = 0; j < invEl.size(); j++)
-                validateOutput(model, invEl.get(j), path + ".invoerElementen[" + j + "]", sink);
+                validateOutput(model, invEl.get(j), path + ".inputElements[" + j + "]", sink);
         }
         return sink;
     }
 
-    /** Validate one {@code "Objecttype.attribuut"} / {@code "Objecttype:kenmerk"} selector. */
+    /** Validate one {@code "Objecttype.attribute"} / {@code "Objecttype:kenmerk"} selector. */
     static void validateOutput(RegelSpraakModel model, String sel, String field, List<Violation> sink) {
         OutputSelector u = OutputSelector.parse(sel);
         if (u == null) {
@@ -144,17 +144,17 @@ public final class DescriptorLoader {
         }
         Objecttype ot = objectType(model, u.objectType());
         if (ot == null) {
-            sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, field,
+            sink.add(Violation.van(Violation.Kind.UNKNOWN_REFERENCE, field,
                     "onbekend objecttype '" + u.objectType() + "' in uitvoer '" + sel + "'"));
             return;
         }
         if (u.characteristic()) {
             if (!hasCharacteristic(ot, u.member()))
-                sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, field,
+                sink.add(Violation.van(Violation.Kind.UNKNOWN_REFERENCE, field,
                         "onbekend kenmerk '" + u.member() + "' op objecttype '" + u.objectType() + "'"));
         } else {
             if (ot.attribute(u.member()) == null)
-                sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, field,
+                sink.add(Violation.van(Violation.Kind.UNKNOWN_REFERENCE, field,
                         "onbekend attribuut '" + u.member() + "' op objecttype '" + u.objectType() + "'"));
         }
     }

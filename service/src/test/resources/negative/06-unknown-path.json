@@ -1,11 +1,11 @@
 {
-  "naam": "onbekend pad (geen entrypoint)",
-  "pad": "onzin",
+  "name": "onbekend pad (geen entrypoint)",
+  "path": "onzin",
   "body": {
-    "instanties": [
+    "instances": [
       { "type": "Vlucht", "id": "V1" }
     ]
   },
-  "verwachtStatus": 404,
-  "verwachtVeldBevat": "onzin"
+  "expectedStatus": 404,
+  "expectedFieldContains": "onzin"
 }

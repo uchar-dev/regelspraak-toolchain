@@ -112,27 +112,27 @@ class OpenApiEmitterTest {
     }
 
     /** The 422 of every entry point names the body {@link AnswerBuilder#evaluationFault} builds, and no other fields:
-     *  {@code status} EVALUATIEFOUT, the sentence {@code fout}, and {@code fouten}, each with its {@code soort}, one of
+     *  {@code status} EVALUATION_FAULT, the sentence {@code fout}, and {@code fouten}, each with its {@code soort}, one of
      *  the kinds of {@link EvaluationFault.Kind}, and uchar's sentence {@code fout}; and, not required, the detail a
      *  request may ask ({@code trace}, {@code dekking}, {@code fixpunt} or {@code fixpointError}). */
     @Test
     void the_422_describes_the_body_of_an_evaluation_fault() {
         for (ServiceDescriptor.Entrypoint ep : DESCRIPTOR.entrypoints())
-            assertEquals("#/components/schemas/Evaluatiefout", DOC.get("paths").get("/" + ep.path())
+            assertEquals("#/components/schemas/EvaluationFault", DOC.get("paths").get("/" + ep.path())
                     .at("/post/responses/422/content/application~1json/schema/oneOf/0/$ref").asText(), "de 422 van '/" + ep.path() + "'");
-        JsonNode s = DOC.at("/components/schemas/Evaluatiefout");
-        assertEquals("[\"status\",\"fout\",\"fouten\"]", s.path("required").toString(), s::toString);
-        assertEquals(java.util.List.of("status", "fout", "fouten", "trace", "dekking", "fixpunt", "fixpuntFout"),
+        JsonNode s = DOC.at("/components/schemas/EvaluationFault");
+        assertEquals("[\"status\",\"error\",\"faults\"]", s.path("required").toString(), s::toString);
+        assertEquals(java.util.List.of("status", "error", "faults", "trace", "coverage", "fixpoint", "fixpointError"),
                 fields(s.path("properties")), s::toString);
-        assertEquals("[\"EVALUATIEFOUT\"]", s.at("/properties/status/enum").toString(), s::toString);
-        assertEquals("string", s.at("/properties/fout/type").asText(), s::toString);
-        assertEquals("array", s.at("/properties/fouten/type").asText(), s::toString);
-        JsonNode error = s.at("/properties/fouten/items");
-        assertEquals("[\"soort\",\"fout\"]", error.path("required").toString(), s::toString);
-        assertEquals(java.util.List.of("soort", "fout"), fields(error.path("properties")), s::toString);
+        assertEquals("[\"EVALUATION_FAULT\"]", s.at("/properties/status/enum").toString(), s::toString);
+        assertEquals("string", s.at("/properties/error/type").asText(), s::toString);
+        assertEquals("array", s.at("/properties/faults/type").asText(), s::toString);
+        JsonNode error = s.at("/properties/faults/items");
+        assertEquals("[\"kind\",\"error\"]", error.path("required").toString(), s::toString);
+        assertEquals(java.util.List.of("kind", "error"), fields(error.path("properties")), s::toString);
         assertEquals(Arrays.stream(EvaluationFault.Kind.values()).map(Enum::name).toList(),
-                error.at("/properties/soort/enum").valueStream().map(JsonNode::asText).toList(), s::toString);
-        assertEquals("string", error.at("/properties/fout/type").asText(), s::toString);
+                error.at("/properties/kind/enum").valueStream().map(JsonNode::asText).toList(), s::toString);
+        assertEquals("string", error.at("/properties/error/type").asText(), s::toString);
     }
 
     private static java.util.List<String> fields(JsonNode n) {
@@ -214,9 +214,9 @@ class OpenApiEmitterTest {
                 // A bare Percentage's implicit '%' unit still documents as x-eenheid "%".
                 JsonNode prop = property(props, e.getKey());
                 assertNotNull(prop, "geen eigenschap voor eenheid-dragend attribuut '" + e.getKey() + "'");
-                assertTrue(prop.has("x-eenheid"),
+                assertTrue(prop.has("x-unit"),
                         "geen x-eenheid op eenheid-dragend attribuut '" + e.getKey() + "' van '" + ot.naam + "'");
-                assertEquals(unit.rendering(), prop.get("x-eenheid").asText(),
+                assertEquals(unit.rendering(), prop.get("x-unit").asText(),
                         "x-eenheid van '" + e.getKey() + "' wijkt af");
             }
         }

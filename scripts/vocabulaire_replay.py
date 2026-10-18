@@ -5,9 +5,9 @@ Per golden (--golden <golden>=<descriptor>): de dienst start over de bron.rgs va
 eerste entrypoint van de descriptor draagt geen standaardvocabulaire, het tweede wel. Elk casebestand wordt een
 verzoek in de canonieke spelling, in de spelling van elk vocabulaire van het document en in een gemengde spelling
 (per naam om en om canoniek en elk vocabulaire), en elk van die verzoeken vraagt zijn antwoord canoniek en in elk
-vocabulaire (?vocabulaire=). Het antwoord moet de gepinde verwachtingen van de case geven, in de namen van het
+vocabulaire (?vocabulary=). Het antwoord moet de gepinde verwachtingen van de case geven, in de namen van het
 gevraagde vocabulaire, met het objecttype en elke enumeratiewaarde die het verzoek meegaf in die namen. Daarnaast per
-spelling het vastgezette invoervocabulaire (?invoervocabulaire=), de weigering van een andere spelling onder een
+spelling het vastgezette invoervocabulaire (?inputVocabulary=), de weigering van een andere spelling onder een
 vastgezet vocabulaire, het standaardvocabulaire van het tweede entrypoint, en /info: per vocabulaire de declaraties
 zonder benaming. De vertaaltafel is het ir.json van de golden (uchars emitter), dus niet de code van de dienst.
 
@@ -267,12 +267,12 @@ def speel_golden(golden, map_, descriptor_pad):
                     lichaam = spel(canoniek, tafel, kies)
                     for uit in keuzes:
                         plek = f"{naam}, spelling {spelling}, vocabulaire {uit}"
-                        antwoord = vraag(pad, "?vocabulaire=" + urllib.parse.quote(uit), lichaam, plek)
+                        antwoord = vraag(pad, "?vocabulary=" + urllib.parse.quote(uit), lichaam, plek)
                         vergelijk(verwacht_in(c, tafel, uit), antwoord, plek)
                         echo += namen_in(c, antwoord, tafel, uit, plek)
                     if spelling != "gemengd":
                         plek = f"{naam}, spelling {spelling}, invoervocabulaire {spelling}"
-                        antwoord = vraag(pad, "?invoervocabulaire=" + urllib.parse.quote(spelling), lichaam, plek)
+                        antwoord = vraag(pad, "?inputVocabulary=" + urllib.parse.quote(spelling), lichaam, plek)
                         vergelijk(c, antwoord, plek)
                 plek = f"{naam}, standaardvocabulaire {standaard} van {standaard_pad}"
                 antwoord = vraag(standaard_pad, "", canoniek, plek)
@@ -281,7 +281,7 @@ def speel_golden(golden, map_, descriptor_pad):
                 # a pinned vocabulary reads only its own effective names: another spelling is refused, by name
                 ander, vast = tafel.vocabulaires[0], tafel.vocabulaires[-1]
                 verzoeken += 1
-                status, tekst = dienst.vraag("POST", pad + "?invoervocabulaire=" + urllib.parse.quote(vast),
+                status, tekst = dienst.vraag("POST", pad + "?inputVocabulary=" + urllib.parse.quote(vast),
                                              spel(canoniek, tafel, lambda i: ander))
                 schendingen = json.loads(tekst).get("schendingen", []) if status == 400 else []
                 if not schendingen or not all(f"invoervocabulaire '{vast}'" in s["fout"] for s in schendingen):

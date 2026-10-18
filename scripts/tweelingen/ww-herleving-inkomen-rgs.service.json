@@ -1,0 +1,15 @@
+{
+  "service": { "name": "WW herleving", "version": "tweeling" },
+  "entrypoints": [
+    {
+      "name": "herleving",
+      "path": "herleving",
+      "scope": { "ruleNames": ["toekenning art 15", "inkomensgrens van een werknemer",
+                                "verstreken periode bij herleving", "nieuwe maxdatum bij herleving"] },
+      "input": ["Werknemer"],
+      "output": ["Werknemer.inkomensgrens", "Werknemer.verstreken periode", "Werknemer.nieuwe maxdatum",
+                  "Werknemer:recht op uitkering"]
+    }
+  ],
+  "parameters": {}
+}

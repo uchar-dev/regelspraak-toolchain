@@ -139,7 +139,7 @@ public final class DecisionCore {
         boolean document = sourceFiles.stream().anyMatch(DecisionCore::isDocument);
         if (document && sourceFiles.size() != 1)
             throw new ServiceError("dienst start niet: een uchar-ir-v1-document is de enige bron van een dienst",
-                    List.of(Violation.van(Violation.Kind.MALFORMED, "bronnen",
+                    List.of(Violation.van(Violation.Kind.MALFORMED, "sources",
                             "de bronnen mengen een .json-document met andere bestanden: " + sourceFiles)));
         Map<String, String> text = new LinkedHashMap<>();
         for (Path p : sourceFiles) text.put(p.toString(), Files.readString(p));
@@ -154,7 +154,7 @@ public final class DecisionCore {
                 parameterSetsJson = Files.readString(sidecar);
             } catch (IOException e) {
                 throw new ServiceError("dienst start niet: parametersets-bestand kan niet gelezen worden op dit"
-                        + " bouwpad", List.of(Violation.van(Violation.Kind.MALFORMED, "parametersets",
+                        + " bouwpad", List.of(Violation.van(Violation.Kind.MALFORMED, "parameterSets",
                         "kon parametersets-bestand '" + sidecar + "' niet lezen: " + e.getMessage())));
             }
         }
@@ -173,7 +173,7 @@ public final class DecisionCore {
     private static String peekParameterSetsName(String descriptorJson) {
         try {
             var tree = DescriptorLoader.MAPPER.readTree(descriptorJson);
-            var node = tree == null ? null : tree.get("parametersets");
+            var node = tree == null ? null : tree.get("parameterSets");
             if (node != null && node.isTextual() && !node.asText().isBlank()) return node.asText();
         } catch (IOException ignore) { /* full bouw reports the malformed descriptor */ }
         return null;
@@ -276,14 +276,14 @@ public final class DecisionCore {
             document = DescriptorLoader.MAPPER.readTree(documentJson);
         } catch (IOException e) {
             throw new ServiceError("dienst start niet: het document is geen JSON", List.of(
-                    Violation.van(Violation.Kind.MALFORMED, "bron", e.getMessage())));
+                    Violation.van(Violation.Kind.MALFORMED, "source", e.getMessage())));
         }
         IrLoader.Loaded loaded;
         try {
             loaded = IrLoader.loadAll(document);
         } catch (IrLoader.Refusal | IrLoader.DocumentError e) {
             throw new ServiceError("dienst start niet: uchar draagt het document niet", List.of(
-                    Violation.van(Violation.Kind.MARKER, "bron", (e instanceof IrLoader.Refusal ? "loader: "
+                    Violation.van(Violation.Kind.MARKER, "source", (e instanceof IrLoader.Refusal ? "loader: "
                             : "document: ") + e.getMessage())));
         }
         RegelSpraakModel model = loaded.model();
@@ -372,7 +372,7 @@ public final class DecisionCore {
         if (descriptor.parameterSets() == null || descriptor.parameterSets().isBlank()) return List.of();
         if (parameterSetsJson == null)
             throw new ServiceError("dienst start niet: parametersets-bestand kan niet gelezen worden op dit bouwpad",
-                    List.of(Violation.van(Violation.Kind.MALFORMED, "parametersets",
+                    List.of(Violation.van(Violation.Kind.MALFORMED, "parameterSets",
                             "de descriptor noemt parametersets '" + descriptor.parameterSets() + "' maar er is geen"
                                     + " parametersets-JSON meegegeven op dit bouwpad")));
         List<ParameterSet> sets;
@@ -381,9 +381,9 @@ public final class DecisionCore {
         } catch (ParameterSetError f) {
             List<Violation> sink = new ArrayList<>();
             for (String error : f.errors())
-                sink.add(Violation.van(Violation.Kind.MALFORMED, "parametersets", error));
+                sink.add(Violation.van(Violation.Kind.MALFORMED, "parameterSets", error));
             if (sink.isEmpty())   // malformed-JSON single-throw carries the message, not the fouten list
-                sink.add(Violation.van(Violation.Kind.MALFORMED, "parametersets", f.getMessage()));
+                sink.add(Violation.van(Violation.Kind.MALFORMED, "parameterSets", f.getMessage()));
             throw new ServiceError("dienst start niet: parametersets valideren niet tegen het model", sink);
         }
 
@@ -494,7 +494,7 @@ public final class DecisionCore {
                     if (reads == null) reads = ProducerConsumer.readings(scoped, group, navigation);
                     where = " " + whereRead(reads, consumed, v.naam());
                 }
-                sink.add(Violation.van(Violation.Kind.SCOPE_ONVOLLEDIG, "entrypoint:" + ep.path(),
+                sink.add(Violation.van(Violation.Kind.INCOMPLETE_SCOPE, "entrypoint:" + ep.path(),
                         reader + " in entrypoint '" + ep.name() + "' leest "
                                 + (consumed.characteristic() ? "kenmerk" : "attribuut") + " '" + consumed.naam() + "'"
                                 + (consumed.objectType().isEmpty() ? "" : " van '" + consumed.objectType() + "'")
@@ -562,7 +562,7 @@ public final class DecisionCore {
     }
 
     /**
-     * Handle a request with what it asks beside its body. When {@code uitleg} is asked, an {@code "uitleg"} array is
+     * Handle a request with what it asks beside its body. When {@code uitleg} is asked, an {@code "explanation"} array is
      * added to the response — one NL sentence per assigned/withheld kenmerk of a request instance, justified with the
      * evaluated operandwaarden (§norm read via the IR, not the programmer); without it the response tree has no such
      * key. The request's names are read by a {@link NameReader}, liberally or in the input vocabulary the request
@@ -588,7 +588,7 @@ public final class DecisionCore {
      * As {@link #process(String, JsonNode, RequestOptions)}, with uchar's verdict on {@code expectations}, the
      * {@code expected} of a {@code uchar-case-v0} case whose labels are ids of the request: uchar compares them with the
      * written-back session of the request ({@link DroolsBackend#vergelijk}), the ids of the request as labels. No route
-     * of the service asks it; the playground does, for {@code via=dienst}.
+     * of the service asks it; the playground does, for {@code via=service}.
      *
      * @throws Evaluatiefout what {@link #process(String, JsonNode, RequestOptions)} throws, and nothing is compared
      * @throws NoFixpoint   what {@link #process(String, JsonNode, RequestOptions)} throws, and nothing is compared
@@ -605,11 +605,11 @@ public final class DecisionCore {
         if (!ep.executable()) throw new NonExecutable(ep);
         List<Violation> choices = new ArrayList<>();
         Naming output = naming(options.vocabulary() != null ? options.vocabulary()
-                : ep.descriptor().vocabulary(), "vocabulaire", choices);
-        if (options.invoervocabulaire() != null) naming(options.invoervocabulaire(), "invoervocabulaire", choices);
+                : ep.descriptor().vocabulary(), "vocabulary", choices);
+        if (options.invoervocabulaire() != null) naming(options.invoervocabulaire(), "inputVocabulary", choices);
         if (!detail)
             for (String flag : options.detailFlags())
-                choices.add(Violation.van(Violation.Kind.NIET_ONDERSTEUND, flag, "de dienst is zonder DETAIL gestart"
+                choices.add(Violation.van(Violation.Kind.UNSUPPORTED, flag, "de dienst is zonder DETAIL gestart"
                         + " en geeft geen " + flag + "; start hem met DETAIL=true of --detail"));
         if (!choices.isEmpty()) throw new ServiceError("verzoek valideert niet", choices);
         RequestMapper mapper = new RequestMapper(model, ep.build(), new NameReader(model, options.invoervocabulaire()));
@@ -674,27 +674,27 @@ public final class DecisionCore {
             ArrayNode trace = n.putArray("trace");
             for (ScenarioResult.Firing v : observer.firings()) {
                 ObjectNode tn = trace.addObject();
-                tn.put("regel", naming.form(v.regel()));
+                tn.put("rule", naming.form(v.regel()));
                 ArrayNode labels = tn.putArray("labels");
                 for (String l : v.labels()) labels.add(l);
-                tn.put("aantal", v.count());
+                tn.put("count", v.count());
             }
         }
         if (options.coverage()) {
-            ArrayNode coverage = n.putArray("dekking");
+            ArrayNode coverage = n.putArray("coverage");
             for (ScenarioResult.CoverageRule d : DroolsBackend.coverage(ep.build(), observer.forms())) {
                 ObjectNode dn = coverage.addObject();
-                dn.put("regel", naming.form(d.regel()));
-                dn.put("soort", d.category().name());
+                dn.put("rule", naming.form(d.regel()));
+                dn.put("kind", d.category().name());
             }
         }
         if (options.fixpoint() && withoutFixpoint != null) {
-            n.put("fixpuntFout", withoutFixpoint);
+            n.put("fixpointError", withoutFixpoint);
         } else if (options.fixpoint()) {
             try {
-                n.set("fixpunt", FixpointGivens.fixpoint(fixpoint, input, model, naming));
+                n.set("fixpoint", FixpointGivens.fixpoint(fixpoint, input, model, naming));
             } catch (FixpointGivens.UnrenderableValue o) {
-                n.put("fixpuntFout", o.getMessage());
+                n.put("fixpointError", o.getMessage());
             }
         }
         return n;
@@ -706,13 +706,13 @@ public final class DecisionCore {
         try {
             return Naming.van(model, choice);
         } catch (Naming.VocabularyError f) {
-            errors.add(Violation.van(Violation.Kind.ONBEKEND_VOCABULAIRE, field, f.getMessage()));
+            errors.add(Violation.van(Violation.Kind.UNKNOWN_VOCABULARY, field, f.getMessage()));
             return Naming.canonical(model);
         }
     }
 
     /**
-     * Attach the {@link Verbaliser} verhaal to {@code answer} as an {@code "uitleg"} array. The globals the
+     * Attach the {@link Verbaliser} verhaal to {@code answer} as an {@code "explanation"} array. The globals the
      * verbalisator re-evaluates condition operands against are rebuilt with the SAME precedence
      * {@link Executor#fire} fired them under (descriptor defaults → set-vintage → request overrides → rekendatum);
      * the keys are {@link RequestMapper#globalName}, which the verbalisator reads a {@code ParameterRef} on. A pure
@@ -726,7 +726,7 @@ public final class DecisionCore {
         if (mr.world().evaluationDate() != null) globals.put("rekendatum", mr.world().evaluationDate());
         List<String> sentences = new Verbaliser(model, globals, naming)
                 .verbalise(outcome.beans(), mr.typePerLabel());
-        var arr = answer.putArray("uitleg");
+        var arr = answer.putArray("explanation");
         for (String sentence : sentences) arr.add(sentence);
     }
 
@@ -736,8 +736,8 @@ public final class DecisionCore {
      * ({@code datum} = the request peildatum = {@code World.evaluationDate}):
      * <ul>
      *   <li><b>datum present</b> — {@link ParameterSet#valuesOn}; any gap is a 4xx {@link ServiceError} whose
-     *       schendingen name the parameter + the datum, on veld {@code "peildatum"};</li>
-     *   <li><b>datum absent + multi-vintage</b> — a 4xx naming veld {@code "peildatum"}: the peildatum is
+     *       schendingen name the parameter + the datum, on veld {@code "asOfDate"};</li>
+     *   <li><b>datum absent + multi-vintage</b> — a 4xx naming veld {@code "asOfDate"}: the peildatum is
      *       mandatory because the sets carry more than one vintage (ambiguous truth);</li>
      *   <li><b>datum absent + NOT multi-vintage</b> — the degenerate single-value case: resolve with
      *       {@link LocalDate#EPOCH} (date-independent by construction, mirroring the ScenarioRunner).</li>
@@ -748,15 +748,15 @@ public final class DecisionCore {
     private Map<String, Object> vintageGlobals(LocalDate date) {
         if (parameterSets.isEmpty()) return Map.of();
         if (date == null && ParameterSet.multiVintage(parameterSets))
-            throw new ServiceError("verzoek valideert niet", List.of(Violation.van(Violation.Kind.VERKEERD_TYPE,
-                    "peildatum", "peildatum is verplicht: de geladen parametersets dragen meer dan één vintage")));
+            throw new ServiceError("verzoek valideert niet", List.of(Violation.van(Violation.Kind.WRONG_TYPE,
+                    "asOfDate", "peildatum is verplicht: de geladen parametersets dragen meer dan één vintage")));
         LocalDate asOf = date != null ? date : LocalDate.EPOCH;   // degeneraat: datum-onafhankelijk
         List<String> holes = new ArrayList<>();
         Map<String, Object> resolved = ParameterSet.valuesOn(parameterSets, asOf, holes);
         if (!holes.isEmpty()) {
             List<Violation> errors = new ArrayList<>();
             for (String gap : holes)
-                errors.add(Violation.van(Violation.Kind.VERKEERD_TYPE, "peildatum", gap));
+                errors.add(Violation.van(Violation.Kind.WRONG_TYPE, "asOfDate", gap));
             throw new ServiceError("verzoek valideert niet", errors);
         }
         Map<String, Object> globals = new LinkedHashMap<>();
@@ -768,7 +768,7 @@ public final class DecisionCore {
     /**
      * The invoer contract check: for every objecttype the entrypoint declares in {@code input}, require at
      * least ONE mapped instance that IS one of that objecttype in the request. A missing one yields a
-     * {@link Violation.Kind#ONTBREKENDE_INSTANTIE} with veld {@code "instanties"} whose message names BOTH the
+     * {@link Violation.Kind#MISSING_INSTANCE} with veld {@code "instances"} whose message names BOTH the
      * objecttype AND the entrypoint.
      *
      * <p>Membership is the ch. 2.2 ⊑ ({@link DescriptorLoader#objectMatch}), not name equality: the scoped
@@ -787,7 +787,7 @@ public final class DecisionCore {
             for (RegelSpraakModel.Objecttype ot : typePerLabel.values())
                 if (DescriptorLoader.objectMatch(model, ot, required)) { present = true; break; }
             if (!present)
-                sink.add(Violation.van(Violation.Kind.ONTBREKENDE_INSTANTIE, "instanties",
+                sink.add(Violation.van(Violation.Kind.MISSING_INSTANCE, "instances",
                         "entrypoint '" + ep.descriptor().name() + "' vereist minstens één instantie van objecttype '"
                                 + required + "', maar het verzoek levert er geen"));
         }

@@ -1,0 +1,13 @@
+{
+  "service": { "name": "Jutterswet dubbelzinnig", "version": "getuige" },
+  "entrypoints": [
+    {
+      "name": "uitkering",
+      "path": "uitkering",
+      "scope": { "ruleNames": ["uitkering van een jutter"] },
+      "input": ["Jutter"],
+      "output": ["Jutter.uitkering"]
+    }
+  ],
+  "parameters": {}
+}

@@ -19,7 +19,7 @@ import java.math.BigDecimal;
  * {@link ResolvedScenario.Situatie}. Nothing here is hand-typed — every value, label, type, rol target,
  * parameter and the peildatum is read straight off uchar's scenario resolver, so the "one truth, two transports"
  * guarantee holds: the same {@link dev.uchar.regelspraak.resolver.ScenarioResolver} output that the scenario
- * runner lowers to a case file is the request the golden harness posts and the playground's {@code via=dienst}
+ * runner lowers to a case file is the request the golden harness posts and the playground's {@code via=service}
  * hands to the core ({@link Playground}). Each instance keeps its label as its {@code id}, so an expectation of the
  * case names the instance by an id of the request.
  *
@@ -67,14 +67,14 @@ final class SituationToRequest {
         }
 
         // instanties — one per labelled instance, in first-seen order.
-        ArrayNode instances = root.putArray("instanties");
+        ArrayNode instances = root.putArray("instances");
         for (Instance i : situation.instances()) {
             ObjectNode inst = instances.addObject();
             inst.put("type", i.objectType().naam);
             inst.put("id", i.label());
 
             if (!i.attributen().isEmpty()) {
-                ObjectNode attributes = inst.putObject("attributen");
+                ObjectNode attributes = inst.putObject("attributes");
                 for (AttributeValue a : i.attributen()) {
                     if (a.tijdlijn() != null)
                         throw new NonPortable("attribuut '" + a.attribute() + "' van " + i.label()
@@ -83,7 +83,7 @@ final class SituationToRequest {
                 }
             }
             if (!i.kenmerken().isEmpty()) {
-                ObjectNode characteristics = inst.putObject("kenmerken");
+                ObjectNode characteristics = inst.putObject("characteristics");
                 for (CharacteristicValue k : i.kenmerken()) {
                     if (k.periods() != null)
                         throw new NonPortable("kenmerk '" + k.characteristic() + "' van " + i.label()
@@ -92,7 +92,7 @@ final class SituationToRequest {
                 }
             }
             if (!i.rollen().isEmpty()) {
-                ObjectNode roles = inst.putObject("rollen");
+                ObjectNode roles = inst.putObject("roles");
                 for (RoleValue r : i.rollen()) {
                     if (r.meervoudig()) {
                         ArrayNode targets = roles.putArray(r.key());

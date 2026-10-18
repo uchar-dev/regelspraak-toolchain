@@ -57,10 +57,10 @@ final class VocabularySource {
             """;
 
     static final String AMBIGUOUS_DESCRIPTOR = """
-            { "dienst": {"naam":"dubbelzinnig","versie":"1"},
-              "entrypoints": [ { "naam":"uitkering","pad":"uitkering",
-                "scope": {"regelnamen": ["uitkering van een jutter", "houtjutter", "bedragen verschillen"]},
-                "invoer": ["Jutter"], "uitvoer": ["Jutter.uitkering", "Jutter.houtsoort", "Jutter:houtjutter"] } ],
+            { "service": {"name":"dubbelzinnig","version":"1"},
+              "entrypoints": [ { "name":"uitkering","path":"uitkering",
+                "scope": {"ruleNames": ["uitkering van een jutter", "houtjutter", "bedragen verschillen"]},
+                "input": ["Jutter"], "output": ["Jutter.uitkering", "Jutter.houtsoort", "Jutter:houtjutter"] } ],
               "parameters": {} }""";
 
     static String source() {
@@ -71,7 +71,7 @@ final class VocabularySource {
         }
     }
 
-    static String descriptorJson() { return ChainSource.read("vocabularies/jutterswet-vocabulaires.dienst.json"); }
+    static String descriptorJson() { return ChainSource.read("vocabularies/jutterswet-vocabulaires.service.json"); }
 
     static RegelSpraakModel model() { return Resolver.resolve(source()); }
 
@@ -96,40 +96,40 @@ final class VocabularySource {
     /** The request of the golden's case1, in the canonical names. */
     static final String CASE1 = """
             { "parameters": { "premietarief": 3 },
-              "instanties": [
-                { "type": "Jutter", "id": "J1", "attributen": { "naam": "Aukje" }, "rollen": { "vondsten": ["V1", "V2"] } },
-                { "type": "Jutter", "id": "J2", "attributen": { "naam": "Bram" }, "rollen": { "vondsten": ["V3"] } },
-                { "type": "Vondst", "id": "V1", "attributen": { "soort": "barnsteen", "gewicht": 3.00 } },
-                { "type": "Vondst", "id": "V2", "attributen": { "soort": "wrakhout", "gewicht": 1.20 } },
-                { "type": "Vondst", "id": "V3", "attributen": { "soort": "flessenpost", "gewicht": 0.40 } } ] }""";
+              "instances": [
+                { "type": "Jutter", "id": "J1", "attributes": { "naam": "Aukje" }, "roles": { "vondsten": ["V1", "V2"] } },
+                { "type": "Jutter", "id": "J2", "attributes": { "naam": "Bram" }, "roles": { "vondsten": ["V3"] } },
+                { "type": "Vondst", "id": "V1", "attributes": { "soort": "barnsteen", "gewicht": 3.00 } },
+                { "type": "Vondst", "id": "V2", "attributes": { "soort": "wrakhout", "gewicht": 1.20 } },
+                { "type": "Vondst", "id": "V3", "attributes": { "soort": "flessenpost", "gewicht": 0.40 } } ] }""";
 
     /** The same request with every name as the vocabulary 'handboek' writes it. */
     static final String CASE1_HANDBOEK = """
             { "parameters": { "premie per kilogram": 3 },
-              "instanties": [
-                { "type": "strandjutter", "id": "J1", "attributen": { "naam": "Aukje" },
-                  "rollen": { "gemelde vondst": ["V1", "V2"] } },
-                { "type": "strandjutter", "id": "J2", "attributen": { "naam": "Bram" },
-                  "rollen": { "gemelde vondst": ["V3"] } },
+              "instances": [
+                { "type": "strandjutter", "id": "J1", "attributes": { "naam": "Aukje" },
+                  "roles": { "gemelde vondst": ["V1", "V2"] } },
+                { "type": "strandjutter", "id": "J2", "attributes": { "naam": "Bram" },
+                  "roles": { "gemelde vondst": ["V3"] } },
                 { "type": "aangespoeld voorwerp", "id": "V1",
-                  "attributen": { "soort vondst": "amber", "gewicht in kilogram": 3.00 } },
+                  "attributes": { "soort vondst": "amber", "gewicht in kilogram": 3.00 } },
                 { "type": "aangespoeld voorwerp", "id": "V2",
-                  "attributen": { "soort vondst": "hout van een wrak", "gewicht in kilogram": 1.20 } },
+                  "attributes": { "soort vondst": "hout van een wrak", "gewicht in kilogram": 1.20 } },
                 { "type": "aangespoeld voorwerp", "id": "V3",
-                  "attributen": { "soort vondst": "bericht in een fles", "gewicht in kilogram": 0.40 } } ] }""";
+                  "attributes": { "soort vondst": "bericht in een fles", "gewicht in kilogram": 0.40 } } ] }""";
 
     /** The same request with the names mixed: canonical, 'handboek' and 'cgm', a relation instead of a role. */
     static final String CASE1_MIXED = """
             { "parameters": { "PREMIE_TARIEF": 3 },
-              "instanties": [
-                { "type": "JUTTER", "id": "J1", "attributen": { "NAAM": "Aukje" }, "rollen": { "vondsten": ["V1"] } },
-                { "type": "strandjutter", "id": "J2", "attributen": { "naam": "Bram" },
-                  "rollen": { "GEMELDE_VONDST": ["V3"] } },
-                { "type": "Vondst", "id": "V1", "attributen": { "VONDST_SOORT": "amber", "gewicht": 3.00 } },
+              "instances": [
+                { "type": "JUTTER", "id": "J1", "attributes": { "NAAM": "Aukje" }, "roles": { "vondsten": ["V1"] } },
+                { "type": "strandjutter", "id": "J2", "attributes": { "naam": "Bram" },
+                  "roles": { "GEMELDE_VONDST": ["V3"] } },
+                { "type": "Vondst", "id": "V1", "attributes": { "VONDST_SOORT": "amber", "gewicht": 3.00 } },
                 { "type": "aangespoeld voorwerp", "id": "V2",
-                  "attributen": { "soort": "WRAKHOUT", "GEWICHT": 1.20 } },
+                  "attributes": { "soort": "WRAKHOUT", "GEWICHT": 1.20 } },
                 { "type": "VONDST", "id": "V3",
-                  "attributen": { "soort vondst": "flessenpost", "gewicht in kilogram": 0.40 } } ],
-              "relaties": [ { "feittype": "aanmelding van een vondst",
-                              "rollen": { "AANMELDER": "J1", "gemelde vondst": "V2" } } ] }""";
+                  "attributes": { "soort vondst": "flessenpost", "gewicht in kilogram": 0.40 } } ],
+              "relations": [ { "factType": "aanmelding van een vondst",
+                              "roles": { "AANMELDER": "J1", "gemelde vondst": "V2" } } ] }""";
 }

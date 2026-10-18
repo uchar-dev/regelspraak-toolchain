@@ -33,17 +33,17 @@ public final class Completeness {
         ArrayNode sink = NF.arrayNode();
         for (RegelSpraakModel.Vocabulary v : model.vocabularies) {
             ObjectNode vn = sink.addObject();
-            vn.put("naam", v.naam());
-            vn.put("standaard", v.isDefault());
-            if (v.language() != null) vn.put("taal", v.language());
+            vn.put("name", v.naam());
+            vn.put("default", v.isDefault());
+            if (v.language() != null) vn.put("language", v.language());
             List<Designatable> without = withoutDesignation(model, v.naam());
-            vn.put("volledig", without.isEmpty());
-            ArrayNode list = vn.putArray("zonderBenaming");
+            vn.put("complete", without.isEmpty());
+            ArrayNode list = vn.putArray("withoutDesignation");
             for (Designatable b : without) {
                 ObjectNode bn = list.addObject();
-                bn.put("soort", b.category().name());
-                if (b.owner() != null) bn.put("eigenaar", b.owner());
-                bn.put("naam", b.naam());
+                bn.put("kind", b.category().name());
+                if (b.owner() != null) bn.put("owner", b.owner());
+                bn.put("name", b.naam());
             }
         }
         return sink;

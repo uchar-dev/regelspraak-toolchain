@@ -155,14 +155,14 @@ public final class Playground {
         List<ParseError> parseErrors = parseResult.errors();
         ObjectNode parse = root.putObject("parse");
         parse.put("ok", parseErrors.isEmpty());
-        ArrayNode pf = parse.putArray("fouten");
+        ArrayNode pf = parse.putArray("errors");
         for (ParseError f : parseErrors) {
             ObjectNode n = pf.addObject();
-            n.put("regel", f.position());
-            n.put("kolom", f.column());
-            n.put("boodschap", f.notice());
+            n.put("line", f.position());
+            n.put("column", f.column());
+            n.put("message", f.notice());
             if (f.token() != null) n.put("token", f.token());
-            ArrayNode expected = n.putArray("verwacht");
+            ArrayNode expected = n.putArray("expected");
             for (String t : f.expected()) expected.add(t);
         }
 
@@ -171,16 +171,16 @@ public final class Playground {
         RegelSpraakModel model = scenario ? bundle.model() : Resolver.resolve(source);
         ObjectNode resolver = root.putObject("resolver");
         resolver.put("ok", model.isOk());
-        ArrayNode errors = resolver.putArray("fouten");
-        ArrayNode warnings = resolver.putArray("waarschuwingen");
+        ArrayNode errors = resolver.putArray("errors");
+        ArrayNode warnings = resolver.putArray("warnings");
         for (Diagnostic d : model.diagnostics) {
             ObjectNode n = (d.severity() == Severity.ERROR ? errors : warnings).addObject();
-            n.put("regel", d.line());
-            n.put("boodschap", d.message());
+            n.put("line", d.line());
+            n.put("message", d.message());
         }
         if (!model.isOk()) return root;
         Naming naming = Naming.van(model, vocabulary);
-        root.set("vocabulaires", vocabularies(model, naming, parseResult));
+        root.set("vocabularies", vocabularies(model, naming, parseResult));
 
         // 3. IR and the verdict of the branch that fires
         com.fasterxml.jackson.databind.JsonNode ir = null;
@@ -188,25 +188,25 @@ public final class Playground {
             ir = JSON.readTree(UcharBuild.document(model));
             root.set("ir", ir);
         } catch (UcharBuild.NotCarried e) {
-            root.put("irFout", e.getMessage());
+            root.put("irError", e.getMessage());
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
             throw new IllegalStateException("de emitter schreef geen leesbare JSON: " + e.getOriginalMessage(), e);
         }
-        if (service != null) sameSources(ir, root.path("irFout").asText(null), service);
+        if (service != null) sameSources(ir, root.path("irError").asText(null), service);
         try {
             DroolsBackend.Build build = UcharBuild.assemble(model, DroolsBackend.Branch.EXEC_MODEL);
-            root.put("uitvoerbaar", true);
-            ArrayNode coverage = root.putArray("dekking");
+            root.put("executable", true);
+            ArrayNode coverage = root.putArray("coverage");
             for (Coverage d : build.coverage()) {
                 ObjectNode dn = coverage.addObject();
-                dn.put("soort", d.category());
-                dn.put("naam", d.naam());
+                dn.put("kind", d.category());
+                dn.put("name", d.naam());
                 dn.put("verdict", d.verdict().name());
             }
-            root.set("gegenereerd", generated(build, model, naming));
+            root.set("generated", generated(build, model, naming));
         } catch (UcharBuild.NotCarried e) {
-            root.put("uitvoerbaar", false);
-            root.put("weigering", e.getMessage());
+            root.put("executable", false);
+            root.put("refusal", e.getMessage());
         }
 
         // 4. DRL — a view of the DRL-text branch, never the verdict. uchar's build of that branch throws an
@@ -216,40 +216,40 @@ public final class Playground {
             root.put("drl", UcharBuild.assemble(model, DroolsBackend.Branch.DRL_TEXT).drl());
         } catch (UcharBuild.NotCarried | IllegalStateException e) {
             root.put("drl", "");
-            root.put("drlFout", e.getMessage());
+            root.put("drlError", e.getMessage());
         }
 
         // 5. GRAAF — uchar's rule graph of the document its loader reads back, with the defaults groups and the
         //    navigation bindings it returns beside the model; without a document there is no graph
         if (ir == null) {
-            root.put("graaf", "");
-            root.put("graafFout", root.get("irFout").asText());
+            root.put("graph", "");
+            root.put("graphError", root.get("irError").asText());
         } else {
             try {
                 IrLoader.Loaded loaded = IrLoader.loadAll(ir);
                 RuleGraph graph = RuleGraph.build(loaded.model(), loaded.prioritizedDefaults(),
                         ProducerConsumer.wireNavigation(loaded));
-                root.put("graaf", graph.mermaid());
+                root.put("graph", graph.mermaid());
                 try {
-                    root.set("graafJson", graphJson(graph, model, naming));
+                    root.set("graphJson", graphJson(graph, model, naming));
                 } catch (UndesignatableNode o) {
-                    root.put("graafFout", o.getMessage());
+                    root.put("graphError", o.getMessage());
                 }
             } catch (IrLoader.Refusal | IrLoader.DocumentError e) {
-                root.put("graaf", "");
-                root.put("graafFout", "loader: " + notice(e));
+                root.put("graph", "");
+                root.put("graphError", "loader: " + notice(e));
             }
         }
 
         // 6. SCENARIO — only when the source carries a Scenario block
         if (scenario && service != null) {
-            ArrayNode arr = root.putObject("scenario").putArray("resultaten");
+            ArrayNode arr = root.putObject("scenario").putArray("results");
             List<String> sourceLines = ScenarioData.lines(source);
             List<ResolvedScenario> scenarios = bundle.scenarios();
             for (int i = 0; i < scenarios.size(); i++)
                 renderViaService(arr.addObject(), i, scenarios.get(i), service, sourceLines, model, naming, vocabulary);
         } else if (scenario) {
-            ArrayNode arr = root.putObject("scenario").putArray("resultaten");
+            ArrayNode arr = root.putObject("scenario").putArray("results");
             List<ResolvedScenario> scenarios = bundle.scenarios();
             List<ScenarioRunner.Explained> explained = ScenarioRunner.runWithUitleg(bundle, vocabulary);
             if (explained.size() != scenarios.size())
@@ -274,46 +274,46 @@ public final class Playground {
         if (inCase != s.expectations().size())
             throw new IllegalStateException("de case van het scenario '" + s.naam() + "' telt " + inCase
                     + " verwachting(en), het scenario " + s.expectations().size());
-        n.put("naam", r.naam());
+        n.put("name", r.naam());
         n.put("status", r.status().name());
-        if (r.diagnostic() != null && !r.diagnostic().isEmpty()) n.put("diagnose", r.diagnostic());
-        n.put("regel", s.line());
-        ArrayNode expectations = n.putArray("verwachtingen");
+        if (r.diagnostic() != null && !r.diagnostic().isEmpty()) n.put("diagnosis", r.diagnostic());
+        n.put("line", s.line());
+        ArrayNode expectations = n.putArray("expectations");
         for (ExpectationResult v : r.expectations()) {
             ObjectNode vn = expectations.addObject();
-            vn.put("bron", v.source().trim());
-            vn.put("verwacht", v.expected());
-            vn.put("werkelijk", v.actual());
+            vn.put("source", v.source().trim());
+            vn.put("expected", v.expected());
+            vn.put("actual", v.actual());
             vn.put("ok", v.ok());
             ScenarioData.place(vn, v, s, sourceLines);
         }
-        ArrayNode coverage = n.putArray("dekking");
+        ArrayNode coverage = n.putArray("coverage");
         for (CoverageRule d : r.coverage()) {
             ObjectNode dn = coverage.addObject();
-            dn.put("regel", naming.form(d.regel()));
-            dn.put("soort", d.category().name());
+            dn.put("rule", naming.form(d.regel()));
+            dn.put("kind", d.category().name());
         }
         // the fired rules in the order they first fired, with the labels of the input instances they bound
         ArrayNode trace = n.putArray("trace");
         for (Firing firing : r.trace().firings()) {
             ObjectNode tn = trace.addObject();
-            tn.put("regel", naming.form(firing.regel()));
+            tn.put("rule", naming.form(firing.regel()));
             ArrayNode labels = tn.putArray("labels");
             for (String l : firing.labels()) labels.add(l);
-            tn.put("aantal", firing.count());
+            tn.put("count", firing.count());
         }
-        ArrayNode uitleg = n.putArray("uitleg");
+        ArrayNode uitleg = n.putArray("explanation");
         for (String z : u.uitleg()) uitleg.add(z);
-        if (u.uitlegError() != null) n.put("uitlegFout", u.uitlegError());
-        n.set("situatie", ScenarioData.situation(s, model, naming));
+        if (u.uitlegError() != null) n.put("explanationError", u.uitlegError());
+        n.set("situation", ScenarioData.situation(s, model, naming));
         if (u.session() != null) {
             try {
-                n.set("fixpunt", ScenarioData.fixpoint(u.session(), s, model, naming));
+                n.set("fixpoint", ScenarioData.fixpoint(u.session(), s, model, naming));
             } catch (FixpointGivens.UnrenderableValue o) {
-                n.put("fixpuntFout", o.getMessage());
+                n.put("fixpointError", o.getMessage());
             }
         } else if (u.sessionError() != null) {
-            n.put("fixpuntFout", u.sessionError());
+            n.put("fixpointError", u.sessionError());
         }
     }
 
@@ -353,8 +353,8 @@ public final class Playground {
             reason = "het uchar-ir-v1-document van de geposte bronnen is niet dat van de dienst; eerste verschil "
                     + difference(ir, own, "");
         }
-        throw new ServiceError("verzoek valideert niet", List.of(Violation.van(Violation.Kind.NIET_ONDERSTEUND, "bron",
-                "via=dienst rekent met de bronnen waarmee de dienst gestart is, en " + reason)));
+        throw new ServiceError("verzoek valideert niet", List.of(Violation.van(Violation.Kind.UNSUPPORTED, "source",
+                "via=service rekent met de bronnen waarmee de dienst gestart is, en " + reason)));
     }
 
     /** The first place where {@code a} (the posted source's) and {@code b} (the service's) differ, as a JSON pointer
@@ -399,11 +399,11 @@ public final class Playground {
      * the name of the case file. What the service does not compute is not a PASS:
      * <ul>
      *   <li>no entry point carries the scope, a value the request cannot carry ({@link SituationToRequest.NonPortable}),
-     *       a request form the service does not carry (each violation of its 400 {@code NIET_ONDERSTEUND}), an entry
+     *       a request form the service does not carry (each violation of its 400 {@code UNSUPPORTED}), an entry
      *       point uchar does not carry, an expectation uchar does not compare: MARKER with the sentence;</li>
      *   <li>an evaluation fault (the service's 422): FAIL with the line of uchar's report, the exception its write-back
      *       throws, and the trace, coverage and fixpoint of the 422;</li>
-     *   <li>a session without a fixpoint (the service's 422 {@code GEEN_FIXPUNT}): FAIL with the line uchar's report
+     *   <li>a session without a fixpoint (the service's 422 {@code NO_FIXPOINT}): FAIL with the line uchar's report
      *       gives such a case, the name of the case file and uchar's sentence, and the trace and coverage of the 422;</li>
      *   <li>any other 400 of the service: FAIL naming its violations.</li>
      * </ul>
@@ -440,7 +440,7 @@ public final class Playground {
             boolean notSupported = true;
             for (Violation sch : error.violations()) {
                 sentences.add(sch.toString());
-                notSupported &= sch.kind() == Violation.Kind.NIET_ONDERSTEUND;
+                notSupported &= sch.kind() == Violation.Kind.UNSUPPORTED;
             }
             status = notSupported ? ScenarioResult.Status.MARKER : ScenarioResult.Status.FAIL;
             diagnostic = notSupported ? String.join("; ", sentences)
@@ -459,26 +459,26 @@ public final class Playground {
             session = none.detail();
             uitlegError = "de dienst bereikte geen fixpunt (422) en geeft dan geen uitleg";
         }
-        n.put("naam", s.naam());
+        n.put("name", s.naam());
         n.put("status", status.name());
-        if (!diagnostic.isEmpty()) n.put("diagnose", diagnostic);
-        n.put("regel", s.line());
-        if (path == null) n.putNull("pad"); else n.put("pad", path);
-        ArrayNode va = n.putArray("verwachtingen");
+        if (!diagnostic.isEmpty()) n.put("diagnosis", diagnostic);
+        n.put("line", s.line());
+        if (path == null) n.putNull("path"); else n.put("path", path);
+        ArrayNode va = n.putArray("expectations");
         for (ExpectationResult v : expectations) {
             ObjectNode vn = va.addObject();
-            vn.put("bron", v.source().trim());
-            vn.put("verwacht", v.expected());
-            vn.put("werkelijk", v.actual());
+            vn.put("source", v.source().trim());
+            vn.put("expected", v.expected());
+            vn.put("actual", v.actual());
             vn.put("ok", v.ok());
             ScenarioData.place(vn, v, s, sourceLines);
         }
-        for (String field : List.of("dekking", "trace", "uitleg"))
+        for (String field : List.of("coverage", "trace", "explanation"))
             n.set(field, session.has(field) ? session.get(field) : NF.arrayNode());
-        if (uitlegError != null) n.put("uitlegFout", uitlegError);
-        n.set("situatie", ScenarioData.situation(s, model, naming));
-        if (session.has("fixpunt")) n.set("fixpunt", session.get("fixpunt"));
-        if (session.has("fixpuntFout")) n.put("fixpuntFout", session.get("fixpuntFout").asText());
+        if (uitlegError != null) n.put("explanationError", uitlegError);
+        n.set("situation", ScenarioData.situation(s, model, naming));
+        if (session.has("fixpoint")) n.set("fixpoint", session.get("fixpoint"));
+        if (session.has("fixpointError")) n.put("fixpointError", session.get("fixpointError").asText());
     }
 
     /** The vocabularies of {@code model}: {@code gekozen}, the choice of {@code naming}
@@ -493,14 +493,14 @@ public final class Playground {
      *  carries {@code generatedFrom}, the element it comes from ({@link RegelSpraakModel#generatedFrom}). */
     static ObjectNode vocabularies(RegelSpraakModel model, Naming naming, ParseResult parseResult) {
         ObjectNode n = NF.objectNode();
-        n.put("gekozen", naming.choice());
-        ArrayNode declared = n.putArray("gedeclareerd");
+        n.put("chosen", naming.choice());
+        ArrayNode declared = n.putArray("declared");
         List<Naming> per = new ArrayList<>();
         for (Vocabulary v : model.vocabularies) {
             ObjectNode vn = declared.addObject();
-            vn.put("naam", v.naam());
-            vn.put("standaard", v.isDefault());
-            if (v.language() == null) vn.putNull("taal"); else vn.put("taal", v.language());
+            vn.put("name", v.naam());
+            vn.put("default", v.isDefault());
+            if (v.language() == null) vn.putNull("language"); else vn.put("language", v.language());
             per.add(Naming.van(model, v.naam()));
         }
         Map<Designatable, Declarations.Declaration> declarations = Map.of();
@@ -510,26 +510,26 @@ public final class Playground {
         } catch (Declarations.Unlinkable o) {
             declarationError = o.getMessage();
         }
-        ArrayNode elements = n.putArray("elementen");
+        ArrayNode elements = n.putArray("elements");
         for (Designatable b : model.designatable()) {
             ObjectNode enumArray = elements.addObject();
-            enumArray.put("soort", b.category().name());
-            if (b.owner() == null) enumArray.putNull("eigenaar"); else enumArray.put("eigenaar", b.owner());
-            enumArray.put("canoniek", b.naam());
-            ObjectNode designations = enumArray.putObject("benamingen");
+            enumArray.put("kind", b.category().name());
+            if (b.owner() == null) enumArray.putNull("owner"); else enumArray.put("owner", b.owner());
+            enumArray.put("canonical", b.naam());
+            ObjectNode designations = enumArray.putObject("designations");
             for (Naming g : per) {
                 String t = g.designation(b);
                 if (t == null) designations.putNull(g.choice()); else designations.put(g.choice(), t);
             }
             Declarations.Declaration d = declarations.get(b);
             if (d != null) {
-                enumArray.put("regel", d.line());
-                ArrayNode comment = enumArray.putArray("commentaar");
+                enumArray.put("line", d.line());
+                ArrayNode comment = enumArray.putArray("comment");
                 for (String c : d.comment()) comment.add(c);
             }
-            model.generatedFrom(b).ifPresent(g -> enumArray.set("gegenereerdUit", generatedFrom(g)));
+            model.generatedFrom(b).ifPresent(g -> enumArray.set("generatedFrom", generatedFrom(g)));
         }
-        if (declarationError != null) n.put("declaratieFout", declarationError);
+        if (declarationError != null) n.put("declarationError", declarationError);
         return n;
     }
 
@@ -538,10 +538,10 @@ public final class Playground {
      *  of the form that made it. */
     private static ObjectNode generatedFrom(GeneratedFrom g) {
         ObjectNode n = NF.objectNode();
-        n.put("soort", g.source().category().name());
-        if (g.source().owner() == null) n.putNull("eigenaar"); else n.put("eigenaar", g.source().owner());
-        n.put("naam", g.source().naam());
-        n.put("vorm", g.form().key());
+        n.put("kind", g.source().category().name());
+        if (g.source().owner() == null) n.putNull("owner"); else n.put("owner", g.source().owner());
+        n.put("name", g.source().naam());
+        n.put("form", g.form().key());
         return n;
     }
 
@@ -566,10 +566,10 @@ public final class Playground {
             }
             ObjectNode n = sink.addObject();
             String chosen = naming.form(d.naam());
-            n.put("naam", chosen);
-            if (!chosen.equals(d.naam())) n.put("naamCanoniek", d.naam());
-            n.put("soort", d.category());
-            n.set("gegenereerdUit", generatedFrom(g));
+            n.put("name", chosen);
+            if (!chosen.equals(d.naam())) n.put("nameCanonical", d.naam());
+            n.put("kind", d.category());
+            n.set("generatedFrom", generatedFrom(g));
         }
         return sink;
     }
@@ -585,13 +585,13 @@ public final class Playground {
             nn.put("id", kn.id());
             nn.put("label", naming.isCanonical() ? kn.label() : label(kn, members, naming));
             nn.put("kind", kn.kind().name());
-            nn.put("eindOutput", kn.endOutput());
+            nn.put("endOutput", kn.endOutput());
         }
         ArrayNode edges = g.putArray("edges");
         for (RuleGraph.Edge e : graph.edges()) {
             ObjectNode enumArray = edges.addObject();
-            enumArray.put("van", e.van());
-            enumArray.put("naar", e.destination());
+            enumArray.put("from", e.van());
+            enumArray.put("to", e.destination());
         }
         return g;
     }

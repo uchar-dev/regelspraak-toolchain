@@ -35,14 +35,14 @@ import java.util.Map;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record ServiceDescriptor(
-        @JsonProperty("dienst") Service service,
+        @JsonProperty("service") Service service,
         @JsonProperty("entrypoints") List<Entrypoint> entrypoints,
         @JsonProperty("parameters") Map<String, JsonNode> parameters,
-        @JsonProperty("parametersets") String parameterSets) {
+        @JsonProperty("parameterSets") String parameterSets) {
 
     /** The service identity block. */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Service(@JsonProperty("naam") String name, @JsonProperty("versie") String version) {}
+    public record Service(@JsonProperty("name") String name, @JsonProperty("version") String version) {}
 
     /**
      * One entry point: a name, its URL path (fase 3), the rule scope it fires, the objecttypen it accepts
@@ -52,9 +52,9 @@ public record ServiceDescriptor(
      * @param pad     the URL path segment (kebab-case, no leading slash)
      * @param scope   which rules/regelgroepen this entry point fires
      * @param invoer  the objecttype names accepted as request instances
-     * @param uitvoer the output selectors: {@code "Objecttype.attribuut"} or {@code "Objecttype:kenmerk"}
+     * @param uitvoer the output selectors: {@code "Objecttype.attribute"} or {@code "Objecttype:kenmerk"}
      * @param inputElements OPTIONAL element-level input declarations, in the {@code output} selector syntax
-     *        ({@code "Objecttype.attribuut"} / {@code "Objecttype:kenmerk"}): each names a kenmerk/attribuut the
+     *        ({@code "Objecttype.attribute"} / {@code "Objecttype:kenmerk"}): each names a kenmerk/attribuut the
      *        CALLER supplies in the request rather than one the scope derives. The scope-completeness check
      *        ({@link DecisionCore#assemble}) skips a consumed element declared here — its missing in-scope producer
      *        is intentional (an ordinary {@code input} objecttype only declares instance presence, NOT that its
@@ -71,14 +71,14 @@ public record ServiceDescriptor(
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Entrypoint(
-            @JsonProperty("naam") String name,
-            @JsonProperty("pad") String path,
+            @JsonProperty("name") String name,
+            @JsonProperty("path") String path,
             @JsonProperty("scope") Scope scope,
-            @JsonProperty("invoer") List<String> input,
-            @JsonProperty("uitvoer") List<String> output,
-            @JsonProperty("invoerElementen") List<String> inputElements,
+            @JsonProperty("input") List<String> input,
+            @JsonProperty("output") List<String> output,
+            @JsonProperty("inputElements") List<String> inputElements,
             @JsonProperty("scopeControleUit") boolean scopeCheckOptOut,
-            @JsonProperty("vocabulaire") String vocabulary) {
+            @JsonProperty("vocabulary") String vocabulary) {
 
         public List<String> inputElementsOrEmpty() { return inputElements == null ? List.of() : inputElements; }
     }
@@ -90,8 +90,8 @@ public record ServiceDescriptor(
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Scope(
-            @JsonProperty("regelnamen") List<String> ruleNames,
-            @JsonProperty("regelgroepen") List<String> ruleGroups) {
+            @JsonProperty("ruleNames") List<String> ruleNames,
+            @JsonProperty("ruleGroups") List<String> ruleGroups) {
 
         public List<String> ruleNamesOrEmpty() { return ruleNames == null ? List.of() : ruleNames; }
         public List<String> ruleGroupsOrEmpty() { return ruleGroups == null ? List.of() : ruleGroups; }

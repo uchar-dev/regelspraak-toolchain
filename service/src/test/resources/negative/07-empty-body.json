@@ -1,7 +1,7 @@
 {
-  "naam": "lege request-body",
-  "pad": "bepaal-leeftijd",
+  "name": "lege request-body",
+  "path": "bepaal-leeftijd",
   "body": "",
-  "verwachtStatus": 400,
-  "verwachtVeldBevat": "body"
+  "expectedStatus": 400,
+  "expectedFieldContains": "body"
 }

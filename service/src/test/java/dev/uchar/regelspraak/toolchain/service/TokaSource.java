@@ -41,7 +41,7 @@ public final class TokaSource {
     private TokaSource() {}
 
     public static final Path REPO = repoRoot();
-    static final Path DESCRIPTOR = REPO.resolve("examples/toka/toka.dienst.json");
+    static final Path DESCRIPTOR = REPO.resolve("examples/toka/toka.service.json");
 
     private static Path repoRoot() {
         Path here = Paths.get("").toAbsolutePath();

@@ -81,21 +81,21 @@ class EntryHttpTest {
         """;
 
     private static final String DESCRIPTOR = """
-        { "dienst": {"naam":"vondsten","versie":"1"},
+        { "service": {"name":"vondsten","version":"1"},
           "entrypoints": [
-            { "naam":"deelgewicht","pad":"deelgewicht",
-              "scope": {"regelnamen": ["deelgewicht van een vondst"]},
-              "invoer": ["Vondst"], "uitvoer": ["Vondst.deelgewicht"] },
-            { "naam":"vindersloon","pad":"vindersloon",
-              "scope": {"regelnamen": ["loon voor een zware vondst", "loon voor een grote vondst"]},
-              "invoer": ["Vondst"], "uitvoer": ["Vondst.vindersloon"] },
-            { "naam":"vondstjaar","pad":"vondstjaar",
-              "scope": {"regelnamen": ["vondstjaar van een vondst"]},
-              "invoer": ["Vondst"], "uitvoer": ["Vondst.vondstjaar"] },
-            { "naam":"alles","pad":"alles",
-              "scope": {"regelnamen": ["deelgewicht van een vondst", "loon voor een zware vondst",
+            { "name":"deelgewicht","path":"deelgewicht",
+              "scope": {"ruleNames": ["deelgewicht van een vondst"]},
+              "input": ["Vondst"], "output": ["Vondst.deelgewicht"] },
+            { "name":"vindersloon","path":"vindersloon",
+              "scope": {"ruleNames": ["loon voor een zware vondst", "loon voor een grote vondst"]},
+              "input": ["Vondst"], "output": ["Vondst.vindersloon"] },
+            { "name":"vondstjaar","path":"vondstjaar",
+              "scope": {"ruleNames": ["vondstjaar van een vondst"]},
+              "input": ["Vondst"], "output": ["Vondst.vondstjaar"] },
+            { "name":"alles","path":"alles",
+              "scope": {"ruleNames": ["deelgewicht van een vondst", "loon voor een zware vondst",
                                        "loon voor een grote vondst", "vondstjaar van een vondst"]},
-              "invoer": ["Vondst"], "uitvoer": ["Vondst.deelgewicht", "Vondst.vindersloon", "Vondst.vondstjaar"] } ],
+              "input": ["Vondst"], "output": ["Vondst.deelgewicht", "Vondst.vindersloon", "Vondst.vondstjaar"] } ],
           "parameters": {} }""";
 
     /** An own total without a clip over an attribute on a timeline, which reads the asOfDate-bucket scalar. */
@@ -116,10 +116,10 @@ class EntryHttpTest {
         """;
 
     private static final String BEWARING_DESCRIPTOR = """
-        { "dienst": {"naam":"bewaring","versie":"1"},
-          "entrypoints": [ { "naam":"bewaargeld","pad":"bewaargeld",
-            "scope": {"regelnamen": ["bewaargeld van een jutter"]},
-            "invoer": ["Jutter"], "uitvoer": ["Jutter.bewaargeld"] } ],
+        { "service": {"name":"bewaring","version":"1"},
+          "entrypoints": [ { "name":"bewaargeld","path":"bewaargeld",
+            "scope": {"ruleNames": ["bewaargeld van een jutter"]},
+            "input": ["Jutter"], "output": ["Jutter.bewaargeld"] } ],
           "parameters": {} }""";
 
     /** A fold over a to-many role whose filter divides by a member's deelnemers: where it divides by 0 for two
@@ -144,10 +144,10 @@ class EntryHttpTest {
         """;
 
     private static final String FOLD_DESCRIPTOR = """
-        { "dienst": {"naam":"vouw","versie":"1"},
-          "entrypoints": [ { "naam":"zware vondsten","pad":"zware-vondsten",
-            "scope": {"regelnamen": ["zware vondsten"]},
-            "invoer": ["Jutter"], "uitvoer": ["Jutter.zware vondsten"] } ],
+        { "service": {"name":"vouw","version":"1"},
+          "entrypoints": [ { "name":"zware vondsten","path":"zware-vondsten",
+            "scope": {"ruleNames": ["zware vondsten"]},
+            "input": ["Jutter"], "output": ["Jutter.zware vondsten"] } ],
           "parameters": {} }""";
 
     /** The model of uchar's witness of a second filling ({@code TmsCreatieWitnessTest}, document D): the fact creation
@@ -192,29 +192,29 @@ class EntryHttpTest {
         """;
 
     private static final String FILLING_DESCRIPTOR = """
-        { "dienst": {"naam":"vulling","versie":"1"},
+        { "service": {"name":"vulling","version":"1"},
           "entrypoints": [
-            { "naam":"vulling","pad":"vulling",
-              "scope": {"regelnamen": ["jutteraantal van een haven", "werving van havenjutters"]},
-              "invoer": ["Kustwacht", "Haven", "Jutter"], "uitvoer": ["Haven.jutteraantal"] },
-            { "naam":"mengsel","pad":"mengsel",
-              "scope": {"regelnamen": ["jutteraantal van een haven", "werving van havenjutters",
+            { "name":"vulling","path":"vulling",
+              "scope": {"ruleNames": ["jutteraantal van een haven", "werving van havenjutters"]},
+              "input": ["Kustwacht", "Haven", "Jutter"], "output": ["Haven.jutteraantal"] },
+            { "name":"mengsel","path":"mengsel",
+              "scope": {"ruleNames": ["jutteraantal van een haven", "werving van havenjutters",
                                        "ligplaatsdeel van een haven"]},
-              "invoer": ["Kustwacht", "Haven", "Jutter"], "uitvoer": ["Haven.jutteraantal", "Haven.ligplaatsdeel"] } ],
+              "input": ["Kustwacht", "Haven", "Jutter"], "output": ["Haven.jutteraantal", "Haven.ligplaatsdeel"] } ],
           "parameters": {} }""";
 
     /** uchar's case D2: K1 guards H1 and H2 and recruits J1, so J1 would be a havenjutter of both. */
     private static final String FILLING = """
-        {"instanties":[{"type":"Kustwacht","id":"K1",
-          "rollen":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
+        {"instances":[{"type":"Kustwacht","id":"K1",
+          "roles":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
           {"type":"Haven","id":"H1"},{"type":"Haven","id":"H2"},{"type":"Jutter","id":"J1"}]}""";
 
     /** D2, with H1 at 0 ligplaatsen and H2 at 4. */
     private static final String MENGSEL = """
-        {"instanties":[{"type":"Kustwacht","id":"K1",
-          "rollen":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
-          {"type":"Haven","id":"H1","attributen":{"ligplaatsen":0}},
-          {"type":"Haven","id":"H2","attributen":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""";
+        {"instances":[{"type":"Kustwacht","id":"K1",
+          "roles":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
+          {"type":"Haven","id":"H1","attributes":{"ligplaatsen":0}},
+          {"type":"Haven","id":"H2","attributes":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""";
 
     /** The model of uchar's {@code SubtypeRolvullerWitnessTest.de_wederkerige_rol_spiegelt_ook_voor_een_subtype},
      *  without the rest of its golden: a reciprocal role filled by Vondst, and Wrakvondst a subtype of Vondst. */
@@ -235,10 +235,10 @@ class EntryHttpTest {
         """;
 
     private static final String MAAT_DESCRIPTOR = """
-        { "dienst": {"naam":"maat","versie":"1"},
-          "entrypoints": [ { "naam":"maatwaarde","pad":"maatwaarde",
-            "scope": {"regelnamen": ["maatwaarde van een vondst"]},
-            "invoer": ["Vondst", "Wrakvondst"], "uitvoer": ["Vondst.maatwaarde"] } ],
+        { "service": {"name":"maat","version":"1"},
+          "entrypoints": [ { "name":"maatwaarde","path":"maatwaarde",
+            "scope": {"ruleNames": ["maatwaarde van een vondst"]},
+            "input": ["Vondst", "Wrakvondst"], "output": ["Vondst.maatwaarde"] } ],
           "parameters": {} }""";
 
     /** The case of uchar's witness: W, a Wrakvondst, writes the one link of the reciprocal role. */
@@ -283,7 +283,7 @@ class EntryHttpTest {
     @Test
     void the_answer_gives_the_derived_value() throws Exception {
         HttpResponse<String> resp = post("/deelgewicht", """
-            {"instanties":[{"type":"Vondst","id":"V1","attributen":{"gewicht":6.00,"aantal delen":3}}]}""");
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00,"aantal delen":3}}]}""");
         assertEquals(200, resp.statusCode(), resp.body());
         JsonNode deelgewicht = find(tree(resp.body()), "V1", "deelgewicht");
         assertNotNull(deelgewicht, resp.body());
@@ -296,29 +296,29 @@ class EntryHttpTest {
     @Test
     void a_division_by_zero_is_422_division_by_zero() throws Exception {
         JsonNode body = evaluationFault(post("/deelgewicht", """
-            {"instanties":[{"type":"Vondst","id":"V1","attributen":{"gewicht":6.00,"aantal delen":0}}]}"""));
-        assertEquals("de regels geven op deze invoer een evaluatiefout", body.get("fout").asText(), body.toString());
-        assertEquals(List.of("DELING_DOOR_NUL"), kinds(body), body.toString());
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00,"aantal delen":0}}]}"""));
+        assertEquals("de regels geven op deze invoer een evaluatiefout", body.get("error").asText(), body.toString());
+        assertEquals(List.of("DIVISION_BY_ZERO"), kinds(body), body.toString());
         assertEquals("deling door nul in de regel \"deelgewicht van een vondst\": 6 gedeeld door 0 — een numerieke nul"
                 + " als deler is een fout, geen leeg (RUNTIME-SEMANTICS ch. 1.4, punt 4)",
-                body.at("/fouten/0/fout").asText(), body.toString());
+                body.at("/faults/0/error").asText(), body.toString());
     }
 
     @Test
     void a_missing_evaluation_date_is_422_compute_fault() throws Exception {
         JsonNode body = evaluationFault(post("/vondstjaar", """
-            {"instanties":[{"type":"Vondst","id":"V1","attributen":{}}]}"""));
-        assertEquals(List.of("REKENFOUT"), kinds(body), body.toString());
-        assertTrue(body.at("/fouten/0/fout").asText().contains("vondstjaar van een vondst")
-                && body.at("/fouten/0/fout").asText().contains("evaluation date"), body.toString());
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{}}]}"""));
+        assertEquals(List.of("COMPUTE_FAULT"), kinds(body), body.toString());
+        assertTrue(body.at("/faults/0/error").asText().contains("vondstjaar van een vondst")
+                && body.at("/faults/0/error").asText().contains("evaluation date"), body.toString());
     }
 
     @Test
     void two_writers_that_differ_are_422_writers_conflict_with_the_id_from_the_request() throws Exception {
         JsonNode body = evaluationFault(post("/vindersloon", """
-            {"instanties":[{"type":"Vondst","id":"V1","attributen":{"gewicht":6.00}}]}"""));
-        assertEquals(List.of("SCHRIJVERSCONFLICT"), kinds(body), body.toString());
-        String sentence = body.at("/fouten/0/fout").asText();
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00}}]}"""));
+        assertEquals(List.of("WRITERS_CONFLICT"), kinds(body), body.toString());
+        String sentence = body.at("/faults/0/error").asText();
         assertTrue(sentence.contains("\"loon voor een zware vondst\" schrijft 25") && sentence.contains("\"loon voor een grote"
                 + " vondst\" schrijft 10") && sentence.contains("in het attribuut vindersloon van V1, een Vondst"), sentence);
     }
@@ -326,17 +326,17 @@ class EntryHttpTest {
     @Test
     void two_errors_at_once_are_a_422_with_one_element_per_error() throws Exception {
         JsonNode body = evaluationFault(post("/alles", """
-            {"peildatum":"2026-03-15",
-             "instanties":[{"type":"Vondst","id":"V1","attributen":{"gewicht":6.00,"aantal delen":0}}]}"""));
-        assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("fout").asText(), body.toString());
-        assertEquals(List.of("DELING_DOOR_NUL", "SCHRIJVERSCONFLICT"), kinds(body), body.toString());
-        assertTrue(body.at("/fouten/0/fout").asText().startsWith("deling door nul in de regel \"deelgewicht van een"
+            {"asOfDate":"2026-03-15",
+             "instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00,"aantal delen":0}}]}"""));
+        assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("error").asText(), body.toString());
+        assertEquals(List.of("DIVISION_BY_ZERO", "WRITERS_CONFLICT"), kinds(body), body.toString());
+        assertTrue(body.at("/faults/0/error").asText().startsWith("deling door nul in de regel \"deelgewicht van een"
                 + " vondst\""), body.toString());
-        assertTrue(body.at("/fouten/1/fout").asText().contains("van V1, een Vondst"), body.toString());
+        assertTrue(body.at("/faults/1/error").asText().contains("van V1, een Vondst"), body.toString());
     }
 
     /** No request reaches an {@code InputFormFault}: the HTTP route answers a request with a timeline with 400
-     *  NIET_ONDERSTEUND, which this test asserts first. The translation of that fault into a 422 is therefore tested at
+     *  UNSUPPORTED, which this test asserts first. The translation of that fault into a 422 is therefore tested at
      *  the level of the core: the service's executor ({@link Executor}) gets a world whose bean holds a full timeline
      *  where the rule takes the asOfDate-bucket scalar, and {@link AnswerBuilder#evaluationFault} builds from the fault
      *  the body both adapters send with the 422. This is the strongest witness of this kind that exists. */
@@ -347,10 +347,10 @@ class EntryHttpTest {
         ServiceHttp bewaring = ServiceHttp.bind(core, "127.0.0.1", 0).start();
         try {
             HttpResponse<String> resp = post(bewaring, "/bewaargeld", """
-                {"peildatum":"2026-03-15",
-                 "instanties":[{"type":"Jutter","id":"J1","attributen":{"bewaarvergoeding per maand":10}}]}""");
+                {"asOfDate":"2026-03-15",
+                 "instances":[{"type":"Jutter","id":"J1","attributes":{"bewaarvergoeding per maand":10}}]}""");
             assertEquals(400, resp.statusCode(), resp.body());
-            assertEquals("NIET_ONDERSTEUND", tree(resp.body()).at("/schendingen/0/soort").asText(), resp.body());
+            assertEquals("UNSUPPORTED", tree(resp.body()).at("/violations/0/kind").asText(), resp.body());
         } finally {
             bewaring.stop(0);
         }
@@ -362,19 +362,19 @@ class EntryHttpTest {
         EvaluationFault error = assertThrows(EvaluationFault.class, () -> new Executor(ep.build(), ep.defaultGlobals())
                 .fire(new World(inputSection, Map.of(), LocalDate.of(2026, 3, 15))));
         JsonNode body = AnswerBuilder.evaluationFault(error);
-        assertEquals("EVALUATIEFOUT", body.path("status").asText(), body.toString());
-        assertEquals(List.of("INVOERVORMFOUT"), kinds(body), body.toString());
-        String sentence = body.at("/fouten/0/fout").asText();
+        assertEquals("EVALUATION_FAULT", body.path("status").asText(), body.toString());
+        assertEquals(List.of("INPUT_FORM_FAULT"), kinds(body), body.toString());
+        String sentence = body.at("/faults/0/error").asText();
         assertTrue(sentence.startsWith("fout in de regel \"bewaargeld van een jutter\"") && sentence.contains("\"J1\"")
                 && sentence.contains("supplies a full timeline"), sentence);
     }
 
-    // ---------------- a fault at the fixpoint of another type: ANDERE ----------------
+    // ---------------- a fault at the fixpoint of another type: OTHER ----------------
 
     /** uchar's case D2 ({@code TmsCreatieWitnessTest.een_tweede_vulling_van_een_naar_een_rol_is_een_fout}): the fact
      *  creation gives J1 two havens, and uchar puts that fault at the fixpoint with a plain
      *  {@code IllegalStateException}, outside the four types its README names. It is an evaluation fault by its place
-     *  there, so the 422 gives it as ANDERE, with the sentence uchar's replay gives on the same input. */
+     *  there, so the 422 gives it as OTHER, with the sentence uchar's replay gives on the same input. */
     @Test
     void a_second_filling_from_a_to_a_role_is_422_other(@TempDir Path map) throws Exception {
         List<String> replay = replayFaults(map, FILLING_SOURCE, FILLING);
@@ -382,8 +382,8 @@ class EntryHttpTest {
         assertTrue(replay.get(0).startsWith("de naar-één-rol \"haven\" van een Jutter heeft twee verschillende"
                 + " vullingen"), replay::toString);
         JsonNode body = evaluationFault(post(fillingService, "/vulling", FILLING));
-        assertEquals("de regels geven op deze invoer een evaluatiefout", body.get("fout").asText(), body.toString());
-        assertEquals(List.of("ANDERE"), kinds(body), body.toString());
+        assertEquals("de regels geven op deze invoer een evaluatiefout", body.get("error").asText(), body.toString());
+        assertEquals(List.of("OTHER"), kinds(body), body.toString());
         assertEquals(replay, sentences(body), body.toString());
     }
 
@@ -396,8 +396,8 @@ class EntryHttpTest {
         List<String> replay = replayFaults(map, FILLING_SOURCE, MENGSEL);
         assertEquals(2, replay.size(), replay::toString);
         JsonNode body = evaluationFault(post(fillingService, "/mengsel", MENGSEL));
-        assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("fout").asText(), body.toString());
-        assertEquals(List.of("ANDERE", "DELING_DOOR_NUL"), kinds(body), body.toString());
+        assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("error").asText(), body.toString());
+        assertEquals(List.of("OTHER", "DIVISION_BY_ZERO"), kinds(body), body.toString());
         assertEquals(replay, sentences(body), body.toString());
     }
 
@@ -410,10 +410,10 @@ class EntryHttpTest {
     void a_list_under_the_houder_names_the_failing_member_in_the_order_of_the_request(@TempDir Path map)
             throws Exception {
         assertFoldFaultAsReplay(map, """
-            {"instanties":[{"type":"Jutter","id":"J1","rollen":{"vondsten":["V1","V3","V2"]}},
-              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2}},
-              {"type":"Vondst","id":"V2","attributen":{"gewicht":4,"deelnemers":0}},
-              {"type":"Vondst","id":"V3","attributen":{"gewicht":9,"deelnemers":0}}]}""", null);
+            {"instances":[{"type":"Jutter","id":"J1","roles":{"vondsten":["V1","V3","V2"]}},
+              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2}},
+              {"type":"Vondst","id":"V2","attributes":{"gewicht":4,"deelnemers":0}},
+              {"type":"Vondst","id":"V3","attributes":{"gewicht":9,"deelnemers":0}}]}""", null);
     }
 
     /** V9 (4 by 0) and V10 (9 by 0) each name J1 as their aanmelder, in that order: the replay mirrors those links into
@@ -422,9 +422,9 @@ class EntryHttpTest {
     @Test
     void a_mirrored_list_names_the_failing_member_in_the_order_of_the_ids(@TempDir Path map) throws Exception {
         assertFoldFaultAsReplay(map, """
-            {"instanties":[{"type":"Jutter","id":"J1"},
-              {"type":"Vondst","id":"V9","attributen":{"gewicht":4,"deelnemers":0},"rollen":{"aanmelder":"J1"}},
-              {"type":"Vondst","id":"V10","attributen":{"gewicht":9,"deelnemers":0},"rollen":{"aanmelder":"J1"}}]}""",
+            {"instances":[{"type":"Jutter","id":"J1"},
+              {"type":"Vondst","id":"V9","attributes":{"gewicht":4,"deelnemers":0},"roles":{"aanmelder":"J1"}},
+              {"type":"Vondst","id":"V10","attributes":{"gewicht":9,"deelnemers":0},"roles":{"aanmelder":"J1"}}]}""",
                 null);
     }
 
@@ -435,35 +435,35 @@ class EntryHttpTest {
     @Test
     void a_member_from_relations_is_in_the_list_as_a_mirrored_member(@TempDir Path map) throws Exception {
         assertFoldFaultAsReplay(map, """
-            {"instanties":[{"type":"Jutter","id":"J1","rollen":{"vondsten":["V1"]}},
-              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2}},
-              {"type":"Vondst","id":"V9","attributen":{"gewicht":4,"deelnemers":0}},
-              {"type":"Vondst","id":"V10","attributen":{"gewicht":9,"deelnemers":0}}],
-             "relaties":[{"feittype":"aanmelding","rollen":{"aanmelder":"J1","vondst":"V9"}},
-                         {"feittype":"aanmelding","rollen":{"aanmelder":"J1","vondst":"V10"}}]}""", """
-            {"instanties":[{"type":"Jutter","id":"J1","rollen":{"vondsten":["V1"]}},
-              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2}},
-              {"type":"Vondst","id":"V9","attributen":{"gewicht":4,"deelnemers":0},"rollen":{"aanmelder":"J1"}},
-              {"type":"Vondst","id":"V10","attributen":{"gewicht":9,"deelnemers":0},"rollen":{"aanmelder":"J1"}}]}""");
+            {"instances":[{"type":"Jutter","id":"J1","roles":{"vondsten":["V1"]}},
+              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2}},
+              {"type":"Vondst","id":"V9","attributes":{"gewicht":4,"deelnemers":0}},
+              {"type":"Vondst","id":"V10","attributes":{"gewicht":9,"deelnemers":0}}],
+             "relations":[{"factType":"aanmelding","roles":{"aanmelder":"J1","vondst":"V9"}},
+                         {"factType":"aanmelding","roles":{"aanmelder":"J1","vondst":"V10"}}]}""", """
+            {"instances":[{"type":"Jutter","id":"J1","roles":{"vondsten":["V1"]}},
+              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2}},
+              {"type":"Vondst","id":"V9","attributes":{"gewicht":4,"deelnemers":0},"roles":{"aanmelder":"J1"}},
+              {"type":"Vondst","id":"V10","attributes":{"gewicht":9,"deelnemers":0},"roles":{"aanmelder":"J1"}}]}""");
     }
 
     /** V1 names J1 as its aanmelder by its own role, and a relation of {@code relaties} links it to J2: the to-one field
-     *  aanmelder gets a second, different target. The service refuses that with 400 VERKEERD_TYPE on the role of the
+     *  aanmelder gets a second, different target. The service refuses that with 400 WRONG_TYPE on the role of the
      *  relation that names J2, as it refuses a second target among the inline roles (uchar's {@code CaseInput}). Before, the
      *  relation wrote over the first link and the list of J1 kept V1, which uchar's entry refused (500). */
     @Test
     void a_second_other_target_via_relations_is_400_wrong_type() throws Exception {
         HttpResponse<String> resp = post(foldService, "/zware-vondsten", """
-            {"instanties":[{"type":"Jutter","id":"J1"},{"type":"Jutter","id":"J2"},
-              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2},"rollen":{"aanmelder":"J1"}}],
-             "relaties":[{"feittype":"aanmelding","rollen":{"aanmelder":"J2","vondst":"V1"}}]}""");
+            {"instances":[{"type":"Jutter","id":"J1"},{"type":"Jutter","id":"J2"},
+              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2},"roles":{"aanmelder":"J1"}}],
+             "relations":[{"factType":"aanmelding","roles":{"aanmelder":"J2","vondst":"V1"}}]}""");
         assertEquals(400, resp.statusCode(), resp.body());
         JsonNode body = tree(resp.body());
-        assertEquals(1, body.path("schendingen").size(), resp.body());
-        assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), resp.body());
-        assertEquals("relaties[0].rollen.aanmelder", body.at("/schendingen/0/veld").asText(), resp.body());
+        assertEquals(1, body.path("violations").size(), resp.body());
+        assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText(), resp.body());
+        assertEquals("relations[0].roles.aanmelder", body.at("/violations/0/field").asText(), resp.body());
         assertEquals("to-one rol 'aanmelder' krijgt een tweede, ander doel — ref weigert die case bij het laden (WF-013)",
-                body.at("/schendingen/0/fout").asText(), resp.body());
+                body.at("/violations/0/error").asText(), resp.body());
     }
 
     // ---------------- a reciprocal role written on a subtype of its filler ----------------
@@ -488,8 +488,8 @@ class EntryHttpTest {
         ServiceHttp maat = ServiceHttp.bind(core, "127.0.0.1", 0).start();
         try {
             HttpResponse<String> resp = post(maat, "/maatwaarde", """
-                {"instanties":[{"type":"Vondst","id":"V","attributen":{"waarde":2}},
-                  {"type":"Wrakvondst","id":"W","attributen":{"waarde":5},"rollen":{"maat":"V"}}]}""");
+                {"instances":[{"type":"Vondst","id":"V","attributes":{"waarde":2}},
+                  {"type":"Wrakvondst","id":"W","attributes":{"waarde":5},"roles":{"maat":"V"}}]}""");
             assertEquals(200, resp.statusCode(), resp.body());
             JsonNode answer = tree(resp.body());
             assertEquals("5", String.valueOf(find(answer, "V", "maatwaarde")), resp.body());
@@ -508,8 +508,8 @@ class EntryHttpTest {
         String replay = replayFault(map, asCase != null ? asCase : request);
         assertTrue(replay.contains("\"zware vondsten\": 9 gedeeld door 0"), replay);
         JsonNode body = evaluationFault(post(foldService, "/zware-vondsten", request));
-        assertEquals(List.of("DELING_DOOR_NUL"), kinds(body), body.toString());
-        assertEquals(replay, body.at("/fouten/0/fout").asText(), body.toString());
+        assertEquals(List.of("DIVISION_BY_ZERO"), kinds(body), body.toString());
+        assertEquals(replay, body.at("/faults/0/error").asText(), body.toString());
     }
 
     /** The sentence of the fault uchar's replay ({@code CaseRunner.runGolden}) throws on {@code verzoek} as a case of the
@@ -541,15 +541,15 @@ class EntryHttpTest {
         testCase.putNull("asOfDate");
         ObjectNode input = testCase.putObject("input");
         ArrayNode instances = input.putArray("instances");
-        for (JsonNode i : tree(request).get("instanties")) {
+        for (JsonNode i : tree(request).get("instances")) {
             ObjectNode instance = instances.addObject();
             instance.put("label", i.get("id").asText());
             instance.put("objectType", i.get("type").asText());
             ObjectNode attributes = instance.putObject("attributes");
-            for (Map.Entry<String, JsonNode> a : i.path("attributen").properties())
+            for (Map.Entry<String, JsonNode> a : i.path("attributes").properties())
                 attributes.putObject(a.getKey()).put("number", a.getValue().asText());
             ObjectNode roles = instance.putObject("roles");
-            for (Map.Entry<String, JsonNode> r : i.path("rollen").properties()) {
+            for (Map.Entry<String, JsonNode> r : i.path("roles").properties()) {
                 ArrayNode targets = roles.putArray(r.getKey());
                 if (r.getValue().isArray()) r.getValue().forEach(targets::add);
                 else targets.add(r.getValue());
@@ -563,25 +563,25 @@ class EntryHttpTest {
         return assertThrows(RuntimeException.class, () -> CaseRunner.runGolden(ir, List.of(casePath)));
     }
 
-    /** The body of a 422: status EVALUATIEFOUT, a sentence, and per fault its kind and uchar's sentence, without a
+    /** The body of a 422: status EVALUATION_FAULT, a sentence, and per fault its kind and uchar's sentence, without a
      *  stacktrace. */
     private static JsonNode evaluationFault(HttpResponse<String> resp) throws Exception {
         assertEquals(422, resp.statusCode(), resp.body());
         JsonNode body = tree(resp.body());
-        assertEquals("EVALUATIEFOUT", body.path("status").asText(), resp.body());
-        assertTrue(body.path("fouten").isArray() && !body.path("fouten").isEmpty(), resp.body());
-        assertEquals(List.of("fout", "fouten", "status"), fields(body), resp.body());
-        for (JsonNode f : body.get("fouten")) assertEquals(List.of("fout", "soort"), fields(f), resp.body());
+        assertEquals("EVALUATION_FAULT", body.path("status").asText(), resp.body());
+        assertTrue(body.path("faults").isArray() && !body.path("faults").isEmpty(), resp.body());
+        assertEquals(List.of("error", "faults", "status"), fields(body), resp.body());
+        for (JsonNode f : body.get("faults")) assertEquals(List.of("error", "kind"), fields(f), resp.body());
         assertFalse(resp.body().contains("Exception") || resp.body().contains("\tat "), "geen stacktrace: " + resp.body());
         return body;
     }
 
     private static List<String> kinds(JsonNode body) {
-        return body.get("fouten").valueStream().map(f -> f.get("soort").asText()).toList();
+        return body.get("faults").valueStream().map(f -> f.get("kind").asText()).toList();
     }
 
     private static List<String> sentences(JsonNode body) {
-        return body.get("fouten").valueStream().map(f -> f.get("fout").asText()).toList();
+        return body.get("faults").valueStream().map(f -> f.get("error").asText()).toList();
     }
 
     private static List<String> fields(JsonNode n) {
@@ -606,8 +606,8 @@ class EntryHttpTest {
     }
 
     private static JsonNode find(JsonNode answer, String id, String attribute) {
-        for (JsonNode inst : answer.get("instanties"))
-            if (id.equals(inst.path("id").asText())) return inst.path("attributen").get(attribute);
+        for (JsonNode inst : answer.get("instances"))
+            if (id.equals(inst.path("id").asText())) return inst.path("attributes").get(attribute);
         return null;
     }
 }

@@ -1,0 +1,215 @@
+{
+  "service": { "name": "TOKA belastingdienst", "version": "2.3.0" },
+  "entrypoints": [
+    {
+      "name": "bepaal leeftijd",
+      "path": "bepaal-leeftijd",
+      "scope": { "ruleNames": ["bepaal leeftijd"] },
+      "input": ["Vlucht", "Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.leeftijd"]
+    },
+    {
+      "name": "Kenmerktoekenning persoon minderjarig",
+      "path": "kenmerktoekenning-persoon-minderjarig",
+      "scope": { "ruleNames": ["Kenmerktoekenning persoon minderjarig"] },
+      "input": ["Vlucht", "Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon:minderjarig"]
+    },
+    {
+      "name": "Hoeveelheid passagiers van een reis",
+      "path": "hoeveelheid-passagiers-van-een-reis",
+      "scope": { "ruleNames": ["Hoeveelheid passagiers van een reis"] },
+      "input": ["Vlucht", "Natuurlijk persoon"],
+      "output": ["Vlucht.hoeveelheid passagiers"]
+    },
+    {
+      "name": "Totaal te betalen belasting",
+      "path": "totaal-te-betalen-belasting",
+      "scope": { "ruleNames": ["Totaal te betalen belasting"] },
+      "input": ["Vlucht", "Natuurlijk persoon"],
+      "inputElements": ["Natuurlijk persoon.te betalen belasting"],
+      "output": ["Vlucht.totaal te betalen belasting"]
+    },
+    {
+      "name": "Leeftijd oudste passagier",
+      "path": "leeftijd-oudste-passagier",
+      "scope": { "ruleNames": ["Leeftijd oudste passagier"] },
+      "input": ["Vlucht", "Natuurlijk persoon"],
+      "inputElements": ["Natuurlijk persoon.leeftijd"],
+      "output": ["Vlucht.leeftijd van de oudste passagier"]
+    },
+    {
+      "name": "Te betalen belasting van een passagier",
+      "path": "te-betalen-belasting-van-een-passagier",
+      "scope": { "ruleNames": ["Te betalen belasting van een passagier"] },
+      "input": ["Natuurlijk persoon"],
+      "inputElements": ["Natuurlijk persoon.belasting op basis van afstand"],
+      "output": ["Natuurlijk persoon.te betalen belasting"]
+    },
+    {
+      "name": "Hoogseizoen",
+      "path": "hoogseizoen",
+      "scope": { "ruleNames": ["Hoogseizoen"] },
+      "input": ["Vlucht"],
+      "output": ["Vlucht:in het hoogseizoen"]
+    },
+    {
+      "name": "Paaskorting",
+      "path": "paaskorting",
+      "scope": { "ruleNames": ["Paaskorting"] },
+      "input": ["Vlucht"],
+      "output": ["Vlucht:reis met paaskorting"]
+    },
+    {
+      "name": "vastgestelde contingent treinmiles",
+      "path": "vastgestelde-contingent-treinmiles",
+      "scope": { "ruleNames": ["vastgestelde contingent treinmiles"] },
+      "input": ["Vlucht"],
+      "output": []
+    },
+    {
+      "name": "Controleer of vlucht geen rondvlucht is",
+      "path": "controleer-of-vlucht-geen-rondvlucht-is",
+      "scope": { "ruleNames": ["Controleer of vlucht geen rondvlucht is"] },
+      "input": ["Vlucht"],
+      "output": []
+    },
+    {
+      "name": "Initialiseer te betalen belasting op initiele belasting",
+      "path": "initialiseer-te-betalen-belasting-op-initiele-belasting",
+      "scope": { "ruleNames": ["Initialiseer te betalen belasting op initiele belasting"] },
+      "input": ["Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.te betalen belasting"]
+    },
+    {
+      "name": "verdeling treinmiles in gelijke delen",
+      "path": "verdeling-treinmiles-in-gelijke-delen",
+      "scope": { "ruleNames": ["verdeling treinmiles in gelijke delen"] },
+      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.treinmiles"]
+    },
+    {
+      "name": "verdeling treinmiles op basis van woonregio factor",
+      "path": "verdeling-treinmiles-op-basis-van-woonregio-factor",
+      "scope": { "ruleNames": ["verdeling treinmiles op basis van woonregio factor"] },
+      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.treinmiles"]
+    },
+    {
+      "name": "Verdeling treinmiles op basis van leeftijd en woonregio factor",
+      "path": "verdeling-treinmiles-op-basis-van-leeftijd-en-woonregio-factor",
+      "scope": { "ruleNames": ["Verdeling treinmiles op basis van leeftijd en woonregio factor"] },
+      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
+    },
+    {
+      "name": "verdeling treinmiles op basis van woonregio factor en met maximum waarde",
+      "path": "verdeling-treinmiles-op-basis-van-woonregio-factor-en-met-maximum-waarde",
+      "scope": { "ruleNames": ["verdeling treinmiles op basis van woonregio factor en met maximum waarde"] },
+      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
+    },
+    {
+      "name": "verdeling treinmiles op basis van woonregio factor met afronding",
+      "path": "verdeling-treinmiles-op-basis-van-woonregio-factor-met-afronding",
+      "scope": { "ruleNames": ["verdeling treinmiles op basis van woonregio factor met afronding"] },
+      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
+    },
+    {
+      "name": "Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding",
+      "path": "verdeling-treinmiles-op-basis-van-leeftijd-woonregio-factor-met-maximum-waarde-en-afronding",
+      "scope": { "ruleNames": ["Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding"] },
+      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
+    },
+    {
+      "name": "belaste reis",
+      "path": "belaste-reis",
+      "scope": { "ruleNames": ["belaste reis"] },
+      "input": ["Vlucht"],
+      "output": ["Vlucht:belaste reis"]
+    },
+    {
+      "name": "Recht op Duurzaamheidskorting",
+      "path": "recht-op-duurzaamheidskorting",
+      "scope": { "ruleNames": ["Recht op Duurzaamheidskorting"] },
+      "input": ["Vlucht", "Natuurlijk persoon"],
+      "inputElements": ["Natuurlijk persoon.leeftijd"],
+      "output": ["Natuurlijk persoon:recht op duurzaamheidskorting"]
+    },
+    {
+      "name": "Recht op Duurzaamheidskorting alternatief",
+      "path": "recht-op-duurzaamheidskorting-alternatief",
+      "scope": { "ruleNames": ["Recht op Duurzaamheidskorting alternatief"] },
+      "input": ["Vlucht", "Natuurlijk persoon"],
+      "inputElements": ["Natuurlijk persoon:passagier van 18 tot en met 24 jaar"],
+      "output": ["Natuurlijk persoon:recht op duurzaamheidskorting"]
+    },
+    {
+      "name": "Passagier van 18 tm 24 jaar",
+      "path": "passagier-van-18-tm-24-jaar",
+      "scope": { "ruleNames": ["Passagier van 18 tm 24 jaar"] },
+      "input": ["Vlucht", "Natuurlijk persoon"],
+      "inputElements": ["Natuurlijk persoon.leeftijd"],
+      "output": ["Natuurlijk persoon:passagier van 18 tot en met 24 jaar"]
+    },
+    {
+      "name": "Startpunt variabele periode op datum van vertrek",
+      "path": "startpunt-variabele-periode-op-datum-van-vertrek",
+      "scope": { "ruleNames": ["Startpunt variabele periode op datum van vertrek"] },
+      "input": ["Vlucht"],
+      "output": []
+    },
+    {
+      "name": "Startpunt variabele periode op datum van vertrek min reserveringstermijn",
+      "path": "startpunt-variabele-periode-op-datum-van-vertrek-min-reserveringstermijn",
+      "scope": { "ruleNames": ["Startpunt variabele periode op datum van vertrek min reserveringstermijn"] },
+      "input": ["Vlucht"],
+      "output": []
+    },
+    {
+      "name": "Woonregio factor 1",
+      "path": "woonregio-factor-1",
+      "scope": { "ruleNames": ["Woonregio factor 1"] },
+      "input": ["Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.woonregio factor"]
+    },
+    {
+      "name": "Woonregio factor 2",
+      "path": "woonregio-factor-2",
+      "scope": { "ruleNames": ["Woonregio factor 2"] },
+      "input": ["Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.woonregio factor"]
+    },
+    {
+      "name": "Woonregio factor 3",
+      "path": "woonregio-factor-3",
+      "scope": { "ruleNames": ["Woonregio factor 3"] },
+      "input": ["Natuurlijk persoon"],
+      "output": ["Natuurlijk persoon.woonregio factor"]
+    },
+    {
+      "name": "Datum-tijd voor het berekenen van de belasting op basis van afstand",
+      "path": "datum-tijd-voor-het-berekenen-van-de-belasting-op-basis-van-afstand",
+      "scope": { "ruleNames": ["Datum-tijd voor het berekenen van de belasting op basis van afstand"] },
+      "input": ["Vlucht"],
+      "output": ["Vlucht.datum-tijd voor het berekenen van de belasting op basis van afstand"]
+    },
+    {
+      "name": "Verwachte datum-tijd van aankomst van een Vlucht",
+      "path": "verwachte-datum-tijd-van-aankomst-van-een-vlucht",
+      "scope": { "ruleNames": ["Verwachte datum-tijd van aankomst van een Vlucht"] },
+      "input": ["Vlucht"],
+      "output": ["Vlucht.verwachte datum-tijd van aankomst"]
+    },
+    {
+      "name": "passagier met recht op treinmiles",
+      "path": "passagier-met-recht-op-treinmiles",
+      "scope": { "ruleNames": ["passagier met recht op treinmiles"] },
+      "input": ["Vlucht", "Contingent treinmiles", "Natuurlijk persoon"],
+      "output": []
+    }
+  ],
+  "parameters": {}
+}

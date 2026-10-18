@@ -63,10 +63,10 @@ class ServiceHttpTest {
         De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
         """;
     private static final String MARKER_DESCRIPTOR = """
-        { "dienst": {"naam":"marker-test","versie":"1"},
-          "entrypoints": [ { "naam":"heffing markert","pad":"heffing-markert",
-            "scope": {"regelnamen": ["heffing markert"]},
-            "invoer": ["Vlucht"], "uitvoer": ["Vlucht.heffing"] } ],
+        { "service": {"name":"marker-test","version":"1"},
+          "entrypoints": [ { "name":"heffing markert","path":"heffing-markert",
+            "scope": {"ruleNames": ["heffing markert"]},
+            "input": ["Vlucht"], "output": ["Vlucht.heffing"] } ],
           "parameters": {} }""";
 
     private static DecisionCore markerCore() {
@@ -108,18 +108,18 @@ class ServiceHttpTest {
         De grens van een Persoon moet berekend worden als de volwassenleeftijd.
         """;
     private static final String VINTAGE_DESCRIPTOR = """
-        { "dienst": {"naam":"vintage-http","versie":"1"},
-          "entrypoints": [ { "naam":"grens","pad":"grens",
-            "scope": {"regelnamen": ["grensregel"]},
-            "invoer": ["Persoon"], "uitvoer": ["Persoon.grens"] } ],
+        { "service": {"name":"vintage-http","version":"1"},
+          "entrypoints": [ { "name":"grens","path":"grens",
+            "scope": {"ruleNames": ["grensregel"]},
+            "input": ["Persoon"], "output": ["Persoon.grens"] } ],
           "parameters": {},
-          "parametersets": "vintage.parameters.json" }""";
+          "parameterSets": "vintage.parameters.json" }""";
     private static final String VINTAGE_SETS = """
-        { "parametersets": [
-            { "naam": "leeftijden",
-              "waarden": { "volwassenleeftijd": [
-                  { "waarde": 18, "vanaf": "2025-01-01", "tot": "2025-12-31" },
-                  { "waarde": 21, "vanaf": "2026-01-01" } ] } } ] }""";
+        { "parameterSets": [
+            { "name": "leeftijden",
+              "values": { "volwassenleeftijd": [
+                  { "value": 18, "from": "2025-01-01", "to": "2025-12-31" },
+                  { "value": 21, "from": "2026-01-01" } ] } } ] }""";
 
     private static DecisionCore vintageCore() {
         Map<String, String> source = new LinkedHashMap<>();
@@ -160,17 +160,17 @@ class ServiceHttpTest {
     void happy_round_trip_bepaal_leeftijd_over_http() throws Exception {
         serveer(tokaCore());
         String request = """
-            { "instanties": [
-                { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
+            { "instances": [
+                { "type": "Vlucht", "id": "V1", "attributes": { "vluchtdatum": "2024-06-15" } },
                 { "type": "Natuurlijk persoon", "id": "P1",
-                  "attributen": { "geboortedatum": "1990-06-15" },
-                  "rollen": { "reis": "V1" } } ] }""";
+                  "attributes": { "geboortedatum": "1990-06-15" },
+                  "roles": { "reis": "V1" } } ] }""";
         HttpResponse<String> resp = post("/bepaal-leeftijd", request);
         assertEquals(200, resp.statusCode(), resp.body());
         assertTrue(resp.headers().firstValue("Content-Type").orElse("").contains("application/json"),
                 resp.headers().map().toString());
         JsonNode answer = tree(resp.body());
-        JsonNode leeftijd = find(answer, "P1", "attributen", "leeftijd");
+        JsonNode leeftijd = find(answer, "P1", "attributes", "leeftijd");
         assertNotNull(leeftijd, resp.body());
         assertEquals(0, new BigDecimal("34").compareTo(leeftijd.decimalValue()), resp.body());
     }
@@ -179,15 +179,15 @@ class ServiceHttpTest {
     void happy_round_trip_total_to_betalen_over_http() throws Exception {
         serveer(tokaCore());
         String request = """
-            { "instanties": [
+            { "instances": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Natuurlijk persoon", "id": "P1",
-                  "attributen": { "te betalen belasting": 30.00 }, "rollen": { "reis": "V1" } },
+                  "attributes": { "te betalen belasting": 30.00 }, "roles": { "reis": "V1" } },
                 { "type": "Natuurlijk persoon", "id": "P2",
-                  "attributen": { "te betalen belasting": 20.00 }, "rollen": { "reis": "V1" } } ] }""";
+                  "attributes": { "te betalen belasting": 20.00 }, "roles": { "reis": "V1" } } ] }""";
         HttpResponse<String> resp = post("/totaal-te-betalen-belasting", request);
         assertEquals(200, resp.statusCode(), resp.body());
-        JsonNode total = find(tree(resp.body()), "V1", "attributen", "totaal te betalen belasting");
+        JsonNode total = find(tree(resp.body()), "V1", "attributes", "totaal te betalen belasting");
         assertNotNull(total, resp.body());
         assertEquals(0, new BigDecimal("50.00").compareTo(total.decimalValue()), resp.body());
         // exact BigDecimal render, never a double: the value round-trips as a JSON number, never a double.
@@ -202,15 +202,15 @@ class ServiceHttpTest {
         serveer(vintageCore());
         // two requests differing ONLY in the peildatum field -> two different pinned outcomes.
         HttpResponse<String> r2025 = post("/grens",
-                "{ \"peildatum\": \"2025-06-01\", \"instanties\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
+                "{ \"asOfDate\": \"2025-06-01\", \"instances\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
         assertEquals(200, r2025.statusCode(), r2025.body());
-        assertEquals(0, new BigDecimal("18").compareTo(find(tree(r2025.body()), "P1", "attributen", "grens").decimalValue()),
+        assertEquals(0, new BigDecimal("18").compareTo(find(tree(r2025.body()), "P1", "attributes", "grens").decimalValue()),
                 r2025.body());
 
         HttpResponse<String> r2026 = post("/grens",
-                "{ \"peildatum\": \"2026-06-01\", \"instanties\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
+                "{ \"asOfDate\": \"2026-06-01\", \"instances\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
         assertEquals(200, r2026.statusCode(), r2026.body());
-        assertEquals(0, new BigDecimal("21").compareTo(find(tree(r2026.body()), "P1", "attributen", "grens").decimalValue()),
+        assertEquals(0, new BigDecimal("21").compareTo(find(tree(r2026.body()), "P1", "attributes", "grens").decimalValue()),
                 r2026.body());
     }
 
@@ -218,11 +218,11 @@ class ServiceHttpTest {
     void g6_no_as_of_date_multi_vintage_over_http_is_400_field_as_of_date() throws Exception {
         serveer(vintageCore());
         HttpResponse<String> resp = post("/grens",
-                "{ \"instanties\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
+                "{ \"instances\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
         assertEquals(400, resp.statusCode(), resp.body());
         boolean namesAsOfDate = false;
-        for (JsonNode s : tree(resp.body()).get("schendingen"))
-            if ("peildatum".equals(s.path("veld").asText())) namesAsOfDate = true;
+        for (JsonNode s : tree(resp.body()).get("violations"))
+            if ("asOfDate".equals(s.path("field").asText())) namesAsOfDate = true;
         assertTrue(namesAsOfDate, "de 400 hoort veld 'peildatum' te noemen: " + resp.body());
     }
 
@@ -230,25 +230,25 @@ class ServiceHttpTest {
     void info_shows_parameter_sets_with_validity_ranges() throws Exception {
         serveer(vintageCore());
         JsonNode info = tree(get("/info").body());
-        assertTrue(info.get("parametersets").isArray(), info.toString());
-        assertEquals(1, info.get("parametersets").size(), info.toString());
-        JsonNode set = info.get("parametersets").get(0);
-        assertEquals("leeftijden", set.get("naam").asText(), set.toString());
-        JsonNode intervals = set.get("waarden").get("volwassenleeftijd");
+        assertTrue(info.get("parameterSets").isArray(), info.toString());
+        assertEquals(1, info.get("parameterSets").size(), info.toString());
+        JsonNode set = info.get("parameterSets").get(0);
+        assertEquals("leeftijden", set.get("name").asText(), set.toString());
+        JsonNode intervals = set.get("values").get("volwassenleeftijd");
         assertEquals(2, intervals.size(), set.toString());
         // first interval: 18, 2025-01-01..2025-12-31 ; second: 21, 2026-01-01..open
-        assertEquals("2025-01-01", intervals.get(0).get("vanaf").asText(), set.toString());
-        assertEquals("2025-12-31", intervals.get(0).get("tot").asText(), set.toString());
-        assertEquals(0, new BigDecimal("18").compareTo(intervals.get(0).get("waarde").decimalValue()), set.toString());
-        assertEquals("2026-01-01", intervals.get(1).get("vanaf").asText(), set.toString());
-        assertTrue(intervals.get(1).get("tot").isNull(), "open tot: " + set);
+        assertEquals("2025-01-01", intervals.get(0).get("from").asText(), set.toString());
+        assertEquals("2025-12-31", intervals.get(0).get("to").asText(), set.toString());
+        assertEquals(0, new BigDecimal("18").compareTo(intervals.get(0).get("value").decimalValue()), set.toString());
+        assertEquals("2026-01-01", intervals.get(1).get("from").asText(), set.toString());
+        assertTrue(intervals.get(1).get("to").isNull(), "open tot: " + set);
         // grensregel is 'geldig altijd' but the parameter is only valued from 2025 -> a pre-2025 coverage gap
         // WARNING is present and names the parameter (gate G3 visible on /info).
-        assertTrue(info.get("periodeWaarschuwingen").isArray(), info.toString());
-        assertFalse(info.get("periodeWaarschuwingen").isEmpty(),
-                "geldig altijd × vanaf-2025 = een pre-2025 gat: " + info.get("periodeWaarschuwingen"));
-        assertTrue(info.get("periodeWaarschuwingen").get(0).asText().contains("volwassenleeftijd"),
-                info.get("periodeWaarschuwingen").toString());
+        assertTrue(info.get("periodWarnings").isArray(), info.toString());
+        assertFalse(info.get("periodWarnings").isEmpty(),
+                "geldig altijd × vanaf-2025 = een pre-2025 gat: " + info.get("periodWarnings"));
+        assertTrue(info.get("periodWarnings").get(0).asText().contains("volwassenleeftijd"),
+                info.get("periodWarnings").toString());
     }
 
     // ---------------- /info ----------------
@@ -261,30 +261,30 @@ class ServiceHttpTest {
         assertTrue(resp.headers().firstValue("Content-Type").orElse("").contains("application/json"));
         JsonNode info = tree(resp.body());
 
-        assertTrue(info.get("dienst").has("naam"), resp.body());
-        assertTrue(info.get("dienst").has("versie"), resp.body());
-        assertEquals("TOKA belastingdienst", info.get("dienst").get("naam").asText(), resp.body());
-        assertEquals("2.3.0", info.get("dienst").get("versie").asText(), resp.body());
+        assertTrue(info.get("service").has("name"), resp.body());
+        assertTrue(info.get("service").has("version"), resp.body());
+        assertEquals("TOKA belastingdienst", info.get("service").get("name").asText(), resp.body());
+        assertEquals("2.3.0", info.get("service").get("version").asText(), resp.body());
         assertEquals(29, info.get("entrypoints").size(), "29 golden entrypoints");
         assertTrue(info.get("parameters").isObject(), resp.body());
-        assertTrue(info.get("overgeslagen").isArray(), resp.body());
+        assertTrue(info.get("skipped").isArray(), resp.body());
         // strict TOKA: nothing overgeslagen
-        assertTrue(info.get("overgeslagen").isEmpty(), "strikte TOKA heeft geen markers: " + info.get("overgeslagen"));
+        assertTrue(info.get("skipped").isEmpty(), "strikte TOKA heeft geen markers: " + info.get("skipped"));
 
         // find the bepaal-leeftijd entrypoint and assert its dekking carries a per-regel LOWERED verdict
         JsonNode ep = entrypointWith(info, "bepaal-leeftijd");
         assertNotNull(ep, resp.body());
-        assertTrue(ep.get("dekking").isArray(), resp.body());
+        assertTrue(ep.get("coverage").isArray(), resp.body());
         assertTrue(ep.get("markers").isArray(), resp.body());
         assertTrue(ep.get("markers").isEmpty(), "bepaal-leeftijd lowert: " + ep.get("markers"));
-        assertTrue(ep.get("uitvoerbaar").asBoolean(), ep.toString());
-        assertFalse(ep.has("weigering"), ep.toString());
+        assertTrue(ep.get("executable").asBoolean(), ep.toString());
+        assertFalse(ep.has("refusal"), ep.toString());
         boolean hasLowered = false;
-        for (JsonNode d : ep.get("dekking")) {
-            assertTrue(d.has("soort") && d.has("naam") && d.has("verdict"), d.toString());
+        for (JsonNode d : ep.get("coverage")) {
+            assertTrue(d.has("kind") && d.has("name") && d.has("verdict"), d.toString());
             if ("LOWERED".equals(d.get("verdict").asText())) hasLowered = true;
         }
-        assertTrue(hasLowered, "bepaal-leeftijd dekking hoort een LOWERED-verdict te tonen: " + ep.get("dekking"));
+        assertTrue(hasLowered, "bepaal-leeftijd dekking hoort een LOWERED-verdict te tonen: " + ep.get("coverage"));
     }
 
     @Test
@@ -297,10 +297,10 @@ class ServiceHttpTest {
         JsonNode info = tree(get("/info").body());
         JsonNode ep = entrypointWith(info, "passagier-met-recht-op-treinmiles");
         assertNotNull(ep, info.toString());
-        assertTrue(ep.get("uitvoerbaar").asBoolean(), ep.toString());
-        assertEquals(1, ep.get("dekking").size(), ep.toString());
-        assertEquals("feitcreatie", ep.get("dekking").get(0).get("soort").asText(), ep.toString());
-        assertEquals("LOWERED", ep.get("dekking").get(0).get("verdict").asText(), ep.toString());
+        assertTrue(ep.get("executable").asBoolean(), ep.toString());
+        assertEquals(1, ep.get("coverage").size(), ep.toString());
+        assertEquals("feitcreatie", ep.get("coverage").get(0).get("kind").asText(), ep.toString());
+        assertEquals("LOWERED", ep.get("coverage").get(0).get("verdict").asText(), ep.toString());
         assertTrue(ep.get("markers").isEmpty(), ep.toString());
     }
 
@@ -311,19 +311,19 @@ class ServiceHttpTest {
         Map<String, String> source = new LinkedHashMap<>();
         source.put("uitsluiting.rgs", EXCLUSION_SOURCE);
         String descriptor = """
-            { "dienst": {"naam":"uitsluiting","versie":"1"},
-              "entrypoints": [ { "naam":"herroeping","pad":"herroeping",
-                "scope": {"regelnamen": ["herroepen weigering"]},
-                "invoer": ["Jutter"], "uitvoer": ["Jutter:uitgesloten"] } ],
+            { "service": {"name":"uitsluiting","version":"1"},
+              "entrypoints": [ { "name":"herroeping","path":"herroeping",
+                "scope": {"ruleNames": ["herroepen weigering"]},
+                "input": ["Jutter"], "output": ["Jutter:uitgesloten"] } ],
               "parameters": {} }""";
         serveer(DecisionCore.assemble(descriptor, source, CoreConfig.withMarkers(),
                 Thread.currentThread().getContextClassLoader()));
         JsonNode ep = entrypointWith(tree(get("/info").body()), "herroeping");
         assertNotNull(ep);
-        assertFalse(ep.get("uitvoerbaar").asBoolean(), ep.toString());
-        assertTrue(ep.get("weigering").asText().contains("geen vorm"), ep.toString());
+        assertFalse(ep.get("executable").asBoolean(), ep.toString());
+        assertTrue(ep.get("refusal").asText().contains("geen vorm"), ep.toString());
         HttpResponse<String> resp = post("/herroeping", """
-            { "instanties": [ { "type": "Jutter", "id": "M" } ] }""");
+            { "instances": [ { "type": "Jutter", "id": "M" } ] }""");
         assertEquals(503, resp.statusCode(), resp.body());
         assertEquals("MARKER", tree(resp.body()).get("status").asText(), resp.body());
     }
@@ -334,28 +334,28 @@ class ServiceHttpTest {
         Map<String, String> source = new LinkedHashMap<>();
         source.put("uitsluiting.rgs", EXCLUSION_SOURCE);
         String descriptor = """
-            { "dienst": {"naam":"uitsluiting","versie":"1"},
-              "entrypoints": [ { "naam":"penningrecht","pad":"penningrecht",
-                "scope": {"regelnamen": ["uitsluiting van het penningrecht", "penninggerechtigd tenzij uitgesloten"]},
-                "invoer": ["Jutter"], "uitvoer": ["Jutter:uitgesloten", "Jutter:penninggerechtigd"] } ],
+            { "service": {"name":"uitsluiting","version":"1"},
+              "entrypoints": [ { "name":"penningrecht","path":"penningrecht",
+                "scope": {"ruleNames": ["uitsluiting van het penningrecht", "penninggerechtigd tenzij uitgesloten"]},
+                "input": ["Jutter"], "output": ["Jutter:uitgesloten", "Jutter:penninggerechtigd"] } ],
               "parameters": {} }""";
         serveer(DecisionCore.assemble(descriptor, source, CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader()));
         JsonNode ep = entrypointWith(tree(get("/info").body()), "penningrecht");
         assertNotNull(ep);
         java.util.Set<String> kinds = new java.util.TreeSet<>();
-        for (JsonNode d : ep.get("dekking")) {
-            kinds.add(d.get("soort").asText());
+        for (JsonNode d : ep.get("coverage")) {
+            kinds.add(d.get("kind").asText());
             assertEquals("LOWERED", d.get("verdict").asText(), d.toString());
         }
-        assertEquals(java.util.Set.of("regel", "defaults"), kinds, ep.get("dekking").toString());
+        assertEquals(java.util.Set.of("regel", "defaults"), kinds, ep.get("coverage").toString());
 
         // and it fires: a refusal that is withdrawn leaves the Jutter penninggerechtigd
         HttpResponse<String> resp = post("/penningrecht", """
-            { "instanties": [ { "type": "Jutter", "id": "M",
-                "kenmerken": { "vergunning geweigerd": true, "weigering herroepen": true } } ] }""");
+            { "instances": [ { "type": "Jutter", "id": "M",
+                "characteristics": { "vergunning geweigerd": true, "weigering herroepen": true } } ] }""");
         assertEquals(200, resp.statusCode(), resp.body());
-        JsonNode characteristics = tree(resp.body()).get("instanties").get(0).get("kenmerken");
+        JsonNode characteristics = tree(resp.body()).get("instances").get(0).get("characteristics");
         assertFalse(characteristics.get("uitgesloten").asBoolean(), resp.body());
         assertTrue(characteristics.get("penninggerechtigd").asBoolean(), resp.body());
     }
@@ -369,11 +369,11 @@ class ServiceHttpTest {
         assertTrue(contains(ep.get("markers"), "heffing markert"),
                 "markers hoort de marker-regel te noemen: " + ep.get("markers"));
         // and the top-level overgeslagen lists it too
-        assertTrue(contains(info.get("overgeslagen"), "heffing markert"),
-                "overgeslagen hoort de marker-regel te noemen: " + info.get("overgeslagen"));
+        assertTrue(contains(info.get("skipped"), "heffing markert"),
+                "overgeslagen hoort de marker-regel te noemen: " + info.get("skipped"));
         // uchar builds no KieBase that lacks a construct, so the marker entrypoint has no build and no dekking;
         // until the move to uchar its dekking listed the rule with a MARKER verdict
-        assertTrue(ep.get("dekking").isEmpty(), "een niet-gebouwd entrypoint draagt geen dekking: " + ep.get("dekking"));
+        assertTrue(ep.get("coverage").isEmpty(), "een niet-gebouwd entrypoint draagt geen dekking: " + ep.get("coverage"));
     }
 
     @Test
@@ -382,12 +382,12 @@ class ServiceHttpTest {
         // never answered as if the marker rule did not exist
         serveer(markerCore());
         HttpResponse<String> resp = post("/heffing-markert", """
-            { "instanties": [ { "type": "Vlucht", "id": "V1" } ] }""");
+            { "instances": [ { "type": "Vlucht", "id": "V1" } ] }""");
         assertEquals(503, resp.statusCode(), resp.body());
         JsonNode error = tree(resp.body());
         assertEquals("MARKER", error.get("status").asText(), resp.body());
-        assertTrue(error.get("fout").asText().contains("niet uitvoerbaar"), resp.body());
-        assertTrue(error.get("reden").asText().contains("transpiler"), "de reden is uchars weigering: " + resp.body());
+        assertTrue(error.get("error").asText().contains("niet uitvoerbaar"), resp.body());
+        assertTrue(error.get("reason").asText().contains("transpiler"), "de reden is uchars weigering: " + resp.body());
         assertTrue(contains(error.get("markers"), "heffing markert"), resp.body());
     }
 
@@ -397,19 +397,19 @@ class ServiceHttpTest {
     void _400_names_the_field_at_unknown_attribute() throws Exception {
         serveer(tokaCore());
         String request = """
-            { "instanties": [
-                { "type": "Vlucht", "id": "V1", "attributen": { "bestaat-niet": 3 } } ] }""";
+            { "instances": [
+                { "type": "Vlucht", "id": "V1", "attributes": { "bestaat-niet": 3 } } ] }""";
         HttpResponse<String> resp = post("/bepaal-leeftijd", request);
         assertEquals(400, resp.statusCode(), resp.body());
         JsonNode body = tree(resp.body());
-        assertEquals("verzoek valideert niet", body.get("fout").asText());
-        assertTrue(body.get("schendingen").isArray() && !body.get("schendingen").isEmpty(), resp.body());
+        assertEquals("verzoek valideert niet", body.get("error").asText());
+        assertTrue(body.get("violations").isArray() && !body.get("violations").isEmpty(), resp.body());
         boolean namesField = false;
-        for (JsonNode s : body.get("schendingen")) {
-            assertTrue(s.has("veld"), s.toString());
-            assertTrue(s.has("fout"), s.toString());
-            if (s.get("veld").asText().contains("bestaat-niet")
-                    || s.get("fout").asText().contains("bestaat-niet")) namesField = true;
+        for (JsonNode s : body.get("violations")) {
+            assertTrue(s.has("field"), s.toString());
+            assertTrue(s.has("error"), s.toString());
+            if (s.get("field").asText().contains("bestaat-niet")
+                    || s.get("error").asText().contains("bestaat-niet")) namesField = true;
         }
         assertTrue(namesField, "de 400 hoort het onbekende veld te noemen: " + resp.body());
     }
@@ -420,7 +420,7 @@ class ServiceHttpTest {
         HttpResponse<String> resp = post("/bepaal-leeftijd", "{ this is not json ");
         assertEquals(400, resp.statusCode(), resp.body());
         JsonNode body = tree(resp.body());
-        assertEquals("body", body.get("veld").asText(), resp.body());
+        assertEquals("body", body.get("field").asText(), resp.body());
     }
 
     @Test
@@ -428,16 +428,16 @@ class ServiceHttpTest {
         serveer(tokaCore());
         HttpResponse<String> resp = post("/bepaal-leeftijd", "");
         assertEquals(400, resp.statusCode(), resp.body());
-        assertEquals("body", tree(resp.body()).get("veld").asText(), resp.body());
+        assertEquals("body", tree(resp.body()).get("field").asText(), resp.body());
     }
 
     @Test
     void _404_at_unknown_path() throws Exception {
         serveer(tokaCore());
         // an unknown path -> the catch-all context 404s with a JSON body naming the pad.
-        HttpResponse<String> resp = post("/dit-pad-bestaat-niet", "{ \"instanties\": [] }");
+        HttpResponse<String> resp = post("/dit-pad-bestaat-niet", "{ \"instances\": [] }");
         assertEquals(404, resp.statusCode(), resp.body());
-        assertTrue(tree(resp.body()).get("fout").asText().contains("dit-pad-bestaat-niet"), resp.body());
+        assertTrue(tree(resp.body()).get("error").asText().contains("dit-pad-bestaat-niet"), resp.body());
     }
 
     @Test
@@ -447,21 +447,21 @@ class ServiceHttpTest {
         HttpResponse<String> resp = get("/bepaal-leeftijd");
         assertEquals(405, resp.statusCode(), resp.body());
         JsonNode body = tree(resp.body());
-        assertTrue(body.get("fout").asText().contains("GET"), resp.body());
+        assertTrue(body.get("error").asText().contains("GET"), resp.body());
     }
 
     @Test
     void _500_never_leaks_a_stacktrace_or_secret() throws Exception {
         // Force an internal error via a verwerk delegate that throws a RuntimeException carrying a secret. The
-        // adapter must answer 500 with {"fout":"interne fout"} and NEVER echo the message or a class name.
+        // adapter must answer 500 with {"error":"interne fout"} and NEVER echo the message or a class name.
         DecisionCore core = tokaCore();
         ServiceHttp.Processor exploding = (path, tree) -> {
             throw new RuntimeException("geheim");
         };
         service = ServiceHttp.bindWith(core, exploding, "127.0.0.1", 0).start();
-        HttpResponse<String> resp = post("/bepaal-leeftijd", "{ \"instanties\": [] }");
+        HttpResponse<String> resp = post("/bepaal-leeftijd", "{ \"instances\": [] }");
         assertEquals(500, resp.statusCode(), resp.body());
-        assertEquals("interne fout", tree(resp.body()).get("fout").asText(), resp.body());
+        assertEquals("interne fout", tree(resp.body()).get("error").asText(), resp.body());
         assertFalse(resp.body().contains("geheim"), "het geheim mag NOOIT in de body lekken: " + resp.body());
         assertFalse(resp.body().contains("RuntimeException"), "geen class-naam in de body: " + resp.body());
         assertFalse(resp.body().contains("Exception"), "geen class-naam in de body: " + resp.body());
@@ -470,7 +470,7 @@ class ServiceHttpTest {
     // ---- helpers ----
 
     private static JsonNode find(JsonNode answer, String id, String group, String member) {
-        for (JsonNode inst : answer.get("instanties"))
+        for (JsonNode inst : answer.get("instances"))
             if (id.equals(inst.path("id").asText()))
                 return inst.path(group).get(member);
         return null;
@@ -478,7 +478,7 @@ class ServiceHttpTest {
 
     private static JsonNode entrypointWith(JsonNode info, String path) {
         for (JsonNode ep : info.get("entrypoints"))
-            if (path.equals(ep.path("pad").asText())) return ep;
+            if (path.equals(ep.path("path").asText())) return ep;
         return null;
     }
 

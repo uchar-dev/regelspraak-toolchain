@@ -94,34 +94,34 @@ class PlaygroundGeneratedFromTest {
 
     /** The element of {@code vocabularies.elements} with this kind, owner and canonical name. */
     private static JsonNode element(JsonNode analyse, String kind, String owner, String canonical) {
-        for (JsonNode e : analyse.get("vocabulaires").get("elementen"))
-            if (e.get("soort").asText().equals(kind) && e.get("canoniek").asText().equals(canonical)
-                    && (owner == null ? e.get("eigenaar").isNull() : owner.equals(e.get("eigenaar").asText())))
+        for (JsonNode e : analyse.get("vocabularies").get("elements"))
+            if (e.get("kind").asText().equals(kind) && e.get("canonical").asText().equals(canonical)
+                    && (owner == null ? e.get("owner").isNull() : owner.equals(e.get("owner").asText())))
                 return e;
         throw new AssertionError("geen element " + kind + " " + owner + "." + canonical);
     }
 
     private static String sink(JsonNode g) {
-        return g.get("soort").asText() + " " + (g.get("eigenaar").isNull() ? "" : g.get("eigenaar").asText() + ".")
-                + g.get("naam").asText() + " (" + g.get("vorm").asText() + ")";
+        return g.get("kind").asText() + " " + (g.get("owner").isNull() ? "" : g.get("owner").asText() + ".")
+                + g.get("name").asText() + " (" + g.get("form").asText() + ")";
     }
 
     /** Every element as "SOORT owner.name <- <uit>" for those with {@code generatedFrom}, in the list's order. */
     private static List<String> generatedElements(JsonNode analyse) {
         List<String> sink = new ArrayList<>();
-        for (JsonNode e : analyse.get("vocabulaires").get("elementen")) {
-            JsonNode g = e.get("gegenereerdUit");
+        for (JsonNode e : analyse.get("vocabularies").get("elements")) {
+            JsonNode g = e.get("generatedFrom");
             if (g == null) continue;
-            sink.add(e.get("soort").asText() + " " + (e.get("eigenaar").isNull() ? "" : e.get("eigenaar").asText() + ".")
-                    + e.get("canoniek").asText() + " <- " + sink(g));
+            sink.add(e.get("kind").asText() + " " + (e.get("owner").isNull() ? "" : e.get("owner").asText() + ".")
+                    + e.get("canonical").asText() + " <- " + sink(g));
         }
         return sink;
     }
 
     private static Map<String, String> generatedNames(JsonNode analyse) {
         Map<String, String> sink = new TreeMap<>();
-        for (JsonNode g : analyse.get("gegenereerd"))
-            sink.put(g.get("naam").asText(), g.get("soort").asText() + " <- " + sink(g.get("gegenereerdUit")));
+        for (JsonNode g : analyse.get("generated"))
+            sink.put(g.get("name").asText(), g.get("kind").asText() + " <- " + sink(g.get("generatedFrom")));
         return sink;
     }
 
@@ -147,24 +147,24 @@ class PlaygroundGeneratedFromTest {
                 generatedElements(a));
         // the key and its order: the source element's kind, owner and name, then the form's key
         JsonNode computed = element(a, "ATTRIBUUT", ONTSLAG, "berekende maxdatum");
-        assertEquals(List.of("soort", "eigenaar", "naam", "vorm"), fieldNames(computed.get("gegenereerdUit")));
-        assertNull(computed.get("regel"), "een gegenereerd element heeft geen declaratie");
-        assertTrue(element(a, "VORM", null, "herlevingstermijn voor " + ONTSLAG).get("gegenereerdUit")
-                .get("eigenaar").isNull());
+        assertEquals(List.of("kind", "owner", "name", "form"), fieldNames(computed.get("generatedFrom")));
+        assertNull(computed.get("line"), "een gegenereerd element heeft geen declaratie");
+        assertTrue(element(a, "VORM", null, "herlevingstermijn voor " + ONTSLAG).get("generatedFrom")
+                .get("owner").isNull());
         // written names: the marked attribute, the other maxdatum, a name with "berekende", the base of the group
         for (JsonNode e : List.of(element(a, "ATTRIBUUT", ONTSLAG, "maxdatum"),
                 element(a, "ATTRIBUUT", "Uitkeringsduur", "maxdatum"),
                 element(a, "ATTRIBUUT", ONTSLAG, "berekende einddatum"),
                 element(a, "VORM", null, "berekende einddatum"),
                 element(a, "VORM", null, "herlevingstermijn"))) {
-            assertNull(e.get("gegenereerdUit"), e::toString);
-            assertNotNull(e.get("regel"), e::toString);
+            assertNull(e.get("generatedFrom"), e::toString);
+            assertNotNull(e.get("line"), e::toString);
         }
     }
 
     @Test void a_stack_in_the_coverage_is_in_generated_with_the_member_like_declared() {
         ObjectNode a = Playground.analyseer(HERLEVING);
-        assertTrue(a.get("uitvoerbaar").asBoolean(), () -> a.path("weigering").asText());
+        assertTrue(a.get("executable").asBoolean(), () -> a.path("refusal").asText());
         assertEquals(Map.of(
                 "defaults A:Recht op uitkering WW.herlevingstermijn",
                 "defaults <- ATTRIBUUT Recht op uitkering WW.herlevingstermijn (defaultsstapel)",
@@ -175,14 +175,14 @@ class PlaygroundGeneratedFromTest {
                 "defaults A:RechtOpUitkeringPeriode.herlevingsdatum",
                 "defaults <- ATTRIBUUT RechtOpUitkeringPeriode.herlevingsdatum (defaultsstapel)"),
                 generatedNames(a));
-        assertEquals(List.of("naam", "soort", "gegenereerdUit"), fieldNames(a.get("gegenereerd").get(0)));
+        assertEquals(List.of("name", "kind", "generatedFrom"), fieldNames(a.get("generated").get(0)));
         // every name of the coverage is an element or stands in gegenereerd
         Set<String> forms = new HashSet<>();
-        for (JsonNode e : a.get("vocabulaires").get("elementen"))
-            if (e.get("soort").asText().equals("VORM")) forms.add(e.get("canoniek").asText());
+        for (JsonNode e : a.get("vocabularies").get("elements"))
+            if (e.get("kind").asText().equals("VORM")) forms.add(e.get("canonical").asText());
         Set<String> generated = generatedNames(a).keySet();
-        for (JsonNode d : a.get("dekking"))
-            assertTrue(forms.contains(d.get("naam").asText()) ^ generated.contains(d.get("naam").asText()),
+        for (JsonNode d : a.get("coverage"))
+            assertTrue(forms.contains(d.get("name").asText()) ^ generated.contains(d.get("name").asText()),
                     d::toString);
     }
 
@@ -202,17 +202,17 @@ class PlaygroundGeneratedFromTest {
         ObjectNode canonical = Playground.analyseer(source);
         assertEquals(Map.of("gewicht #1", "regel <- VORM gewicht (versie)", "gewicht #2",
                 "regel <- VORM gewicht (versie)"), generatedNames(canonical));
-        assertNull(canonical.get("gegenereerd").get(0).get("naamCanoniek"));
+        assertNull(canonical.get("generated").get(0).get("nameCanonical"));
         ObjectNode cgm = Playground.analyseer(source, "cgm");
         List<String> names = new ArrayList<>(), canonicalNames = new ArrayList<>();
-        for (JsonNode g : cgm.get("gegenereerd")) {
-            names.add(g.get("naam").asText());
-            canonicalNames.add(g.get("naamCanoniek").asText());
+        for (JsonNode g : cgm.get("generated")) {
+            names.add(g.get("name").asText());
+            canonicalNames.add(g.get("nameCanonical").asText());
         }
         assertEquals(List.of("R_GEWICHT #1", "R_GEWICHT #2"), names);
         assertEquals(List.of("gewicht #1", "gewicht #2"), canonicalNames);
         // the origin stays canonical, as the owner and name of an element do
-        assertEquals("VORM gewicht (versie)", sink(cgm.get("gegenereerd").get(1).get("gegenereerdUit")));
+        assertEquals("VORM gewicht (versie)", sink(cgm.get("generated").get(1).get("generatedFrom")));
     }
 
     /**
@@ -239,13 +239,13 @@ class PlaygroundGeneratedFromTest {
             if (!model.isOk()) continue;
             Naming naming = Naming.van(model, null);
             JsonNode voc = Playground.vocabularies(model, naming, Playground.parse(source, scenario));
-            if (voc.has("declaratieFout")) errors.add(golden + ": " + voc.get("declaratieFout").asText());
+            if (voc.has("declarationError")) errors.add(golden + ": " + voc.get("declarationError").asText());
             Set<String> forms = new HashSet<>();
-            for (JsonNode e : voc.get("elementen")) {
+            for (JsonNode e : voc.get("elements")) {
                 elements++;
-                boolean line = e.has("regel"), sink = e.has("gegenereerdUit");
+                boolean line = e.has("line"), sink = e.has("generatedFrom");
                 if (sink) generated++;
-                if (e.get("soort").asText().equals("VORM")) forms.add(e.get("canoniek").asText());
+                if (e.get("kind").asText().equals("VORM")) forms.add(e.get("canonical").asText());
                 if (line == sink) errors.add(golden + ": " + e + (line ? " heeft beide" : " heeft geen van beide"));
             }
             DroolsBackend.Build build;
@@ -258,8 +258,8 @@ class PlaygroundGeneratedFromTest {
             JsonNode names = Playground.generated(build, model, naming);
             Set<String> named = new HashSet<>();
             for (JsonNode g : names) {
-                named.add(g.get("naam").asText());
-                if (g.get("soort").asText().equals("defaults")) stacks++;
+                named.add(g.get("name").asText());
+                if (g.get("kind").asText().equals("defaults")) stacks++;
             }
             for (var d : build.coverage())
                 if (forms.contains(d.naam()) == named.contains(d.naam()))
@@ -289,6 +289,6 @@ class PlaygroundGeneratedFromTest {
                         """, ""));
         assertTrue(a.get("resolver").get("ok").asBoolean(), () -> a.get("resolver").toString());
         assertEquals(List.of(), generatedElements(a));
-        assertFalse(a.get("gegenereerd").elements().hasNext(), () -> a.get("gegenereerd").toString());
+        assertFalse(a.get("generated").elements().hasNext(), () -> a.get("generated").toString());
     }
 }

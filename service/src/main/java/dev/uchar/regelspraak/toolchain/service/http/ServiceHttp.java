@@ -66,21 +66,21 @@ import java.util.concurrent.TimeoutException;
  *
  * <h2>Errors — always a JSON body, NEVER a leaked stacktrace</h2>
  * <ul>
- *   <li>{@link ServiceError} from {@code process} → {@code 400} {@code {"fout": <boodschap>, "schendingen":
- *       [{"veld": <pad>, "fout": <detail>}, ...]}} — every schending names its {@code field}.</li>
- *   <li>malformed / empty request body JSON → {@code 400} {@code {"fout": "...", "veld": "body"}}.</li>
+ *   <li>{@link ServiceError} from {@code process} → {@code 400} {@code {"error": <boodschap>, "violations":
+ *       [{"field": <pad>, "error": <detail>}, ...]}} — every schending names its {@code field}.</li>
+ *   <li>malformed / empty request body JSON → {@code 400} {@code {"error": "...", "field": "body"}}.</li>
  *   <li>{@link DecisionCore.UnknownPath} → {@code 404} naming the pad.</li>
  *   <li>{@link DecisionCore.NonExecutable} → {@code 503}, the MARKER answer: {@code {"status": "MARKER",
- *       "fout": …, "reden": <uchar's sentence>, "markers": […]}}. An entry point uchar does not carry has no
+ *       "error": …, "reason": <uchar's sentence>, "markers": […]}}. An entry point uchar does not carry has no
  *       KieBase, and an answer without the construct would be an answer to another rule set.</li>
  *   <li>{@link EvaluationFault} → {@code 422}: the rules give an evaluation fault on this input, which stands at the
- *       fixpoint ({@link AnswerBuilder#evaluationFault}): {@code {"status": "EVALUATIEFOUT", "fout": …, "fouten":
- *       [{"soort": …, "fout": <uchar's sentence>}, …]}}.</li>
+ *       fixpoint ({@link AnswerBuilder#evaluationFault}): {@code {"status": "EVALUATION_FAULT", "error": …, "faults":
+ *       [{"kind": …, "error": <uchar's sentence>}, …]}}.</li>
  *   <li>{@link NoFixpoint} → {@code 422}: the session of the request reached no fixpoint, at uchar's fire cap or its
- *       creation budget ({@link AnswerBuilder#noFixpoint}): {@code {"status": "GEEN_FIXPUNT", "fout": <uchar's
+ *       creation budget ({@link AnswerBuilder#noFixpoint}): {@code {"status": "NO_FIXPOINT", "error": <uchar's
  *       sentence>}}.</li>
  *   <li>wrong method on a known path → {@code 405} naming the method.</li>
- *   <li>ANY other exception → {@code 500} {@code {"fout": "interne fout"}} — never a stacktrace or an exception
+ *   <li>ANY other exception → {@code 500} {@code {"error": "interne fout"}} — never a stacktrace or an exception
  *       message in the body; the stack is logged to {@code stderr} server-side.</li>
  * </ul>
  *
@@ -154,7 +154,7 @@ public final class ServiceHttp {
     }
 
     /** The POST-handling delegate — {@code (pad, boom) -> ObjectNode}, satisfied by {@code core::process}. The
-     *  {@code ?uitleg=true} path does NOT go through this delegate: it calls {@link DecisionCore#process} with the
+     *  {@code ?explanation=true} path does NOT go through this delegate: it calls {@link DecisionCore#process} with the
      *  uitleg flag directly (the delegate is the 500-never-leaks test seam, uitleg-independent). */
     @FunctionalInterface
     interface Processor {
@@ -223,12 +223,12 @@ public final class ServiceHttp {
         }
     }
 
-    /** Whether the query string opts into the uitleg field: {@code uitleg=true} (case-insensitive) or a bare
-     *  {@code uitleg}. Any other value (incl. {@code uitleg=false}) means no — the response is byte-identical to
+    /** Whether the query string opts into the uitleg field: {@code explanation=true} (case-insensitive) or a bare
+     *  {@code uitleg}. Any other value (incl. {@code explanation=false}) means no — the response is byte-identical to
      *  a request without the flag. Null/empty query → false. Public so a test can pin the parse (the Quarkus
      *  adapter carries the equivalent inline). */
     public static boolean requiresUitleg(String rawQuery) {
-        return isRequested(rawQuery, "uitleg");
+        return isRequested(rawQuery, "explanation");
     }
 
     /** Whether the query string sets the flag {@code naam} as {@link #requiresUitleg} reads {@code uitleg}: the first
@@ -249,9 +249,9 @@ public final class ServiceHttp {
      *  {@code invoervocabulaire} ({@link #queryValue}), and the detail flags {@code trace}, {@code dekking} and
      *  {@code fixpunt} ({@link #isRequested}). The Quarkus adapter reads the same six parameters. */
     public static RequestOptions options(String rawQuery) {
-        return new RequestOptions(requiresUitleg(rawQuery), queryValue(rawQuery, "vocabulaire"),
-                queryValue(rawQuery, "invoervocabulaire"), isRequested(rawQuery, "trace"), isRequested(rawQuery, "dekking"),
-                isRequested(rawQuery, "fixpunt"));
+        return new RequestOptions(requiresUitleg(rawQuery), queryValue(rawQuery, "vocabulary"),
+                queryValue(rawQuery, "inputVocabulary"), isRequested(rawQuery, "trace"), isRequested(rawQuery, "coverage"),
+                isRequested(rawQuery, "fixpoint"));
     }
 
     /** The decoded value of the first query parameter {@code naam} (its name compared case-insensitively, as
@@ -313,7 +313,7 @@ public final class ServiceHttp {
      *  back as JSON. Errors at the RegelSpraak level (parse/resolve/scenario) are part of that tree, not HTTP
      *  errors; only a timeout (503) or an unexpected internal fault (500) map to a status.
      *
-     *  <p>{@code ?via=dienst} has this service's core compute the scenarios ({@link Playground#analyseer(String,
+     *  <p>{@code ?via=service} has this service's core compute the scenarios ({@link Playground#analyseer(String,
      *  String, DecisionCore)}). It shows the session of each, so a core started without detail answers it with a 400
      *  that names {@code DETAIL}, before any analysis; a source that is not the service's own is a 400 as well.
      *  Another value of {@code via} is a 400. */
@@ -325,16 +325,16 @@ public final class ServiceHttp {
                 return;
             }
             String source = new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            String vocabulary = queryValue(ex.getRequestURI().getRawQuery(), "vocabulaire");
+            String vocabulary = queryValue(ex.getRequestURI().getRawQuery(), "vocabulary");
             String via = queryValue(ex.getRequestURI().getRawQuery(), "via");
-            if (via != null && !"dienst".equalsIgnoreCase(via)) {
+            if (via != null && !"service".equalsIgnoreCase(via)) {
                 send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(Violation.van(
-                        Violation.Kind.MALFORMED, "via", "via kent alleen de waarde 'dienst', niet '" + via + "'")))));
+                        Violation.Kind.MALFORMED, "via", "via kent alleen de waarde 'service', niet '" + via + "'")))));
                 return;
             }
             if (via != null && !core.detail()) {
                 send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(Violation.van(
-                        Violation.Kind.NIET_ONDERSTEUND, "via", "de dienst is zonder DETAIL gestart en rekent geen"
+                        Violation.Kind.UNSUPPORTED, "via", "de dienst is zonder DETAIL gestart en rekent geen"
                                 + " scenario's via de dienst; start hem met DETAIL=true of --detail")))));
                 return;
             }
@@ -349,14 +349,14 @@ public final class ServiceHttp {
                         + PLAYGROUND_TIMEOUT_MS + " ms)", null));
             } catch (java.util.concurrent.ExecutionException ee) {
                 if (ee.getCause() instanceof ServiceError df) {
-                    // via=dienst on a source that is not the service's own
+                    // via=service on a source that is not the service's own
                     send(ex, 400, requestErrorBody(df));
                     return;
                 }
                 if (ee.getCause() instanceof Naming.VocabularyError vf) {
                     // the source's model declares no such vocabulary: the request asked what cannot be answered
                     send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(
-                            Violation.van(Violation.Kind.ONBEKEND_VOCABULAIRE, "vocabulaire", vf.getMessage())))));
+                            Violation.van(Violation.Kind.UNKNOWN_VOCABULARY, "vocabulary", vf.getMessage())))));
                     return;
                 }
                 ee.getCause().printStackTrace(System.err);
@@ -405,29 +405,29 @@ public final class ServiceHttp {
         ServiceDescriptor descriptor = core.descriptor();
         ObjectNode root = NF.objectNode();
 
-        ObjectNode service = root.putObject("dienst");
+        ObjectNode service = root.putObject("service");
         if (descriptor.service() != null) {
-            service.put("naam", descriptor.service().name());
-            service.put("versie", descriptor.service().version());
+            service.put("name", descriptor.service().name());
+            service.put("version", descriptor.service().version());
         }
 
         ArrayNode entrypoints = root.putArray("entrypoints");
         ArrayNode skipped = NF.arrayNode();   // ALL marker rule names across the service
         for (DecisionCore.Entrypoint ep : core.entrypoints().values()) {
             ObjectNode eNode = entrypoints.addObject();
-            eNode.put("naam", ep.descriptor().name());
-            eNode.put("pad", ep.descriptor().path());
-            if (ep.descriptor().vocabulary() != null) eNode.put("vocabulaire", ep.descriptor().vocabulary());
-            eNode.put("uitvoerbaar", ep.executable());
-            if (!ep.executable()) eNode.put("weigering", ep.refusal());
+            eNode.put("name", ep.descriptor().name());
+            eNode.put("path", ep.descriptor().path());
+            if (ep.descriptor().vocabulary() != null) eNode.put("vocabulary", ep.descriptor().vocabulary());
+            eNode.put("executable", ep.executable());
+            if (!ep.executable()) eNode.put("refusal", ep.refusal());
 
-            ArrayNode coverage = eNode.putArray("dekking");
+            ArrayNode coverage = eNode.putArray("coverage");
             for (Coverage d : ep.coverage()) {
                 ObjectNode dn = coverage.addObject();
-                dn.put("soort", d.category());
-                dn.put("naam", d.naam());
+                dn.put("kind", d.category());
+                dn.put("name", d.naam());
                 dn.put("verdict", d.verdict().name());
-                if (d.reason() != null && !d.reason().isEmpty()) dn.put("reden", d.reason());
+                if (d.reason() != null && !d.reason().isEmpty()) dn.put("reason", d.reason());
             }
 
             ArrayNode markers = eNode.putArray("markers");
@@ -437,7 +437,7 @@ public final class ServiceHttp {
             }
         }
         root.set("entrypoints", entrypoints);
-        root.set("overgeslagen", skipped);
+        root.set("skipped", skipped);
 
         // parameters: the descriptor defaults, verbatim JSON (raw JsonNode values, never re-rendered as double)
         ObjectNode parameters = root.putObject("parameters");
@@ -446,29 +446,29 @@ public final class ServiceHttp {
             for (var e : params.entrySet()) parameters.set(e.getKey(), e.getValue());
 
         // parametersets (fase 5): each loaded set with its per-parameter validity ranges + the versioned value.
-        ArrayNode parameterSets = root.putArray("parametersets");
+        ArrayNode parameterSets = root.putArray("parameterSets");
         for (ParameterSet set : core.parameterSets()) {
             ObjectNode sn = parameterSets.addObject();
-            sn.put("naam", set.naam());
-            ObjectNode values = sn.putObject("waarden");
+            sn.put("name", set.naam());
+            ObjectNode values = sn.putObject("values");
             for (var e : set.waarden().entrySet()) {
                 ArrayNode intervals = values.putArray(e.getKey());
                 for (ValueInterval wi : e.getValue()) {
                     ObjectNode iv = intervals.addObject();
                     Validity g = wi.validity();
-                    if (g.from() != null) iv.put("vanaf", g.from().toString()); else iv.putNull("vanaf");
-                    if (g.until() != null) iv.put("tot", g.until().toString()); else iv.putNull("tot");
-                    iv.set("waarde", renderValue(wi.value()));
+                    if (g.from() != null) iv.put("from", g.from().toString()); else iv.putNull("from");
+                    if (g.until() != null) iv.put("to", g.until().toString()); else iv.putNull("to");
+                    iv.set("value", renderValue(wi.value()));
                 }
             }
         }
 
         // periodWarnings (gate G3): the rendered regel×parameter period-coverage WARNING lines.
-        ArrayNode warnings = root.putArray("periodeWaarschuwingen");
+        ArrayNode warnings = root.putArray("periodWarnings");
         for (String w : core.periodWarnings()) warnings.add(w);
 
         // the vocabularies, each with the declarations an answer in it names canonically; absent without any
-        if (!core.model().vocabularies.isEmpty()) root.set("vocabulaires", Completeness.info(core.model()));
+        if (!core.model().vocabularies.isEmpty()) root.set("vocabularies", Completeness.info(core.model()));
 
         return root;
     }
@@ -488,40 +488,40 @@ public final class ServiceHttp {
 
     // ---------------- error bodies ----------------
 
-    /** {@code {"fout": <boodschap>, "veld"?: <veld>}}. */
+    /** {@code {"error": <boodschap>, "field"?: <veld>}}. */
     static ObjectNode errorBody(String notice, String field) {
         ObjectNode n = NF.objectNode();
-        n.put("fout", notice);
-        if (field != null) n.put("veld", field);
+        n.put("error", notice);
+        if (field != null) n.put("field", field);
         return n;
     }
 
-    /** The MARKER answer to a request at an entry point uchar does not carry: {@code {"status": "MARKER", "fout":
-     *  <boodschap>, "reden": <uchar's sentence>, "markers": [<construct>...]}}. */
+    /** The MARKER answer to a request at an entry point uchar does not carry: {@code {"status": "MARKER", "error":
+     *  <boodschap>, "reason": <uchar's sentence>, "markers": [<construct>...]}}. */
     static ObjectNode markerBody(DecisionCore.NonExecutable rejected) {
         ObjectNode n = NF.objectNode();
         n.put("status", "MARKER");
-        n.put("fout", rejected.getMessage());
-        n.put("reden", rejected.reason());
+        n.put("error", rejected.getMessage());
+        n.put("reason", rejected.reason());
         ArrayNode markers = n.putArray("markers");
         for (String m : rejected.markers()) markers.add(m);
         return n;
     }
 
-    /** {@code {"fout": <boodschap>, "schendingen": [{"veld": <pad>, "soort": <soort>, "fout": <detail>}, ...]}} —
+    /** {@code {"error": <boodschap>, "violations": [{"field": <pad>, "kind": <soort>, "error": <detail>}, ...]}} —
      *  every schending NAMES its veld, and its soort tells a caller a request error from a request form the service
-     *  does not carry ({@code NIET_ONDERSTEUND}). Built from a request-mapping {@link ServiceError}. */
+     *  does not carry ({@code UNSUPPORTED}). Built from a request-mapping {@link ServiceError}. */
     static ObjectNode requestErrorBody(ServiceError error) {
         ObjectNode n = NF.objectNode();
         // the constructed message already concatenates the schendingen; use its context head only would lose the
         // count, so keep the full message — it names nothing secret (all service-internal diagnostics).
-        n.put("fout", "verzoek valideert niet");
-        ArrayNode violations = n.putArray("schendingen");
+        n.put("error", "verzoek valideert niet");
+        ArrayNode violations = n.putArray("violations");
         for (Violation s : error.violations()) {
             ObjectNode sn = violations.addObject();
-            sn.put("veld", s.field());
-            sn.put("soort", s.kind().name());
-            sn.put("fout", s.message());
+            sn.put("field", s.field());
+            sn.put("kind", s.kind().name());
+            sn.put("error", s.message());
         }
         return n;
     }

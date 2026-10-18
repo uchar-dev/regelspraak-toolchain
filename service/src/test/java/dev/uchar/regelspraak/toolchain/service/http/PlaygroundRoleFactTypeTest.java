@@ -78,12 +78,12 @@ class PlaygroundRoleFactTypeTest {
             """;
 
     private static JsonNode object(JsonNode situation, String label) {
-        for (JsonNode o : situation.get("objecten")) if (o.get("label").asText().equals(label)) return o;
+        for (JsonNode o : situation.get("objects")) if (o.get("label").asText().equals(label)) return o;
         return fail("geen object " + label + " in " + situation);
     }
 
     private static JsonNode role(JsonNode situation, String label, String role) {
-        for (JsonNode r : object(situation, label).get("rollen")) if (r.get("rol").asText().equals(role)) return r;
+        for (JsonNode r : object(situation, label).get("roles")) if (r.get("role").asText().equals(role)) return r;
         return fail("object " + label + " heeft geen rol '" + role + "' in " + situation);
     }
 
@@ -96,9 +96,9 @@ class PlaygroundRoleFactTypeTest {
     @Test
     void a_role_name_in_three_fact_types() {
         ObjectNode a = Playground.analyseer(GRANTED);
-        JsonNode s = a.at("/scenario/resultaten/0");
+        JsonNode s = a.at("/scenario/results/0");
         assertEquals("PASS", s.get("status").asText(), s.toString());
-        JsonNode sit = s.get("situatie");
+        JsonNode sit = s.get("situation");
         String[][] expected = {
                 {"J", "vergunningen", "vergunninghouderschap"},
                 {"V", "vergunning", "vergunde vondst"},
@@ -109,11 +109,11 @@ class PlaygroundRoleFactTypeTest {
                 {"J", "strandmaat", "strandmaatschap"}};
         for (String[] v : expected) {
             JsonNode r = role(sit, v[0], v[1]);
-            assertEquals(v[2], r.get("feittype").asText(), v[0] + " " + v[1] + ": " + r);
-            assertFalse(r.has("feittypeCanoniek"), r.toString());
+            assertEquals(v[2], r.get("factType").asText(), v[0] + " " + v[1] + ": " + r);
+            assertFalse(r.has("factTypeCanonical"), r.toString());
             assertTrue(irFactType(a, v[2]) != null, v[2] + " staat niet in ir.model.factTypes");
         }
-        assertEquals(List.of("rol", "feittype", "doeltype", "labels", "meervoudig", "regel"),
+        assertEquals(List.of("role", "factType", "targetType", "labels", "multiple", "line"),
                 fields(role(sit, "V", "vergunning")), "feittype staat naast de bestaande sleutels");
     }
 
@@ -122,14 +122,14 @@ class PlaygroundRoleFactTypeTest {
     void in_a_vocabulary() throws IOException {
         String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs"))
                 + "\n" + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
-        JsonNode cgm = role(Playground.analyseer(source, "cgm").at("/scenario/resultaten/0/situatie"), "V1", "AANMELDER");
-        assertEquals("VONDST_AANMELDING", cgm.get("feittype").asText(), cgm.toString());
-        assertEquals("vondstaanmelding", cgm.get("feittypeCanoniek").asText(), cgm.toString());
-        JsonNode handboek = role(Playground.analyseer(source, "handboek").at("/scenario/resultaten/0/situatie"), "V1",
+        JsonNode cgm = role(Playground.analyseer(source, "cgm").at("/scenario/results/0/situation"), "V1", "AANMELDER");
+        assertEquals("VONDST_AANMELDING", cgm.get("factType").asText(), cgm.toString());
+        assertEquals("vondstaanmelding", cgm.get("factTypeCanonical").asText(), cgm.toString());
+        JsonNode handboek = role(Playground.analyseer(source, "handboek").at("/scenario/results/0/situation"), "V1",
                 "melder");
-        assertEquals("aanmelding van een vondst", handboek.get("feittype").asText(), handboek.toString());
-        JsonNode canonical = role(Playground.analyseer(source).at("/scenario/resultaten/0/situatie"), "V1", "aanmelder");
-        assertEquals("vondstaanmelding", canonical.get("feittype").asText(), canonical.toString());
+        assertEquals("aanmelding van een vondst", handboek.get("factType").asText(), handboek.toString());
+        JsonNode canonical = role(Playground.analyseer(source).at("/scenario/results/0/situation"), "V1", "aanmelder");
+        assertEquals("vondstaanmelding", canonical.get("factType").asText(), canonical.toString());
     }
 
     /** Over every scenario golden of uchar: each role of each situation names a fact type of the IR document that
@@ -146,26 +146,26 @@ class PlaygroundRoleFactTypeTest {
         for (Path m : directories) {
             String source = Files.readString(m.resolve("bron.rgs")) + "\n" + Files.readString(m.resolve("scenario.rgs"));
             ObjectNode a = Playground.analyseer(source);
-            JsonNode results = a.at("/scenario/resultaten");
+            JsonNode results = a.at("/scenario/results");
             if (results.isEmpty()) {
                 errors.add(m.getFileName() + ": geen scenarioresultaten: " + a.get("resolver"));
                 continue;
             }
             for (JsonNode s : results)
-                for (JsonNode o : s.at("/situatie/objecten"))
-                    for (JsonNode r : o.get("rollen")) {
+                for (JsonNode o : s.at("/situation/objects"))
+                    for (JsonNode r : o.get("roles")) {
                         roles++;
                         String where = m.getFileName() + " " + o.get("label").asText() + " " + r;
-                        JsonNode ft = irFactType(a, r.path("feittype").asText(null));
+                        JsonNode ft = irFactType(a, r.path("factType").asText(null));
                         if (ft == null) {
                             errors.add(where + ": het feittype staat niet in ir.model.factTypes");
                             continue;
                         }
                         boolean found = false;
                         for (JsonNode ir : ft.get("roles"))
-                            found |= (ir.get("name").asText().equals(r.get("rol").asText())
-                                    || ir.path("plural").asText("").equals(r.get("rol").asText()))
-                                    && ir.get("objectType").asText().equals(r.get("doeltype").asText());
+                            found |= (ir.get("name").asText().equals(r.get("role").asText())
+                                    || ir.path("plural").asText("").equals(r.get("role").asText()))
+                                    && ir.get("objectType").asText().equals(r.get("targetType").asText());
                         if (!found) errors.add(where + ": het feittype heeft die rol met dat doeltype niet");
                     }
         }

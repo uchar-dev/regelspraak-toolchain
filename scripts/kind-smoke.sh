@@ -123,7 +123,7 @@ echo "H2 PASS: GoldenOverHttpTest tegen de in-cluster dienst (26 over HTTP gerep
 step "H3"
 # Install the marker descriptor with allowMarkers=false → the service exits 3 → CrashLoopBackOff.
 h upgrade --install "$MARKER_RELEASE" "$CHART" --set image.tag="$TAG" \
-    --set descriptor=/app/rules/marker/marker.dienst.json \
+    --set descriptor=/app/rules/marker/marker.service.json \
     --set bronnenManifest=/app/rules/marker/manifest.txt
 
 MARKER_POD=""
@@ -157,7 +157,7 @@ echo "H3: fail-fast exit 3 bevestigd (CrashLoopBackOff by design)"
 
 # Same descriptor/manifest, nu MET --allow-markers → start schoon; een verzoek krijgt 503.
 h upgrade "$MARKER_RELEASE" "$CHART" --set image.tag="$TAG" \
-    --set descriptor=/app/rules/marker/marker.dienst.json \
+    --set descriptor=/app/rules/marker/marker.service.json \
     --set bronnenManifest=/app/rules/marker/manifest.txt \
     --set allowMarkers=true
 k rollout status "deploy/$MARKER_RELEASE" --timeout=600s
@@ -180,7 +180,7 @@ JSON
 # H4a: volwassenleeftijd = 18 → 19-jarige is NIET minderjarig.
 python3 - "$OVERLAY" 18 <<'PY'
 import json, sys
-src = "examples/toka/toka.dienst.json"
+src = "examples/toka/toka.service.json"
 overlay, leeftijd = sys.argv[1], int(sys.argv[2])
 d = json.load(open(src))
 d["parameters"] = {"volwassenleeftijd": leeftijd}
@@ -209,7 +209,7 @@ PY
 # H4b: volwassenleeftijd = 21 → 19-jarige IS minderjarig.
 python3 - "$OVERLAY" 21 <<'PY'
 import json, sys
-src = "examples/toka/toka.dienst.json"
+src = "examples/toka/toka.service.json"
 overlay, leeftijd = sys.argv[1], int(sys.argv[2])
 d = json.load(open(src))
 d["parameters"] = {"volwassenleeftijd": leeftijd}

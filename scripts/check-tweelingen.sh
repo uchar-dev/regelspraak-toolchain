@@ -16,7 +16,7 @@
 # getal bewust bij. Een lege set faalt.
 #
 # De vocabulairetweeling: jutterswet-vocabulaires (twee vocabulaires, een benaming op elke declaratie) via
-# scripts/vocabulaire_replay.py met scripts/tweelingen/jutterswet-vocabulaires.dienst.json. Elke case gaat in de
+# scripts/vocabulaire_replay.py met scripts/tweelingen/jutterswet-vocabulaires.service.json. Elke case gaat in de
 # canonieke spelling, in die van elk vocabulaire en gemengd, en vraagt zijn antwoord canoniek en in elk vocabulaire;
 # daarbij het vastgezette invoervocabulaire, de weigering van een andere spelling daaronder, het standaardvocabulaire
 # van een entrypoint en /info. De vertaaltafel is het ir.json van de golden. Gepind: het aantal cases (een gelijkheid,
@@ -55,7 +55,7 @@ goldens=(); descriptors=()
 for t in "${TWEELINGEN[@]}"; do
   g="${t%%|*}"
   [ -f "uchar/corpus/golden/$g/bron.rgs" ] || fail "tweeling '$g' heeft geen bron.rgs in uchars corpus"
-  goldens+=("$g"); descriptors+=(--descriptor "$g=scripts/tweelingen/$g.dienst.json")
+  goldens+=("$g"); descriptors+=(--descriptor "$g=scripts/tweelingen/$g.service.json")
 done
 
 output=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden --werkers 3 \
@@ -78,8 +78,8 @@ vg="${VOCABULARY_TWIN%%|*}"; vpin="${VOCABULARY_TWIN#*|}"
 [ -f "uchar/corpus/golden/$vg/bron.rgs" ] || fail "vocabulairetweeling '$vg' heeft geen bron.rgs in uchars corpus"
 witness=scripts/tweelingen/vocabulaire-dubbelzinnig
 output=$(python3 scripts/vocabulaire_replay.py --corpus uchar/corpus/golden \
-    --golden "$vg=scripts/tweelingen/$vg.dienst.json" \
-    --getuige "vocabulaire-dubbelzinnig=$witness.rgs,$witness.dienst.json,$witness.getuige.json") \
+    --golden "$vg=scripts/tweelingen/$vg.service.json" \
+    --getuige "vocabulaire-dubbelzinnig=$witness.rgs,$witness.service.json,$witness.witness.json") \
   || fail "de vocabulaire-driver faalde"
 echo "$output" | sed 's/^/  /'
 line=$(printf '%s\n' "$output" | awk -F'\t' -v g="$vg" '$1 == g')

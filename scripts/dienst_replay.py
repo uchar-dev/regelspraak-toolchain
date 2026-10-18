@@ -306,7 +306,7 @@ def speel(golden, map_, descriptor_pad=None):
             bron = os.path.join(map_, "ir.json")
         with tempfile.TemporaryDirectory(prefix="dienst-replay-") as werkmap:
             if descriptor_pad is None:
-                descriptor_pad = os.path.join(werkmap, "replay.dienst.json")
+                descriptor_pad = os.path.join(werkmap, "replay.service.json")
                 with open(descriptor_pad, "w") as f:
                     json.dump(descriptor(golden, document, [c for _, c in cases]), f, indent=1)
                 pad = "/replay"
@@ -316,9 +316,9 @@ def speel(golden, map_, descriptor_pad=None):
                 for naam, v, c in verzoeken:
                     status, tekst = dienst.vraag("POST", pad, v)
                     if status == 400:
-                        # a request form the service does not carry: every violation says NIET_ONDERSTEUND
+                        # a request form the service does not carry: every violation says UNSUPPORTED
                         schendingen = json.loads(tekst).get("schendingen", [])
-                        if schendingen and all(s.get("soort") == "NIET_ONDERSTEUND" for s in schendingen):
+                        if schendingen and all(s.get("soort") == "UNSUPPORTED" for s in schendingen):
                             raise NietUitdrukbaar(schendingen[0]["fout"])
                         raise Afwijking(f"{naam}: 400 {tekst[:500]}")
                     if status != 200:

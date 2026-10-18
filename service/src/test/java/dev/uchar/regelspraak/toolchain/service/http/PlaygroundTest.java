@@ -60,14 +60,14 @@ class PlaygroundTest {
         ObjectNode a = Playground.analyseer("Objecttype de Persoon (mv:");
         JsonNode parse = a.get("parse");
         assertFalse(parse.get("ok").asBoolean(), a.toString());
-        assertTrue(parse.get("fouten").size() >= 1, a.toString());
-        JsonNode f = parse.get("fouten").get(0);
-        assertTrue(f.get("regel").asInt() >= 1, f.toString());
-        assertTrue(f.has("kolom"), f.toString());
-        assertTrue(f.get("verwacht").isArray(), f.toString());
+        assertTrue(parse.get("errors").size() >= 1, a.toString());
+        JsonNode f = parse.get("errors").get(0);
+        assertTrue(f.get("line").asInt() >= 1, f.toString());
+        assertTrue(f.has("column"), f.toString());
+        assertTrue(f.get("expected").isArray(), f.toString());
         // a broken model has no DRL and no graaf
         assertFalse(a.has("drl"), "een parse-fout mag geen DRL opleveren: " + a);
-        assertFalse(a.has("graaf"), "een parse-fout mag geen graaf opleveren: " + a);
+        assertFalse(a.has("graph"), "een parse-fout mag geen graaf opleveren: " + a);
     }
 
     // ---------------- shape 2: resolver error ----------------
@@ -86,10 +86,10 @@ class PlaygroundTest {
         assertTrue(a.get("parse").get("ok").asBoolean(), "syntactisch geldig: " + a);
         JsonNode resolver = a.get("resolver");
         assertFalse(resolver.get("ok").asBoolean(), "type-mismatch hoort een resolver-fout te zijn: " + a);
-        assertTrue(resolver.get("fouten").size() >= 1, a.toString());
+        assertTrue(resolver.get("errors").size() >= 1, a.toString());
         assertFalse(a.has("drl"), "een resolver-fout mag geen DRL opleveren: " + a);
-        assertFalse(a.has("graaf"), "een resolver-fout mag geen graaf opleveren: " + a);
-        assertFalse(a.has("ir") || a.has("uitvoerbaar"), "een resolver-fout heeft geen document: " + a);
+        assertFalse(a.has("graph"), "een resolver-fout mag geen graaf opleveren: " + a);
+        assertFalse(a.has("ir") || a.has("executable"), "een resolver-fout heeft geen document: " + a);
     }
 
     @Test
@@ -99,8 +99,8 @@ class PlaygroundTest {
         String source = WITH_SCENARIO.replace("- de korting van P1 is 25", "- de schoenmaat van P1 is 25");
         ObjectNode a = Playground.analyseer(source);
         assertFalse(a.get("resolver").get("ok").asBoolean(), a.toString());
-        assertTrue(a.get("resolver").get("fouten").size() >= 1, a.toString());
-        for (String field : new String[]{"ir", "uitvoerbaar", "drl", "graaf", "graafJson", "scenario"})
+        assertTrue(a.get("resolver").get("errors").size() >= 1, a.toString());
+        for (String field : new String[]{"ir", "executable", "drl", "graph", "graphJson", "scenario"})
             assertFalse(a.has(field), "bij een resolver-fout geen '" + field + "': " + a);
     }
 
@@ -116,9 +116,9 @@ class PlaygroundTest {
         assertTrue(drl.contains("rule "), "de DRL hoort minstens één rule te bevatten: " + drl);
         // a clean model also yields a graaf: the dataflow projection, as bare Mermaid flowchart source carrying
         // the rule nodes (bepaal minderjarigheid writes the kenmerk, bepaal korting reads it and writes korting).
-        assertTrue(a.has("graaf"), "een schoon model hoort een graaf te leveren: " + a);
-        assertFalse(a.has("graafFout"), "geen graaf-fout verwacht bij een schoon model: " + a);
-        String graph = a.get("graaf").asText();
+        assertTrue(a.has("graph"), "een schoon model hoort een graaf te leveren: " + a);
+        assertFalse(a.has("graphError"), "geen graaf-fout verwacht bij een schoon model: " + a);
+        String graph = a.get("graph").asText();
         assertTrue(graph.startsWith("flowchart LR"), "de graaf is Mermaid-flowchart-bron: " + graph);
         assertTrue(graph.contains("bepaal minderjarigheid"), "regel-knoop ontbreekt: " + graph);
         assertTrue(graph.contains("bepaal korting"), "regel-knoop ontbreekt: " + graph);
@@ -126,22 +126,22 @@ class PlaygroundTest {
         assertFalse(a.has("scenario"), "zonder Scenario-blok geen scenario-sectie: " + a);
         // the IR document uchar's emitter writes, and the verdict of the branch that fires
         assertEquals("uchar-ir-v1", a.get("ir").get("format").asText(), a.toString());
-        assertTrue(a.get("uitvoerbaar").asBoolean(), a.toString());
-        assertEquals(2, a.get("dekking").size(), a.toString());
-        for (JsonNode d : a.get("dekking")) assertEquals("LOWERED", d.get("verdict").asText(), d.toString());
+        assertTrue(a.get("executable").asBoolean(), a.toString());
+        assertEquals(2, a.get("coverage").size(), a.toString());
+        for (JsonNode d : a.get("coverage")) assertEquals("LOWERED", d.get("verdict").asText(), d.toString());
         // the graph as nodes and edges beside the Mermaid text: two rule nodes, edges between known ids
-        JsonNode g = a.get("graafJson");
+        JsonNode g = a.get("graphJson");
         java.util.Set<String> ids = new java.util.HashSet<>();
         int lines = 0;
         for (JsonNode n : g.get("nodes")) {
             ids.add(n.get("id").asText());
-            if ("REGEL".equals(n.get("kind").asText())) lines++;
-            assertTrue(n.has("label") && n.has("eindOutput"), n.toString());
+            if ("RULE".equals(n.get("kind").asText())) lines++;
+            assertTrue(n.has("label") && n.has("endOutput"), n.toString());
         }
         assertEquals(2, lines, g.toString());
         assertTrue(g.get("edges").size() >= 2, g.toString());
         for (JsonNode e : g.get("edges"))
-            assertTrue(ids.contains(e.get("van").asText()) && ids.contains(e.get("naar").asText()), e.toString());
+            assertTrue(ids.contains(e.get("from").asText()) && ids.contains(e.get("to").asText()), e.toString());
     }
 
     @Test
@@ -157,9 +157,9 @@ class PlaygroundTest {
             De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
             """);
         assertTrue(a.get("resolver").get("ok").asBoolean(), a.toString());
-        assertFalse(a.get("uitvoerbaar").asBoolean(), a.toString());
-        assertTrue(a.get("weigering").asText().contains("heffing markert"), a.toString());
-        assertFalse(a.has("dekking"), a.toString());
+        assertFalse(a.get("executable").asBoolean(), a.toString());
+        assertTrue(a.get("refusal").asText().contains("heffing markert"), a.toString());
+        assertFalse(a.has("coverage"), a.toString());
     }
 
     // ---------------- shape 4: scenario outcome ----------------
@@ -169,23 +169,23 @@ class PlaygroundTest {
         ObjectNode a = Playground.analyseer(WITH_SCENARIO);
         assertTrue(a.get("resolver").get("ok").asBoolean(), a.toString());
         JsonNode scenario = a.get("scenario");
-        assertTrue(scenario != null && scenario.has("resultaten"), "scenario-sectie verwacht: " + a);
-        assertEquals(1, scenario.get("resultaten").size(), a.toString());
-        JsonNode r = scenario.get("resultaten").get(0);
+        assertTrue(scenario != null && scenario.has("results"), "scenario-sectie verwacht: " + a);
+        assertEquals(1, scenario.get("results").size(), a.toString());
+        JsonNode r = scenario.get("results").get(0);
         assertEquals("PASS", r.get("status").asText(), a.toString());
-        assertEquals(2, r.get("verwachtingen").size(), a.toString());
-        for (JsonNode v : r.get("verwachtingen"))
+        assertEquals(2, r.get("expectations").size(), a.toString());
+        for (JsonNode v : r.get("expectations"))
             assertTrue(v.get("ok").asBoolean(), "elke verwachting hoort te slagen: " + v);
         // the trace: both rules fired on P1, as uchar's replay counts it
         assertEquals(2, r.get("trace").size(), r.toString());
         for (JsonNode t : r.get("trace")) {
-            assertTrue(t.get("aantal").asInt() >= 1, t.toString());
+            assertTrue(t.get("count").asInt() >= 1, t.toString());
             assertEquals("P1", t.get("labels").get(0).asText(), t.toString());
         }
         // the uitleg: the characteristic, justified with the value its condition read
-        assertFalse(r.has("uitlegFout"), r.toString());
-        assertEquals(1, r.get("uitleg").size(), r.toString());
-        String sentence = r.get("uitleg").get(0).asText();
+        assertFalse(r.has("explanationError"), r.toString());
+        assertEquals(1, r.get("explanation").size(), r.toString());
+        String sentence = r.get("explanation").get(0).asText();
         assertTrue(sentence.startsWith("P1 is minderjarig, omdat") && sentence.contains("12"), sentence);
     }
 }

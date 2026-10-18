@@ -30,7 +30,7 @@ import dev.uchar.regelspraak.toolchain.service.RequestOptions;
  * The Quarkus JAX-RS adapter over {@link DecisionCore}, MIRRORING {@code ServiceHttp}'s HTTP contract exactly:
  * <ul>
  *   <li>{@code POST /<pad>} → {@link DecisionCore#process} → {@code 200} JSON; {@link ServiceError} → {@code 400}
- *       {@code {"fout":…,"schendingen":[{"veld":…,"fout":…}]}}; {@link DecisionCore.UnknownPath} → {@code 404};
+ *       {@code {"error":…,"violations":[{"field":…,"error":…}]}}; {@link DecisionCore.UnknownPath} → {@code 404};
  *       {@link DecisionCore.NonExecutable} → {@code 503} with the MARKER answer; {@link EvaluationFault} and
  *       {@link NoFixpoint} → {@code 422} with the answer {@link AnswerBuilder#evaluationFault} or
  *       {@link AnswerBuilder#noFixpoint} builds, as {@code ServiceHttp} sends it.</li>
@@ -62,14 +62,14 @@ public class DecideResource {
     // ---------------- POST /<pad> ----------------
 
     @POST
-    @Path("{pad}")
+    @Path("{path}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response process(@PathParam("pad") String path, @QueryParam("uitleg") String uitleg,
-                            @QueryParam("vocabulaire") String vocabulary,
-                            @QueryParam("invoervocabulaire") String invoervocabulaire,
-                            @QueryParam("trace") String trace, @QueryParam("dekking") String coverage,
-                            @QueryParam("fixpunt") String fixpoint, String body) {
+    public Response process(@PathParam("path") String path, @QueryParam("explanation") String uitleg,
+                            @QueryParam("vocabulary") String vocabulary,
+                            @QueryParam("inputVocabulary") String invoervocabulaire,
+                            @QueryParam("trace") String trace, @QueryParam("coverage") String coverage,
+                            @QueryParam("fixpoint") String fixpoint, String body) {
         JsonNode tree;
         if (body == null || body.isEmpty())
             return response(400, errorBody("leeg verzoek-body: verwacht JSON met een 'instanties'-array", "body"));
@@ -83,7 +83,7 @@ public class DecideResource {
             return response(400, errorBody("verzoek-body is geen geldige JSON (null)", "body"));
 
         try {
-            // ?uitleg=true (or a bare ?uitleg) opts into the Verbalisator verhaal, and the detail flags read the same
+            // ?explanation=true (or a bare ?uitleg) opts into the Verbalisator verhaal, and the detail flags read the same
             // way; any other value = no (mirror of ServiceHttp.isRequested)
             ObjectNode answer = core.process(path, tree, new RequestOptions(isRequested(uitleg), vocabulary,
                     invoervocabulaire, isRequested(trace), isRequested(coverage), isRequested(fixpoint)));
@@ -131,8 +131,8 @@ public class DecideResource {
 
     private static ObjectNode errorBody(String notice, String field) {
         ObjectNode n = NF.objectNode();
-        n.put("fout", notice);
-        if (field != null) n.put("veld", field);
+        n.put("error", notice);
+        if (field != null) n.put("field", field);
         return n;
     }
 
@@ -140,8 +140,8 @@ public class DecideResource {
     private static ObjectNode markerBody(DecisionCore.NonExecutable rejected) {
         ObjectNode n = NF.objectNode();
         n.put("status", "MARKER");
-        n.put("fout", rejected.getMessage());
-        n.put("reden", rejected.reason());
+        n.put("error", rejected.getMessage());
+        n.put("reason", rejected.reason());
         var markers = n.putArray("markers");
         for (String m : rejected.markers()) markers.add(m);
         return n;
@@ -149,13 +149,13 @@ public class DecideResource {
 
     private static ObjectNode requestErrorBody(ServiceError error) {
         ObjectNode n = NF.objectNode();
-        n.put("fout", "verzoek valideert niet");
-        var violations = n.putArray("schendingen");
+        n.put("error", "verzoek valideert niet");
+        var violations = n.putArray("violations");
         for (Violation s : error.violations()) {
             ObjectNode sn = violations.addObject();
-            sn.put("veld", s.field());
-            sn.put("soort", s.kind().name());
-            sn.put("fout", s.message());
+            sn.put("field", s.field());
+            sn.put("kind", s.kind().name());
+            sn.put("error", s.message());
         }
         return n;
     }
@@ -169,7 +169,7 @@ public class DecideResource {
                     .build();
         } catch (JsonProcessingException e) {
             // an ObjectNode always serialises; this is unreachable, but never leak a stacktrace.
-            return Response.status(500).entity("{\"fout\":\"interne fout\"}").build();
+            return Response.status(500).entity("{\"error\":\"interne fout\"}").build();
         }
     }
 }

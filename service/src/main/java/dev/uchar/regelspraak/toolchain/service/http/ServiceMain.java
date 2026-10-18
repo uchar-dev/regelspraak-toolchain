@@ -58,7 +58,7 @@ public final class ServiceMain {
             args = parseArgs(rawArgs);
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
-            System.err.println("gebruik: DienstMain <descriptor.dienst.json> <bron.rgs...> | <document.json> "
+            System.err.println("gebruik: DienstMain <descriptor.service.json> <bron.rgs...> | <document.json> "
                     + "[--allow-markers] [--detail] [--host H] [--poort N]");
             System.exit(2);
             return;
@@ -168,7 +168,7 @@ public final class ServiceMain {
                 sources.add(Path.of(a));
             }
         }
-        if (descriptor == null) throw new IllegalArgumentException("geen descriptor (.dienst.json) opgegeven");
+        if (descriptor == null) throw new IllegalArgumentException("geen descriptor (.service.json) opgegeven");
         if (sources.isEmpty())
             throw new IllegalArgumentException("geen bron opgegeven: .rgs-bestanden of één uchar-ir-v1-document");
         return new Args(descriptor, sources, allowMarkers, detail, host, port);

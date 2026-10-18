@@ -1,12 +1,12 @@
 {
-  "naam": "onbekende enumeratie-waarde op luchthaven van vertrek",
-  "pad": "bepaal-leeftijd",
+  "name": "onbekende enumeratie-waarde op luchthaven van vertrek",
+  "path": "bepaal-leeftijd",
   "body": {
-    "instanties": [
-      { "type": "Vlucht", "id": "V1", "attributen": { "luchthaven van vertrek": "Mars Base" } },
-      { "type": "Natuurlijk persoon", "id": "P1", "attributen": { "geboortedatum": "1990-06-15" }, "rollen": { "reis": "V1" } }
+    "instances": [
+      { "type": "Vlucht", "id": "V1", "attributes": { "luchthaven van vertrek": "Mars Base" } },
+      { "type": "Natuurlijk persoon", "id": "P1", "attributes": { "geboortedatum": "1990-06-15" }, "roles": { "reis": "V1" } }
     ]
   },
-  "verwachtStatus": 400,
-  "verwachtVeldBevat": "luchthaven van vertrek"
+  "expectedStatus": 400,
+  "expectedFieldContains": "luchthaven van vertrek"
 }

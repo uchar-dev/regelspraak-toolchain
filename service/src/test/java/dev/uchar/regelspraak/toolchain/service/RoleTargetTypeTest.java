@@ -18,10 +18,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * An id on a rol, inline or in a relatie, must name an instance whose objecttype fills that rol: the declared type
- * or a subtype of it. Another objecttype is an error of the caller, refused as VERKEERD_TYPE with the rol, the id
+ * or a subtype of it. Another objecttype is an error of the caller, refused as WRONG_TYPE with the rol, the id
  * and both types, before anything is written. Both writers fall back on the type pair when the rol does not fit,
- * and then refused the link as a form the service does not carry (NIET_ONDERSTEUND) or as a rol they could not
- * determine (ONBEKEND_VELD), or wrote it into the field of another relation between the two types.
+ * and then refused the link as a form the service does not carry (UNSUPPORTED) or as a rol they could not
+ * determine (UNKNOWN_FIELD), or wrote it into the field of another relation between the two types.
  *
  * <p>Own material: a self-typed one-to-many feittype on Jutter, a one-to-many feittype between Jutter and
  * Strandvondst (which has the subtype Wrakstuk), and a Strandpaal no feittype relates.
@@ -73,17 +73,17 @@ class RoleTargetTypeTest {
     @Test
     void id_of_another_object_type_on_a_role_is_wrong_type() {
         // both rollen of the self-typed feittype, the to-many and the to-one, and no feittype relates a Jutter to a
-        // Strandpaal: uchar's input step (CaseInput) found no field and refused the link as NIET_ONDERSTEUND
+        // Strandpaal: uchar's input step (CaseInput) found no field and refused the link as UNSUPPORTED
         var r = map("""
-            { "instanties": [
-                { "type": "Jutter", "id": "J1", "rollen": { "leerling": ["P1"] } },
-                { "type": "Jutter", "id": "J2", "rollen": { "leermeester": "P1" } },
+            { "instances": [
+                { "type": "Jutter", "id": "J1", "roles": { "leerling": ["P1"] } },
+                { "type": "Jutter", "id": "J2", "roles": { "leermeester": "P1" } },
                 { "type": "Strandpaal", "id": "P1" } ] }""");
         assertEquals(List.of(
-                Violation.van(Violation.Kind.VERKEERD_TYPE, "instanties[0].rollen.leerling",
+                Violation.van(Violation.Kind.WRONG_TYPE, "instances[0].roles.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'P1' is van"
                                 + " objecttype 'Strandpaal'"),
-                Violation.van(Violation.Kind.VERKEERD_TYPE, "instanties[1].rollen.leermeester",
+                Violation.van(Violation.Kind.WRONG_TYPE, "instances[1].roles.leermeester",
                         "rol 'leermeester' verwacht een instantie van objecttype 'Jutter', maar id 'P1' is van"
                                 + " objecttype 'Strandpaal'")),
                 r.violations());
@@ -94,10 +94,10 @@ class RoleTargetTypeTest {
         // Jutter and Strandvondst are related by vinderschap: CaseInput's by-pair fallback took that relation
         // and made J1 the vinder of S1, a link the request does not name
         var r = map("""
-            { "instanties": [
-                { "type": "Jutter", "id": "J1", "rollen": { "leerling": ["S1"] } },
+            { "instances": [
+                { "type": "Jutter", "id": "J1", "roles": { "leerling": ["S1"] } },
                 { "type": "Strandvondst", "id": "S1" } ] }""");
-        assertEquals(List.of(Violation.van(Violation.Kind.VERKEERD_TYPE, "instanties[0].rollen.leerling",
+        assertEquals(List.of(Violation.van(Violation.Kind.WRONG_TYPE, "instances[0].roles.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'S1' is van"
                                 + " objecttype 'Strandvondst'")),
                 r.violations());
@@ -108,10 +108,10 @@ class RoleTargetTypeTest {
     void id_of_another_object_type_on_a_role_of_a_relation_is_wrong_type() {
         // the by-pair fallback made J1 the vinder of S1 and then found no field for the other direction
         var r = map("""
-            { "instanties": [ { "type": "Jutter", "id": "J1" }, { "type": "Strandvondst", "id": "S1" } ],
-              "relaties": [ { "feittype": "leerlingschap",
-                              "rollen": { "leermeester": "J1", "leerling": "S1" } } ] }""");
-        assertEquals(List.of(Violation.van(Violation.Kind.VERKEERD_TYPE, "relaties[0].rollen.leerling",
+            { "instances": [ { "type": "Jutter", "id": "J1" }, { "type": "Strandvondst", "id": "S1" } ],
+              "relations": [ { "factType": "leerlingschap",
+                              "roles": { "leermeester": "J1", "leerling": "S1" } } ] }""");
+        assertEquals(List.of(Violation.van(Violation.Kind.WRONG_TYPE, "relations[0].roles.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'S1' is van"
                                 + " objecttype 'Strandvondst'")),
                 r.violations());
@@ -121,8 +121,8 @@ class RoleTargetTypeTest {
     @Test
     void id_of_a_subtype_fills_the_role() {
         var r = map("""
-            { "instanties": [
-                { "type": "Jutter", "id": "J1", "rollen": { "vondst": ["W1"] } },
+            { "instances": [
+                { "type": "Jutter", "id": "J1", "roles": { "vondst": ["W1"] } },
                 { "type": "Wrakstuk", "id": "W1" } ] }""");
         assertTrue(r.violations().isEmpty(), r.violations().toString());
         assertSame(r.world().beans().get("J1"), RegelSpraakRuntime.get(r.world().beans().get("W1"), "vinder"));

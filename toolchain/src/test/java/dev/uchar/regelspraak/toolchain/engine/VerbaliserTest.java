@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.*;
 /**
  * Tests for the {@link Verbaliser} — the UITLEG-generator — over a decision the engine fired: the model is
  * compiled with {@link RegelSpraakEngine}, one generated bean is fired and written back, and the verbaliser explains
- * the fired state (the same wiring the service's {@code ?uitleg=true} field drives). Each mini model has a
+ * the fired state (the same wiring the service's {@code ?explanation=true} field drives). Each mini model has a
  * HAND-COMPUTED outcome, so the assertions are EXACT sentences, not a mere "non-empty": the verhaal must justify a
  * kenmerk with the norm AND the evaluated feiten in NL-notatie, and — for a kenmerk that was withheld — name the
  * first failing conjunct with its evaluated value. The golden over the real TOKA minderjarig decision is pinned in the

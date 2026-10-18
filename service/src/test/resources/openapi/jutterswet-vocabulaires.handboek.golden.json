@@ -3,8 +3,8 @@
   "info": {
     "title": "Jutterswet vocabulaires",
     "version": "tweeling",
-    "description": "De namen in dit document zijn die van het vocabulaire 'handboek'. De dienst neemt in een verzoek elke naam aan: canoniek of als benaming in de vocabulaires 'handboek' en 'cgm', ook gemengd; x-spellingen en x-waardespellingen noemen ze. Een naam die zo twee declaraties noemt is een 400 (DUBBELZINNIGE_NAAM), tenzij de queryparameter invoervocabulaire het vocabulaire vastzet; de queryparameter vocabulaire kiest de namen van het antwoord. Een gewijzigde benaming is een wijziging van dit contract.",
-    "x-vocabulaire": "handboek"
+    "description": "De namen in dit document zijn die van het vocabulaire 'handboek'. De dienst neemt in een verzoek elke naam aan: canoniek of als benaming in de vocabulaires 'handboek' en 'cgm', ook gemengd; x-spellingen en x-waardespellingen noemen ze. Een naam die zo twee declaraties noemt is een 400 (AMBIGUOUS_NAME), tenzij de queryparameter invoervocabulaire het vocabulaire vastzet; de queryparameter vocabulaire kiest de namen van het antwoord. Een gewijzigde benaming is een wijziging van dit contract.",
+    "x-vocabulary": "handboek"
   },
   "paths": {
     "/premie": {
@@ -12,13 +12,13 @@
         "operationId": "premie",
         "summary": "premie",
         "description": "Entrypoint 'premie'. Invoer-objecttypen: strandjutter, aangespoeld voorwerp. Uitvoer-selectoren: aangespoeld voorwerp.soort vondst, aangespoeld voorwerp.premie voor de vondst, aangespoeld voorwerp:van waarde, strandjutter.totale premie, strandjutter.aantal vondsten van waarde, strandjutter:komt in aanmerking voor premie. De dienst neemt ook de spellingen van x-spellingen aan.",
-        "x-spellingen": {
-          "canoniek": {
-            "invoer": [
+        "x-spellings": {
+          "canonical": {
+            "input": [
               "Jutter",
               "Vondst"
             ],
-            "uitvoer": [
+            "output": [
               "Vondst.soort",
               "Vondst.premie",
               "Vondst:waardevol",
@@ -28,11 +28,11 @@
             ]
           },
           "cgm": {
-            "invoer": [
+            "input": [
               "JUTTER",
               "VONDST"
             ],
-            "uitvoer": [
+            "output": [
               "VONDST.VONDST_SOORT",
               "VONDST.PREMIE",
               "VONDST:WAARDEVOL",
@@ -44,35 +44,35 @@
         },
         "parameters": [
           {
-            "name": "vocabulaire",
+            "name": "vocabulary",
             "in": "query",
             "required": false,
-            "description": "Het vocabulaire waarin het antwoord de declaraties noemt; zonder: de canonieke namen. Een declaratie zonder benaming in het gekozen vocabulaire draagt haar canonieke naam; GET /info noemt die declaraties per vocabulaire. Een onbekend vocabulaire is een 400 (ONBEKEND_VOCABULAIRE).",
+            "description": "Het vocabulaire waarin het antwoord de declaraties noemt; zonder: de canonieke namen. Een declaratie zonder benaming in het gekozen vocabulaire draagt haar canonieke naam; GET /info noemt die declaraties per vocabulaire. Een onbekend vocabulaire is een 400 (UNKNOWN_VOCABULARY).",
             "schema": {
               "type": "string",
               "enum": [
-                "canoniek",
+                "canonical",
                 "handboek",
                 "cgm"
               ]
             }
           },
           {
-            "name": "invoervocabulaire",
+            "name": "inputVocabulary",
             "in": "query",
             "required": false,
             "description": "Zet het vocabulaire vast waarin de namen van het verzoek gelezen worden; zonder wordt elke naam gelezen als canonieke naam of als benaming in elk vocabulaire.",
             "schema": {
               "type": "string",
               "enum": [
-                "canoniek",
+                "canonical",
                 "handboek",
                 "cgm"
               ]
             }
           },
           {
-            "name": "uitleg",
+            "name": "explanation",
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
@@ -84,25 +84,25 @@
             "name": "trace",
             "in": "query",
             "required": false,
-            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (UNSUPPORTED, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
             "schema": {
               "type": "boolean"
             }
           },
           {
-            "name": "dekking",
+            "name": "coverage",
             "in": "query",
             "required": false,
-            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "description": "true: het antwoord krijgt dekking (schema Coverage): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (UNSUPPORTED, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
             "schema": {
               "type": "boolean"
             }
           },
           {
-            "name": "fixpunt",
+            "name": "fixpoint",
             "in": "query",
             "required": false,
-            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpoint): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (UNSUPPORTED, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
             "schema": {
               "type": "boolean"
             }
@@ -113,7 +113,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Verzoek"
+                "$ref": "#/components/schemas/Request"
               }
             }
           }
@@ -124,7 +124,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Antwoord"
+                  "$ref": "#/components/schemas/Answer"
                 }
               }
             }
@@ -134,7 +134,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -144,22 +144,22 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin; of de sessie bereikt geen fixpunt: status GEEN_FIXPUNT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout de soort en uchars zin; of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
             "content": {
               "application/json": {
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/Evaluatiefout"
+                      "$ref": "#/components/schemas/EvaluationFault"
                     },
                     {
-                      "$ref": "#/components/schemas/GeenFixpunt"
+                      "$ref": "#/components/schemas/NoFixpoint"
                     }
                   ]
                 }
@@ -171,7 +171,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -181,7 +181,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -194,13 +194,13 @@
         "operationId": "premieInHetCgm",
         "summary": "premie in het cgm",
         "description": "Entrypoint 'premie in het cgm'. Invoer-objecttypen: strandjutter, aangespoeld voorwerp. Uitvoer-selectoren: aangespoeld voorwerp.soort vondst, aangespoeld voorwerp.premie voor de vondst, aangespoeld voorwerp:van waarde, strandjutter.totale premie, strandjutter.aantal vondsten van waarde, strandjutter:komt in aanmerking voor premie. De dienst neemt ook de spellingen van x-spellingen aan.",
-        "x-spellingen": {
-          "canoniek": {
-            "invoer": [
+        "x-spellings": {
+          "canonical": {
+            "input": [
               "Jutter",
               "Vondst"
             ],
-            "uitvoer": [
+            "output": [
               "Vondst.soort",
               "Vondst.premie",
               "Vondst:waardevol",
@@ -210,11 +210,11 @@
             ]
           },
           "cgm": {
-            "invoer": [
+            "input": [
               "JUTTER",
               "VONDST"
             ],
-            "uitvoer": [
+            "output": [
               "VONDST.VONDST_SOORT",
               "VONDST.PREMIE",
               "VONDST:WAARDEVOL",
@@ -226,35 +226,35 @@
         },
         "parameters": [
           {
-            "name": "vocabulaire",
+            "name": "vocabulary",
             "in": "query",
             "required": false,
-            "description": "Het vocabulaire waarin het antwoord de declaraties noemt; zonder: 'cgm', de standaard van dit entrypoint. Een declaratie zonder benaming in het gekozen vocabulaire draagt haar canonieke naam; GET /info noemt die declaraties per vocabulaire. Een onbekend vocabulaire is een 400 (ONBEKEND_VOCABULAIRE).",
+            "description": "Het vocabulaire waarin het antwoord de declaraties noemt; zonder: 'cgm', de standaard van dit entrypoint. Een declaratie zonder benaming in het gekozen vocabulaire draagt haar canonieke naam; GET /info noemt die declaraties per vocabulaire. Een onbekend vocabulaire is een 400 (UNKNOWN_VOCABULARY).",
             "schema": {
               "type": "string",
               "enum": [
-                "canoniek",
+                "canonical",
                 "handboek",
                 "cgm"
               ]
             }
           },
           {
-            "name": "invoervocabulaire",
+            "name": "inputVocabulary",
             "in": "query",
             "required": false,
             "description": "Zet het vocabulaire vast waarin de namen van het verzoek gelezen worden; zonder wordt elke naam gelezen als canonieke naam of als benaming in elk vocabulaire.",
             "schema": {
               "type": "string",
               "enum": [
-                "canoniek",
+                "canonical",
                 "handboek",
                 "cgm"
               ]
             }
           },
           {
-            "name": "uitleg",
+            "name": "explanation",
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
@@ -266,25 +266,25 @@
             "name": "trace",
             "in": "query",
             "required": false,
-            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (UNSUPPORTED, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
             "schema": {
               "type": "boolean"
             }
           },
           {
-            "name": "dekking",
+            "name": "coverage",
             "in": "query",
             "required": false,
-            "description": "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "description": "true: het antwoord krijgt dekking (schema Coverage): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (UNSUPPORTED, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
             "schema": {
               "type": "boolean"
             }
           },
           {
-            "name": "fixpunt",
+            "name": "fixpoint",
             "in": "query",
             "required": false,
-            "description": "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
+            "description": "true: het antwoord krijgt fixpunt (schema Fixpoint): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (UNSUPPORTED, met de naam van de vlag als veld). Een 422 krijgt het veld ook.",
             "schema": {
               "type": "boolean"
             }
@@ -295,7 +295,7 @@
           "content": {
             "application/json": {
               "schema": {
-                "$ref": "#/components/schemas/Verzoek"
+                "$ref": "#/components/schemas/Request"
               }
             }
           }
@@ -306,7 +306,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Antwoord"
+                  "$ref": "#/components/schemas/Answer"
                 }
               }
             }
@@ -316,7 +316,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -326,22 +326,22 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout de soort en uchars zin; of de sessie bereikt geen fixpunt: status GEEN_FIXPUNT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout de soort en uchars zin; of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
             "content": {
               "application/json": {
                 "schema": {
                   "oneOf": [
                     {
-                      "$ref": "#/components/schemas/Evaluatiefout"
+                      "$ref": "#/components/schemas/EvaluationFault"
                     },
                     {
-                      "$ref": "#/components/schemas/GeenFixpunt"
+                      "$ref": "#/components/schemas/NoFixpoint"
                     }
                   ]
                 }
@@ -353,7 +353,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -363,7 +363,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/Fout"
+                  "$ref": "#/components/schemas/Error"
                 }
               }
             }
@@ -375,7 +375,7 @@
       "get": {
         "operationId": "info",
         "summary": "dienst-info",
-        "description": "De dienst-identiteit, de per-regel Dekking-verdicten, de overgeslagen (marker) regels en de parameter-defaults.",
+        "description": "De dienst-identiteit, de per-regel Coverage-verdicten, de overgeslagen (marker) regels en de parameter-defaults.",
         "responses": {
           "200": {
             "description": "dienst-info",
@@ -398,40 +398,40 @@
         "properties": {
           "naam": {
             "type": "string",
-            "description": "De dienst neemt ook 'naam' (canoniek) en 'NAAM' (cgm) aan.",
-            "x-spellingen": {
-              "canoniek": "naam",
+            "description": "De dienst neemt ook 'naam' (canonical) en 'NAAM' (cgm) aan.",
+            "x-spellings": {
+              "canonical": "naam",
               "cgm": "NAAM"
             }
           },
           "totale premie": {
             "type": "number",
-            "description": "De dienst neemt ook 'vondstbedrag' (canoniek) en 'VONDST_BEDRAG' (cgm) aan.",
-            "x-spellingen": {
-              "canoniek": "vondstbedrag",
+            "description": "De dienst neemt ook 'vondstbedrag' (canonical) en 'VONDST_BEDRAG' (cgm) aan.",
+            "x-spellings": {
+              "canonical": "vondstbedrag",
               "cgm": "VONDST_BEDRAG"
             }
           },
           "aantal vondsten van waarde": {
             "type": "integer",
-            "description": "De dienst neemt ook 'aantal waardevolle vondsten' (canoniek) en 'AANTAL_WAARDEVOL' (cgm) aan.",
-            "x-spellingen": {
-              "canoniek": "aantal waardevolle vondsten",
+            "description": "De dienst neemt ook 'aantal waardevolle vondsten' (canonical) en 'AANTAL_WAARDEVOL' (cgm) aan.",
+            "x-spellings": {
+              "canonical": "aantal waardevolle vondsten",
               "cgm": "AANTAL_WAARDEVOL"
             }
           },
           "komt in aanmerking voor premie": {
             "type": "boolean",
-            "description": "kenmerk. De dienst neemt ook 'premiewaardig' (canoniek) en 'PREMIE_WAARDIG' (cgm) aan.",
-            "x-spellingen": {
-              "canoniek": "premiewaardig",
+            "description": "characteristic. De dienst neemt ook 'premiewaardig' (canonical) en 'PREMIE_WAARDIG' (cgm) aan.",
+            "x-spellings": {
+              "canonical": "premiewaardig",
               "cgm": "PREMIE_WAARDIG"
             }
           }
         },
-        "description": "Objecttype 'strandjutter'. Kenmerken (boolean-eigenschappen): komt in aanmerking voor premie. De dienst neemt ook 'Jutter' (canoniek) en 'JUTTER' (cgm) aan.",
-        "x-spellingen": {
-          "canoniek": "Jutter",
+        "description": "Objecttype 'strandjutter'. Kenmerken (boolean-eigenschappen): komt in aanmerking voor premie. De dienst neemt ook 'Jutter' (canonical) en 'JUTTER' (cgm) aan.",
+        "x-spellings": {
+          "canonical": "Jutter",
           "cgm": "JUTTER"
         }
       },
@@ -445,65 +445,65 @@
               "amber",
               "bericht in een fles"
             ],
-            "x-waardespellingen": {
+            "x-valueSpellings": {
               "hout van een wrak": {
-                "canoniek": "wrakhout",
+                "canonical": "wrakhout",
                 "cgm": "WRAKHOUT"
               },
               "amber": {
-                "canoniek": "barnsteen",
+                "canonical": "barnsteen",
                 "cgm": "BARNSTEEN"
               },
               "bericht in een fles": {
-                "canoniek": "flessenpost",
+                "canonical": "flessenpost",
                 "cgm": "FLESSENPOST"
               }
             },
-            "description": "De dienst neemt ook 'soort' (canoniek) en 'VONDST_SOORT' (cgm) aan.",
-            "x-spellingen": {
-              "canoniek": "soort",
+            "description": "De dienst neemt ook 'soort' (canonical) en 'VONDST_SOORT' (cgm) aan.",
+            "x-spellings": {
+              "canonical": "soort",
               "cgm": "VONDST_SOORT"
             }
           },
           "gewicht in kilogram": {
             "type": "number",
-            "description": "De dienst neemt ook 'gewicht' (canoniek) en 'GEWICHT' (cgm) aan.",
-            "x-spellingen": {
-              "canoniek": "gewicht",
+            "description": "De dienst neemt ook 'gewicht' (canonical) en 'GEWICHT' (cgm) aan.",
+            "x-spellings": {
+              "canonical": "gewicht",
               "cgm": "GEWICHT"
             }
           },
           "premie voor de vondst": {
             "type": "number",
-            "description": "De dienst neemt ook 'premie' (canoniek) en 'PREMIE' (cgm) aan.",
-            "x-spellingen": {
-              "canoniek": "premie",
+            "description": "De dienst neemt ook 'premie' (canonical) en 'PREMIE' (cgm) aan.",
+            "x-spellings": {
+              "canonical": "premie",
               "cgm": "PREMIE"
             }
           },
           "van waarde": {
             "type": "boolean",
-            "description": "kenmerk. De dienst neemt ook 'waardevol' (canoniek) en 'WAARDEVOL' (cgm) aan.",
-            "x-spellingen": {
-              "canoniek": "waardevol",
+            "description": "characteristic. De dienst neemt ook 'waardevol' (canonical) en 'WAARDEVOL' (cgm) aan.",
+            "x-spellings": {
+              "canonical": "waardevol",
               "cgm": "WAARDEVOL"
             }
           }
         },
-        "description": "Objecttype 'aangespoeld voorwerp'. Kenmerken (boolean-eigenschappen): van waarde. De dienst neemt ook 'Vondst' (canoniek) en 'VONDST' (cgm) aan.",
-        "x-spellingen": {
-          "canoniek": "Vondst",
+        "description": "Objecttype 'aangespoeld voorwerp'. Kenmerken (boolean-eigenschappen): van waarde. De dienst neemt ook 'Vondst' (canonical) en 'VONDST' (cgm) aan.",
+        "x-spellings": {
+          "canonical": "Vondst",
           "cgm": "VONDST"
         }
       },
-      "Verzoek": {
+      "Request": {
         "type": "object",
         "description": "Een beslissingsverzoek: gelabelde object-instanties met attribuut-/kenmerk-waarden en rol-relaties, plus optionele parameter-overrides en rekendatum.",
         "required": [
-          "instanties"
+          "instances"
         ],
         "properties": {
-          "peildatum": {
+          "asOfDate": {
             "type": "string",
             "format": "date",
             "description": "ISO-datum (yyyy-MM-dd); optioneel. De ÉÉN datumautoriteit: dezelfde datum selecteert de parameterset-vintage EN is de rekendatum-global. Gelijk aan 'rekendatum' (alias); beide meegeven met verschillende waarden is een 400."
@@ -518,7 +518,7 @@
             "additionalProperties": true,
             "description": "parameternaam -> waarde; overschrijft de descriptor-defaults."
           },
-          "instanties": {
+          "instances": {
             "type": "array",
             "items": {
               "type": "object",
@@ -533,17 +533,17 @@
                 "id": {
                   "type": "string"
                 },
-                "attributen": {
+                "attributes": {
                   "type": "object",
                   "additionalProperties": true,
                   "description": "attribuutnaam -> waarde (per het objecttype-schema)."
                 },
-                "kenmerken": {
+                "characteristics": {
                   "type": "object",
                   "additionalProperties": true,
                   "description": "kenmerknaam -> boolean."
                 },
-                "rollen": {
+                "roles": {
                   "type": "object",
                   "additionalProperties": true,
                   "description": "rolnaam -> doel-id of lijst van doel-ids."
@@ -551,19 +551,19 @@
               }
             }
           },
-          "relaties": {
+          "relations": {
             "type": "array",
             "items": {
               "type": "object",
               "required": [
-                "feittype",
-                "rollen"
+                "factType",
+                "roles"
               ],
               "properties": {
-                "feittype": {
+                "factType": {
                   "type": "string"
                 },
-                "rollen": {
+                "roles": {
                   "type": "object",
                   "additionalProperties": true,
                   "description": "rolnaam -> id of lijst van ids."
@@ -573,11 +573,11 @@
           }
         }
       },
-      "Antwoord": {
+      "Answer": {
         "type": "object",
         "description": "Het beslissingsantwoord: per instantie de gevraagde uitvoer-attributen/-kenmerken, plus de namen van de regels waarvan een consistentietoets faalde.",
         "properties": {
-          "instanties": {
+          "instances": {
             "type": "array",
             "items": {
               "type": "object",
@@ -588,12 +588,12 @@
                 "type": {
                   "type": "string"
                 },
-                "attributen": {
+                "attributes": {
                   "type": "object",
                   "additionalProperties": true,
                   "description": "attribuutnaam -> waarde (of null bij leeg)."
                 },
-                "kenmerken": {
+                "characteristics": {
                   "type": "object",
                   "additionalProperties": true,
                   "description": "kenmerknaam -> boolean."
@@ -601,22 +601,22 @@
               }
             }
           },
-          "inconsistenties": {
+          "inconsistencies": {
             "type": "array",
             "items": {
               "type": "string"
             },
             "description": "de namen van de regels waarvan een consistentietoets INCONSISTENT opleverde."
           },
-          "inconsistentieDetails": {
+          "inconsistencyDetails": {
             "type": "array",
             "items": {
               "type": "object",
               "properties": {
-                "regel": {
+                "rule": {
                   "type": "string"
                 },
-                "onderwerp": {
+                "subject": {
                   "type": "string",
                   "nullable": true
                 }
@@ -624,42 +624,42 @@
             },
             "description": "dezelfde inconsistenties met hun onderwerp: het id van de instantie waarover de toets ging, of null als dat geen instantie van het verzoek is."
           },
-          "uitleg": {
+          "explanation": {
             "type": "array",
             "items": {
               "type": "string"
             },
-            "description": "met de vlag uitleg: een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust."
+            "description": "met de vlag explanation: een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust."
           },
           "trace": {
             "$ref": "#/components/schemas/Trace"
           },
-          "dekking": {
-            "$ref": "#/components/schemas/Dekking"
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
           },
-          "fixpunt": {
-            "$ref": "#/components/schemas/Fixpunt"
+          "fixpoint": {
+            "$ref": "#/components/schemas/Fixpoint"
           },
-          "fixpuntFout": {
+          "fixpointError": {
             "type": "string",
-            "description": "met de vlag fixpunt, in plaats van fixpunt: waarom een waarde van het fixpunt niet getoond kan worden."
+            "description": "met de vlag fixpoint, in plaats van fixpoint: waarom een waarde van het fixpunt niet getoond kan worden."
           }
         }
       },
-      "Fout": {
+      "Error": {
         "type": "object",
         "description": "Een dienst-fout; noemt waar mogelijk het foutieve veld/pad.",
         "required": [
-          "fout"
+          "error"
         ],
         "properties": {
-          "fout": {
+          "error": {
             "type": "string"
           },
-          "veld": {
+          "field": {
             "type": "string"
           },
-          "schendingen": {
+          "violations": {
             "type": "array",
             "items": {
               "type": "object"
@@ -668,47 +668,47 @@
           }
         }
       },
-      "Evaluatiefout": {
+      "EvaluationFault": {
         "type": "object",
         "description": "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer evaluatiefouten, elk met haar soort en uchars zin.",
         "required": [
           "status",
-          "fout",
-          "fouten"
+          "error",
+          "faults"
         ],
         "properties": {
           "status": {
             "type": "string",
             "enum": [
-              "EVALUATIEFOUT"
+              "EVALUATION_FAULT"
             ]
           },
-          "fout": {
+          "error": {
             "type": "string",
             "description": "zegt dat de regels op deze invoer een evaluatiefout geven, of hoeveel."
           },
-          "fouten": {
+          "faults": {
             "type": "array",
             "description": "een element per fout, in uchars volgorde.",
             "items": {
               "type": "object",
               "required": [
-                "soort",
-                "fout"
+                "kind",
+                "error"
               ],
               "properties": {
-                "soort": {
+                "kind": {
                   "type": "string",
                   "enum": [
-                    "DELING_DOOR_NUL",
-                    "REKENFOUT",
-                    "SCHRIJVERSCONFLICT",
-                    "INVOERVORMFOUT",
-                    "ANDERE"
+                    "DIVISION_BY_ZERO",
+                    "COMPUTE_FAULT",
+                    "WRITERS_CONFLICT",
+                    "INPUT_FORM_FAULT",
+                    "OTHER"
                   ],
-                  "description": "DELING_DOOR_NUL: een deling door een numerieke nul; REKENFOUT: een fout van een berekening of van de rekendatum; SCHRIJVERSCONFLICT: twee schrijvers van één attribuut die verschillen; INVOERVORMFOUT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400); ANDERE: een fout van een ander type die aan het fixpunt staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft."
+                  "description": "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400); OTHER: een fout van een ander type die aan het fixpunt staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft."
                 },
-                "fout": {
+                "error": {
                   "type": "string",
                   "description": "uchars zin; een object van het verzoek heet daarin naar zijn id."
                 }
@@ -718,15 +718,15 @@
           "trace": {
             "$ref": "#/components/schemas/Trace"
           },
-          "dekking": {
-            "$ref": "#/components/schemas/Dekking"
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
           },
-          "fixpunt": {
-            "$ref": "#/components/schemas/Fixpunt"
+          "fixpoint": {
+            "$ref": "#/components/schemas/Fixpoint"
           },
-          "fixpuntFout": {
+          "fixpointError": {
             "type": "string",
-            "description": "met de vlag fixpunt, in plaats van fixpunt: waarom een waarde van het fixpunt niet getoond kan worden."
+            "description": "met de vlag fixpoint, in plaats van fixpoint: waarom een waarde van het fixpunt niet getoond kan worden."
           }
         }
       },
@@ -734,13 +734,13 @@
         "type": "object",
         "description": "De dienst-info: identiteit, per-regel Dekking, overgeslagen markers, parameters.",
         "properties": {
-          "dienst": {
+          "service": {
             "type": "object"
           },
-          "dekking": {
+          "coverage": {
             "type": "object"
           },
-          "overgeslagen": {
+          "skipped": {
             "type": "array",
             "items": {
               "type": "string"
@@ -749,16 +749,16 @@
           "parameters": {
             "type": "object"
           },
-          "parametersets": {
+          "parameterSets": {
             "type": "array"
           },
-          "periodeWaarschuwingen": {
+          "periodWarnings": {
             "type": "array",
             "items": {
               "type": "string"
             }
           },
-          "vocabulaires": {
+          "vocabularies": {
             "type": "array",
             "items": {
               "type": "object"
@@ -773,7 +773,7 @@
         "items": {
           "type": "object",
           "properties": {
-            "regel": {
+            "rule": {
               "type": "string"
             },
             "labels": {
@@ -782,36 +782,36 @@
                 "type": "string"
               }
             },
-            "aantal": {
+            "count": {
               "type": "integer"
             }
           }
         }
       },
-      "Dekking": {
+      "Coverage": {
         "type": "array",
-        "description": "met de vlag dekking: per vorm van het entrypoint, in de volgorde van zijn manifest, of een regel ervan vuurde. Een vorm heet in het vocabulaire van het antwoord.",
+        "description": "met de vlag coverage: per vorm van het entrypoint, in de volgorde van zijn manifest, of een regel ervan vuurde. Een vorm heet in het vocabulaire van het antwoord.",
         "items": {
           "type": "object",
           "properties": {
-            "regel": {
+            "rule": {
               "type": "string"
             },
-            "soort": {
+            "kind": {
               "type": "string",
               "enum": [
-                "GEVUURD",
-                "NIET_GERAAKT"
+                "FIRED",
+                "NOT_FIRED"
               ]
             }
           }
         }
       },
-      "Fixpunt": {
+      "Fixpoint": {
         "type": "object",
-        "description": "met de vlag fixpunt: wat aan het fixpunt van de sessie staat. Een instantie van het verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het antwoord; waar de canonieke naam verschilt, staat die ernaast onder <sleutel>Canoniek. Een waarde is een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg); een tijdlijn staat onder tijdlijn, een gedimensioneerde waarde onder dimensies.",
+        "description": "met de vlag fixpoint: wat aan het fixpunt van de sessie staat. Een instantie van het verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het antwoord; waar de canonieke naam verschilt, staat die ernaast onder <sleutel>Canonical. Een waarde is een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg); een tijdlijn staat onder timeline, een gedimensioneerde waarde onder dimensions.",
         "properties": {
-          "objecten": {
+          "objects": {
             "type": "array",
             "description": "elke instantie van het verzoek, in de volgorde van het verzoek, dan elk gemaakt object, met zijn waarden en kenmerken in de declaratievolgorde van zijn type.",
             "items": {
@@ -820,20 +820,20 @@
                 "object": {
                   "type": "string"
                 },
-                "objecttype": {
+                "objectType": {
                   "type": "string"
                 },
-                "waarden": {
+                "values": {
                   "type": "array",
-                  "description": "attribuut, waarde (of tijdlijn of dimensies), herkomst (invoer, afgeleid of creatie), invoer (bij een afgeleide waarde de invoerwaarde die zij verving) en eenheid.",
+                  "description": "attribute, value (of timeline of dimensions), origin (input, derived of creation), input (bij een afgeleide waarde de invoerwaarde die zij verving) en unit.",
                   "items": {
                     "type": "object",
                     "additionalProperties": true
                   }
                 },
-                "kenmerken": {
+                "characteristics": {
                   "type": "array",
-                  "description": "elk kenmerk dat geldt: kenmerk, herkomst (invoer of afgeleid), en invoer: true als ook de invoer het zette.",
+                  "description": "elk kenmerk dat geldt: characteristic, origin (input of derived), en input: true als ook de invoer het zette.",
                   "items": {
                     "type": "object",
                     "additionalProperties": true
@@ -842,7 +842,7 @@
               }
             }
           },
-          "gemaakteObjecten": {
+          "madeObjects": {
             "type": "array",
             "description": "de objecten die een objectcreatie maakte.",
             "items": {
@@ -851,81 +851,81 @@
                 "object": {
                   "type": "string"
                 },
-                "objecttype": {
+                "objectType": {
                   "type": "string"
                 },
-                "creatie": {
+                "creation": {
                   "type": "string"
                 },
-                "onderwerp": {
+                "subject": {
                   "type": "string"
                 }
               }
             }
           },
-          "koppelingen": {
+          "links": {
             "type": "array",
             "description": "de koppelingen die een creatie legde.",
             "items": {
               "type": "object",
               "properties": {
-                "feittype": {
+                "factType": {
                   "type": "string"
                 },
-                "eersteRol": {
+                "firstRole": {
                   "type": "string"
                 },
-                "eerste": {
+                "first": {
                   "type": "string"
                 },
-                "tweedeRol": {
+                "secondRole": {
                   "type": "string"
                 },
-                "tweede": {
+                "second": {
                   "type": "string"
                 }
               }
             }
           },
-          "fouten": {
+          "faults": {
             "type": "array",
             "description": "de evaluatiefouten die aan het fixpunt staan, elk met de vorm die haar gaf, het object waarover zij gaat, haar soort en uchars zin.",
             "items": {
               "type": "object",
               "properties": {
-                "regel": {
+                "rule": {
                   "type": "string"
                 },
-                "onderwerp": {
+                "subject": {
                   "type": "string"
                 },
-                "soort": {
+                "kind": {
                   "type": "string",
                   "enum": [
-                    "DELING_DOOR_NUL",
-                    "REKENFOUT",
-                    "SCHRIJVERSCONFLICT",
-                    "INVOERVORMFOUT",
-                    "ANDERE"
+                    "DIVISION_BY_ZERO",
+                    "COMPUTE_FAULT",
+                    "WRITERS_CONFLICT",
+                    "INPUT_FORM_FAULT",
+                    "OTHER"
                   ]
                 },
-                "zin": {
+                "sentence": {
                   "type": "string"
                 }
               }
             }
           },
-          "inconsistenties": {
+          "inconsistencies": {
             "type": "array",
             "description": "de gefaalde consistentietoetsen met hun regel en onderwerp, elk null als er geen is.",
             "items": {
               "type": "object",
               "properties": {
-                "regel": {
+                "rule": {
                   "type": "string",
                   "nullable": true
                 },
-                "onderwerp": {
+                "subject": {
                   "type": "string",
                   "nullable": true
                 }
@@ -934,33 +934,33 @@
           }
         }
       },
-      "GeenFixpunt": {
+      "NoFixpoint": {
         "type": "object",
         "description": "De regels geven op deze invoer geen antwoord: de sessie bereikte geen fixpunt, want uchars vuurplafond of creatiebudget is bereikt. Er staat dan niets om te lezen.",
         "required": [
           "status",
-          "fout"
+          "error"
         ],
         "properties": {
           "status": {
             "type": "string",
             "enum": [
-              "GEEN_FIXPUNT"
+              "NO_FIXPOINT"
             ]
           },
-          "fout": {
+          "error": {
             "type": "string",
             "description": "uchars zin: welk plafond of budget bereikt is."
           },
           "trace": {
             "$ref": "#/components/schemas/Trace"
           },
-          "dekking": {
-            "$ref": "#/components/schemas/Dekking"
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
           },
-          "fixpuntFout": {
+          "fixpointError": {
             "type": "string",
-            "description": "met de vlag fixpunt: uchars zin, want er is geen fixpunt om te tonen."
+            "description": "met de vlag fixpoint: uchars zin, want er is geen fixpunt om te tonen."
           }
         }
       }

@@ -25,10 +25,10 @@ import java.util.List;
  * Leest een parameterset-sidecar ({@code <naam>.parameters.json}) en valideert hem tegen het GERESOLVEERDE model —
  * dezelfde Jackson/JSON-story als de dienst-descriptor. De JSON-shape is:
  * <pre>
- * { "parametersets": [
- *     { "naam": "...",
- *       "waarden": { "&lt;parameternaam&gt;": [
- *           { "waarde": &lt;json&gt;, "vanaf": "yyyy-MM-dd"?, "tot": "yyyy-MM-dd"? }, ... ] } } ] }
+ * { "parameterSets": [
+ *     { "name": "...",
+ *       "values": { "&lt;parameternaam&gt;": [
+ *           { "value": &lt;json&gt;, "from": "yyyy-MM-dd"?, "to": "yyyy-MM-dd"? }, ... ] } } ] }
  * </pre>
  * {@code from}/{@code tot} zijn optioneel/{@code null} = open (de {@link Geldigheid}-shape); beide weggelaten = geldig
  * altijd ({@link Geldigheid#ALTIJD}).
@@ -39,7 +39,7 @@ import java.util.List;
  * {@link ParameterSet#overlapErrors}, ná decode).
  *
  * <p>De waarde-decodering spiegelt {@code dev.uchar.regelspraak.toolchain.service.ValueCoder} (Numeriek/Percentage → BigDecimal
- * met eenheid-objectvorm {@code {"waarde": n, "eenheid": "<afk>"}} waarvan de eenheid EXACT de gedeclareerde
+ * met eenheid-objectvorm {@code {"value": n, "unit": "<afk>"}} waarvan de eenheid EXACT de gedeclareerde
  * {@link Eenheid#weergave()} moet zijn; Booleaan → Boolean; Tekst → String; Enumeratie → String in {@code values()};
  * DatumInDagen → {@link LocalDate}; DatumTijd → {@link LocalDateTime}; JSON {@code null} = expliciete leegwaarde).
  * ValueCoder zelf leeft in de service-module (die de engine niet mag importeren) en retourneert een service-type
@@ -87,13 +87,13 @@ public final class ParameterSetLoader {
         if (root == null || !root.isObject())
             throw new ParameterSetError("parametersets zijn geen geldige JSON",
                     List.of("verwacht een JSON-object met sleutel 'parametersets'"));
-        JsonNode arr = root.get("parametersets");
+        JsonNode arr = root.get("parameterSets");
         if (arr == null || !arr.isArray())
             throw new ParameterSetError("parametersets valideren niet",
                     List.of("veld 'parametersets' ontbreekt of is geen lijst"));
         java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
         for (JsonNode setNode : arr) {
-            JsonNode valuesNode = setNode.get("waarden");
+            JsonNode valuesNode = setNode.get("values");
             if (valuesNode != null && valuesNode.isObject()) {
                 var fields = valuesNode.fieldNames();
                 while (fields.hasNext()) names.add(fields.next());
@@ -122,7 +122,7 @@ public final class ParameterSetLoader {
         List<String> errors = new ArrayList<>();
         List<ParameterSet> sets = new ArrayList<>();
 
-        JsonNode arr = root.get("parametersets");
+        JsonNode arr = root.get("parameterSets");
         if (arr == null || !arr.isArray()) {
             errors.add("veld 'parametersets' ontbreekt of is geen lijst");
             throw new ParameterSetError("parametersets valideren niet tegen het model", errors);
@@ -130,20 +130,20 @@ public final class ParameterSetLoader {
 
         for (int i = 0; i < arr.size(); i++) {
             JsonNode setNode = arr.get(i);
-            String path = "parametersets[" + i + "]";
-            JsonNode nameNode = setNode.get("naam");
+            String path = "parameterSets[" + i + "]";
+            JsonNode nameNode = setNode.get("name");
             String setName = nameNode != null && nameNode.isTextual() ? nameNode.asText() : ("set#" + i);
             if (nameNode == null || !nameNode.isTextual() || nameNode.asText().isBlank())
                 errors.add(path + ".naam ontbreekt");
 
             java.util.Map<String, List<ValueInterval>> values = new java.util.LinkedHashMap<>();
-            JsonNode valuesNode = setNode.get("waarden");
+            JsonNode valuesNode = setNode.get("values");
             if (valuesNode != null && valuesNode.isObject()) {
                 var fields = valuesNode.fields();
                 while (fields.hasNext()) {
                     var entry = fields.next();
                     String paramName = entry.getKey();
-                    String wpad = path + ".waarden." + paramName;
+                    String wpad = path + ".values." + paramName;
                     RegelSpraakModel.Parameter param = parameter(model, paramName);
                     if (param == null) {
                         errors.add(wpad + ": onbekende parameter '" + paramName + "'");
@@ -184,22 +184,22 @@ public final class ParameterSetLoader {
         }
         boolean ok = true;
 
-        LocalDate from = dateOrNull(node.get("vanaf"), path + ".vanaf", errors);
-        if (node.has("vanaf") && !node.get("vanaf").isNull() && from == null) ok = false;
-        LocalDate to = dateOrNull(node.get("tot"), path + ".tot", errors);
-        if (node.has("tot") && !node.get("tot").isNull() && to == null) ok = false;
+        LocalDate from = dateOrNull(node.get("from"), path + ".from", errors);
+        if (node.has("from") && !node.get("from").isNull() && from == null) ok = false;
+        LocalDate to = dateOrNull(node.get("to"), path + ".to", errors);
+        if (node.has("to") && !node.get("to").isNull() && to == null) ok = false;
         if (from != null && to != null && from.isAfter(to)) {
             errors.add(path + ": vanaf " + from + " ligt na tot " + to);
             ok = false;
         }
 
-        if (!node.has("waarde")) {
+        if (!node.has("value")) {
             errors.add(path + ": veld 'waarde' ontbreekt");
             ok = false;
         }
         Object value = null;
-        if (node.has("waarde")) {
-            DecodeResult dr = decodeValue(node.get("waarde"), param.datatype(), path + ".waarde");
+        if (node.has("value")) {
+            DecodeResult dr = decodeValue(node.get("value"), param.datatype(), path + ".value");
             if (dr.error != null) { errors.add(dr.error); ok = false; } else value = dr.value;
         }
 
@@ -241,8 +241,8 @@ public final class ParameterSetLoader {
 
     private static DecodeResult numeric(JsonNode node, String field, Unit declared) {
         if (node.isObject()) {
-            JsonNode w = node.get("waarde");
-            JsonNode e = node.get("eenheid");
+            JsonNode w = node.get("value");
+            JsonNode e = node.get("unit");
             if (w == null)
                 return DecodeResult.error(field + ": eenheid-object mist 'waarde'");
             if (declared == null)

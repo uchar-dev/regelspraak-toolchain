@@ -43,10 +43,10 @@ class ScopeCompletenessTest {
 
     private static String descriptor(String scopeExtra) {
         return """
-            { "dienst": {"naam":"scope-test","versie":"1"},
-              "entrypoints": [ { "naam":"bepaal korting","pad":"bepaal-korting",
-                "scope": {"regelnamen": ["bepaal korting"]},
-                "invoer": ["Persoon"], "uitvoer": ["Persoon.korting"]%s } ],
+            { "service": {"name":"scope-test","version":"1"},
+              "entrypoints": [ { "name":"bepaal korting","path":"bepaal-korting",
+                "scope": {"ruleNames": ["bepaal korting"]},
+                "input": ["Persoon"], "output": ["Persoon.korting"]%s } ],
               "parameters": {} }""".formatted(scopeExtra);
     }
 
@@ -55,7 +55,7 @@ class ScopeCompletenessTest {
         ServiceError f = assertThrows(ServiceError.class, () -> DecisionCore.assemble(
                 descriptor(""), source(), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader()));
-        assertTrue(f.violations().stream().anyMatch(s -> s.kind() == Violation.Kind.SCOPE_ONVOLLEDIG),
+        assertTrue(f.violations().stream().anyMatch(s -> s.kind() == Violation.Kind.INCOMPLETE_SCOPE),
                 f.getMessage() + " / " + f.violations());
         assertTrue(f.violations().stream().anyMatch(s -> s.message().contains("volwassen")),
                 f.violations().toString());
@@ -67,10 +67,10 @@ class ScopeCompletenessTest {
     void producer_in_scope_starts_clean() {
         // scope BOTH rules -> the kenmerk's producer is in scope -> no violation.
         String d = """
-            { "dienst": {"naam":"scope-ok","versie":"1"},
-              "entrypoints": [ { "naam":"bepaal korting","pad":"bepaal-korting",
-                "scope": {"regelnamen": ["bepaal korting", "bepaal volwassen"]},
-                "invoer": ["Persoon"], "uitvoer": ["Persoon.korting"] } ],
+            { "service": {"name":"scope-ok","version":"1"},
+              "entrypoints": [ { "name":"bepaal korting","path":"bepaal-korting",
+                "scope": {"ruleNames": ["bepaal korting", "bepaal volwassen"]},
+                "input": ["Persoon"], "output": ["Persoon.korting"] } ],
               "parameters": {} }""";
         DecisionCore core = DecisionCore.assemble(d, source(), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader());
@@ -81,7 +81,7 @@ class ScopeCompletenessTest {
     void input_element_declaration_starts_clean() {
         // declare the consumed kenmerk as a caller-supplied invoerElement -> the missing producer is intentional.
         DecisionCore core = DecisionCore.assemble(
-                descriptor(", \"invoerElementen\": [\"Persoon:volwassen\"]"), source(),
+                descriptor(", \"inputElements\": [\"Persoon:volwassen\"]"), source(),
                 CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
         assertTrue(core.entrypoint("bepaal-korting") != null);
     }

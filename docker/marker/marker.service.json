@@ -1,0 +1,5 @@
+{ "service": {"name":"marker-test","version":"1"},
+  "entrypoints": [ { "name":"heffing markert","path":"heffing-markert",
+    "scope": {"ruleNames": ["heffing markert"]},
+    "input": ["Vlucht"], "output": ["Vlucht.heffing"] } ],
+  "parameters": {} }

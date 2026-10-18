@@ -23,7 +23,7 @@ public class TokaTestProfile implements QuarkusTestProfile {
 
     @Override
     public Map<String, String> getConfigOverrides() {
-        Path descriptor = TokaSource.REPO.resolve("examples/toka/toka.dienst.json");
+        Path descriptor = TokaSource.REPO.resolve("examples/toka/toka.service.json");
         Path manifest = writeManifest();
         Map<String, String> cfg = new LinkedHashMap<>();
         cfg.put("DESCRIPTOR", descriptor.toString());

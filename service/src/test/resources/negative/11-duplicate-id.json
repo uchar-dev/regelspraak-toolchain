@@ -1,12 +1,12 @@
 {
-  "naam": "dubbel instantie-id",
-  "pad": "bepaal-leeftijd",
+  "name": "dubbel instantie-id",
+  "path": "bepaal-leeftijd",
   "body": {
-    "instanties": [
-      { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
-      { "type": "Natuurlijk persoon", "id": "V1", "attributen": { "geboortedatum": "1990-06-15" } }
+    "instances": [
+      { "type": "Vlucht", "id": "V1", "attributes": { "vluchtdatum": "2024-06-15" } },
+      { "type": "Natuurlijk persoon", "id": "V1", "attributes": { "geboortedatum": "1990-06-15" } }
     ]
   },
-  "verwachtStatus": 400,
-  "verwachtVeldBevat": "V1"
+  "expectedStatus": 400,
+  "expectedFieldContains": "V1"
 }

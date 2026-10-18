@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * {@code veld}, {@code soort} and message), the 400 of an empty or malformed body, the 404 of an unknown path, the
  * 503 MARKER answer of an entry point uchar does not carry, and the 422 of a request on which the rules give an
  * evaluation fault. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
- * 422s include a fault at the fixpoint of another type than the four uchar's README names, {@code ANDERE}, alone and
+ * 422s include a fault at the fixpoint of another type than the four uchar's README names, {@code OTHER}, alone and
  * beside a division by zero. {@link DecideResource} builds the first bodies by hand, as {@code ServiceHttp}'s builders
  * are package-private in the service module, and the 422 body with the service core's builder, as {@code ServiceHttp}
  * does; this test catches a drift in either adapter, as {@link InfoParityTest} does for {@code /info}.
@@ -55,10 +55,10 @@ class ErrorParityTest {
         De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
         """;
     private static final String MARKER_DESCRIPTOR = """
-        { "dienst": {"naam":"marker-test","versie":"1"},
-          "entrypoints": [ { "naam":"heffing markert","pad":"heffing-markert",
-            "scope": {"regelnamen": ["heffing markert"]},
-            "invoer": ["Vlucht"], "uitvoer": ["Vlucht.heffing"] } ],
+        { "service": {"name":"marker-test","version":"1"},
+          "entrypoints": [ { "name":"heffing markert","path":"heffing-markert",
+            "scope": {"ruleNames": ["heffing markert"]},
+            "input": ["Vlucht"], "output": ["Vlucht.heffing"] } ],
           "parameters": {} }""";
 
     /** Own material for an id of another objecttype on a rol: no feittype relates a Jutter to a Strandpaal. */
@@ -79,10 +79,10 @@ class ErrorParityTest {
                 Het leerlingaantal van een Jutter moet berekend worden als het aantal leerlingen van de Jutter.
         """;
     private static final String ROLE_DESCRIPTOR = """
-        { "dienst": {"naam":"leerlingschap","versie":"1"},
-          "entrypoints": [ { "naam":"leerlingaantal","pad":"leerlingaantal",
-            "scope": {"regelnamen": ["leerlingaantal van een jutter"]},
-            "invoer": ["Jutter"], "uitvoer": ["Jutter.leerlingaantal"] } ],
+        { "service": {"name":"leerlingschap","version":"1"},
+          "entrypoints": [ { "name":"leerlingaantal","path":"leerlingaantal",
+            "scope": {"ruleNames": ["leerlingaantal van een jutter"]},
+            "input": ["Jutter"], "output": ["Jutter.leerlingaantal"] } ],
           "parameters": {} }""";
 
     /** Own material for two evaluation faults at once: a division by a numeric zero, and two writers of one attribute
@@ -109,11 +109,11 @@ class ErrorParityTest {
                 indien zijn gewicht groter is dan 3,00.
         """;
     private static final String EVALUATION_DESCRIPTOR = """
-        { "dienst": {"naam":"vondsten","versie":"1"},
-          "entrypoints": [ { "naam":"vondst","pad":"vondst",
-            "scope": {"regelnamen": ["deelgewicht van een vondst", "loon voor een zware vondst",
+        { "service": {"name":"vondsten","version":"1"},
+          "entrypoints": [ { "name":"vondst","path":"vondst",
+            "scope": {"ruleNames": ["deelgewicht van een vondst", "loon voor een zware vondst",
                                      "loon voor een grote vondst"]},
-            "invoer": ["Vondst"], "uitvoer": ["Vondst.deelgewicht", "Vondst.vindersloon"] } ],
+            "input": ["Vondst"], "output": ["Vondst.deelgewicht", "Vondst.vindersloon"] } ],
           "parameters": {} }""";
 
     /** Own material for a second, different target on a to-one role: a Vondst has one aanmelder, which a request can
@@ -137,10 +137,10 @@ class ErrorParityTest {
                 die aan de volgende voorwaarde voldoen: zijn gewicht gedeeld door zijn deelnemers is groter dan 2.
         """;
     private static final String AANMELDING_DESCRIPTOR = """
-        { "dienst": {"naam":"vouw","versie":"1"},
-          "entrypoints": [ { "naam":"zware vondsten","pad":"zware-vondsten",
-            "scope": {"regelnamen": ["zware vondsten"]},
-            "invoer": ["Jutter"], "uitvoer": ["Jutter.zware vondsten"] } ],
+        { "service": {"name":"vouw","version":"1"},
+          "entrypoints": [ { "name":"zware vondsten","path":"zware-vondsten",
+            "scope": {"ruleNames": ["zware vondsten"]},
+            "input": ["Jutter"], "output": ["Jutter.zware vondsten"] } ],
           "parameters": {} }""";
 
     /** Own material for a fault at the fixpoint of another type than the four uchar's README names: the model of
@@ -184,15 +184,15 @@ class ErrorParityTest {
                 Het ligplaatsdeel van een Haven moet berekend worden als 100 gedeeld door zijn ligplaatsen.
         """;
     private static final String FILLING_DESCRIPTOR = """
-        { "dienst": {"naam":"vulling","versie":"1"},
+        { "service": {"name":"vulling","version":"1"},
           "entrypoints": [
-            { "naam":"vulling","pad":"vulling",
-              "scope": {"regelnamen": ["jutteraantal van een haven", "werving van havenjutters"]},
-              "invoer": ["Kustwacht", "Haven", "Jutter"], "uitvoer": ["Haven.jutteraantal"] },
-            { "naam":"mengsel","pad":"mengsel",
-              "scope": {"regelnamen": ["jutteraantal van een haven", "werving van havenjutters",
+            { "name":"vulling","path":"vulling",
+              "scope": {"ruleNames": ["jutteraantal van een haven", "werving van havenjutters"]},
+              "input": ["Kustwacht", "Haven", "Jutter"], "output": ["Haven.jutteraantal"] },
+            { "name":"mengsel","path":"mengsel",
+              "scope": {"ruleNames": ["jutteraantal van een haven", "werving van havenjutters",
                                        "ligplaatsdeel van een haven"]},
-              "invoer": ["Kustwacht", "Haven", "Jutter"], "uitvoer": ["Haven.jutteraantal", "Haven.ligplaatsdeel"] } ],
+              "input": ["Kustwacht", "Haven", "Jutter"], "output": ["Haven.jutteraantal", "Haven.ligplaatsdeel"] } ],
           "parameters": {} }""";
 
     private static DecisionCore toka;
@@ -243,25 +243,25 @@ class ErrorParityTest {
     void request_that_does_not_validate_400_with_kind_per_violation() throws Exception {
         JsonNode fixture = MAPPER.readTree(Files.readString(TokaSource.REPO.resolve(
                 "service/src/test/resources/negative/01-unknown-attribute.json")));
-        compare(toka, tokaService, fixture.get("pad").asText(), fixture.get("body").toString(), 400);
+        compare(toka, tokaService, fixture.get("path").asText(), fixture.get("body").toString(), 400);
     }
 
     @Test
     void id_of_another_object_type_on_a_role_400_wrong_type() throws Exception {
         JsonNode body = compare(role, roleService, "leerlingaantal", """
-            {"instanties":[{"type":"Jutter","id":"J1","rollen":{"leerling":["P1"]}},{"type":"Strandpaal","id":"P1"}]}""",
+            {"instances":[{"type":"Jutter","id":"J1","roles":{"leerling":["P1"]}},{"type":"Strandpaal","id":"P1"}]}""",
                 400);
-        assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), body.toString());
+        assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText(), body.toString());
     }
 
     @Test
     void second_other_target_via_relations_400_wrong_type() throws Exception {
         JsonNode body = compare(aanmelding, submissionService, "zware-vondsten", """
-            {"instanties":[{"type":"Jutter","id":"J1"},{"type":"Jutter","id":"J2"},
-              {"type":"Vondst","id":"V1","attributen":{"gewicht":10,"deelnemers":2},"rollen":{"aanmelder":"J1"}}],
-             "relaties":[{"feittype":"aanmelding","rollen":{"aanmelder":"J2","vondst":"V1"}}]}""", 400);
-        assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), body.toString());
-        assertEquals("relaties[0].rollen.aanmelder", body.at("/schendingen/0/veld").asText(), body.toString());
+            {"instances":[{"type":"Jutter","id":"J1"},{"type":"Jutter","id":"J2"},
+              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2},"roles":{"aanmelder":"J1"}}],
+             "relations":[{"factType":"aanmelding","roles":{"aanmelder":"J2","vondst":"V1"}}]}""", 400);
+        assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText(), body.toString());
+        assertEquals("relations[0].roles.aanmelder", body.at("/violations/0/field").asText(), body.toString());
     }
 
     @Test
@@ -271,7 +271,7 @@ class ErrorParityTest {
 
     @Test
     void no_valid_json_400() throws Exception {
-        compare(toka, tokaService, aPath(toka), "{\"instanties\": [", 400);
+        compare(toka, tokaService, aPath(toka), "{\"instances\": [", 400);
     }
 
     @Test
@@ -281,45 +281,45 @@ class ErrorParityTest {
 
     @Test
     void unknown_path_404() throws Exception {
-        compare(toka, tokaService, "bestaat-niet", "{\"instanties\": []}", 404);
+        compare(toka, tokaService, "bestaat-niet", "{\"instances\": []}", 404);
     }
 
     @Test
     void entrypoint_that_uchar_does_not_carry_503_marker() throws Exception {
         compare(marker, markerService, "heffing-markert",
-                "{\"instanties\":[{\"type\":\"Vlucht\",\"id\":\"V1\",\"attributen\":{}}]}", 503);
+                "{\"instances\":[{\"type\":\"Vlucht\",\"id\":\"V1\",\"attributes\":{}}]}", 503);
     }
 
     @Test
     void evaluation_fault_422_with_kind_and_sentence_per_fault() throws Exception {
         JsonNode body = compare(evaluation, evaluationService, "vondst",
-                "{\"instanties\":[{\"type\":\"Vondst\",\"id\":\"V1\",\"attributen\":{\"gewicht\":6.00,\"aantal delen\":0}}]}",
+                "{\"instances\":[{\"type\":\"Vondst\",\"id\":\"V1\",\"attributes\":{\"gewicht\":6.00,\"aantal delen\":0}}]}",
                 422);
-        assertEquals("EVALUATIEFOUT", body.path("status").asText(), body.toString());
-        assertEquals(2, body.path("fouten").size(), body.toString());
+        assertEquals("EVALUATION_FAULT", body.path("status").asText(), body.toString());
+        assertEquals(2, body.path("faults").size(), body.toString());
     }
 
     @Test
     void second_filling_from_a_to_a_role_422_other() throws Exception {
         JsonNode body = compare(filling, fillingService, "vulling", """
-            {"instanties":[{"type":"Kustwacht","id":"K1",
-              "rollen":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
+            {"instances":[{"type":"Kustwacht","id":"K1",
+              "roles":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
               {"type":"Haven","id":"H1"},{"type":"Haven","id":"H2"},{"type":"Jutter","id":"J1"}]}""", 422);
-        assertEquals(List.of("ANDERE"), kinds(body), body.toString());
+        assertEquals(List.of("OTHER"), kinds(body), body.toString());
     }
 
     @Test
     void second_filling_beside_a_division_by_zero_422_in_uchar_order() throws Exception {
         JsonNode body = compare(filling, fillingService, "mengsel", """
-            {"instanties":[{"type":"Kustwacht","id":"K1",
-              "rollen":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
-              {"type":"Haven","id":"H1","attributen":{"ligplaatsen":0}},
-              {"type":"Haven","id":"H2","attributen":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""", 422);
-        assertEquals(List.of("ANDERE", "DELING_DOOR_NUL"), kinds(body), body.toString());
+            {"instances":[{"type":"Kustwacht","id":"K1",
+              "roles":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
+              {"type":"Haven","id":"H1","attributes":{"ligplaatsen":0}},
+              {"type":"Haven","id":"H2","attributes":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""", 422);
+        assertEquals(List.of("OTHER", "DIVISION_BY_ZERO"), kinds(body), body.toString());
     }
 
     private static List<String> kinds(JsonNode body) {
-        return body.path("fouten").valueStream().map(f -> f.path("soort").asText()).toList();
+        return body.path("faults").valueStream().map(f -> f.path("kind").asText()).toList();
     }
 
     private static String aPath(DecisionCore core) {

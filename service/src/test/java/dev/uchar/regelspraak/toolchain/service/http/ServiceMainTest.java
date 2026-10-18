@@ -35,10 +35,10 @@ class ServiceMainTest {
         De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
         """;
     private static final String MARKER_DESCRIPTOR = """
-        { "dienst": {"naam":"marker-test","versie":"1"},
-          "entrypoints": [ { "naam":"heffing markert","pad":"heffing-markert",
-            "scope": {"regelnamen": ["heffing markert"]},
-            "invoer": ["Vlucht"], "uitvoer": ["Vlucht.heffing"] } ],
+        { "service": {"name":"marker-test","version":"1"},
+          "entrypoints": [ { "name":"heffing markert","path":"heffing-markert",
+            "scope": {"ruleNames": ["heffing markert"]},
+            "input": ["Vlucht"], "output": ["Vlucht.heffing"] } ],
           "parameters": {} }""";
 
     private static Map<String, String> markerSource() {
@@ -65,7 +65,7 @@ class ServiceMainTest {
     @Test
     void a_non_marker_startup_error_classifies_as_exit_1() {
         ServiceError other = new ServiceError("descriptor valideert niet", List.of(
-                Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, "entrypoints[0].scope.regelnamen[0]",
+                Violation.van(Violation.Kind.UNKNOWN_REFERENCE, "entrypoints[0].scope.ruleNames[0]",
                         "onbekende regel 'nergens'")));
         assertEquals(ServiceMain.EXIT_OTHER, ServiceMain.exitCodeFor(other));
     }
@@ -74,7 +74,7 @@ class ServiceMainTest {
     void mixed_violations_are_no_pure_marker_so_exit_1() {
         ServiceError mixed = new ServiceError("gemengd", List.of(
                 Violation.van(Violation.Kind.MARKER, "entrypoint:x", "marker 'a'"),
-                Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, "y", "onbekend 'b'")));
+                Violation.van(Violation.Kind.UNKNOWN_REFERENCE, "y", "onbekend 'b'")));
         assertEquals(ServiceMain.EXIT_OTHER, ServiceMain.exitCodeFor(mixed));
     }
 
@@ -91,8 +91,8 @@ class ServiceMainTest {
     @Test
     void args_parse_descriptor_sources_flags() {
         ServiceMain.Args a = ServiceMain.parseArgs(new String[]{
-                "toka.dienst.json", "a.rgs", "b.rgs", "--allow-markers", "--poort", "9090"});
-        assertEquals(Path.of("toka.dienst.json"), a.descriptor());
+                "toka.service.json", "a.rgs", "b.rgs", "--allow-markers", "--poort", "9090"});
+        assertEquals(Path.of("toka.service.json"), a.descriptor());
         assertEquals(List.of(Path.of("a.rgs"), Path.of("b.rgs")), a.sources());
         assertTrue(a.allowMarkers());
         assertEquals(9090, a.port());

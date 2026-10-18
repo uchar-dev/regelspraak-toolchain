@@ -29,9 +29,9 @@ class DocumentSourceTest {
     }
 
     private static String descriptor(String scope, String input, String output) {
-        return "{ \"dienst\": {\"naam\":\"document\",\"versie\":\"1\"}, \"entrypoints\": [ { \"naam\":\"e\","
-                + "\"pad\":\"e\", \"scope\": {\"regelnamen\": [" + scope + "]}, \"invoer\": [" + input + "],"
-                + " \"uitvoer\": [" + output + "] } ], \"parameters\": {} }";
+        return "{ \"service\": {\"name\":\"document\",\"version\":\"1\"}, \"entrypoints\": [ { \"name\":\"e\","
+                + "\"path\":\"e\", \"scope\": {\"ruleNames\": [" + scope + "]}, \"input\": [" + input + "],"
+                + " \"output\": [" + output + "] } ], \"parameters\": {} }";
     }
 
     private static JsonNode request(String json) throws IOException {
@@ -39,7 +39,7 @@ class DocumentSourceTest {
     }
 
     private static JsonNode instance(ObjectNode answer, String id) {
-        for (JsonNode i : answer.get("instanties")) if (id.equals(i.get("id").asText())) return i;
+        for (JsonNode i : answer.get("instances")) if (id.equals(i.get("id").asText())) return i;
         throw new AssertionError("geen instantie " + id + " in " + answer);
     }
 
@@ -52,12 +52,12 @@ class DocumentSourceTest {
                 descriptor("\"verdeeld aandeel van een berging\"", "\"Berging\"", "\"Berging.verdeeld aandeel\""),
                 document("jutterswet-aandelensom"), CoreConfig.strict(), getClass().getClassLoader(), null);
         ObjectNode answer = core.process("e", request("""
-            { "instanties": [
-                { "type": "Berging", "id": "B1", "rollen": { "bergers": ["G1", "G2"] } },
-                { "type": "Berger", "id": "G1", "attributen": { "gewichtsaandeel": 45 } },
-                { "type": "Berger", "id": "G2", "attributen": { "gewichtsaandeel": 30 } } ] }"""));
+            { "instances": [
+                { "type": "Berging", "id": "B1", "roles": { "bergers": ["G1", "G2"] } },
+                { "type": "Berger", "id": "G1", "attributes": { "gewichtsaandeel": 45 } },
+                { "type": "Berger", "id": "G2", "attributes": { "gewichtsaandeel": 30 } } ] }"""));
         assertEquals(0, new java.math.BigDecimal("75").compareTo(
-                instance(answer, "B1").get("attributen").get("verdeeld aandeel").decimalValue()), answer.toString());
+                instance(answer, "B1").get("attributes").get("verdeeld aandeel").decimalValue()), answer.toString());
     }
 
     @Test
@@ -91,14 +91,14 @@ class DocumentSourceTest {
                 "\"Vondst:veilbaar\", \"Vondst:afgekeurd\""),
                 document("jutterswet-keurstaat"), CoreConfig.strict(), getClass().getClassLoader(), null);
         ObjectNode answer = core.process("e", request("""
-            { "instanties": [ { "type": "Vondst", "id": "V1", "attributen": { "staat": "Beschadigd" } } ] }"""));
-        JsonNode characteristics = instance(answer, "V1").get("kenmerken");
+            { "instances": [ { "type": "Vondst", "id": "V1", "attributes": { "staat": "Beschadigd" } } ] }"""));
+        JsonNode characteristics = instance(answer, "V1").get("characteristics");
         assertTrue(characteristics.get("afgekeurd").asBoolean(), answer.toString());
         assertFalse(characteristics.get("veilbaar").asBoolean(), answer.toString());
 
         ServiceError f = assertThrows(ServiceError.class, () -> core.process("e", request("""
-            { "instanties": [ { "type": "Vondst", "id": "V1", "attributen": { "staat": "verdwenen" } } ] }""")));
-        assertEquals(Violation.Kind.ONBEKENDE_ENUM_WAARDE, f.violations().get(0).kind(), f.getMessage());
+            { "instances": [ { "type": "Vondst", "id": "V1", "attributes": { "staat": "verdwenen" } } ] }""")));
+        assertEquals(Violation.Kind.UNKNOWN_ENUM_VALUE, f.violations().get(0).kind(), f.getMessage());
     }
 
     @Test
@@ -114,12 +114,12 @@ class DocumentSourceTest {
         DecisionCore core = DecisionCore.assemble(descriptor("\"geen rondvlucht\"", "\"Vlucht\"", ""),
                 Map.of("vlucht.rgs", source), CoreConfig.strict(), getClass().getClassLoader());
         ObjectNode answer = core.process("e", request("""
-            { "instanties": [
-                { "type": "Vlucht", "id": "V1", "attributen": { "vertrekcode": "AMS", "bestemmingscode": "BRU" } },
-                { "type": "Vlucht", "id": "V2", "attributen": { "vertrekcode": "AMS", "bestemmingscode": "AMS" } } ] }"""));
-        assertEquals(1, answer.get("inconsistenties").size(), answer.toString());
-        JsonNode detail = answer.get("inconsistentieDetails").get(0);
-        assertEquals("V2", detail.get("onderwerp").asText(), answer.toString());
-        assertEquals(answer.get("inconsistenties").get(0).asText(), detail.get("regel").asText());
+            { "instances": [
+                { "type": "Vlucht", "id": "V1", "attributes": { "vertrekcode": "AMS", "bestemmingscode": "BRU" } },
+                { "type": "Vlucht", "id": "V2", "attributes": { "vertrekcode": "AMS", "bestemmingscode": "AMS" } } ] }"""));
+        assertEquals(1, answer.get("inconsistencies").size(), answer.toString());
+        JsonNode detail = answer.get("inconsistencyDetails").get(0);
+        assertEquals("V2", detail.get("subject").asText(), answer.toString());
+        assertEquals(answer.get("inconsistencies").get(0).asText(), detail.get("rule").asText());
     }
 }

@@ -42,13 +42,13 @@ class DecisionCoreTest {
     void toka17_bepaal_leeftijd_round_trip() {
         // Situatie basis-17: Vlucht V1 vluchtdatum 15-06-2024; Persoon P1 geboortedatum 15-06-1990, reis V1.
         String request = """
-            { "instanties": [
-                { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
+            { "instances": [
+                { "type": "Vlucht", "id": "V1", "attributes": { "vluchtdatum": "2024-06-15" } },
                 { "type": "Natuurlijk persoon", "id": "P1",
-                  "attributen": { "geboortedatum": "1990-06-15" },
-                  "rollen": { "reis": "V1" } } ] }""";
+                  "attributes": { "geboortedatum": "1990-06-15" },
+                  "roles": { "reis": "V1" } } ] }""";
         ObjectNode answer = CORE.process("bepaal-leeftijd", parse(request));
-        JsonNode leeftijd = find(answer, "P1", "attributen", "leeftijd");
+        JsonNode leeftijd = find(answer, "P1", "attributes", "leeftijd");
         assertNotNull(leeftijd, "antwoord: " + answer);
         assertEquals(0, new BigDecimal("34").compareTo(leeftijd.decimalValue()), "leeftijd: " + answer);
     }
@@ -57,14 +57,14 @@ class DecisionCoreTest {
     void toka20_total_to_betalen_round_trip() {
         // Situatie basis-20: V1; P1 reis V1, te betalen belasting 30,00; P2 reis V1, 20,00 -> totaal 50,00.
         String request = """
-            { "instanties": [
+            { "instances": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Natuurlijk persoon", "id": "P1",
-                  "attributen": { "te betalen belasting": 30.00 }, "rollen": { "reis": "V1" } },
+                  "attributes": { "te betalen belasting": 30.00 }, "roles": { "reis": "V1" } },
                 { "type": "Natuurlijk persoon", "id": "P2",
-                  "attributen": { "te betalen belasting": 20.00 }, "rollen": { "reis": "V1" } } ] }""";
+                  "attributes": { "te betalen belasting": 20.00 }, "roles": { "reis": "V1" } } ] }""";
         ObjectNode answer = CORE.process("totaal-te-betalen-belasting", parse(request));
-        JsonNode total = find(answer, "V1", "attributen", "totaal te betalen belasting");
+        JsonNode total = find(answer, "V1", "attributes", "totaal te betalen belasting");
         assertNotNull(total, "antwoord: " + answer);
         assertEquals(0, new BigDecimal("50.00").compareTo(total.decimalValue()), "totaal: " + answer);
     }
@@ -72,12 +72,12 @@ class DecisionCoreTest {
     @Test
     void bigdecimal_is_rendered_exactly_not_double() {
         String request = """
-            { "instanties": [
+            { "instances": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Natuurlijk persoon", "id": "P1",
-                  "attributen": { "te betalen belasting": 30.00 }, "rollen": { "reis": "V1" } } ] }""";
+                  "attributes": { "te betalen belasting": 30.00 }, "roles": { "reis": "V1" } } ] }""";
         ObjectNode answer = CORE.process("totaal-te-betalen-belasting", parse(request));
-        JsonNode total = find(answer, "V1", "attributen", "totaal te betalen belasting");
+        JsonNode total = find(answer, "V1", "attributes", "totaal te betalen belasting");
         assertNotNull(total);
         assertTrue(total.isBigDecimal() || total.isNumber(), "moet een JSON-getal zijn: " + total);
         assertFalse(total.isDouble(), "mag NOOIT een double zijn: " + total);
@@ -87,19 +87,19 @@ class DecisionCoreTest {
     void inconsistencies_are_reported_empty_when_consistent() {
         // toka-17 has no consistency check -> inconsistenties is an empty array (a present, empty field).
         String request = """
-            { "instanties": [
-                { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
+            { "instances": [
+                { "type": "Vlucht", "id": "V1", "attributes": { "vluchtdatum": "2024-06-15" } },
                 { "type": "Natuurlijk persoon", "id": "P1",
-                  "attributen": { "geboortedatum": "1990-06-15" }, "rollen": { "reis": "V1" } } ] }""";
+                  "attributes": { "geboortedatum": "1990-06-15" }, "roles": { "reis": "V1" } } ] }""";
         ObjectNode answer = CORE.process("bepaal-leeftijd", parse(request));
-        assertTrue(answer.get("inconsistenties").isArray());
-        assertTrue(answer.get("inconsistenties").isEmpty());
+        assertTrue(answer.get("inconsistencies").isArray());
+        assertTrue(answer.get("inconsistencies").isEmpty());
     }
 
     @Test
     void unknown_path_throws_UnknownPath() {
         org.junit.jupiter.api.Assertions.assertThrows(DecisionCore.UnknownPath.class,
-                () -> CORE.process("dit-pad-bestaat-niet", parse("{ \"instanties\": [] }")));
+                () -> CORE.process("dit-pad-bestaat-niet", parse("{ \"instances\": [] }")));
     }
 
     @Test
@@ -116,13 +116,13 @@ class DecisionCoreTest {
         // toka-22: the exec-model back-end CANNOT compile this (hyphenated datum-tijd getter mismatch); under DRL
         // it lowers. eerste-van(verwacht 10:00, daadwerkelijk 09:30) -> 09:30.
         String request = """
-            { "instanties": [
-                { "type": "Vlucht", "id": "V1", "attributen": {
+            { "instances": [
+                { "type": "Vlucht", "id": "V1", "attributes": {
                     "verwachte datum-tijd van vertrek": "2024-06-15T10:00:00",
                     "daadwerkelijke datum-tijd van vertrek": "2024-06-15T09:30:00" } } ] }""";
         ObjectNode answer = CORE.process(
                 "datum-tijd-voor-het-berekenen-van-de-belasting-op-basis-van-afstand", parse(request));
-        JsonNode dt = find(answer, "V1", "attributen",
+        JsonNode dt = find(answer, "V1", "attributes",
                 "datum-tijd voor het berekenen van de belasting op basis van afstand");
         assertNotNull(dt, "antwoord: " + answer);
         assertEquals("2024-06-15T09:30", dt.asText(), "antwoord: " + answer);
@@ -132,12 +132,12 @@ class DecisionCoreTest {
     void toka25_expected_aankomst_round_trip() {
         // toka-25 (also exec-uncompilable, DRL-lowered): vertrek 10:00 + duur 90 minuut -> aankomst 11:30.
         String request = """
-            { "instanties": [
-                { "type": "Vlucht", "id": "V1", "attributen": {
+            { "instances": [
+                { "type": "Vlucht", "id": "V1", "attributes": {
                     "verwachte datum-tijd van vertrek": "2024-06-15T10:00:00",
-                    "verwachte duur": { "waarde": 90, "eenheid": "minuut" } } } ] }""";
+                    "verwachte duur": { "value": 90, "unit": "minuut" } } } ] }""";
         ObjectNode answer = CORE.process("verwachte-datum-tijd-van-aankomst-van-een-vlucht", parse(request));
-        JsonNode dt = find(answer, "V1", "attributen", "verwachte datum-tijd van aankomst");
+        JsonNode dt = find(answer, "V1", "attributes", "verwachte datum-tijd van aankomst");
         assertNotNull(dt, "antwoord: " + answer);
         assertEquals("2024-06-15T11:30", dt.asText(), "antwoord: " + answer);
     }
@@ -157,13 +157,13 @@ class DecisionCoreTest {
         assertTrue(ep.coverage().get(0).lowered(), ep.coverage().toString());
 
         String request = """
-            { "instanties": [
+            { "instances": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Contingent treinmiles", "id": "C1" },
-                { "type": "Natuurlijk persoon", "id": "P1", "rollen": { "reis": "V1" } } ] }""";
+                { "type": "Natuurlijk persoon", "id": "P1", "roles": { "reis": "V1" } } ] }""";
         ObjectNode answer = CORE.process("passagier-met-recht-op-treinmiles", parse(request));
-        assertTrue(answer.get("inconsistenties").isArray(), "antwoord: " + answer);
-        assertTrue(answer.get("inconsistenties").isEmpty(), "antwoord: " + answer);
+        assertTrue(answer.get("inconsistencies").isArray(), "antwoord: " + answer);
+        assertTrue(answer.get("inconsistencies").isEmpty(), "antwoord: " + answer);
     }
 
     @Test
@@ -210,7 +210,7 @@ class DecisionCoreTest {
     // ---- helpers ----
 
     private static JsonNode find(ObjectNode answer, String id, String group, String member) {
-        for (JsonNode inst : answer.get("instanties"))
+        for (JsonNode inst : answer.get("instances"))
             if (id.equals(inst.path("id").asText()))
                 return inst.path(group).get(member);
         return null;

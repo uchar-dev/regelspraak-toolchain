@@ -77,9 +77,9 @@ class NamingTest {
     @Test
     void canonical_lets_every_name_be_as_given() {
         RegelSpraakModel m = model();
-        Naming canonical = Naming.van(m, "canoniek");
+        Naming canonical = Naming.van(m, "canonical");
         assertTrue(canonical.isCanonical());
-        assertEquals("canoniek", canonical.choice());
+        assertEquals("canonical", canonical.choice());
         assertEquals("strandvondst", canonical.objectType("strandvondst"));
         assertEquals("waardevolle vondst #2", canonical.form("waardevolle vondst #2"));
         assertTrue(Naming.van(m, null).isCanonical());
@@ -91,24 +91,24 @@ class NamingTest {
         Naming.VocabularyError f = assertThrows(Naming.VocabularyError.class,
                 () -> Naming.van(model(), "wetboek"));
         assertEquals("het vocabulaire 'wetboek' is niet gedeclareerd; het model declareert 'handboek' en 'cgm', en"
-                + " 'canoniek' kiest de canonieke namen", f.getMessage());
+                + " 'canonical' kiest de canonieke namen", f.getMessage());
         Naming.VocabularyError without = assertThrows(Naming.VocabularyError.class,
                 () -> Naming.van(Resolver.resolve("Objecttype de Jutter (mv: Jutters)\n    de naam Tekst;\n"), "cgm"));
         assertEquals("het vocabulaire 'cgm' is niet gedeclareerd; het model declareert geen vocabulaire, en"
-                + " 'canoniek' kiest de canonieke namen", without.getMessage());
+                + " 'canonical' kiest de canonieke namen", without.getMessage());
     }
 
     @Test
     void a_vocabulary_with_the_name_canonical_cannot_be_chosen() {
         RegelSpraakModel m = Resolver.resolve("""
-                Vocabulaire Canoniek
-                Objecttype de Jutter (mv: Jutters) (Canoniek: strandjutter)
+                Vocabulaire Canonical
+                Objecttype de Jutter (mv: Jutters) (Canonical: strandjutter)
                     de naam Tekst;
                 """);
         assertTrue(m.isOk(), () -> m.errors().toString());
         Naming.VocabularyError f = assertThrows(Naming.VocabularyError.class,
-                () -> Naming.van(m, "canoniek"));
-        assertEquals("het model declareert een vocabulaire 'Canoniek', en 'canoniek' kiest de canonieke namen;"
+                () -> Naming.van(m, "canonical"));
+        assertEquals("het model declareert een vocabulaire 'Canonical', en 'canonical' kiest de canonieke namen;"
                 + " geef het vocabulaire een andere naam", f.getMessage());
         assertEquals(f.getMessage(), Naming.reserved(m));
     }

@@ -41,11 +41,11 @@ class RelationsTest {
     void one_to_many_relation_sets_field_on_the_many_side() {
         // "Vlucht van natuurlijke personen": reis (one) / passagier (many) -> field on persoon.reis
         var r = map("""
-            { "instanties": [
+            { "instances": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Natuurlijk persoon", "id": "P1" } ],
-              "relaties": [ { "feittype": "Vlucht van natuurlijke personen",
-                              "rollen": { "reis": "V1", "passagier": "P1" } } ] }""");
+              "relations": [ { "factType": "Vlucht van natuurlijke personen",
+                              "roles": { "reis": "V1", "passagier": "P1" } } ] }""");
         assertTrue(r.violations().isEmpty(), r.violations().toString());
         Object p1 = r.world().beans().get("P1");
         Object v1 = r.world().beans().get("V1");
@@ -56,11 +56,11 @@ class RelationsTest {
     void one_to_one_relation_sets_both_reference_fields() {
         // "reis met contingent treinmiles": both to-one -> reference field on BOTH beans.
         var r = map("""
-            { "instanties": [
+            { "instances": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Contingent treinmiles", "id": "C1" } ],
-              "relaties": [ { "feittype": "reis met contingent treinmiles",
-                              "rollen": { "reis met treinmiles": "V1",
+              "relations": [ { "factType": "reis met contingent treinmiles",
+                              "roles": { "reis met treinmiles": "V1",
                                           "vastgestelde contingent treinmiles": "C1" } } ] }""");
         assertTrue(r.violations().isEmpty(), r.violations().toString());
         Object v1 = r.world().beans().get("V1");
@@ -75,14 +75,14 @@ class RelationsTest {
     @Test
     void reciprocal_relation_with_a_role_and_two_ids_is_parsed() {
         // "Partnerrelatie" is wederkerig (one role "partner", two ids). Until the move to uchar the fact model
-        // materialised no 'partner' field and the mapper reported NIET_ONDERSTEUND; uchar's generator carries the
+        // materialised no 'partner' field and the mapper reported UNSUPPORTED; uchar's generator carries the
         // §13.3.9.2 reciprocal self-relation as a self-typed reference field, so the mapper writes both ends.
         var r = map("""
-            { "instanties": [
+            { "instances": [
                 { "type": "Natuurlijk persoon", "id": "A" },
                 { "type": "Natuurlijk persoon", "id": "B" } ],
-              "relaties": [ { "feittype": "Partnerrelatie",
-                              "rollen": { "partner": ["A", "B"] } } ] }""");
+              "relations": [ { "factType": "Partnerrelatie",
+                              "roles": { "partner": ["A", "B"] } } ] }""");
         // ONE role name carrying two ids, parsed into two endpoints, each written onto the other
         assertTrue(r.violations().isEmpty(), r.violations().toString());
         Object a = r.world().beans().get("A");
@@ -94,20 +94,20 @@ class RelationsTest {
     @Test
     void relation_to_unknown_id_is_reported() {
         var r = map("""
-            { "instanties": [ { "type": "Vlucht", "id": "V1" } ],
-              "relaties": [ { "feittype": "Vlucht van natuurlijke personen",
-                              "rollen": { "reis": "V1", "passagier": "PX" } } ] }""");
+            { "instances": [ { "type": "Vlucht", "id": "V1" } ],
+              "relations": [ { "factType": "Vlucht van natuurlijke personen",
+                              "roles": { "reis": "V1", "passagier": "PX" } } ] }""");
         assertTrue(r.violations().stream().anyMatch(s ->
-                s.kind() == Violation.Kind.ONBEKEND_VELD && s.message().contains("PX")), r.violations().toString());
+                s.kind() == Violation.Kind.UNKNOWN_FIELD && s.message().contains("PX")), r.violations().toString());
     }
 
     @Test
     void unknown_fact_type_is_reported() {
         var r = map("""
-            { "instanties": [ { "type": "Vlucht", "id": "V1" } ],
-              "relaties": [ { "feittype": "sprookjesrelatie", "rollen": {} } ] }""");
+            { "instances": [ { "type": "Vlucht", "id": "V1" } ],
+              "relations": [ { "factType": "sprookjesrelatie", "roles": {} } ] }""");
         assertTrue(r.violations().stream().anyMatch(s ->
-                s.kind() == Violation.Kind.ONBEKEND_VELD && s.message().contains("sprookjesrelatie")),
+                s.kind() == Violation.Kind.UNKNOWN_FIELD && s.message().contains("sprookjesrelatie")),
                 r.violations().toString());
     }
 }

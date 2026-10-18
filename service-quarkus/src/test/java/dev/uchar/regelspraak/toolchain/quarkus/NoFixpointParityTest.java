@@ -41,14 +41,14 @@ class NoFixpointParityTest {
 
     private static final Path RED = TokaSource.REPO.resolve("uchar/corpus/rood/jutterswet-budgetgrens-over");
     private static final String DESCRIPTOR = """
-            { "dienst": {"naam":"estafette","versie":"1"},
-              "entrypoints": [ { "naam":"estafette","pad":"estafette",
-                "scope": {"regelnamen": ["opvolgerrang van een wachter", "rangplafond", "eerste keten aan het plafond",
+            { "service": {"name":"estafette","version":"1"},
+              "entrypoints": [ { "name":"estafette","path":"estafette",
+                "scope": {"ruleNames": ["opvolgerrang van een wachter", "rangplafond", "eerste keten aan het plafond",
                                          "tweede keten aan het plafond", "werf de lange keten"]},
-                "invoer": ["Wachter"], "uitvoer": ["Wachter.opvolgerrang"] } ],
+                "input": ["Wachter"], "output": ["Wachter.opvolgerrang"] } ],
               "parameters": {} }""";
     private static final String REQUEST =
-            "{\"instanties\":[{\"type\":\"Wachter\",\"id\":\"W1\",\"attributen\":{\"rang\":1,\"ketennummer\":1}}]}";
+            "{\"instances\":[{\"type\":\"Wachter\",\"id\":\"W1\",\"attributes\":{\"rang\":1,\"ketennummer\":1}}]}";
 
     private static DecisionCore core;
     private static ServiceHttp service;
@@ -71,16 +71,16 @@ class NoFixpointParityTest {
     @Test
     void without_flag_the_same_422() throws Exception {
         JsonNode body = compare(null, null, null, "");
-        assertEquals("GEEN_FIXPUNT", body.path("status").asText(), body.toString());
-        assertTrue(body.path("fout").asText().startsWith(fragment), body.toString());
+        assertEquals("NO_FIXPOINT", body.path("status").asText(), body.toString());
+        assertTrue(body.path("error").asText().startsWith(fragment), body.toString());
     }
 
     @Test
     void with_the_detail_flags_the_same_422() throws Exception {
-        JsonNode body = compare("true", "true", "true", "?trace=true&dekking=true&fixpunt=true");
-        assertEquals("GEEN_FIXPUNT", body.path("status").asText(), body.toString());
+        JsonNode body = compare("true", "true", "true", "?trace=true&coverage=true&fixpoint=true");
+        assertEquals("NO_FIXPOINT", body.path("status").asText(), body.toString());
         assertTrue(body.path("trace").size() > 0, body.toString());
-        assertEquals(body.path("fout"), body.path("fixpuntFout"), body.toString());
+        assertEquals(body.path("error"), body.path("fixpointError"), body.toString());
     }
 
     /** The same POST to both adapters: a 422 from each and the same body, which it returns. */

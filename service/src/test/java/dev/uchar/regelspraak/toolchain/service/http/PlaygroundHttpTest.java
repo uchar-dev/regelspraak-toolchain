@@ -48,10 +48,10 @@ class PlaygroundHttpTest {
             De heffing van een Vlucht moet berekend worden als 10.
             """;
         String descriptor = """
-            { "dienst": {"naam":"playground-wiring","versie":"1"},
-              "entrypoints": [ { "naam":"heffing","pad":"heffing",
-                "scope": {"regelnamen": ["heffing"]},
-                "invoer": ["Vlucht"], "uitvoer": ["Vlucht.heffing"] } ],
+            { "service": {"name":"playground-wiring","version":"1"},
+              "entrypoints": [ { "name":"heffing","path":"heffing",
+                "scope": {"ruleNames": ["heffing"]},
+                "input": ["Vlucht"], "output": ["Vlucht.heffing"] } ],
               "parameters": {} }""";
         Map<String, String> b = new LinkedHashMap<>();
         b.put("m.rgs", source);

@@ -46,7 +46,7 @@ class PlaygroundVocabularyTest {
 
     private static List<String> labels(ObjectNode a) {
         List<String> sink = new ArrayList<>();
-        for (JsonNode n : a.at("/graafJson/nodes")) sink.add(n.get("label").asText());
+        for (JsonNode n : a.at("/graphJson/nodes")) sink.add(n.get("label").asText());
         return sink;
     }
 
@@ -59,40 +59,40 @@ class PlaygroundVocabularyTest {
         assertTrue(labels.contains("VONDST_BEDRAG · JUTTER"), labels.toString());
         assertTrue(labels(canonical).contains("vondstbedrag · jutter"), labels(canonical).toString());
         assertEquals(labels(canonical).size(), labels.size());
-        assertEquals(canonical.get("graaf"), cgm.get("graaf"), "de Mermaid-graaf is uchars eigen weergave");
+        assertEquals(canonical.get("graph"), cgm.get("graph"), "de Mermaid-graaf is uchars eigen weergave");
         assertEquals(canonical.get("ir"), cgm.get("ir"));
 
-        JsonNode scenario = cgm.at("/scenario/resultaten/0");
+        JsonNode scenario = cgm.at("/scenario/results/0");
         assertEquals("PASS", scenario.get("status").asText(), scenario.toString());
-        assertEquals("R_VONDSTBEDRAG", scenario.at("/trace/0/regel").asText(), scenario.toString());
-        assertTrue(scenario.get("dekking").toString().contains("\"R_PREMIEWAARDIG\""), scenario.toString());
-        assertTrue(scenario.get("uitleg").toString().contains("V1 is WAARDEVOL, omdat zijn soort (BARNSTEEN) is gelijk"
-                + " aan BARNSTEEN"), scenario.get("uitleg").toString());
-        assertEquals("vondstbedrag van een jutter", canonical.at("/scenario/resultaten/0/trace/0/regel").asText());
+        assertEquals("R_VONDSTBEDRAG", scenario.at("/trace/0/rule").asText(), scenario.toString());
+        assertTrue(scenario.get("coverage").toString().contains("\"R_PREMIEWAARDIG\""), scenario.toString());
+        assertTrue(scenario.get("explanation").toString().contains("V1 is WAARDEVOL, omdat zijn soort (BARNSTEEN) is gelijk"
+                + " aan BARNSTEEN"), scenario.get("explanation").toString());
+        assertEquals("vondstbedrag van een jutter", canonical.at("/scenario/results/0/trace/0/rule").asText());
     }
 
     @Test
     void an_unknown_vocabulary_is_refused() throws Exception {
         assertThrows(Naming.VocabularyError.class, () -> Playground.analyseer(SOURCE, "wetboek"));
         String descriptor = """
-            { "dienst": {"naam":"playground","versie":"1"}, "entrypoints": [ { "naam":"premie","pad":"premie",
-              "scope": {"regelgroepen": ["premieberekening"]}, "invoer": ["Jutter"], "uitvoer": ["Jutter.vondstbedrag"] } ],
+            { "service": {"name":"playground","version":"1"}, "entrypoints": [ { "name":"premie","path":"premie",
+              "scope": {"ruleGroups": ["premieberekening"]}, "input": ["Jutter"], "output": ["Jutter.vondstbedrag"] } ],
               "parameters": {} }""";
         DecisionCore core = DecisionCore.assemble(descriptor, Map.of("b.rgs", SOURCE.substring(0, SOURCE.indexOf("Scenario"))),
                 CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
         ServiceHttp service = ServiceHttp.bindWith(core, core::process, "127.0.0.1", 0, true).start();
         try {
             HttpResponse<String> r = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
-                            URI.create("http://127.0.0.1:" + service.port() + "/playground/analyse?vocabulaire=wetboek"))
+                            URI.create("http://127.0.0.1:" + service.port() + "/playground/analyse?vocabulary=wetboek"))
                     .header("Content-Type", "text/plain").POST(HttpRequest.BodyPublishers.ofString(SOURCE,
                             StandardCharsets.UTF_8)).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(400, r.statusCode(), r.body());
             JsonNode body = new ObjectMapper().readTree(r.body());
-            assertEquals("ONBEKEND_VOCABULAIRE", body.at("/schendingen/0/soort").asText(), r.body());
-            assertEquals("vocabulaire", body.at("/schendingen/0/veld").asText(), r.body());
+            assertEquals("UNKNOWN_VOCABULARY", body.at("/violations/0/kind").asText(), r.body());
+            assertEquals("vocabulary", body.at("/violations/0/field").asText(), r.body());
 
             HttpResponse<String> ok = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
-                            URI.create("http://127.0.0.1:" + service.port() + "/playground/analyse?vocabulaire=handboek"))
+                            URI.create("http://127.0.0.1:" + service.port() + "/playground/analyse?vocabulary=handboek"))
                     .header("Content-Type", "text/plain").POST(HttpRequest.BodyPublishers.ofString(SOURCE,
                             StandardCharsets.UTF_8)).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, ok.statusCode(), ok.body());

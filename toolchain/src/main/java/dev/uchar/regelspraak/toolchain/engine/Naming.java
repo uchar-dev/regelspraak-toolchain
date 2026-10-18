@@ -26,7 +26,7 @@ public final class Naming {
 
     /** The choice of the canonical names. It is a reserved word: a model that declares a vocabulary of this name
      *  cannot have that vocabulary chosen, and the decision service refuses to start on it ({@link #reserved}). */
-    public static final String CANONICAL = "canoniek";
+    public static final String CANONICAL = "canonical";
 
     private final RegelSpraakModel model;
     /** The chosen vocabulary in its declared spelling; null for the canonical choice. */

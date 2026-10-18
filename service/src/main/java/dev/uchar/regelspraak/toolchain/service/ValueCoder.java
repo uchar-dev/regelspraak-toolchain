@@ -24,7 +24,7 @@ import java.util.List;
  *   <li><b>Numeriek / Percentage</b> → {@link BigDecimal} (a JSON number is already a BigDecimal because the
  *       mapper runs with {@code USE_BIG_DECIMAL_FOR_FLOATS}; a double NEVER appears). An eenheid-bearing
  *       numeriek accepts a plain number (read in the declared eenheid) OR an object
- *       {@code {"waarde": n, "eenheid": "<afk>"}} whose eenheid must EQUAL the declared unit's weergave.</li>
+ *       {@code {"value": n, "unit": "<afk>"}} whose eenheid must EQUAL the declared unit's weergave.</li>
  *   <li><b>Booleaan</b> → {@link Boolean}.</li>
  *   <li><b>Tekst</b> → {@link String}.</li>
  *   <li><b>Enumeratie</b> → the {@link String} literal as the request spells it, which must name one of the
@@ -61,29 +61,29 @@ public final class ValueCoder {
         if (dt instanceof Datatype.DatumInDagen) return date(node, field);
         if (dt instanceof Datatype.DateTime)    return dateTime(node, field);
 
-        return Result.error(Violation.van(Violation.Kind.NIET_ONDERSTEUND, field,
+        return Result.error(Violation.van(Violation.Kind.UNSUPPORTED, field,
                 "datatype " + dt + " wordt niet ondersteund door de dienst-kern"));
     }
 
     // ---- numeric (+ eenheid) ----
 
     private static Result numeric(JsonNode node, String field, Unit declared) {
-        // an eenheid-bearing value may arrive as {"waarde": n, "eenheid": "afk"}
+        // an eenheid-bearing value may arrive as {"value": n, "unit": "afk"}
         if (node.isObject()) {
-            JsonNode w = node.get("waarde");
-            JsonNode e = node.get("eenheid");
+            JsonNode w = node.get("value");
+            JsonNode e = node.get("unit");
             if (w == null)
-                return Result.error(Violation.van(Violation.Kind.VERKEERD_TYPE, field,
+                return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                         "eenheid-object mist 'waarde'"));
             if (declared == null)
-                return Result.error(Violation.van(Violation.Kind.VERKEERDE_EENHEID, field,
+                return Result.error(Violation.van(Violation.Kind.WRONG_UNIT, field,
                         "attribuut heeft geen eenheid, maar de waarde geeft er wel een op"));
             if (e == null || !e.isTextual())
-                return Result.error(Violation.van(Violation.Kind.VERKEERDE_EENHEID, field,
+                return Result.error(Violation.van(Violation.Kind.WRONG_UNIT, field,
                         "eenheid-object mist een tekstuele 'eenheid'"));
             String requested = e.asText();
             if (!requested.equals(declared.rendering()))
-                return Result.error(Violation.van(Violation.Kind.VERKEERDE_EENHEID, field,
+                return Result.error(Violation.van(Violation.Kind.WRONG_UNIT, field,
                         "eenheid '" + requested + "' komt niet overeen met de gedeclareerde eenheid '"
                                 + declared.rendering() + "'"));
             return number(w, field);
@@ -97,7 +97,7 @@ public final class ValueCoder {
             try { return Result.ok(new BigDecimal(node.asText())); }
             catch (NumberFormatException nfe) { /* fall through */ }
         }
-        return Result.error(Violation.van(Violation.Kind.VERKEERD_TYPE, field,
+        return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                 "verwacht een getal, kreeg " + describe(node)));
     }
 
@@ -109,23 +109,23 @@ public final class ValueCoder {
 
     private static Result decodeBoolean(JsonNode node, String field) {
         if (node.isBoolean()) return Result.ok(node.booleanValue());
-        return Result.error(Violation.van(Violation.Kind.VERKEERD_TYPE, field,
+        return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                 "verwacht een boolean, kreeg " + describe(node)));
     }
 
     private static Result text(JsonNode node, String field) {
         if (node.isTextual()) return Result.ok(node.asText());
-        return Result.error(Violation.van(Violation.Kind.VERKEERD_TYPE, field,
+        return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                 "verwacht tekst, kreeg " + describe(node)));
     }
 
     private static Result enumeration(JsonNode node, String field, Datatype.Enumeratie e) {
         if (!node.isTextual())
-            return Result.error(Violation.van(Violation.Kind.VERKEERD_TYPE, field,
+            return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                     "verwacht een enumeratie-waarde (tekst), kreeg " + describe(node)));
         String v = node.asText();
         if (e.waarden().stream().noneMatch(w -> Namen.norm(w).equals(Namen.norm(v))))
-            return Result.error(Violation.van(Violation.Kind.ONBEKENDE_ENUM_WAARDE, field,
+            return Result.error(Violation.van(Violation.Kind.UNKNOWN_ENUM_VALUE, field,
                     "'" + v + "' is geen waarde van domein '" + e.domain() + "' (toegestaan: " + e.waarden() + ")"));
         return Result.ok(v);
     }
@@ -134,22 +134,22 @@ public final class ValueCoder {
 
     private static Result date(JsonNode node, String field) {
         if (!node.isTextual())
-            return Result.error(Violation.van(Violation.Kind.VERKEERD_TYPE, field,
+            return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                     "verwacht een ISO-datum (yyyy-MM-dd), kreeg " + describe(node)));
         try { return Result.ok(LocalDate.parse(node.asText())); }
         catch (DateTimeParseException ex) {
-            return Result.error(Violation.van(Violation.Kind.VERKEERD_TYPE, field,
+            return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                     "'" + node.asText() + "' is geen geldige ISO-datum (yyyy-MM-dd)"));
         }
     }
 
     private static Result dateTime(JsonNode node, String field) {
         if (!node.isTextual())
-            return Result.error(Violation.van(Violation.Kind.VERKEERD_TYPE, field,
+            return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                     "verwacht een ISO-datumtijd (yyyy-MM-ddThh:mm:ss), kreeg " + describe(node)));
         try { return Result.ok(LocalDateTime.parse(node.asText())); }
         catch (DateTimeParseException ex) {
-            return Result.error(Violation.van(Violation.Kind.VERKEERD_TYPE, field,
+            return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                     "'" + node.asText() + "' is geen geldige ISO-datumtijd (yyyy-MM-ddThh:mm:ss[.SSS])"));
         }
     }

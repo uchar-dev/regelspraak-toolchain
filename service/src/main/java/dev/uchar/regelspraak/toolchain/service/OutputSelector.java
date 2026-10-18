@@ -1,7 +1,7 @@
 package dev.uchar.regelspraak.toolchain.service;
 
 /**
- * A parsed descriptor uitvoer selector: {@code "Objecttype.attribuut"} (an attribute read) or
+ * A parsed descriptor uitvoer selector: {@code "Objecttype.attribute"} (an attribute read) or
  * {@code "Objecttype:kenmerk"} (a boolean kenmerk read). The two forms are distinguished by the SEPARATOR so
  * an attribuut whose own name contains a dot is never confused with a kenmerk: a {@code ':'} means kenmerk, a
  * {@code '.'} means attribuut. The objecttype part is everything before the FIRST separator; the lid part the

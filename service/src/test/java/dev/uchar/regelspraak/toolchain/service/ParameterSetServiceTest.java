@@ -51,20 +51,20 @@ class ParameterSetServiceTest {
 
     /** The descriptor for the vintage service, naming a parametersets sidecar (String-form supplies its JSON). */
     private static final String VINTAGE_DESCRIPTOR = """
-        { "dienst": {"naam":"vintage-test","versie":"1"},
-          "entrypoints": [ { "naam":"grens","pad":"grens",
-            "scope": {"regelnamen": ["grensregel"]},
-            "invoer": ["Persoon"], "uitvoer": ["Persoon.grens"] } ],
+        { "service": {"name":"vintage-test","version":"1"},
+          "entrypoints": [ { "name":"grens","path":"grens",
+            "scope": {"ruleNames": ["grensregel"]},
+            "input": ["Persoon"], "output": ["Persoon.grens"] } ],
           "parameters": {},
-          "parametersets": "vintage.parameters.json" }""";
+          "parameterSets": "vintage.parameters.json" }""";
 
     /** The two-vintage sidecar: volwassenleeftijd = 18 in 2025, 21 from 2026 (adjacent, no overlap). */
     private static final String VINTAGE_SETS = """
-        { "parametersets": [
-            { "naam": "leeftijden",
-              "waarden": { "volwassenleeftijd": [
-                  { "waarde": 18, "vanaf": "2025-01-01", "tot": "2025-12-31" },
-                  { "waarde": 21, "vanaf": "2026-01-01" } ] } } ] }""";
+        { "parameterSets": [
+            { "name": "leeftijden",
+              "values": { "volwassenleeftijd": [
+                  { "value": 18, "from": "2025-01-01", "to": "2025-12-31" },
+                  { "value": 21, "from": "2026-01-01" } ] } } ] }""";
 
     private static Map<String, String> source(String text) {
         Map<String, String> m = new LinkedHashMap<>();
@@ -84,11 +84,11 @@ class ParameterSetServiceTest {
         DecisionCore core = assemble(VINTAGE_DESCRIPTOR, VINTAGE_SOURCE, VINTAGE_SETS);
         // 2025 -> 18
         ObjectNode a2025 = core.process("grens", parse("""
-            { "peildatum": "2025-06-01", "instanties": [ { "type": "Persoon", "id": "P1" } ] }"""));
+            { "asOfDate": "2025-06-01", "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
         assertEquals(0, new BigDecimal("18").compareTo(bound(a2025)), a2025.toString());
         // 2026 -> 21
         ObjectNode a2026 = core.process("grens", parse("""
-            { "peildatum": "2026-06-01", "instanties": [ { "type": "Persoon", "id": "P1" } ] }"""));
+            { "asOfDate": "2026-06-01", "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
         assertEquals(0, new BigDecimal("21").compareTo(bound(a2026)), a2026.toString());
     }
 
@@ -99,10 +99,10 @@ class ParameterSetServiceTest {
         DecisionCore core = assemble(VINTAGE_DESCRIPTOR, VINTAGE_SOURCE, VINTAGE_SETS);
         // 2024 is before the first vintage interval -> gap.
         ServiceError error = assertThrows(ServiceError.class, () -> core.process("grens", parse("""
-            { "peildatum": "2024-06-01", "instanties": [ { "type": "Persoon", "id": "P1" } ] }""")));
+            { "asOfDate": "2024-06-01", "instances": [ { "type": "Persoon", "id": "P1" } ] }""")));
         assertEquals(1, error.violations().size(), error.getMessage());
         Violation s = error.violations().get(0);
-        assertEquals("peildatum", s.field(), error.getMessage());
+        assertEquals("asOfDate", s.field(), error.getMessage());
         assertTrue(s.message().contains("volwassenleeftijd"), () -> "noemt de parameter: " + s.message());
         assertTrue(s.message().contains("2024-06-01"), () -> "noemt de peildatum: " + s.message());
     }
@@ -110,11 +110,11 @@ class ParameterSetServiceTest {
     @Test
     void t2b_overlapping_sets_is_startup_service_error() {
         String overlap = """
-            { "parametersets": [
-                { "naam": "a",
-                  "waarden": { "volwassenleeftijd": [
-                      { "waarde": 18, "vanaf": "2025-01-01", "tot": "2025-12-31" },
-                      { "waarde": 21, "vanaf": "2025-06-01", "tot": "2026-12-31" } ] } } ] }""";
+            { "parameterSets": [
+                { "name": "a",
+                  "values": { "volwassenleeftijd": [
+                      { "value": 18, "from": "2025-01-01", "to": "2025-12-31" },
+                      { "value": 21, "from": "2025-06-01", "to": "2026-12-31" } ] } } ] }""";
         ServiceError error = assertThrows(ServiceError.class, () -> assemble(VINTAGE_DESCRIPTOR, VINTAGE_SOURCE, overlap));
         assertTrue(error.getMessage().contains("overlappende") || error.getMessage().contains("valideren niet"),
                 error.getMessage());
@@ -136,10 +136,10 @@ class ParameterSetServiceTest {
             De grens van een Persoon moet berekend worden als de volwassenleeftijd.
             """;
         String sets = """
-            { "parametersets": [
-                { "naam": "alleen-2025",
-                  "waarden": { "volwassenleeftijd": [
-                      { "waarde": 18, "vanaf": "2025-01-01", "tot": "2025-12-31" } ] } } ] }""";
+            { "parameterSets": [
+                { "name": "alleen-2025",
+                  "values": { "volwassenleeftijd": [
+                      { "value": 18, "from": "2025-01-01", "to": "2025-12-31" } ] } } ] }""";
         DecisionCore core = assemble(VINTAGE_DESCRIPTOR, source, sets);
         assertFalse(core.periodWarnings().isEmpty(), "een periode-gat hoort een waarschuwing te geven");
         String text = String.join("\n", core.periodWarnings());
@@ -170,23 +170,23 @@ class ParameterSetServiceTest {
             Het geboortejaar van een Persoon moet berekend worden als het jaar uit de Rekendatum.
             """;
         String descriptor = """
-            { "dienst": {"naam":"vintage-datum","versie":"1"},
-              "entrypoints": [ { "naam":"grens-en-jaar","pad":"grens-en-jaar",
-                "scope": {"regelnamen": ["grensregel", "jaarregel"]},
-                "invoer": ["Persoon"], "uitvoer": ["Persoon.grens", "Persoon.geboortejaar"] } ],
+            { "service": {"name":"vintage-datum","version":"1"},
+              "entrypoints": [ { "name":"grens-en-jaar","path":"grens-en-jaar",
+                "scope": {"ruleNames": ["grensregel", "jaarregel"]},
+                "input": ["Persoon"], "output": ["Persoon.grens", "Persoon.geboortejaar"] } ],
               "parameters": {},
-              "parametersets": "vintage.parameters.json" }""";
+              "parameterSets": "vintage.parameters.json" }""";
         DecisionCore core = assemble(descriptor, source, VINTAGE_SETS);
 
         // peildatum 2026-06-01: vintage=21 AND het jaar uit de rekendatum=2026 — both from the ONE date.
         ObjectNode a = core.process("grens-en-jaar", parse("""
-            { "peildatum": "2026-06-01", "instanties": [ { "type": "Persoon", "id": "P1" } ] }"""));
+            { "asOfDate": "2026-06-01", "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
         assertEquals(0, new BigDecimal("21").compareTo(value(a, "grens")), a.toString());
         assertEquals(0, new BigDecimal("2026").compareTo(value(a, "geboortejaar")), a.toString());
 
         // 2025-06-01: vintage=18 AND year=2025.
         ObjectNode b = core.process("grens-en-jaar", parse("""
-            { "peildatum": "2025-06-01", "instanties": [ { "type": "Persoon", "id": "P1" } ] }"""));
+            { "asOfDate": "2025-06-01", "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
         assertEquals(0, new BigDecimal("18").compareTo(value(b, "grens")), b.toString());
         assertEquals(0, new BigDecimal("2025").compareTo(value(b, "geboortejaar")), b.toString());
     }
@@ -197,9 +197,9 @@ class ParameterSetServiceTest {
     void t5a_no_as_of_date_multi_vintage_is_4xx_field_as_of_date() {
         DecisionCore core = assemble(VINTAGE_DESCRIPTOR, VINTAGE_SOURCE, VINTAGE_SETS);
         ServiceError error = assertThrows(ServiceError.class, () -> core.process("grens", parse("""
-            { "instanties": [ { "type": "Persoon", "id": "P1" } ] }""")));
+            { "instances": [ { "type": "Persoon", "id": "P1" } ] }""")));
         Violation s = error.violations().get(0);
-        assertEquals("peildatum", s.field(), error.getMessage());
+        assertEquals("asOfDate", s.field(), error.getMessage());
         assertTrue(s.message().contains("vintage") || s.message().contains("verplicht"), s.message());
     }
 
@@ -207,10 +207,10 @@ class ParameterSetServiceTest {
     void t5b_as_of_date_and_evaluation_date_not_equal_is_4xx_that_names_both() {
         DecisionCore core = assemble(VINTAGE_DESCRIPTOR, VINTAGE_SOURCE, VINTAGE_SETS);
         ServiceError error = assertThrows(ServiceError.class, () -> core.process("grens", parse("""
-            { "peildatum": "2025-06-01", "rekendatum": "2026-06-01",
-              "instanties": [ { "type": "Persoon", "id": "P1" } ] }""")));
+            { "asOfDate": "2025-06-01", "rekendatum": "2026-06-01",
+              "instances": [ { "type": "Persoon", "id": "P1" } ] }""")));
         boolean namesBoth = error.violations().stream().anyMatch(s ->
-                s.field().equals("peildatum")
+                s.field().equals("asOfDate")
                         && s.message().contains("2025-06-01") && s.message().contains("2026-06-01"));
         assertTrue(namesBoth, "de 4xx hoort beide velden+waarden te noemen: " + error.getMessage());
     }
@@ -219,12 +219,12 @@ class ParameterSetServiceTest {
     void t5c_default_and_set_conflict_is_startup_error_that_names_the_parameter() {
         // The descriptor gives volwassenleeftijd as a default AND the sets version it -> ambiguous authority.
         String descriptor = """
-            { "dienst": {"naam":"conflict","versie":"1"},
-              "entrypoints": [ { "naam":"grens","pad":"grens",
-                "scope": {"regelnamen": ["grensregel"]},
-                "invoer": ["Persoon"], "uitvoer": ["Persoon.grens"] } ],
+            { "service": {"name":"conflict","version":"1"},
+              "entrypoints": [ { "name":"grens","path":"grens",
+                "scope": {"ruleNames": ["grensregel"]},
+                "input": ["Persoon"], "output": ["Persoon.grens"] } ],
               "parameters": { "volwassenleeftijd": 40 },
-              "parametersets": "vintage.parameters.json" }""";
+              "parameterSets": "vintage.parameters.json" }""";
         ServiceError error = assertThrows(ServiceError.class, () -> assemble(descriptor, VINTAGE_SOURCE, VINTAGE_SETS));
         boolean namesParam = error.violations().stream().anyMatch(s -> s.message().contains("volwassenleeftijd"));
         assertTrue(namesParam, "de conflict-fout hoort de parameter te noemen: " + error.getMessage());
@@ -233,13 +233,13 @@ class ParameterSetServiceTest {
     @Test
     void t5d_degenerate_always_set_without_as_of_date_is_200() {
         String sets = """
-            { "parametersets": [
-                { "naam": "enkel",
-                  "waarden": { "volwassenleeftijd": [ { "waarde": 18 } ] } } ] }""";
+            { "parameterSets": [
+                { "name": "enkel",
+                  "values": { "volwassenleeftijd": [ { "value": 18 } ] } } ] }""";
         DecisionCore core = assemble(VINTAGE_DESCRIPTOR, VINTAGE_SOURCE, sets);
         // no peildatum, single ALTIJD-value -> EPOCH-resolution, computes 18.
         ObjectNode a = core.process("grens", parse("""
-            { "instanties": [ { "type": "Persoon", "id": "P1" } ] }"""));
+            { "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
         assertEquals(0, new BigDecimal("18").compareTo(bound(a)), a.toString());
     }
 
@@ -249,10 +249,10 @@ class ParameterSetServiceTest {
     void t6_no_parameter_sets_is_empty_path() {
         // A descriptor WITHOUT parametersets: the parameter comes from the request, no sidecar, no warnings.
         String descriptor = """
-            { "dienst": {"naam":"geen-sets","versie":"1"},
-              "entrypoints": [ { "naam":"grens","pad":"grens",
-                "scope": {"regelnamen": ["grensregel"]},
-                "invoer": ["Persoon"], "uitvoer": ["Persoon.grens"] } ],
+            { "service": {"name":"geen-sets","version":"1"},
+              "entrypoints": [ { "name":"grens","path":"grens",
+                "scope": {"ruleNames": ["grensregel"]},
+                "input": ["Persoon"], "output": ["Persoon.grens"] } ],
               "parameters": {} }""";
         DecisionCore core = DecisionCore.assemble(descriptor, source(VINTAGE_SOURCE), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader());
@@ -261,7 +261,7 @@ class ParameterSetServiceTest {
         // the request supplies the parameter directly (the fase 1-4 path).
         ObjectNode a = core.process("grens", parse("""
             { "parameters": { "volwassenleeftijd": 30 },
-              "instanties": [ { "type": "Persoon", "id": "P1" } ] }"""));
+              "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
         assertEquals(0, new BigDecimal("30").compareTo(bound(a)), a.toString());
     }
 
@@ -270,13 +270,13 @@ class ParameterSetServiceTest {
     private static BigDecimal bound(ObjectNode answer) { return value(answer, "grens"); }
 
     private static BigDecimal value(ObjectNode answer, String attribute) {
-        JsonNode n = find(answer, "P1", "attributen", attribute);
+        JsonNode n = find(answer, "P1", "attributes", attribute);
         assertNotNull(n, "attribuut '" + attribute + "' ontbreekt: " + answer);
         return n.decimalValue();
     }
 
     private static JsonNode find(ObjectNode answer, String id, String group, String member) {
-        for (JsonNode inst : answer.get("instanties"))
+        for (JsonNode inst : answer.get("instances"))
             if (id.equals(inst.path("id").asText()))
                 return inst.path(group).get(member);
         return null;

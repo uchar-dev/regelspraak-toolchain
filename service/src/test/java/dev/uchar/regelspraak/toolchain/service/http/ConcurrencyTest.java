@@ -195,9 +195,9 @@ class ConcurrencyTest {
         for (int i = 0; i < geboortes.length; i++) {
             ObjectNode body = a0.deepCopy();
             // vary the person's geboortedatum + id (inputs only)
-            for (JsonNode inst : body.get("instanties"))
+            for (JsonNode inst : body.get("instances"))
                 if ("Natuurlijk persoon".equalsIgnoreCase(inst.path("type").asText())) {
-                    ((ObjectNode) inst.get("attributen")).put("geboortedatum", geboortes[i]);
+                    ((ObjectNode) inst.get("attributes")).put("geboortedatum", geboortes[i]);
                     ((ObjectNode) inst).put("id", "P-A" + i);
                     // re-point the reis rol at the (unchanged) Vlucht id
                 }
@@ -211,9 +211,9 @@ class ConcurrencyTest {
         for (String[] pair : bedragen) {
             ObjectNode body = b0.deepCopy();
             int p = 0;
-            for (JsonNode inst : body.get("instanties"))
+            for (JsonNode inst : body.get("instances"))
                 if ("Natuurlijk persoon".equalsIgnoreCase(inst.path("type").asText()) && p < pair.length) {
-                    ((ObjectNode) inst.get("attributen")).put("te betalen belasting", new java.math.BigDecimal(pair[p]));
+                    ((ObjectNode) inst.get("attributes")).put("te betalen belasting", new java.math.BigDecimal(pair[p]));
                     p++;
                 }
             sink.add(new RequestCase(pathB, body, false));
@@ -227,9 +227,9 @@ class ConcurrencyTest {
         String[] luchthavens = {"Amsterdam Schiphol", "Parijs Charles de Gaulle", "Londen Heathrow"};
         for (String lh : luchthavens) {
             ObjectNode body = c0.deepCopy();
-            for (JsonNode inst : body.get("instanties"))
+            for (JsonNode inst : body.get("instances"))
                 if ("Vlucht".equalsIgnoreCase(inst.path("type").asText())) {
-                    ObjectNode attr = (ObjectNode) inst.get("attributen");
+                    ObjectNode attr = (ObjectNode) inst.get("attributes");
                     attr.put("luchthaven van vertrek", lh);
                     attr.put("luchthaven van bestemming", lh);   // rondvlucht -> inconsistent
                 }
@@ -279,7 +279,7 @@ class ConcurrencyTest {
 
     private static List<String> inconsistencies(JsonNode answer) {
         List<String> sink = new ArrayList<>();
-        JsonNode inc = answer.get("inconsistenties");
+        JsonNode inc = answer.get("inconsistencies");
         if (inc != null) for (JsonNode n : inc) sink.add(n.isNull() ? null : n.asText());
         return sink;
     }

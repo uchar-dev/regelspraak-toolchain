@@ -56,18 +56,18 @@
   .muted { color: var(--muted); }
   .legend { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
   .legend .lg { font-size: 11px; padding: 1px 7px; border-radius: 10px; border: 1px solid; }
-  .lg.regel { background:#dbeafe; border-color:#2563eb; color:#1e3a8a; }
-  .lg.attribuut { background:#dcfce7; border-color:#16a34a; color:#14532d; }
-  .lg.kenmerk { background:#fef9c3; border-color:#ca8a04; color:#713f12; }
-  .lg.invoer { background:#fae8ff; border-color:#a21caf; color:#701a75; }
-  .lg.eind { background:#fff; border-color:#111827; color:#111827; border-style:dashed; }
-  .graafview { border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; background:var(--panel); }
-  .keuze { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
-  .keuze button { font-size: 12px; padding: 3px 9px; border-left-width: 4px; }
-  .keuze button.ok { border-left-color: var(--ok); }
-  .keuze button.err { border-left-color: var(--err); }
-  .keuze button.warn { border-left-color: var(--warn); }
-  .keuze button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
+  .lg.rule { background:#dbeafe; border-color:#2563eb; color:#1e3a8a; }
+  .lg.attribute { background:#dcfce7; border-color:#16a34a; color:#14532d; }
+  .lg.characteristic { background:#fef9c3; border-color:#ca8a04; color:#713f12; }
+  .lg.input { background:#fae8ff; border-color:#a21caf; color:#701a75; }
+  .lg.end { background:#fff; border-color:#111827; color:#111827; border-style:dashed; }
+  .graphview { border:1px solid var(--line); border-radius:8px; padding:10px; overflow:auto; background:var(--panel); }
+  .choice { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 10px; }
+  .choice button { font-size: 12px; padding: 3px 9px; border-left-width: 4px; }
+  .choice button.ok { border-left-color: var(--ok); }
+  .choice button.err { border-left-color: var(--err); }
+  .choice button.warn { border-left-color: var(--warn); }
+  .choice button.active { background: var(--accent); color: #fff; border-color: var(--accent); }
   details { border-top: 1px solid var(--line); padding: 6px 0; }
   details > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--ink); padding: 2px 0; }
   details > summary .muted { font-weight: 400; }
@@ -79,16 +79,16 @@
   td.num, th.num { text-align: right; font-family: var(--mono); font-size: 11.5px; color: var(--muted); white-space: nowrap; }
   td.mono { font-family: var(--mono); font-size: 12px; }
   .canon { border-bottom: 1px dotted var(--muted); cursor: help; }
-  .hk { font-size: 10.5px; padding: 0 6px; border-radius: 8px; white-space: nowrap; }
-  .hk.afgeleid { background: #dbeafe; color: #1e3a8a; }
-  .hk.invoer { background: #ececec; color: #4b4b4b; }
-  .hk.creatie { background: #fae8ff; color: #701a75; }
-  .klein { font-size: 11.5px; color: var(--muted); }
-  .kop { font-size: 14px; font-weight: 600; margin: 4px 0 8px; }
+  .origin { font-size: 10.5px; padding: 0 6px; border-radius: 8px; white-space: nowrap; }
+  .origin.derived { background: #dbeafe; color: #1e3a8a; }
+  .origin.input { background: #ececec; color: #4b4b4b; }
+  .origin.creation { background: #fae8ff; color: #701a75; }
+  .small { font-size: 11.5px; color: var(--muted); }
+  .heading { font-size: 14px; font-weight: 600; margin: 4px 0 8px; }
   table.voc td, table.voc th { overflow-wrap: anywhere; }
   table.voc td:first-child { white-space: nowrap; }
-  tr.klikbaar { cursor: pointer; }
-  tr.klikbaar:hover td { background: #eef3f9; }
+  tr.clickable { cursor: pointer; }
+  tr.clickable:hover td { background: #eef3f9; }
 </style>
 </head>
 <body>
@@ -101,23 +101,23 @@
   <div class="col">
     <div class="bar">
       <button class="primary" id="run">Analyseer</button>
-      <button id="voorbeeld">Voorbeeld</button>
-      <button id="leeg">Leeg</button>
-      <input id="vocabulaire" size="12" placeholder="vocabulaire" title="de namen van graaf, trace, uitleg, situatie en fixpunt: een vocabulaire van de bron, leeg voor canoniek">
+      <button id="example">Voorbeeld</button>
+      <button id="clear">Leeg</button>
+      <input id="vocabulary" size="12" placeholder="vocabulaire" title="de namen van graaf, trace, uitleg, situatie en fixpunt: een vocabulaire van de bron, leeg voor canoniek">
       <span class="hint" id="status"></span>
     </div>
-    <textarea id="bron" spellcheck="false" placeholder="Plak of typ hier een RegelSpraak-model, regel en (optioneel) Scenario-blok..."></textarea>
+    <textarea id="source" spellcheck="false" placeholder="Plak of typ hier een RegelSpraak-model, regel en (optioneel) Scenario-blok..."></textarea>
   </div>
   <div class="col">
     <div class="tabs" id="tabs">
       <button data-tab="parse" class="active">Parse</button>
       <button data-tab="resolver">Resolver</button>
       <button data-tab="ir">IR</button>
-      <button data-tab="dekking">Dekking</button>
+      <button data-tab="coverage">Dekking</button>
       <button data-tab="drl">DRL</button>
-      <button data-tab="graaf">Graaf</button>
+      <button data-tab="graph">Graaf</button>
       <button data-tab="scenario">Scenario</button>
-      <button data-tab="vocabulaires">Vocabulaires</button>
+      <button data-tab="vocabularies">Vocabulaires</button>
     </div>
     <div class="view" id="view"><span class="muted">Nog geen analyse.</span></div>
   </div>
@@ -126,9 +126,9 @@
 <script>
 "use strict";
 const $ = (id) => document.getElementById(id);
-let laatste = null, actief = "parse";
+let latest = null, active = "parse";
 
-const VOORBEELD = `Objecttype de Persoon (mv: Personen)
+const EXAMPLE = `Objecttype de Persoon (mv: Personen)
     de leeftijd Numeriek (geheel getal);
     de korting Numeriek (geheel getal);
     is minderjarig kenmerk (bijvoeglijk);
@@ -163,84 +163,84 @@ function esc(s) {
 
 function render() {
   const v = $("view");
-  if (!laatste) { v.innerHTML = '<span class="muted">Nog geen analyse.</span>'; return; }
-  if (laatste.__transport) { v.innerHTML = '<span class="pill err">FOUT</span> ' + esc(laatste.__transport); return; }
-  v.innerHTML = ({ parse: renderParse, resolver: renderResolver, ir: renderIr, dekking: renderDekking, drl: renderDrl,
-                   graaf: renderGraaf, scenario: renderScenario, vocabulaires: renderVocabulaires }[actief])();
-  if (actief === "scenario") bindScenario();
-  if (actief === "vocabulaires") bindVocabulaires();
-  // The graaf pane injects a fresh .mermaid node above; render it now that the node is live (Mermaid loads lazily,
+  if (!latest) { v.innerHTML = '<span class="muted">Nog geen analyse.</span>'; return; }
+  if (latest.__transport) { v.innerHTML = '<span class="pill err">FOUT</span> ' + esc(latest.__transport); return; }
+  v.innerHTML = ({ parse: renderParse, resolver: renderResolver, ir: renderIr, coverage: renderCoverage, drl: renderDrl,
+                   graph: renderGraph, scenario: renderScenario, vocabularies: renderVocabularies }[active])();
+  if (active === "scenario") bindScenario();
+  if (active === "vocabularies") bindVocabularies();
+  // The graph pane injects a fresh .mermaid node above; render it now that the node is live (Mermaid loads lazily,
   // and degrades to the readable source <pre> when the runtime cannot be reached).
-  if (actief === "graaf" && laatste.graaf != null) renderMermaid();
+  if (active === "graph" && latest.graph != null) renderMermaid();
 }
 
 function renderParse() {
-  const p = laatste.parse || {};
+  const p = latest.parse || {};
   let h = p.ok ? '<span class="pill ok">GEEN PARSE-FOUTEN</span>'
-               : '<span class="pill err">' + (p.fouten || []).length + ' PARSE-FOUT(EN)</span>';
-  for (const f of (p.fouten || [])) {
-    h += '<div class="diag err"><div class="loc">regel ' + f.regel + ', kolom ' + f.kolom
+               : '<span class="pill err">' + (p.errors || []).length + ' PARSE-FOUT(EN)</span>';
+  for (const f of (p.errors || [])) {
+    h += '<div class="diag err"><div class="loc">regel ' + f.line + ', kolom ' + f.column
        + (f.token ? " &mdash; bij &lsquo;" + esc(f.token) + "&rsquo;" : "") + '</div>'
-       + esc(f.boodschap);
-    if (f.verwacht && f.verwacht.length)
-      h += '<div class="expect">verwacht: ' + f.verwacht.map(esc).join(", ") + "</div>";
+       + esc(f.message);
+    if (f.expected && f.expected.length)
+      h += '<div class="expect">verwacht: ' + f.expected.map(esc).join(", ") + "</div>";
     h += "</div>";
   }
   return h;
 }
 
 function renderResolver() {
-  const r = laatste.resolver || {};
+  const r = latest.resolver || {};
   let h = r.ok ? '<span class="pill ok">RESOLVET</span>' : '<span class="pill err">RESOLVER-FOUTEN</span>';
-  for (const d of (r.fouten || []))
-    h += '<div class="diag err"><span class="loc">regel ' + d.regel + '</span> &mdash; ' + esc(d.boodschap) + "</div>";
-  for (const d of (r.waarschuwingen || []))
-    h += '<div class="diag warn"><span class="loc">regel ' + d.regel + '</span> &mdash; ' + esc(d.boodschap) + "</div>";
-  if (r.ok && !(r.waarschuwingen || []).length) h += '<div class="diag muted">Geen waarschuwingen.</div>';
+  for (const d of (r.errors || []))
+    h += '<div class="diag err"><span class="loc">regel ' + d.line + '</span> &mdash; ' + esc(d.message) + "</div>";
+  for (const d of (r.warnings || []))
+    h += '<div class="diag warn"><span class="loc">regel ' + d.line + '</span> &mdash; ' + esc(d.message) + "</div>";
+  if (r.ok && !(r.warnings || []).length) h += '<div class="diag muted">Geen waarschuwingen.</div>';
   return h;
 }
 
 function renderIr() {
-  if (laatste.irFout) return '<span class="pill err">GEEN IR</span><pre>' + esc(laatste.irFout) + "</pre>";
-  if (laatste.ir == null)
+  if (latest.irError) return '<span class="pill err">GEEN IR</span><pre>' + esc(latest.irError) + "</pre>";
+  if (latest.ir == null)
     return '<span class="pill warn">GEEN IR</span><div class="diag muted">Er is pas een IR-document als het model schoon parset en resolvet.</div>';
-  return '<span class="pill ok">uchar-ir-v1</span><pre>' + esc(JSON.stringify(laatste.ir, null, 2)) + "</pre>";
+  return '<span class="pill ok">uchar-ir-v1</span><pre>' + esc(JSON.stringify(latest.ir, null, 2)) + "</pre>";
 }
 
 // The verdict of the branch that fires (uchar's exec-model branch): every form with its verdict, or uchar's refusal.
-function renderDekking() {
-  if (laatste.uitvoerbaar == null)
+function renderCoverage() {
+  if (latest.executable == null)
     return '<span class="pill warn">GEEN OORDEEL</span><div class="diag muted">Er is pas een oordeel als het model schoon parset en resolvet.</div>';
-  if (!laatste.uitvoerbaar) return '<span class="pill err">NIET UITVOERBAAR</span><pre>' + esc(laatste.weigering) + "</pre>";
+  if (!latest.executable) return '<span class="pill err">NIET UITVOERBAAR</span><pre>' + esc(latest.refusal) + "</pre>";
   let h = '<span class="pill ok">UITVOERBAAR</span><table><tr><th>soort</th><th>vorm</th><th>verdict</th></tr>';
-  for (const d of (laatste.dekking || []))
-    h += "<tr><td>" + esc(d.soort) + "</td><td>" + esc(d.naam) + "</td><td>" + esc(d.verdict) + "</td></tr>";
+  for (const d of (latest.coverage || []))
+    h += "<tr><td>" + esc(d.kind) + "</td><td>" + esc(d.name) + "</td><td>" + esc(d.verdict) + "</td></tr>";
   return h + "</table>";
 }
 
 // The DRL-text branch is shown, not judged: the verdict is that of the branch that fires (see the Dekking tab).
 function renderDrl() {
-  if (laatste.drl == null)
+  if (latest.drl == null)
     return '<span class="pill warn">GEEN DRL</span><div class="diag muted">Er is pas DRL als het model schoon parset en resolvet.</div>';
-  if (laatste.drlFout) return '<span class="pill warn">GEEN DRL-WEERGAVE</span><div class="diag muted">uchar geeft geen DRL-tekst van dit model; de zin van uchar staat hieronder, het oordeel onder Dekking.</div><pre>' + esc(laatste.drlFout) + "</pre>";
-  return '<span class="pill ok">DRL</span><pre>' + esc(laatste.drl) + "</pre>";
+  if (latest.drlError) return '<span class="pill warn">GEEN DRL-WEERGAVE</span><div class="diag muted">uchar geeft geen DRL-tekst van dit model; de zin van uchar staat hieronder, het oordeel onder Dekking.</div><pre>' + esc(latest.drlError) + "</pre>";
+  return '<span class="pill ok">DRL</span><pre>' + esc(latest.drl) + "</pre>";
 }
 
-function renderGraaf() {
-  if (laatste.graaf == null)
-    return laatste.graafFout
-      ? '<span class="pill err">GRAAF-FOUT</span><pre>' + esc(laatste.graafFout) + "</pre>"
+function renderGraph() {
+  if (latest.graph == null)
+    return latest.graphError
+      ? '<span class="pill err">GRAAF-FOUT</span><pre>' + esc(latest.graphError) + "</pre>"
       : '<span class="pill warn">GEEN GRAAF</span><div class="diag muted">Er is pas een graaf als het model schoon parset en resolvet.</div>';
   // The dataflow graph as Mermaid source, with the static legend baked in (shapes/colours mean nothing without it).
   // Mermaid renders the <pre> into a diagram when reachable; otherwise the source stays readable in the box.
   return '<div class="legend">'
-       + '<span class="lg regel">regel</span><span class="lg attribuut">attribuut</span>'
-       + '<span class="lg kenmerk">kenmerk</span><span class="lg invoer">invoer</span>'
-       + '<span class="lg eind">eind-output</span></div>'
-       + '<div class="graafview"><pre class="mermaid">' + esc(laatste.graaf) + "</pre></div>";
+       + '<span class="lg rule">regel</span><span class="lg attribute">attribuut</span>'
+       + '<span class="lg characteristic">kenmerk</span><span class="lg input">invoer</span>'
+       + '<span class="lg end">eind-output</span></div>'
+       + '<div class="graphview"><pre class="mermaid">' + esc(latest.graph) + "</pre></div>";
 }
 
-// Lazy-load the Mermaid runtime from a pinned, SRI-checked CDN URL, then render the current graaf. Progressive
+// Lazy-load the Mermaid runtime from a pinned, SRI-checked CDN URL, then render the current graph. Progressive
 // enhancement: if the script cannot load (offline, or an integrity/transport mismatch) the readable source <pre>
 // above is the whole result and state returns to idle, so a later render retries when the network recovers -- the
 // playground never hard-requires the network for its data, only for the pretty diagram. render() calls this AFTER
@@ -249,7 +249,7 @@ const MERMAID_SRC = "https://cdn.jsdelivr.net/npm/mermaid@11.16.0/dist/mermaid.m
 const MERMAID_SRI = "sha384-T/0lMUdJpd2S1ZHtRiofG3htU3xPCrFVeAQ1UUE2TJwlEJSV5NUwn30kP28n238E";
 let mermaidState = "idle"; // idle | loading | ready (a failed load returns to idle, so it is never terminal)
 function renderMermaid() {
-  const run = () => { if (window.mermaid) window.mermaid.run({ querySelector: ".graafview .mermaid" }).catch(() => {}); };
+  const run = () => { if (window.mermaid) window.mermaid.run({ querySelector: ".graphview .mermaid" }).catch(() => {}); };
   if (mermaidState === "ready") return run();
   if (mermaidState === "loading") return;        // onload run()s against the live node
   mermaidState = "loading";
@@ -265,14 +265,14 @@ function renderMermaid() {
 // ---------- scenario: one scenario at a time, its parts folded, the tables filtered ----------
 // A document of the eval dataset is some 1 600 lines with dozens of objects per scenario, so the page shows one
 // scenario, keeps the choice across a new analysis, and redraws only the tables when a filter changes.
-let scenarioKeuze = null;
-const filter = { tekst: "", alleenAfgeleid: false, voc: "", vocSoort: "" };
+let scenarioChoice = null;
+const filter = { text: "", onlyDerived: false, voc: "", vocKind: "" };
 
-function statusKlasse(r) { return r.status === "PASS" ? "ok" : r.status === "MARKER" ? "warn" : "err"; }
+function statusClass(r) { return r.status === "PASS" ? "ok" : r.status === "MARKER" ? "warn" : "err"; }
 
 // A name in the chosen vocabulary; the canonical name, where it differs, on hover.
-function naam(o, k) {
-  const c = o[k + "Canoniek"];
+function nameOf(o, k) {
+  const c = o[k + "Canonical"];
   return c != null ? '<span class="canon" title="canoniek: ' + esc(c) + '">' + esc(o[k]) + "</span>" : esc(o[k]);
 }
 function scalar(w) {
@@ -281,321 +281,321 @@ function scalar(w) {
   if (w === false) return "onwaar";
   return esc(w);
 }
-function tijdlijn(tl) {
+function timelineHtml(tl) {
   if (!tl.length) return '<span class="muted">leeg</span>';
-  return tl.map((s) => "[" + esc(s.van) + ", " + esc(s.tot) + ") " + scalar(s.waarde)).join("<br>");
+  return tl.map((s) => "[" + esc(s.from) + ", " + esc(s.to) + ") " + scalar(s.value)).join("<br>");
 }
-function waarde(o) {
+function valueHtml(o) {
   let h;
-  if (o.tijdlijn) h = tijdlijn(o.tijdlijn);
-  else if (o.dimensies) h = Object.entries(o.dimensies).map(([c, w]) => esc(c) + ": " + scalar(w)).join("<br>");
-  else h = o.waardeCanoniek != null ? naam(o, "waarde") : scalar(o.waarde);
-  return h + (o.eenheid ? ' <span class="muted">' + esc(o.eenheid) + "</span>" : "");
+  if (o.timeline) h = timelineHtml(o.timeline);
+  else if (o.dimensions) h = Object.entries(o.dimensions).map(([c, w]) => esc(c) + ": " + scalar(w)).join("<br>");
+  else h = o.valueCanonical != null ? nameOf(o, "value") : scalar(o.value);
+  return h + (o.unit ? ' <span class="muted">' + esc(o.unit) + "</span>" : "");
 }
 // A name matches the filter in part; a label matches it whole, so that P1 does not show P10 as well.
-function past(...namen) {
-  const f = filter.tekst.trim().toLowerCase();
-  return !f || namen.some((n) => n != null && String(n).toLowerCase().includes(f));
+function matches(...names) {
+  const f = filter.text.trim().toLowerCase();
+  return !f || names.some((n) => n != null && String(n).toLowerCase().includes(f));
 }
-function pastLabel(...labels) {
-  const f = filter.tekst.trim().toLowerCase();
+function matchesLabel(...labels) {
+  const f = filter.text.trim().toLowerCase();
   return !f || labels.some((l) => l != null && String(l).toLowerCase() === f);
 }
 // An object by its label with its own type. A role names the type it declares, which can be a supertype of the
 // object's own (R1 as "Recht op uitkering WW" or "RechtOpUitkering"); that one goes in the tooltip.
-function objectMetType(label, typen, gedeclareerd) {
-  const o = typen[label];
+function objectWithType(label, types, declared) {
+  const o = types[label];
   if (!o) return esc(label);
-  const titel = [];
-  if (o.objecttypeCanoniek != null) titel.push("canoniek: " + o.objecttypeCanoniek);
-  if (gedeclareerd != null && gedeclareerd !== o.objecttype) titel.push("gedeclareerd doeltype: " + gedeclareerd);
-  return esc(label) + ' <span class="muted' + (titel.length ? ' canon" title="' + esc(titel.join("; ")) : "") + '">'
-       + esc(o.objecttype) + "</span>";
+  const title = [];
+  if (o.objectTypeCanonical != null) title.push("canoniek: " + o.objectTypeCanonical);
+  if (declared != null && declared !== o.objectType) title.push("gedeclareerd doeltype: " + declared);
+  return esc(label) + ' <span class="muted' + (title.length ? ' canon" title="' + esc(title.join("; ")) : "") + '">'
+       + esc(o.objectType) + "</span>";
 }
-// The label an expectation is about, from uchar's short form of it (CaseRunner.bron): "<soort> <LABEL> <lid>" for an
+// The label an expectation is about, from uchar's short form of it (CaseRunner.source): "<kind> <LABEL> <member>" for an
 // attribute value, an empty attribute, a timeline and a characteristic present or absent, and
-// "inconsistent (<regel> @ <LABEL>)" for an inconsistency on an object. "consistent" and an inconsistency without an
+// "inconsistent (<rule> @ <LABEL>)" for an inconsistency on an object. "consistent" and an inconsistency without an
 // object name none. A label is one word (UPPER_ID).
-const SOORTEN_MET_LABEL = ["attributeValue", "attributeEmpty", "attributeTimeline", "characteristicPresent",
-                           "characteristicAbsent"];
-function labelVanBron(bron) {
-  const m = /^inconsistent \(.* @ (\S+)\)$/.exec(bron);
+const KINDS_WITH_LABEL = ["attributeValue", "attributeEmpty", "attributeTimeline", "characteristicPresent",
+                          "characteristicAbsent"];
+function labelOfSource(source) {
+  const m = /^inconsistent \(.* @ (\S+)\)$/.exec(source);
   if (m) return m[1];
-  const w = bron.split(" ");
-  return SOORTEN_MET_LABEL.includes(w[0]) && w.length > 1 ? w[1] : null;
+  const w = source.split(" ");
+  return KINDS_WITH_LABEL.includes(w[0]) && w.length > 1 ? w[1] : null;
 }
-function sectie(titel, inhoud, open) {
-  return "<details" + (open ? " open" : "") + "><summary>" + titel + "</summary><div>" + inhoud + "</div></details>";
+function section(title, content, open) {
+  return "<details" + (open ? " open" : "") + "><summary>" + title + "</summary><div>" + content + "</div></details>";
 }
 
 function renderScenario() {
-  const s = laatste.scenario;
-  if (laatste.resolver && !laatste.resolver.ok)
+  const s = latest.scenario;
+  if (latest.resolver && !latest.resolver.ok)
     return '<span class="pill warn">NIET GEVUURD</span><div class="diag muted">De bron resolvet niet; zie Resolver.</div>';
   if (!s) return '<div class="diag muted">Geen <b>Scenario</b>-blok in de bron.</div>';
-  const rs = s.resultaten || [];
+  const rs = s.results || [];
   if (!rs.length) return '<div class="diag muted">Geen scenario&rsquo;s gevonden.</div>';
-  const r = rs.find((x) => x.naam === scenarioKeuze) || rs[0];
-  scenarioKeuze = r.naam;
-  const cls = statusKlasse(r);
-  let h = '<div class="keuze">' + rs.map((x) => '<button data-scenario="' + esc(x.naam) + '" class="' + statusKlasse(x)
-        + (x === r ? " active" : "") + '" title="' + esc(x.status) + '">' + esc(x.naam) + "</button>").join("") + "</div>";
-  h += '<div class="kop"><span class="pill ' + cls + '">' + esc(r.status) + "</span> " + esc(r.naam)
-     + (r.regel ? ' <span class="klein">regel ' + r.regel + "</span>" : "") + "</div>";
-  if (r.diagnose) h += '<div class="diag ' + cls + '">' + esc(r.diagnose) + "</div>";
-  const vw = r.verwachtingen || [];
-  h += sectie("Verwachtingen <span class=\"muted\">" + vw.filter((v) => v.ok).length + " van " + vw.length + " gehaald</span>",
-              verwachtingenHtml(vw), true);
+  const r = rs.find((x) => x.name === scenarioChoice) || rs[0];
+  scenarioChoice = r.name;
+  const cls = statusClass(r);
+  let h = '<div class="choice">' + rs.map((x) => '<button data-scenario="' + esc(x.name) + '" class="' + statusClass(x)
+        + (x === r ? " active" : "") + '" title="' + esc(x.status) + '">' + esc(x.name) + "</button>").join("") + "</div>";
+  h += '<div class="heading"><span class="pill ' + cls + '">' + esc(r.status) + "</span> " + esc(r.name)
+     + (r.line ? ' <span class="small">regel ' + r.line + "</span>" : "") + "</div>";
+  if (r.diagnosis) h += '<div class="diag ' + cls + '">' + esc(r.diagnosis) + "</div>";
+  const exps = r.expectations || [];
+  h += section("Verwachtingen <span class=\"muted\">" + exps.filter((v) => v.ok).length + " van " + exps.length + " gehaald</span>",
+               expectationsHtml(exps), true);
   h += '<div class="filterbar"><input type="text" id="filter" size="28" placeholder="filter op label of naam"'
      + ' title="een label telt heel (P1 toont P10 niet), een naam ook in delen" value="'
-     + esc(filter.tekst) + '"><label><input type="checkbox" id="alleenAfgeleid"' + (filter.alleenAfgeleid ? " checked" : "")
+     + esc(filter.text) + '"><label><input type="checkbox" id="onlyDerived"' + (filter.onlyDerived ? " checked" : "")
      + "> fixpunt: alleen afgeleid en gemaakt</label></div>";
-  const sit = r.situatie;
-  h += sectie("Situatie" + (sit ? ' <span class="muted">' + sit.objecten.length + " objecten, " + sit.parameters.length
-              + " parameters" + (sit.peildatum ? ", peildatum " + esc(sit.peildatum) : "") + "</span>" : ""),
-              '<div id="situatie">' + situatieHtml(sit) + "</div>", true);
-  h += sectie("Fixpunt" + (r.fixpunt ? ' <span class="muted">' + fixpuntTelling(r.fixpunt) + "</span>" : ""),
-              '<div id="fixpunt">' + fixpuntHtml(r) + "</div>", true);
-  const dk = r.dekking || [];
-  h += sectie("Dekking <span class=\"muted\">" + dk.filter((d) => d.soort === "GEVUURD").length + " van " + dk.length
-              + " vormen gevuurd</span>", dekkingHtml(dk), false);
-  const tr = r.trace || [];
-  h += sectie("Vuringen <span class=\"muted\">" + tr.length + " vormen</span>", vuringenHtml(tr), false);
-  h += sectie("Uitleg <span class=\"muted\">" + (r.uitleg || []).length + " zinnen</span>", uitlegHtml(r), false);
+  const sit = r.situation;
+  h += section("Situatie" + (sit ? ' <span class="muted">' + sit.objects.length + " objecten, " + sit.parameters.length
+               + " parameters" + (sit.asOfDate ? ", peildatum " + esc(sit.asOfDate) : "") + "</span>" : ""),
+               '<div id="situation">' + situationHtml(sit) + "</div>", true);
+  h += section("Fixpunt" + (r.fixpoint ? ' <span class="muted">' + fixpointCount(r.fixpoint) + "</span>" : ""),
+               '<div id="fixpoint">' + fixpointHtml(r) + "</div>", true);
+  const cov = r.coverage || [];
+  h += section("Dekking <span class=\"muted\">" + cov.filter((d) => d.kind === "FIRED").length + " van " + cov.length
+               + " vormen gevuurd</span>", coverageHtml(cov), false);
+  const trace = r.trace || [];
+  h += section("Vuringen <span class=\"muted\">" + trace.length + " vormen</span>", firingsHtml(trace), false);
+  h += section("Uitleg <span class=\"muted\">" + (r.explanation || []).length + " zinnen</span>", explanationHtml(r), false);
   return h;
 }
 
-function verwachtingenHtml(vw) {
-  if (!vw.length) return '<div class="diag muted">uchars rapport geeft geen verwachtingen voor dit scenario.</div>';
+function expectationsHtml(exps) {
+  if (!exps.length) return '<div class="diag muted">uchars rapport geeft geen verwachtingen voor dit scenario.</div>';
   let h = '<table><tr><th></th><th class="num">regel</th><th>verwachting in de bron</th><th>verwacht</th><th>werkelijk</th></tr>';
-  for (const v of vw) {
-    const label = labelVanBron(v.bron);
-    h += '<tr class="' + (v.ok ? "row-ok" : "row-bad") + (label ? ' klikbaar" data-label="' + esc(label)
+  for (const v of exps) {
+    const label = labelOfSource(v.source);
+    h += '<tr class="' + (v.ok ? "row-ok" : "row-bad") + (label ? ' clickable" data-label="' + esc(label)
        + '" title="toon ' + esc(label) + ' in situatie en fixpunt' : "") + '"><td>' + (v.ok ? "&#10003;" : "&#10007;") + '</td><td class="num">'
-       + (v.regel || "") + '</td><td class="mono" title="' + esc(v.bron) + '">' + esc(v.regeltekst || v.bron)
-       + "</td><td>" + esc(v.verwacht) + "</td><td>" + esc(v.werkelijk) + "</td></tr>";
+       + (v.line || "") + '</td><td class="mono" title="' + esc(v.source) + '">' + esc(v.lineText || v.source)
+       + "</td><td>" + esc(v.expected) + "</td><td>" + esc(v.actual) + "</td></tr>";
   }
   return h + "</table>";
 }
 
-function situatieHtml(sit) {
+function situationHtml(sit) {
   if (!sit) return '<div class="diag muted">Geen situatie in het antwoord.</div>';
-  const typen = Object.fromEntries(sit.objecten.map((o) => [o.label, o]));
+  const types = Object.fromEntries(sit.objects.map((o) => [o.label, o]));
   let h = "<table><tr><th>lid</th><th>waarde</th><th class=\"num\">regel</th></tr>", n = 0;
-  for (const o of sit.objecten) {
-    const heel = pastLabel(o.label) || past(o.objecttype, o.objecttypeCanoniek);
-    const rijen = [];
-    for (const a of o.attributen)
-      if (heel || past(a.attribuut, a.attribuutCanoniek))
-        rijen.push("<tr><td>" + naam(a, "attribuut") + "</td><td>" + waarde(a) + '</td><td class="num">' + a.regel + "</td></tr>");
-    for (const k of o.kenmerken)
-      if (heel || past(k.kenmerk, k.kenmerkCanoniek))
-        rijen.push("<tr><td>" + naam(k, "kenmerk") + "</td><td>" + (k.perioden
-          ? k.perioden.map((p) => "[" + esc(p.van) + ", " + esc(p.tot) + ")").join("<br>") : "waar")
-          + '</td><td class="num">' + k.regel + "</td></tr>");
-    for (const r of o.rollen)
-      if (heel || past(r.rol, r.rolCanoniek) || (r.labels.length && pastLabel(...r.labels)))
-        rijen.push("<tr><td>" + naam(r, "rol") + "</td><td>" + r.labels.map((l) => objectMetType(l, typen, r.doeltype)).join(", ")
-          + '</td><td class="num">' + r.regel + "</td></tr>");
-    if (!heel && !rijen.length) continue;
+  for (const o of sit.objects) {
+    const whole = matchesLabel(o.label) || matches(o.objectType, o.objectTypeCanonical);
+    const rows = [];
+    for (const a of o.attributes)
+      if (whole || matches(a.attribute, a.attributeCanonical))
+        rows.push("<tr><td>" + nameOf(a, "attribute") + "</td><td>" + valueHtml(a) + '</td><td class="num">' + a.line + "</td></tr>");
+    for (const k of o.characteristics)
+      if (whole || matches(k.characteristic, k.characteristicCanonical))
+        rows.push("<tr><td>" + nameOf(k, "characteristic") + "</td><td>" + (k.periods
+          ? k.periods.map((p) => "[" + esc(p.from) + ", " + esc(p.to) + ")").join("<br>") : "waar")
+          + '</td><td class="num">' + k.line + "</td></tr>");
+    for (const r of o.roles)
+      if (whole || matches(r.role, r.roleCanonical) || (r.labels.length && matchesLabel(...r.labels)))
+        rows.push("<tr><td>" + nameOf(r, "role") + "</td><td>" + r.labels.map((l) => objectWithType(l, types, r.targetType)).join(", ")
+          + '</td><td class="num">' + r.line + "</td></tr>");
+    if (!whole && !rows.length) continue;
     n++;
-    h += '<tr class="obj"><td colspan="3">' + esc(o.label) + ' <span class="muted">' + naam(o, "objecttype") + "</span></td></tr>"
-       + (rijen.length ? rijen.join("") : '<tr><td colspan="3" class="muted">geen attributen, kenmerken of rollen</td></tr>');
+    h += '<tr class="obj"><td colspan="3">' + esc(o.label) + ' <span class="muted">' + nameOf(o, "objectType") + "</span></td></tr>"
+       + (rows.length ? rows.join("") : '<tr><td colspan="3" class="muted">geen attributen, kenmerken of rollen</td></tr>');
   }
-  const ps = sit.parameters.filter((p) => past(p.parameter, p.parameterCanoniek));
-  if (ps.length) {
+  const params = sit.parameters.filter((p) => matches(p.parameter, p.parameterCanonical));
+  if (params.length) {
     n++;
     h += '<tr class="obj"><td colspan="3">parameters</td></tr>';
-    for (const p of ps)
-      h += "<tr><td>" + naam(p, "parameter") + "</td><td>" + waarde(p) + '</td><td class="num">' + p.regel + "</td></tr>";
+    for (const p of params)
+      h += "<tr><td>" + nameOf(p, "parameter") + "</td><td>" + valueHtml(p) + '</td><td class="num">' + p.line + "</td></tr>";
   }
   return n ? h + "</table>" : '<div class="diag muted">Niets in de situatie past op het filter.</div>';
 }
 
-function fixpuntTelling(f) {
-  const delen = [f.objecten.length + " objecten"];
-  for (const [k, w] of [["gemaakteObjecten", "gemaakt"], ["koppelingen", "koppelingen"], ["fouten", "fouten"],
-                        ["inconsistenties", "inconsistenties"]])
-    if (f[k].length) delen.push(f[k].length + " " + w);
-  return delen.join(", ");
+function fixpointCount(f) {
+  const parts = [f.objects.length + " objecten"];
+  for (const [k, w] of [["madeObjects", "gemaakt"], ["links", "koppelingen"], ["faults", "fouten"],
+                        ["inconsistencies", "inconsistenties"]])
+    if (f[k].length) parts.push(f[k].length + " " + w);
+  return parts.join(", ");
 }
 
-function fixpuntHtml(r) {
-  if (!r.fixpunt)
-    return r.fixpuntFout ? '<div class="diag warn">geen fixpunt: ' + esc(r.fixpuntFout) + "</div>"
-                         : '<div class="diag muted">Geen fixpunt: uchar speelde deze case niet.</div>';
-  const f = r.fixpunt;
-  const typen = Object.fromEntries(f.objecten.map((o) => [o.object, o]));
+function fixpointHtml(r) {
+  if (!r.fixpoint)
+    return r.fixpointError ? '<div class="diag warn">geen fixpunt: ' + esc(r.fixpointError) + "</div>"
+                           : '<div class="diag muted">Geen fixpunt: uchar speelde deze case niet.</div>';
+  const f = r.fixpoint;
+  const types = Object.fromEntries(f.objects.map((o) => [o.object, o]));
   let h = "";
-  if (f.fouten.length) {
+  if (f.faults.length) {
     h += '<table><tr><th>evaluatiefout</th><th>regel</th><th>onderwerp</th><th>zin</th></tr>';
-    for (const x of f.fouten)
-      h += '<tr class="row-bad"><td>' + esc(x.soort) + "</td><td>" + naam(x, "regel") + "</td><td>" + objectMetType(x.onderwerp, typen)
-         + "</td><td>" + esc(x.zin) + "</td></tr>";
+    for (const x of f.faults)
+      h += '<tr class="row-bad"><td>' + esc(x.kind) + "</td><td>" + nameOf(x, "rule") + "</td><td>" + objectWithType(x.subject, types)
+         + "</td><td>" + esc(x.sentence) + "</td></tr>";
     h += "</table>";
   }
   let t = '<table><tr><th>lid</th><th>waarde</th><th>herkomst</th></tr>', n = 0;
-  for (const o of f.objecten) {
-    const heel = pastLabel(o.object) || past(o.objecttype, o.objecttypeCanoniek);
-    const zichtbaar = (herkomst) => !filter.alleenAfgeleid || herkomst !== "invoer";
-    const rijen = [];
-    for (const w of o.waarden)
-      if (zichtbaar(w.herkomst) && (heel || past(w.attribuut, w.attribuutCanoniek)))
-        rijen.push("<tr><td>" + naam(w, "attribuut") + "</td><td>" + waarde(w)
-          + ("invoer" in w ? ' <span class="klein">(invoer ' + (Array.isArray(w.invoer) ? tijdlijn(w.invoer) : scalar(w.invoer)) + ")</span>" : "")
-          + '</td><td><span class="hk ' + esc(w.herkomst) + '">' + esc(w.herkomst) + "</span></td></tr>");
-    for (const k of o.kenmerken)
-      if (zichtbaar(k.herkomst) && (heel || past(k.kenmerk, k.kenmerkCanoniek)))
-        rijen.push("<tr><td>" + naam(k, "kenmerk") + "</td><td>waar" + (k.invoer ? ' <span class="klein">(ook invoer)</span>' : "")
-          + '</td><td><span class="hk ' + esc(k.herkomst) + '">' + esc(k.herkomst) + "</span></td></tr>");
-    if (!rijen.length) continue;
+  for (const o of f.objects) {
+    const whole = matchesLabel(o.object) || matches(o.objectType, o.objectTypeCanonical);
+    const visible = (origin) => !filter.onlyDerived || origin !== "input";
+    const rows = [];
+    for (const w of o.values)
+      if (visible(w.origin) && (whole || matches(w.attribute, w.attributeCanonical)))
+        rows.push("<tr><td>" + nameOf(w, "attribute") + "</td><td>" + valueHtml(w)
+          + ("input" in w ? ' <span class="small">(invoer ' + (Array.isArray(w.input) ? timelineHtml(w.input) : scalar(w.input)) + ")</span>" : "")
+          + '</td><td><span class="origin ' + esc(w.origin) + '">' + esc(w.origin) + "</span></td></tr>");
+    for (const k of o.characteristics)
+      if (visible(k.origin) && (whole || matches(k.characteristic, k.characteristicCanonical)))
+        rows.push("<tr><td>" + nameOf(k, "characteristic") + "</td><td>waar" + (k.input ? ' <span class="small">(ook invoer)</span>' : "")
+          + '</td><td><span class="origin ' + esc(k.origin) + '">' + esc(k.origin) + "</span></td></tr>");
+    if (!rows.length) continue;
     n++;
-    t += '<tr class="obj"><td colspan="3">' + esc(o.object) + ' <span class="muted">' + naam(o, "objecttype") + "</span></td></tr>"
-       + rijen.join("");
+    t += '<tr class="obj"><td colspan="3">' + esc(o.object) + ' <span class="muted">' + nameOf(o, "objectType") + "</span></td></tr>"
+       + rows.join("");
   }
-  h += n ? t + "</table>" : '<div class="diag muted">Geen waarden of kenmerken' + (filter.tekst || filter.alleenAfgeleid ? " die op het filter passen" : "") + ".</div>";
-  if (f.gemaakteObjecten.length) {
+  h += n ? t + "</table>" : '<div class="diag muted">Geen waarden of kenmerken' + (filter.text || filter.onlyDerived ? " die op het filter passen" : "") + ".</div>";
+  if (f.madeObjects.length) {
     h += '<table><tr><th>gemaakt object</th><th>objecttype</th><th>creatie</th><th>onderwerp</th></tr>';
-    for (const g of f.gemaakteObjecten)
-      h += "<tr><td>" + esc(g.object) + "</td><td>" + naam(g, "objecttype") + "</td><td>" + naam(g, "creatie") + "</td><td>"
-         + objectMetType(g.onderwerp, typen) + "</td></tr>";
+    for (const g of f.madeObjects)
+      h += "<tr><td>" + esc(g.object) + "</td><td>" + nameOf(g, "objectType") + "</td><td>" + nameOf(g, "creation") + "</td><td>"
+         + objectWithType(g.subject, types) + "</td></tr>";
     h += "</table>";
   }
-  if (f.koppelingen.length) {
+  if (f.links.length) {
     h += '<table><tr><th>feittype</th><th>rol</th><th>object</th><th>rol</th><th>object</th></tr>';
-    for (const k of f.koppelingen)
-      h += "<tr><td>" + naam(k, "feittype") + "</td><td>" + naam(k, "eersteRol") + "</td><td>" + objectMetType(k.eerste, typen)
-         + "</td><td>" + naam(k, "tweedeRol") + "</td><td>" + objectMetType(k.tweede, typen) + "</td></tr>";
+    for (const k of f.links)
+      h += "<tr><td>" + nameOf(k, "factType") + "</td><td>" + nameOf(k, "firstRole") + "</td><td>" + objectWithType(k.first, types)
+         + "</td><td>" + nameOf(k, "secondRole") + "</td><td>" + objectWithType(k.second, types) + "</td></tr>";
     h += "</table>";
   }
-  if (f.inconsistenties.length) {
+  if (f.inconsistencies.length) {
     h += '<table><tr><th>inconsistentie volgens</th><th>onderwerp</th></tr>';
-    for (const x of f.inconsistenties)
-      h += '<tr class="row-bad"><td>' + (x.regel == null ? '<span class="muted">geen regel</span>' : naam(x, "regel"))
-         + "</td><td>" + (x.onderwerp == null ? '<span class="muted">geen</span>' : objectMetType(x.onderwerp, typen)) + "</td></tr>";
+    for (const x of f.inconsistencies)
+      h += '<tr class="row-bad"><td>' + (x.rule == null ? '<span class="muted">geen regel</span>' : nameOf(x, "rule"))
+         + "</td><td>" + (x.subject == null ? '<span class="muted">geen</span>' : objectWithType(x.subject, types)) + "</td></tr>";
     h += "</table>";
   }
-  if (!f.gemaakteObjecten.length && !f.koppelingen.length && !f.fouten.length && !f.inconsistenties.length)
+  if (!f.madeObjects.length && !f.links.length && !f.faults.length && !f.inconsistencies.length)
     h += '<div class="diag muted">Geen gemaakte objecten, koppelingen, evaluatiefouten of inconsistenties.</div>';
   return h;
 }
 
-function dekkingHtml(dk) {
-  if (!dk.length) return '<div class="diag muted">Geen dekking: uchar speelde deze case niet.</div>';
+function coverageHtml(cov) {
+  if (!cov.length) return '<div class="diag muted">Geen dekking: uchar speelde deze case niet.</div>';
   let h = "<table><tr><th>vorm</th><th></th></tr>";
-  for (const d of dk)
-    h += "<tr><td>" + esc(d.regel) + '</td><td><span class="pill ' + (d.soort === "GEVUURD" ? "ok" : "warn") + '">'
-       + esc(d.soort) + "</span></td></tr>";
+  for (const d of cov)
+    h += "<tr><td>" + esc(d.rule) + '</td><td><span class="pill ' + (d.kind === "FIRED" ? "ok" : "warn") + '">'
+       + esc(d.kind) + "</span></td></tr>";
   return h + "</table>";
 }
 
-function vuringenHtml(tr) {
-  if (!tr.length) return '<div class="diag muted">Geen vuringen.</div>';
+function firingsHtml(trace) {
+  if (!trace.length) return '<div class="diag muted">Geen vuringen.</div>';
   let h = '<table><tr><th>vorm</th><th>labels</th><th class="num">aantal</th></tr>';
-  for (const t of tr)
-    h += "<tr><td>" + esc(t.regel) + "</td><td>" + t.labels.map(esc).join(", ") + '</td><td class="num">' + t.aantal + "</td></tr>";
+  for (const t of trace)
+    h += "<tr><td>" + esc(t.rule) + "</td><td>" + t.labels.map(esc).join(", ") + '</td><td class="num">' + t.count + "</td></tr>";
   return h + "</table>";
 }
 
-function uitlegHtml(r) {
-  let h = r.uitlegFout ? '<div class="diag warn">geen uitleg: ' + esc(r.uitlegFout) + "</div>" : "";
-  for (const z of (r.uitleg || [])) h += '<div class="diag ok">' + esc(z) + "</div>";
+function explanationHtml(r) {
+  let h = r.explanationError ? '<div class="diag warn">geen uitleg: ' + esc(r.explanationError) + "</div>" : "";
+  for (const z of (r.explanation || [])) h += '<div class="diag ok">' + esc(z) + "</div>";
   return h || '<div class="diag muted">Geen uitleg.</div>';
 }
 
 function bindScenario() {
-  for (const b of $("view").querySelectorAll(".keuze button"))
-    b.addEventListener("click", () => { scenarioKeuze = b.dataset.scenario; render(); });
-  const r = laatste && laatste.scenario && (laatste.scenario.resultaten || []).find((x) => x.naam === scenarioKeuze);
+  for (const b of $("view").querySelectorAll(".choice button"))
+    b.addEventListener("click", () => { scenarioChoice = b.dataset.scenario; render(); });
+  const r = latest && latest.scenario && (latest.scenario.results || []).find((x) => x.name === scenarioChoice);
   if (!r) return;
-  const herteken = () => {
-    $("situatie").innerHTML = situatieHtml(r.situatie);
-    $("fixpunt").innerHTML = fixpuntHtml(r);
+  const redraw = () => {
+    $("situation").innerHTML = situationHtml(r.situation);
+    $("fixpoint").innerHTML = fixpointHtml(r);
   };
-  $("filter").addEventListener("input", (e) => { filter.tekst = e.target.value; herteken(); });
+  $("filter").addEventListener("input", (e) => { filter.text = e.target.value; redraw(); });
   // from an expectation to its object: the filter on its label, the fixpoint open and in view
-  for (const rij of $("view").querySelectorAll("tr[data-label]"))
-    rij.addEventListener("click", () => {
-      filter.tekst = rij.dataset.label;
-      $("filter").value = filter.tekst;
-      herteken();
-      const d = $("fixpunt").closest("details");
+  for (const row of $("view").querySelectorAll("tr[data-label]"))
+    row.addEventListener("click", () => {
+      filter.text = row.dataset.label;
+      $("filter").value = filter.text;
+      redraw();
+      const d = $("fixpoint").closest("details");
       d.open = true;
       d.scrollIntoView({ block: "start" });
     });
-  $("alleenAfgeleid").addEventListener("change", (e) => { filter.alleenAfgeleid = e.target.checked; herteken(); });
+  $("onlyDerived").addEventListener("change", (e) => { filter.onlyDerived = e.target.checked; redraw(); });
 }
 
-// ---------- vocabulaires: what the source declares, and per declaration its designation in each ----------
-function renderVocabulaires() {
-  const v = laatste.vocabulaires;
+// ---------- vocabularies: what the source declares, and per declaration its designation in each ----------
+function renderVocabularies() {
+  const v = latest.vocabularies;
   if (!v)
     return '<span class="pill warn">GEEN OVERZICHT</span><div class="diag muted">Er is pas een overzicht als het model schoon parset en resolvet.</div>';
-  let h = '<div class="diag">gekozen: <b>' + esc(v.gekozen) + "</b> <span class=\"muted\">(het veld boven de bron; leeg is canoniek)</span></div>";
-  if (!v.gedeclareerd.length) return h + '<div class="diag muted">De bron declareert geen vocabulaire: elke naam is canoniek.</div>';
+  let h = '<div class="diag">gekozen: <b>' + esc(v.chosen) + "</b> <span class=\"muted\">(het veld boven de bron; leeg is canoniek)</span></div>";
+  if (!v.declared.length) return h + '<div class="diag muted">De bron declareert geen vocabulaire: elke naam is canoniek.</div>';
   h += '<table><tr><th>vocabulaire</th><th>standaard</th><th>taal</th><th class="num">met benaming</th></tr>';
-  for (const d of v.gedeclareerd) {
-    const met = v.elementen.filter((e) => e.benamingen[d.naam] != null).length;
-    h += "<tr><td>" + esc(d.naam) + "</td><td>" + (d.standaard ? "ja" : "") + "</td><td>" + esc(d.taal || "") + '</td><td class="num">'
-       + met + " van " + v.elementen.length + "</td></tr>";
+  for (const d of v.declared) {
+    const withDesignation = v.elements.filter((e) => e.designations[d.name] != null).length;
+    h += "<tr><td>" + esc(d.name) + "</td><td>" + (d.default ? "ja" : "") + "</td><td>" + esc(d.language || "") + '</td><td class="num">'
+       + withDesignation + " van " + v.elements.length + "</td></tr>";
   }
   h += "</table>";
-  const soorten = [...new Set(v.elementen.map((e) => e.soort))];
+  const kinds = [...new Set(v.elements.map((e) => e.kind))];
   h += '<div class="filterbar"><input type="text" id="vocFilter" size="28" placeholder="filter op naam" value="' + esc(filter.voc)
-     + '"><select id="vocSoort"><option value="">alle soorten</option>'
-     + soorten.map((s) => '<option value="' + esc(s) + '"' + (s === filter.vocSoort ? " selected" : "") + ">" + esc(s.toLowerCase()) + "</option>").join("")
+     + '"><select id="vocKind"><option value="">alle soorten</option>'
+     + kinds.map((s) => '<option value="' + esc(s) + '"' + (s === filter.vocKind ? " selected" : "") + ">" + esc(s.toLowerCase()) + "</option>").join("")
      + "</select></div>";
-  return h + '<div id="vocElementen">' + vocElementenHtml(v) + "</div>";
+  return h + '<div id="vocElements">' + vocElementsHtml(v) + "</div>";
 }
 
-function vocElementenHtml(v) {
+function vocElementsHtml(v) {
   const f = filter.voc.trim().toLowerCase();
-  const rijen = v.elementen.filter((e) => (!filter.vocSoort || e.soort === filter.vocSoort)
-    && (!f || [e.canoniek, e.eigenaar, ...Object.values(e.benamingen)].some((n) => n != null && n.toLowerCase().includes(f))));
-  if (!rijen.length) return '<div class="diag muted">Geen declaratie past op het filter.</div>';
+  const rows = v.elements.filter((e) => (!filter.vocKind || e.kind === filter.vocKind)
+    && (!f || [e.canonical, e.owner, ...Object.values(e.designations)].some((n) => n != null && n.toLowerCase().includes(f))));
+  if (!rows.length) return '<div class="diag muted">Geen declaratie past op het filter.</div>';
   let h = '<table class="voc"><tr><th>soort</th><th>eigenaar</th><th>canoniek</th>'
-        + v.gedeclareerd.map((d) => "<th>" + esc(d.naam) + (d.naam.toLowerCase() === v.gekozen.toLowerCase() ? " &#9679;" : "") + "</th>").join("") + "</tr>";
-  for (const e of rijen)
-    h += '<tr><td class="klein">' + esc(e.soort.toLowerCase()) + '</td><td class="klein">' + esc(e.eigenaar || "") + "</td><td>" + esc(e.canoniek) + "</td>"
-       + v.gedeclareerd.map((d) => "<td>" + (e.benamingen[d.naam] == null ? '<span class="muted">&mdash;</span>' : esc(e.benamingen[d.naam])) + "</td>").join("")
+        + v.declared.map((d) => "<th>" + esc(d.name) + (d.name.toLowerCase() === v.chosen.toLowerCase() ? " &#9679;" : "") + "</th>").join("") + "</tr>";
+  for (const e of rows)
+    h += '<tr><td class="small">' + esc(e.kind.toLowerCase()) + '</td><td class="small">' + esc(e.owner || "") + "</td><td>" + esc(e.canonical) + "</td>"
+       + v.declared.map((d) => "<td>" + (e.designations[d.name] == null ? '<span class="muted">&mdash;</span>' : esc(e.designations[d.name])) + "</td>").join("")
        + "</tr>";
   return h + "</table>";
 }
 
-function bindVocabulaires() {
-  const v = laatste && laatste.vocabulaires;
-  if (!v || !v.gedeclareerd.length) return;
-  $("vocFilter").addEventListener("input", (e) => { filter.voc = e.target.value; $("vocElementen").innerHTML = vocElementenHtml(v); });
-  $("vocSoort").addEventListener("change", (e) => { filter.vocSoort = e.target.value; $("vocElementen").innerHTML = vocElementenHtml(v); });
+function bindVocabularies() {
+  const v = latest && latest.vocabularies;
+  if (!v || !v.declared.length) return;
+  $("vocFilter").addEventListener("input", (e) => { filter.voc = e.target.value; $("vocElements").innerHTML = vocElementsHtml(v); });
+  $("vocKind").addEventListener("change", (e) => { filter.vocKind = e.target.value; $("vocElements").innerHTML = vocElementsHtml(v); });
 }
 
-async function analyseer() {
-  const bron = $("bron").value;
+async function analyze() {
+  const source = $("source").value;
   $("run").disabled = true; $("status").textContent = "bezig...";
   try {
-    const vocabulaire = $("vocabulaire").value.trim();
-    const resp = await fetch("/playground/analyse" + (vocabulaire ? "?vocabulaire=" + encodeURIComponent(vocabulaire) : ""), {
-      method: "POST", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: bron,
+    const vocabulary = $("vocabulary").value.trim();
+    const resp = await fetch("/playground/analyse" + (vocabulary ? "?vocabulary=" + encodeURIComponent(vocabulary) : ""), {
+      method: "POST", headers: { "Content-Type": "text/plain; charset=utf-8" }, body: source,
     });
-    if (!resp.ok) { laatste = { __transport: "HTTP " + resp.status + " " + (await resp.text()) }; }
-    else { laatste = await resp.json(); }
+    if (!resp.ok) { latest = { __transport: "HTTP " + resp.status + " " + (await resp.text()) }; }
+    else { latest = await resp.json(); }
     $("status").textContent = "";
   } catch (e) {
-    laatste = { __transport: String(e) }; $("status").textContent = "";
+    latest = { __transport: String(e) }; $("status").textContent = "";
   } finally {
     $("run").disabled = false; render();
   }
 }
 
-$("run").addEventListener("click", analyseer);
-$("voorbeeld").addEventListener("click", () => { $("bron").value = VOORBEELD; analyseer(); });
-$("leeg").addEventListener("click", () => { $("bron").value = ""; laatste = null; render(); });
-$("bron").addEventListener("keydown", (e) => {
-  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); analyseer(); }
+$("run").addEventListener("click", analyze);
+$("example").addEventListener("click", () => { $("source").value = EXAMPLE; analyze(); });
+$("clear").addEventListener("click", () => { $("source").value = ""; latest = null; render(); });
+$("source").addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); analyze(); }
 });
 for (const b of $("tabs").querySelectorAll("button"))
   b.addEventListener("click", () => {
-    actief = b.dataset.tab;
+    active = b.dataset.tab;
     for (const x of $("tabs").querySelectorAll("button")) x.classList.toggle("active", x === b);
     render();
   });

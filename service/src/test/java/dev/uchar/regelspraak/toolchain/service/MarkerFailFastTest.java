@@ -33,10 +33,10 @@ class MarkerFailFastTest {
         """;
 
     private static final String MARKER_DESCRIPTOR = """
-        { "dienst": {"naam":"marker-test","versie":"1"},
-          "entrypoints": [ { "naam":"heffing markert","pad":"heffing-markert",
-            "scope": {"regelnamen": ["heffing markert"]},
-            "invoer": ["Vlucht"], "uitvoer": ["Vlucht.heffing"] } ],
+        { "service": {"name":"marker-test","version":"1"},
+          "entrypoints": [ { "name":"heffing markert","path":"heffing-markert",
+            "scope": {"ruleNames": ["heffing markert"]},
+            "input": ["Vlucht"], "output": ["Vlucht.heffing"] } ],
           "parameters": {} }""";
 
     private static Map<String, String> source() {
@@ -83,10 +83,10 @@ class MarkerFailFastTest {
         """;
 
     private static final String NAME_SHARING_DESCRIPTOR = """
-        { "dienst": {"naam":"naamdeling","versie":"1"},
-          "entrypoints": [ { "naam":"maatdeling","pad":"maatdeling",
-            "scope": {"regelnamen": ["maatdeling van een jutter"]},
-            "invoer": ["Jutter"], "uitvoer": ["Jutter.maatdeling"] } ],
+        { "service": {"name":"naamdeling","version":"1"},
+          "entrypoints": [ { "name":"maatdeling","path":"maatdeling",
+            "scope": {"ruleNames": ["maatdeling van een jutter"]},
+            "input": ["Jutter"], "output": ["Jutter.maatdeling"] } ],
           "parameters": {} }""";
 
     @Test
@@ -109,10 +109,10 @@ class MarkerFailFastTest {
     void a_lowered_rule_also_starts_strictly() {
         // 'bepaal leeftijd' lowers cleanly under DRL -> no marker -> strict start succeeds.
         String descriptor = """
-            { "dienst": {"naam":"ok","versie":"1"},
-              "entrypoints": [ { "naam":"bepaal-leeftijd","pad":"bepaal-leeftijd",
-                "scope": {"regelnamen": ["bepaal leeftijd"]},
-                "invoer": ["Vlucht","Natuurlijk persoon"], "uitvoer": ["Natuurlijk persoon.leeftijd"] } ],
+            { "service": {"name":"ok","version":"1"},
+              "entrypoints": [ { "name":"bepaal-leeftijd","path":"bepaal-leeftijd",
+                "scope": {"ruleNames": ["bepaal leeftijd"]},
+                "input": ["Vlucht","Natuurlijk persoon"], "output": ["Natuurlijk persoon.leeftijd"] } ],
               "parameters": {} }""";
         DecisionCore core = DecisionCore.assemble(descriptor, TokaSource.sourcePerFile(),
                 CoreConfig.strict(), Thread.currentThread().getContextClassLoader());

@@ -1,12 +1,12 @@
 {
-  "naam": "tekst waar numeriek verwacht wordt (identificatienummer)",
-  "pad": "bepaal-leeftijd",
+  "name": "tekst waar numeriek verwacht wordt (identificatienummer)",
+  "path": "bepaal-leeftijd",
   "body": {
-    "instanties": [
-      { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
-      { "type": "Natuurlijk persoon", "id": "P1", "attributen": { "identificatienummer": "geen-getal" }, "rollen": { "reis": "V1" } }
+    "instances": [
+      { "type": "Vlucht", "id": "V1", "attributes": { "vluchtdatum": "2024-06-15" } },
+      { "type": "Natuurlijk persoon", "id": "P1", "attributes": { "identificatienummer": "geen-getal" }, "roles": { "reis": "V1" } }
     ]
   },
-  "verwachtStatus": 400,
-  "verwachtVeldBevat": "identificatienummer"
+  "expectedStatus": 400,
+  "expectedFieldContains": "identificatienummer"
 }

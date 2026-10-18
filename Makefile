@@ -28,11 +28,11 @@ help:
 	@echo "  make ir FILE=\"a.rgs …\" [OUT=…]       The uchar-ir-v1 document of the model (default out/ir.json)"
 	@echo "  make cases FILE=\"a.rgs …\" [OUT=…]    The scenarios lowered to case files beside ir.json (default out/cases/)"
 	@echo "  make scenario FILE=\"[--trace] [--uitleg] a.rgs …\"   PASS / FAIL / MARKER per scenario"
-	@echo "  make serve FILE=\"d.dienst.json a.rgs …\" [POORT=…]   The decision service on the JDK HttpServer;"
-	@echo "                                       POST /<pad>?uitleg=true adds the uitleg-verhaal to the answer,"
+	@echo "  make serve FILE=\"d.service.json a.rgs …\" [POORT=…]   The decision service on the JDK HttpServer;"
+	@echo "                                       POST /<pad>?explanation=true adds the uitleg-verhaal to the answer,"
 	@echo "                                       DETAIL=true answers ?trace, ?dekking and ?fixpunt,"
 	@echo "                                       PLAYGROUND=true binds the dev-only /playground workbench routes,"
-	@echo "                                       with DETAIL=true also /playground/analyse?via=dienst"
+	@echo "                                       with DETAIL=true also /playground/analyse?via=service"
 	@echo "  make drl FILE=\"a.rgs …\"             The DRL text of uchar's DRL-text branch on stdout (exit 3 if uchar refuses)"
 	@echo "  make graaf FILE=\"a.rgs …\" [OUT=… MMD=1]  The rule graph as HTML (or bare Mermaid with MMD=1)"
 	@echo "  make facts [FILE=\"a.rgs …\"]         The fact beans, javac'd (out/facts/); no FILE: the TOKA model foundation"
@@ -168,7 +168,7 @@ clean:
 # build time (the H4 rollout overlay).
 IMAGE_REPO ?= beslisservice
 TAG ?= dev
-DESCRIPTOR_SRC ?= examples/toka/toka.dienst.json
+DESCRIPTOR_SRC ?= examples/toka/toka.service.json
 image:
 	docker build -f docker/Dockerfile --build-arg DESCRIPTOR_SRC=$(DESCRIPTOR_SRC) -t $(IMAGE_REPO):$(TAG) .
 

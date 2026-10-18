@@ -51,22 +51,22 @@ class DetailParityTest {
             Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
             """;
     private static final String BERGING_DESCRIPTOR = """
-            { "dienst": {"naam":"berging","versie":"1"},
-              "entrypoints": [ { "naam":"berging","pad":"berging",
-                "scope": {"regelnamen": ["helpersdeel van een berging"]},
-                "invoer": ["Berging"], "uitvoer": ["Berging.helpersdeel"] } ],
+            { "service": {"name":"berging","version":"1"},
+              "entrypoints": [ { "name":"berging","path":"berging",
+                "scope": {"ruleNames": ["helpersdeel van een berging"]},
+                "input": ["Berging"], "output": ["Berging.helpersdeel"] } ],
               "parameters": {} }""";
     private static final String VOCABULARY_DESCRIPTOR = """
-            { "dienst": {"naam":"vocabulaires","versie":"1"},
+            { "service": {"name":"vocabularies","version":"1"},
               "entrypoints": [
-                { "naam":"premie cgm","pad":"premie-cgm","scope": {"regelgroepen": ["premieberekening"]},
-                  "invoer": ["Jutter"], "uitvoer": ["Jutter.vondstbedrag"], "vocabulaire": "cgm" } ],
+                { "name":"premie cgm","path":"premie-cgm","scope": {"ruleGroups": ["premieberekening"]},
+                  "input": ["Jutter"], "output": ["Jutter.vondstbedrag"], "vocabulary": "cgm" } ],
               "parameters": {} }""";
     private static final String VONDST = """
-            { "instanties": [ { "type": "strandjutter", "id": "J1", "rollen": { "GEMELDE_VONDST": ["V1"] } },
-                              { "type": "Vondst", "id": "V1", "attributen": { "soort": "amber", "gewicht": 2 } } ],
+            { "instances": [ { "type": "strandjutter", "id": "J1", "roles": { "GEMELDE_VONDST": ["V1"] } },
+                              { "type": "Vondst", "id": "V1", "attributes": { "soort": "amber", "gewicht": 2 } } ],
               "parameters": { "premietarief": 5 } }""";
-    private static final String ALLE = "trace=true&dekking=true&fixpunt=true";
+    private static final String ALLE = "trace=true&coverage=true&fixpoint=true";
 
     private static final List<ServiceHttp> SERVICES = new ArrayList<>();
     private static Pair berging;
@@ -102,34 +102,34 @@ class DetailParityTest {
     void an_answer_with_the_flags_is_equal() throws Exception {
         JsonNode body = compare(berging, "berging", ALLE, request(2), 200);
         assertEquals("B", body.at("/trace/0/labels/0").asText(), body.toString());
-        assertEquals("GEVUURD", body.at("/dekking/0/soort").asText(), body.toString());
-        assertEquals("afgeleid", body.at("/fixpunt/objecten/0/waarden/2/herkomst").asText(), body.toString());
+        assertEquals("FIRED", body.at("/coverage/0/kind").asText(), body.toString());
+        assertEquals("derived", body.at("/fixpoint/objects/0/values/2/origin").asText(), body.toString());
     }
 
     @Test
     void a_422_with_the_fixpoint_is_equal() throws Exception {
-        JsonNode body = compare(berging, "berging", "fixpunt", request(0), 422);
-        assertEquals("DELING_DOOR_NUL", body.at("/fixpunt/fouten/0/soort").asText(), body.toString());
+        JsonNode body = compare(berging, "berging", "fixpoint", request(0), 422);
+        assertEquals("DIVISION_BY_ZERO", body.at("/fixpoint/faults/0/kind").asText(), body.toString());
     }
 
     @Test
     void an_answer_in_a_vocabulary_with_the_flags_is_equal() throws Exception {
         JsonNode body = compare(vocabularies, "premie-cgm", ALLE, VONDST, 200);
-        assertTrue(body.get("fixpunt").toString().contains("\"objecttype\":\"VONDST\",\"objecttypeCanoniek\":\"Vondst\""),
+        assertTrue(body.get("fixpoint").toString().contains("\"objectType\":\"VONDST\",\"objectTypeCanonical\":\"Vondst\""),
                 body.toString());
     }
 
     @Test
     void without_detail_the_400_is_equal() throws Exception {
-        JsonNode body = compare(withoutDetail, "berging", "dekking=true&fixpunt", request(2), 400);
-        assertEquals("dekking", body.at("/schendingen/0/veld").asText(), body.toString());
-        assertEquals("fixpunt", body.at("/schendingen/1/veld").asText(), body.toString());
+        JsonNode body = compare(withoutDetail, "berging", "coverage=true&fixpoint", request(2), 400);
+        assertEquals("coverage", body.at("/violations/0/field").asText(), body.toString());
+        assertEquals("fixpoint", body.at("/violations/1/field").asText(), body.toString());
     }
 
     private static String request(int helpers) {
         return """
-                { "instanties": [ { "type": "Berging", "id": "B",
-                                    "attributen": { "opbrengst": 100, "helpersaantal": %d } } ] }""".formatted(helpers);
+                { "instances": [ { "type": "Berging", "id": "B",
+                                    "attributes": { "opbrengst": 100, "helpersaantal": %d } } ] }""".formatted(helpers);
     }
 
     /** The same POST to both adapters: the same status ({@code verwacht}) and body, which it returns. The query holds
@@ -143,8 +143,8 @@ class DetailParityTest {
             String value = part.contains("=") ? part.substring(part.indexOf('=') + 1) : "";
             switch (name) {
                 case "trace" -> trace = value;
-                case "dekking" -> coverage = value;
-                case "fixpunt" -> fixpoint = value;
+                case "coverage" -> coverage = value;
+                case "fixpoint" -> fixpoint = value;
                 default -> throw new IllegalArgumentException("geen detailvlag: " + part);
             }
         }

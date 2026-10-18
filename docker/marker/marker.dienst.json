@@ -1,5 +1,0 @@
-{ "dienst": {"naam":"marker-test","versie":"1"},
-  "entrypoints": [ { "naam":"heffing markert","pad":"heffing-markert",
-    "scope": {"regelnamen": ["heffing markert"]},
-    "invoer": ["Vlucht"], "uitvoer": ["Vlucht.heffing"] } ],
-  "parameters": {} }

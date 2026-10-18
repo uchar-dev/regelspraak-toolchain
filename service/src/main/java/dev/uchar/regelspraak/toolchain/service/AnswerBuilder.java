@@ -38,11 +38,11 @@ import java.util.Map;
  *
  * <p>Response shape:
  * <pre>{@code
- * { "instanties": [ { "id": "<label>", "type": "<objecttype>",
- *                     "attributen": { "<attribuut>": <waarde|null>, ... },
- *                     "kenmerken":  { "<kenmerk>": true|false, ... } }, ... ],
- *   "inconsistenties": [ "<regelnaam>", ... ],
- *   "inconsistentieDetails": [ { "regel": "<regelnaam>", "onderwerp": "<id>"|null }, ... ] }
+ * { "instances": [ { "id": "<label>", "type": "<objecttype>",
+ *                     "attributes": { "<attribuut>": <waarde|null>, ... },
+ *                     "characteristics":  { "<kenmerk>": true|false, ... } }, ... ],
+ *   "inconsistencies": [ "<regelnaam>", ... ],
+ *   "inconsistencyDetails": [ { "rule": "<regelnaam>", "subject": "<id>"|null }, ... ] }
  * }</pre>
  *
  * <p>A request on which the rules give an evaluation fault gets no such answer but the one of
@@ -70,7 +70,7 @@ public final class AnswerBuilder {
      */
     public ObjectNode assemble(Executor.Outcome outcome, List<String> output, Map<String, Objecttype> typePerLabel) {
         ObjectNode root = NF.objectNode();
-        ArrayNode instances = root.putArray("instanties");
+        ArrayNode instances = root.putArray("instances");
 
         // group selectors per instance id, preserving instance order
         for (var e : outcome.beans().entrySet()) {
@@ -93,52 +93,52 @@ public final class AnswerBuilder {
             ObjectNode inst = NF.objectNode();
             inst.put("id", id);
             inst.put("type", naming.objectType(ot.naam));
-            if (!attributes.isEmpty()) inst.set("attributen", attributes);
-            if (!characteristics.isEmpty()) inst.set("kenmerken", characteristics);
+            if (!attributes.isEmpty()) inst.set("attributes", attributes);
+            if (!characteristics.isEmpty()) inst.set("characteristics", characteristics);
             instances.add(inst);
         }
 
-        ArrayNode inc = root.putArray("inconsistenties");
+        ArrayNode inc = root.putArray("inconsistencies");
         ArrayNode details = NF.arrayNode();
         for (Object o : outcome.inconsistencies()) {
             Object line = RegelSpraakRuntime.get(o, "regel");
             String name = line == null ? null : naming.form(line.toString());
             inc.add(name);
             ObjectNode d = details.addObject();
-            d.put("regel", name);
-            d.put("onderwerp", idOf(outcome.beans(), RegelSpraakRuntime.get(o, "subject")));
+            d.put("rule", name);
+            d.put("subject", idOf(outcome.beans(), RegelSpraakRuntime.get(o, "subject")));
         }
-        root.set("inconsistentieDetails", details);
+        root.set("inconsistencyDetails", details);
         return root;
     }
 
     /** The answer to a request on which the rules give an evaluation fault, which both adapters send with HTTP 422,
      *  shaped as the MARKER answer and the answer to a request that does not validate:
-     *  {@code {"status": "EVALUATIEFOUT", "fout": <sentence>, "fouten": [{"soort": <soort>, "fout": <uchar's
+     *  {@code {"status": "EVALUATION_FAULT", "error": <sentence>, "faults": [{"kind": <soort>, "error": <uchar's
      *  sentence>}, ...]}}, one element per fault in uchar's order. Where uchar's sentence names an object, it names an
      *  object of the request by its id; no stacktrace and no class name enter it. The detail of the session the request
      *  asked ({@link EvaluationFault#detail()}) follows the faults, under the keys of the answer it would have had. */
     public static ObjectNode evaluationFault(EvaluationFault error) {
         ObjectNode n = NF.objectNode();
-        n.put("status", "EVALUATIEFOUT");
-        n.put("fout", error.getMessage());
-        ArrayNode errors = n.putArray("fouten");
+        n.put("status", "EVALUATION_FAULT");
+        n.put("error", error.getMessage());
+        ArrayNode errors = n.putArray("faults");
         for (EvaluationFault.Fault f : error.errors()) {
             ObjectNode fn = errors.addObject();
-            fn.put("soort", f.kind().name());
-            fn.put("fout", f.sentence());
+            fn.put("kind", f.kind().name());
+            fn.put("error", f.sentence());
         }
         if (error.detail() != null) n.setAll(error.detail());
         return n;
     }
 
     /** The answer to a request whose session reached no fixpoint, which both adapters send with HTTP 422, shaped as the
-     *  answer to an evaluation fault: {@code {"status": "GEEN_FIXPUNT", "fout": <uchar's sentence>}}. The detail of the
+     *  answer to an evaluation fault: {@code {"status": "NO_FIXPOINT", "error": <uchar's sentence>}}. The detail of the
      *  session the request asked ({@link NoFixpoint#detail()}) follows the sentence. */
     public static ObjectNode noFixpoint(NoFixpoint none) {
         ObjectNode n = NF.objectNode();
-        n.put("status", "GEEN_FIXPUNT");
-        n.put("fout", none.getMessage());
+        n.put("status", "NO_FIXPOINT");
+        n.put("error", none.getMessage());
         if (none.detail() != null) n.setAll(none.detail());
         return n;
     }

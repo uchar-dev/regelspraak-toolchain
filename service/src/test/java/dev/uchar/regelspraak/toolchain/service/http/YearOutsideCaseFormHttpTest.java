@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * A date with a year beyond 0000-9999 reads as an ISO date ({@code +10000-01-01}), but the {@code uchar-case-v0} lexeme
  * carries four digits and no sign, and uchar's input step refuses it when it reads the request written as a case. The
- * service gives that refusal as a 400 {@code VERKEERD_TYPE} on the field of the request that holds the date, with
+ * service gives that refusal as a 400 {@code WRONG_TYPE} on the field of the request that holds the date, with
  * uchar's sentence, and not as the 500 of an exception it did not expect.
  */
 class YearOutsideCaseFormHttpTest {
@@ -40,10 +40,10 @@ class YearOutsideCaseFormHttpTest {
         """;
 
     private static final String DESCRIPTOR = """
-        { "dienst": {"naam":"verjaring","versie":"1"},
-          "entrypoints": [ { "naam":"verjaring","pad":"verjaring",
-            "scope": {"regelnamen": ["Kenmerktoekenning verjaard"]},
-            "invoer": ["Vondst"], "uitvoer": ["Vondst:verjaard"] } ],
+        { "service": {"name":"verjaring","version":"1"},
+          "entrypoints": [ { "name":"verjaring","path":"verjaring",
+            "scope": {"ruleNames": ["Kenmerktoekenning verjaard"]},
+            "input": ["Vondst"], "output": ["Vondst:verjaard"] } ],
           "parameters": {} }""";
 
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
@@ -63,50 +63,50 @@ class YearOutsideCaseFormHttpTest {
     @Test
     void a_date_within_the_case_form_computes() throws Exception {
         HttpResponse<String> resp = post("""
-            {"instanties":[{"type":"Vondst","id":"V1","attributen":{"vondstdag":"2024-01-15"}}]}""");
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"vondstdag":"2024-01-15"}}]}""");
         assertEquals(200, resp.statusCode(), resp.body());
     }
 
     @Test
     void an_attribute_with_year_10000_is_400_on_its_field() throws Exception {
         assertYearOutsideCaseForm(post("""
-            {"instanties":[{"type":"Vondst","id":"V1","attributen":{"vondstdag":"2024-01-15"}},
-              {"type":"Vondst","id":"V2","attributen":{"vondstdag":"+10000-01-01"}}]}"""),
-                "instanties[1].attributen.vondstdag", "+10000-01-01");
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"vondstdag":"2024-01-15"}},
+              {"type":"Vondst","id":"V2","attributes":{"vondstdag":"+10000-01-01"}}]}"""),
+                "instances[1].attributes.vondstdag", "+10000-01-01");
     }
 
     @Test
     void a_negative_year_is_400_on_its_field() throws Exception {
         assertYearOutsideCaseForm(post("""
-            {"instanties":[{"type":"Vondst","id":"V1","attributen":{"vondstdag":"-0001-01-01"}}]}"""),
-                "instanties[0].attributen.vondstdag", "-0001-01-01");
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"vondstdag":"-0001-01-01"}}]}"""),
+                "instances[0].attributes.vondstdag", "-0001-01-01");
     }
 
     /** uchar reads the evaluation date before any input, so it is the field named, also beside a second such date. */
     @Test
     void an_as_of_date_with_year_10000_is_400_on_as_of_date() throws Exception {
         assertYearOutsideCaseForm(post("""
-            {"peildatum":"+10000-01-01",
-             "instanties":[{"type":"Vondst","id":"V1","attributen":{"vondstdag":"+10000-01-01"}}]}"""),
-                "peildatum", "+10000-01-01");
+            {"asOfDate":"+10000-01-01",
+             "instances":[{"type":"Vondst","id":"V1","attributes":{"vondstdag":"+10000-01-01"}}]}"""),
+                "asOfDate", "+10000-01-01");
     }
 
     @Test
     void an_evaluation_date_with_year_10000_is_400_on_evaluation_date() throws Exception {
         assertYearOutsideCaseForm(post("""
-            {"rekendatum":"+10000-01-01","instanties":[{"type":"Vondst","id":"V1"}]}"""),
+            {"rekendatum":"+10000-01-01","instances":[{"type":"Vondst","id":"V1"}]}"""),
                 "rekendatum", "+10000-01-01");
     }
 
-    /** One violation, VERKEERD_TYPE on {@code field}, in uchar's sentence about the date lexeme {@code lexeme}. */
+    /** One violation, WRONG_TYPE on {@code field}, in uchar's sentence about the date lexeme {@code lexeme}. */
     private static void assertYearOutsideCaseForm(HttpResponse<String> resp, String field, String lexeme)
             throws Exception {
         assertEquals(400, resp.statusCode(), resp.body());
         JsonNode body = ServiceHttp.MAPPER.readTree(resp.body());
-        assertEquals(1, body.path("schendingen").size(), resp.body());
-        assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), resp.body());
-        assertEquals(field, body.at("/schendingen/0/veld").asText(), resp.body());
-        String sentence = body.at("/schendingen/0/fout").asText();
+        assertEquals(1, body.path("violations").size(), resp.body());
+        assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText(), resp.body());
+        assertEquals(field, body.at("/violations/0/field").asText(), resp.body());
+        String sentence = body.at("/violations/0/error").asText();
         assertTrue(sentence.startsWith("malformed date '" + lexeme + "'"), sentence);
     }
 

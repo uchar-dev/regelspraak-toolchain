@@ -1657,7 +1657,7 @@ class ScenarioOracleTest {
             - P2 is kind
             """);
         assertEquals(Status.FAIL, rb.status(), () -> "verwacht FAIL: " + rb.diagnostic());
-        assertTrue(rb.diagnostic().contains("Rekenfout: " + error.getMessage()), () -> "uchars replay: " + rb.diagnostic());
+        assertTrue(rb.diagnostic().contains("ComputeFault: " + error.getMessage()), () -> "uchars replay: " + rb.diagnostic());
     }
 
     /** FACET kenmerktoekenning (bezittelijk positief met lidwoord, subjectvorm). Lifted from

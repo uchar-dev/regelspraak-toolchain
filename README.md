@@ -119,7 +119,7 @@ to the directory the command is given in.
 | `cases <map> <bron.rgs...>` | the scenarios of a test document lowered to uchar case files in `<map>`, beside the IR document they run against (`<map>/ir.json`): the layout of uchar's corpus |
 | `scenario [--trace] [--uitleg] [--vocabulaire <naam>] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulaire` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
 | `scenario --manifest <manifest> [--uitsluitingen <lijst>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
-| `serve <descriptor.dienst.json> <bron.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--poort N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?dekking` and `?fixpunt`, and the workbench's `?via=dienst` |
+| `serve <descriptor.service.json> <bron.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--poort N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?dekking` and `?fixpunt`, and the workbench's `?via=service` |
 | `drl <bron.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
 | `graaf [--mmd] <uit> <bron.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
 | `facts <uitmap> <bron.rgs...>` | the fact beans uchar's generator writes for the model |
@@ -137,7 +137,7 @@ make check FILE="model.rgs regels.rgs"
 make ir FILE="model.rgs regels.rgs"             # out/ir.json (OUT= overrides)
 make cases FILE="model.rgs scenario.rgs"        # out/cases/ (OUT= overrides)
 make scenario FILE="--uitleg model.rgs scenario.rgs"
-make serve FILE="d.dienst.json model.rgs regels.rgs" POORT=8080
+make serve FILE="d.service.json model.rgs regels.rgs" POORT=8080
 make drl FILE=model.rgs
 make graaf FILE="model.rgs regels.rgs"          # out/regelgraaf.html (MMD=1 for Mermaid, OUT= overrides)
 make facts                                      # the TOKA model foundation (FILE= another model), javac'd
@@ -170,11 +170,11 @@ rules are written and computed in the canonical names. The distribution uses the
   parameter, enumeration value — canonically or as its designation in any vocabulary, mixed within one request,
   case-insensitively, within the scope of the name (the members of an object type with the inherited ones, the roles
   of a fact type, the values of a domain, the rest model-wide). A name that reads as two different declarations is a
-  400 `DUBBELZINNIGE_NAAM` whose sentence names both readings; the query parameter `invoervocabulaire=<naam>` pins
+  400 `AMBIGUOUS_NAME` whose sentence names both readings; the query parameter `inputVocabulary=<naam>` pins
   the vocabulary the names are read in (`canoniek` for the canonical names), which resolves it.
-- **Output is chosen.** `vocabulaire=<naam>` names the declarations of the answer, its inconsistencies and its
+- **Output is chosen.** `vocabulary=<naam>` names the declarations of the answer, its inconsistencies and its
   uitleg in that vocabulary; without it the entry point's `vocabulaire` from the descriptor applies, else the
-  canonical names. An unknown vocabulary is a 400 `ONBEKEND_VOCABULAIRE` naming the declared ones.
+  canonical names. An unknown vocabulary is a 400 `UNKNOWN_VOCABULARY` naming the declared ones.
 - **Complete or not.** A declaration without a designation in the chosen vocabulary keeps its canonical name. uchar
   requires a designation of every declaration only in the default vocabulary; `/info` lists per vocabulary whether it
   is complete and which declarations have none.
@@ -215,7 +215,7 @@ fact beans and the executable model in memory) with the jar and `bin/regelspraak
 
 | Variable | Meaning |
 |----------|---------|
-| `DESCRIPTOR` | the `.dienst.json` (default: the baked TOKA descriptor) |
+| `DESCRIPTOR` | the `.service.json` (default: the baked TOKA descriptor) |
 | `BRONNEN_MANIFEST` | a file with the sources, one absolute path per line, in model order (default: the baked TOKA set) |
 | `POORT` | the port, 8080 |
 | `ALLOW_MARKERS` | `true` starts with entry points uchar does not carry, each request to one gets 503; otherwise such an entry point stops the start with exit 3 |
@@ -236,7 +236,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   counterpart.
 - **Timelines in a service request.** The request has no timeline value, no characteristic with periods, and no
   scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service
-  refuses them as `NIET_ONDERSTEUND`. 30 of the goldens gate 12 plays need one; the replay gate lists them.
+  refuses them as `UNSUPPORTED`. 30 of the goldens gate 12 plays need one; the replay gate lists them.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
 - **The uitleg** explains characteristic-attribution rules, not defaults groups: a characteristic a defaults group
   decides gets no sentence.
@@ -265,7 +265,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 
 Copied verbatim from the casus: the 47 definition fragments `examples/toka/*.rgs`, byte-identical to uchar's
 `toka/casus/*.rgs`; they are not edited, so that the two stay in parity. Derived from the casus or this project's own
-work: the rest of `examples/toka*` (the README and the service descriptor `toka.dienst.json` in `examples/toka/`, the
+work: the rest of `examples/toka*` (the README and the service descriptor `toka.service.json` in `examples/toka/`, the
 scenarios in `examples/toka-scenarios/`, the reconciliation in `examples/toka-reconciliatie/`), the decision-table
 examples `examples/beslistabel/spec12-*.rgs`, and the tests and test resources that load the casus.
 

@@ -13,13 +13,13 @@ import com.fasterxml.jackson.databind.JsonNode;
  * {
  *   "rekendatum"?: "yyyy-MM-dd",
  *   "parameters"?: { "<parameternaam>": <waarde>, ... },
- *   "instanties": [
+ *   "instances": [
  *     { "type": "<objecttype>", "id": "<label>",
- *       "attributen"?: { "<attribuut>": <waarde>, ... },
- *       "kenmerken"?:  { "<kenmerk>": true|false, ... },
- *       "rollen"?:     { "<rol>": "<id>" | ["<id>", ...], ... } }
+ *       "attributes"?: { "<attribuut>": <waarde>, ... },
+ *       "characteristics"?:  { "<kenmerk>": true|false, ... },
+ *       "roles"?:     { "<rol>": "<id>" | ["<id>", ...], ... } }
  *   ],
- *   "relaties"?: [ { "feittype": "<naam>", "rollen": { "<rol>": "<id>", ... } } ]
+ *   "relations"?: [ { "factType": "<naam>", "roles": { "<rol>": "<id>", ... } } ]
  * }
  * }</pre>
  * Rol relations may be given inline per instance ({@code instances[].rollen}, mirroring the situatie's
@@ -37,14 +37,14 @@ public record Request(JsonNode tree) {
 
     /** The {@code asOfDate} node, or null when absent (fase 5). {@code asOfDate} is the PREFERRED name for the
      *  one date authority; {@code evaluationDate} is the existing alias — {@link RequestMapper} unifies the two. */
-    public JsonNode asOfDate() { return tree.get("peildatum"); }
+    public JsonNode asOfDate() { return tree.get("asOfDate"); }
 
     /** The {@code parameters} object node, or null when absent. */
     public JsonNode parameters() { return tree.get("parameters"); }
 
     /** The {@code instances} array node, or null when absent. */
-    public JsonNode instances() { return tree.get("instanties"); }
+    public JsonNode instances() { return tree.get("instances"); }
 
     /** The {@code relations} array node, or null when absent. */
-    public JsonNode relations() { return tree.get("relaties"); }
+    public JsonNode relations() { return tree.get("relations"); }
 }

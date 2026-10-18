@@ -86,7 +86,7 @@ class GoldenOverHttpTest {
         // in-cluster pod) instead of an in-process ServiceHttp. The descriptor is the same toka.service.json,
         // parsed standalone for scope→entrypoint ROUTING only; every expected value still comes from the
         // scenario fixtures, so nothing is duplicated or re-typed.
-        String override = System.getProperty("dienst.url", System.getenv("DIENST_URL"));
+        String override = System.getProperty("service.url", System.getenv("DIENST_URL"));
         if (override != null && !override.isBlank()) {
             baseUrl = override.endsWith("/") ? override.substring(0, override.length() - 1) : override;
             descriptor = ServiceHttp.MAPPER.readValue(TokaSource.descriptorJson(), ServiceDescriptor.class);
@@ -251,18 +251,18 @@ class GoldenOverHttpTest {
 
     private static JsonNode attribute(JsonNode answer, String id, String name) {
         JsonNode inst = instance(answer, id);
-        return inst == null ? null : inst.path("attributen").get(name);
+        return inst == null ? null : inst.path("attributes").get(name);
     }
 
     private static boolean characteristicTrue(JsonNode answer, String id, String name) {
         JsonNode inst = instance(answer, id);
         if (inst == null) return false;
-        JsonNode k = inst.path("kenmerken").get(name);
+        JsonNode k = inst.path("characteristics").get(name);
         return k != null && k.isBoolean() && k.booleanValue();
     }
 
     private static JsonNode instance(JsonNode answer, String id) {
-        JsonNode insts = answer.get("instanties");
+        JsonNode insts = answer.get("instances");
         if (insts == null) return null;
         for (JsonNode inst : insts) if (id.equals(inst.path("id").asText())) return inst;
         return null;
@@ -270,7 +270,7 @@ class GoldenOverHttpTest {
 
     private static List<String> inconsistencies(JsonNode answer) {
         List<String> sink = new ArrayList<>();
-        JsonNode inc = answer.get("inconsistenties");
+        JsonNode inc = answer.get("inconsistencies");
         if (inc != null) for (JsonNode n : inc) sink.add(n.isNull() ? null : n.asText());
         return sink;
     }

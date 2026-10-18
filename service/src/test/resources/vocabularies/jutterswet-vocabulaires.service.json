@@ -1,0 +1,23 @@
+{
+  "service": { "name": "Jutterswet vocabulaires", "version": "tweeling" },
+  "entrypoints": [
+    {
+      "name": "premie",
+      "path": "premie",
+      "scope": { "ruleGroups": ["premieberekening"] },
+      "input": ["Jutter", "Vondst"],
+      "output": ["Vondst.soort", "Vondst.premie", "Vondst:waardevol", "Jutter.vondstbedrag",
+                  "Jutter.aantal waardevolle vondsten", "Jutter:premiewaardig"]
+    },
+    {
+      "name": "premie in het cgm",
+      "path": "premie-cgm",
+      "scope": { "ruleGroups": ["premieberekening"] },
+      "input": ["Jutter", "Vondst"],
+      "output": ["Vondst.soort", "Vondst.premie", "Vondst:waardevol", "Jutter.vondstbedrag",
+                  "Jutter.aantal waardevolle vondsten", "Jutter:premiewaardig"],
+      "vocabulary": "cgm"
+    }
+  ],
+  "parameters": {}
+}

@@ -1,0 +1,13 @@
+{
+  "service": { "name": "Jutterswet vrijstelling", "version": "tweeling" },
+  "entrypoints": [
+    {
+      "name": "vrijstelling",
+      "path": "vrijstelling",
+      "scope": { "ruleNames": ["vrijstelling van een jutter"] },
+      "input": ["Jutter"],
+      "output": ["Jutter:vrijgesteld"]
+    }
+  ],
+  "parameters": {}
+}

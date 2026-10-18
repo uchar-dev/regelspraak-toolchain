@@ -30,7 +30,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Gate G4 — NEGATIVE HTTP fixtures. A file-driven {@link TestFactory}: every JSON fixture under
- * {@code src/test/resources/negatief/} is one negative case posted against ONE shared {@link ServiceHttp} over
+ * {@code src/test/resources/negative/} is one negative case posted against ONE shared {@link ServiceHttp} over
  * the full TOKA {@link DecisionCore}. Each fixture declares its {@code path}, its request {@code body} (a JSON
  * object, OR a raw string for the malformed-JSON / empty-body cases), the {@code expectedStatus} it must get
  * (a 4xx), and a {@code expectedFieldContains} substring the response body must NAME (in a {@code veld}, a
@@ -77,7 +77,7 @@ class NegativeFixturesTest {
         List<DynamicTest> tests = new ArrayList<>();
         for (Path fixture : files) {
             JsonNode f = ServiceHttp.MAPPER.readTree(Files.readString(fixture));
-            String name = f.path("naam").asText(fixture.getFileName().toString());
+            String name = f.path("name").asText(fixture.getFileName().toString());
             tests.add(DynamicTest.dynamicTest(fixture.getFileName() + " — " + name, () -> test(f)));
         }
         return tests.stream();
@@ -85,9 +85,9 @@ class NegativeFixturesTest {
 
     /** POST the fixture body and assert the status + that the response NAMES the expected veld/pad substring. */
     private void test(JsonNode fixture) throws Exception {
-        String path = fixture.path("pad").asText();
-        int expectedStatus = fixture.path("verwachtStatus").asInt();
-        String expectedFieldContains = fixture.path("verwachtVeldBevat").asText();
+        String path = fixture.path("path").asText();
+        int expectedStatus = fixture.path("expectedStatus").asInt();
+        String expectedFieldContains = fixture.path("expectedFieldContains").asText();
 
         // body: a raw string (malformed / empty case) is sent verbatim; a JSON object is serialised exactly.
         JsonNode bodyNode = fixture.get("body");
@@ -109,20 +109,20 @@ class NegativeFixturesTest {
         // 4xx is itself the no-fire witness: a rejected request never produces an instanties/inconsistenties
         // result body (those only appear on a 200 AnswerBuilder response). Assert the negative body carries a
         // 'fout' and NO result payload — nothing fired.
-        assertTrue(answer.has("fout"), () -> "een 4xx-body hoort een 'fout' te dragen: " + resp.body());
-        assertTrue(!answer.has("instanties") && !answer.has("inconsistenties"),
+        assertTrue(answer.has("error"), () -> "een 4xx-body hoort een 'fout' te dragen: " + resp.body());
+        assertTrue(!answer.has("instances") && !answer.has("inconsistencies"),
                 () -> "een geweigerd verzoek mag geen fire-resultaat teruggeven: " + resp.body());
     }
 
     /** Whether {@code answer} names {@code needle} anywhere a diagnostic surfaces it: the top-level
      *  {@code veld} or {@code fout}, or any schending's {@code veld} or {@code fout}. */
     private static boolean names(JsonNode answer, String needle) {
-        if (contains(answer.path("veld"), needle)) return true;
-        if (contains(answer.path("fout"), needle)) return true;
-        JsonNode violations = answer.path("schendingen");
+        if (contains(answer.path("field"), needle)) return true;
+        if (contains(answer.path("error"), needle)) return true;
+        JsonNode violations = answer.path("violations");
         if (violations.isArray())
             for (JsonNode s : violations)
-                if (contains(s.path("veld"), needle) || contains(s.path("fout"), needle)) return true;
+                if (contains(s.path("field"), needle) || contains(s.path("error"), needle)) return true;
         return false;
     }
 
@@ -145,7 +145,7 @@ class NegativeFixturesTest {
      *  repo cwd, and from the built target/test-classes). */
     private static Path fixtureDir() {
         try {
-            var url = NegativeFixturesTest.class.getClassLoader().getResource("negatief");
+            var url = NegativeFixturesTest.class.getClassLoader().getResource("negative");
             if (url != null) return Paths.get(url.toURI());
         } catch (Exception ignore) { /* fall back to the source tree */ }
         Path src = Paths.get("src/test/resources/negative");

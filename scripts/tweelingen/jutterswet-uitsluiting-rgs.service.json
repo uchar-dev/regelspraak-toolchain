@@ -1,0 +1,13 @@
+{
+  "service": { "name": "Jutterswet uitsluiting", "version": "tweeling" },
+  "entrypoints": [
+    {
+      "name": "penningrecht",
+      "path": "penningrecht",
+      "scope": { "ruleNames": ["uitsluiting van het penningrecht", "penninggerechtigd tenzij uitgesloten"] },
+      "input": ["Jutter"],
+      "output": ["Jutter:uitgesloten", "Jutter:penninggerechtigd"]
+    }
+  ],
+  "parameters": {}
+}

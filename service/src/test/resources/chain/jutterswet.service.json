@@ -1,0 +1,26 @@
+{
+  "service": { "name": "Jutterswet strandvondsten", "version": "1.0.0" },
+  "entrypoints": [
+    {
+      "name": "bergloon van een strandvondst",
+      "path": "bergloon",
+      "scope": { "ruleNames": ["bergloon van een strandvondst"] },
+      "input": ["Strandvondst"],
+      "output": ["Strandvondst.bergloon"]
+    },
+    {
+      "name": "meldplicht van een wrakstuk",
+      "path": "meldplicht",
+      "scope": { "ruleNames": ["meldplicht van een wrakstuk"] },
+      "input": ["Wrakstuk"],
+      "output": ["Wrakstuk:meldplichtig", "Wrakstuk:aangemeld"]
+    },
+    {
+      "name": "bergingsplicht van een strandvondst",
+      "path": "bergingsplicht",
+      "scope": { "ruleNames": ["bergingsplicht van een strandvondst"] },
+      "input": ["Strandvondst"],
+      "output": ["Strandvondst:bergingsplichtig"]
+    }
+  ]
+}

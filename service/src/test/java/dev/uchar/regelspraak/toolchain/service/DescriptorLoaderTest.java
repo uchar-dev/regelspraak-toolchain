@@ -42,35 +42,35 @@ class DescriptorLoaderTest {
     @Test
     void unknown_rule_is_named() {
         String json = """
-            { "dienst": {"naam":"t","versie":"1"},
-              "entrypoints": [ { "naam":"x","pad":"x",
-                "scope": {"regelnamen": ["deze regel bestaat niet"]},
-                "invoer": [], "uitvoer": [] } ], "parameters": {} }""";
+            { "service": {"name":"t","version":"1"},
+              "entrypoints": [ { "name":"x","path":"x",
+                "scope": {"ruleNames": ["deze regel bestaat niet"]},
+                "input": [], "output": [] } ], "parameters": {} }""";
         ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("deze regel bestaat niet"), f.getMessage());
-        assertEquals(Violation.Kind.ONBEKENDE_VERWIJZING, f.violations().get(0).kind());
-        assertTrue(f.violations().get(0).field().contains("scope.regelnamen[0]"));
+        assertEquals(Violation.Kind.UNKNOWN_REFERENCE, f.violations().get(0).kind());
+        assertTrue(f.violations().get(0).field().contains("scope.ruleNames[0]"));
     }
 
     @Test
     void unknown_object_type_in_input_is_named() {
         String json = """
-            { "dienst": {"naam":"t","versie":"1"},
-              "entrypoints": [ { "naam":"x","pad":"x",
-                "scope": {"regelnamen": ["bepaal leeftijd"]},
-                "invoer": ["Ruimteschip"], "uitvoer": [] } ], "parameters": {} }""";
+            { "service": {"name":"t","version":"1"},
+              "entrypoints": [ { "name":"x","path":"x",
+                "scope": {"ruleNames": ["bepaal leeftijd"]},
+                "input": ["Ruimteschip"], "output": [] } ], "parameters": {} }""";
         ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("Ruimteschip"), f.getMessage());
-        assertTrue(f.violations().stream().anyMatch(s -> s.field().equals("entrypoints[0].invoer[0]")));
+        assertTrue(f.violations().stream().anyMatch(s -> s.field().equals("entrypoints[0].input[0]")));
     }
 
     @Test
     void unknown_attribute_in_output_is_named() {
         String json = """
-            { "dienst": {"naam":"t","versie":"1"},
-              "entrypoints": [ { "naam":"x","pad":"x",
-                "scope": {"regelnamen": ["bepaal leeftijd"]},
-                "invoer": [], "uitvoer": ["Natuurlijk persoon.schoenmaat"] } ], "parameters": {} }""";
+            { "service": {"name":"t","version":"1"},
+              "entrypoints": [ { "name":"x","path":"x",
+                "scope": {"ruleNames": ["bepaal leeftijd"]},
+                "input": [], "output": ["Natuurlijk persoon.schoenmaat"] } ], "parameters": {} }""";
         ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("schoenmaat"), f.getMessage());
     }
@@ -78,10 +78,10 @@ class DescriptorLoaderTest {
     @Test
     void unknown_characteristic_in_output_is_named() {
         String json = """
-            { "dienst": {"naam":"t","versie":"1"},
-              "entrypoints": [ { "naam":"x","pad":"x",
-                "scope": {"regelnamen": ["bepaal leeftijd"]},
-                "invoer": [], "uitvoer": ["Natuurlijk persoon:onsterfelijk"] } ], "parameters": {} }""";
+            { "service": {"name":"t","version":"1"},
+              "entrypoints": [ { "name":"x","path":"x",
+                "scope": {"ruleNames": ["bepaal leeftijd"]},
+                "input": [], "output": ["Natuurlijk persoon:onsterfelijk"] } ], "parameters": {} }""";
         ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("onsterfelijk"), f.getMessage());
     }
@@ -89,10 +89,10 @@ class DescriptorLoaderTest {
     @Test
     void unknown_parameter_is_named() {
         String json = """
-            { "dienst": {"naam":"t","versie":"1"},
-              "entrypoints": [ { "naam":"x","pad":"x",
-                "scope": {"regelnamen": ["bepaal leeftijd"]},
-                "invoer": [], "uitvoer": [] } ],
+            { "service": {"name":"t","version":"1"},
+              "entrypoints": [ { "name":"x","path":"x",
+                "scope": {"ruleNames": ["bepaal leeftijd"]},
+                "input": [], "output": [] } ],
               "parameters": { "belastingtarief van pluto": 5 } }""";
         ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("belastingtarief van pluto"), f.getMessage());
@@ -102,10 +102,10 @@ class DescriptorLoaderTest {
     @Test
     void all_violations_are_collected_not_one_by_one() throws Exception {
         String json = """
-            { "dienst": {"naam":"t","versie":"1"},
-              "entrypoints": [ { "naam":"x","pad":"x",
-                "scope": {"regelnamen": ["nep regel"]},
-                "invoer": ["Nep type"], "uitvoer": ["Nep type.nep attribuut"] } ],
+            { "service": {"name":"t","version":"1"},
+              "entrypoints": [ { "name":"x","path":"x",
+                "scope": {"ruleNames": ["nep regel"]},
+                "input": ["Nep type"], "output": ["Nep type.nep attribuut"] } ],
               "parameters": { "nep param": 1 } }""";
         ServiceDescriptor d = DescriptorLoader.MAPPER.readValue(json, ServiceDescriptor.class);
         List<Violation> s = DescriptorLoader.validate(d, MODEL);

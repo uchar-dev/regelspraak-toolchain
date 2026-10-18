@@ -1,12 +1,12 @@
 {
-  "naam": "kenmerk met niet-boolean waarde",
-  "pad": "bepaal-leeftijd",
+  "name": "kenmerk met niet-boolean waarde",
+  "path": "bepaal-leeftijd",
   "body": {
-    "instanties": [
-      { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
-      { "type": "Natuurlijk persoon", "id": "P1", "kenmerken": { "minderjarig": "ja" }, "rollen": { "reis": "V1" } }
+    "instances": [
+      { "type": "Vlucht", "id": "V1", "attributes": { "vluchtdatum": "2024-06-15" } },
+      { "type": "Natuurlijk persoon", "id": "P1", "characteristics": { "minderjarig": "ja" }, "roles": { "reis": "V1" } }
     ]
   },
-  "verwachtStatus": 400,
-  "verwachtVeldBevat": "minderjarig"
+  "expectedStatus": 400,
+  "expectedFieldContains": "minderjarig"
 }

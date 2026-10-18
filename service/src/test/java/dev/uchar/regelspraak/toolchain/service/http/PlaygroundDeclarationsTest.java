@@ -84,11 +84,11 @@ class PlaygroundDeclarationsTest {
      *  empty {@code benamingen}. */
     @Test
     void line_and_comment_per_declaration() {
-        JsonNode voc = Playground.analyseer(BERGING).get("vocabulaires");
-        assertNull(voc.get("declaratieFout"), voc.toString());
-        assertEquals(0, voc.get("gedeclareerd").size());
-        assertEquals(14, voc.get("elementen").size(), voc.toString());
-        for (JsonNode e : voc.get("elementen")) assertEquals(0, e.get("benamingen").size(), e.toString());
+        JsonNode voc = Playground.analyseer(BERGING).get("vocabularies");
+        assertNull(voc.get("declarationError"), voc.toString());
+        assertEquals(0, voc.get("declared").size());
+        assertEquals(14, voc.get("elements").size(), voc.toString());
+        for (JsonNode e : voc.get("elements")) assertEquals(0, e.get("designations").size(), e.toString());
 
         expected(voc, "OBJECTTYPE", null, "Berging", line(BERGING, "Objecttype de Berging"), "Bron: het type");
         expected(voc, "ATTRIBUUT", "Berging", "maxdatum", line(BERGING, "de maxdatum Datum in dagen;"),
@@ -121,7 +121,7 @@ class PlaygroundDeclarationsTest {
                     // nieuw
                     het aantal Numeriek (geheel getal);
                 """;
-        JsonNode voc = Playground.analyseer(afterHead).get("vocabulaires");
+        JsonNode voc = Playground.analyseer(afterHead).get("vocabularies");
         assertNotNull(voc, "uchar aanvaardt de letterlijke herhaling");
         expected(voc, "ATTRIBUUT", "Berging", "opbrengst", 3, "kop");
         expected(voc, "ATTRIBUUT", "Berging", "aantal", 8, "nieuw");
@@ -134,7 +134,7 @@ class PlaygroundDeclarationsTest {
                     // kop
                     de opbrengst Numeriek (geheel getal);
                 """;
-        JsonNode before = Playground.analyseer(beforeHead).get("vocabulaires");
+        JsonNode before = Playground.analyseer(beforeHead).get("vocabularies");
         assertNotNull(before, "uchar aanvaardt de letterlijke herhaling");
         expected(before, "ATTRIBUUT", "Berging", "opbrengst", 6, "kop");
     }
@@ -145,8 +145,8 @@ class PlaygroundDeclarationsTest {
     @Test
     void what_the_frontend_wrote_has_no_line() throws IOException {
         String source = golden("jutterswet-opgave-bedrag");
-        JsonNode voc = Playground.analyseer(source).get("vocabulaires");
-        assertNull(voc.get("declaratieFout"), voc.toString());
+        JsonNode voc = Playground.analyseer(source).get("vocabularies");
+        assertNull(voc.get("declarationError"), voc.toString());
         expected(voc, "ATTRIBUUT", "Vondst", "waarde", 7);
         expected(voc, "VORM", null, "waarde", 12, "Bron: art. 3k lid 1");
         expected(voc, "VORM", null, "verzekerde waarde", 29, "Bron: art. 3k lid 5");
@@ -155,8 +155,8 @@ class PlaygroundDeclarationsTest {
                 new String[]{"KENMERK", "Vondst", "afwijkende opgave waarde"},
                 new String[]{"VORM", null, "afwijking opgave waarde"})) {
             JsonNode e = element(voc, g[0], g[1], g[2]);
-            assertFalse(e.has("regel"), e.toString());
-            assertFalse(e.has("commentaar"), e.toString());
+            assertFalse(e.has("line"), e.toString());
+            assertFalse(e.has("comment"), e.toString());
         }
     }
 
@@ -169,12 +169,12 @@ class PlaygroundDeclarationsTest {
                     de opbrengst Numeriek (geheel getal);
                     de opbrengst Numeriek (geheel getal);
                 """;
-        JsonNode voc = Playground.analyseer(source).get("vocabulaires");
+        JsonNode voc = Playground.analyseer(source).get("vocabularies");
         assertNotNull(voc, "uchar resolvet de bron");
         assertEquals("Het attribuut 'opbrengst' van 'Berging' heeft declaraties op de regels [2, 3], en uchar geeft"
-                + " niet aan welke daarvan het model draagt", voc.get("declaratieFout").asText());
-        assertEquals(2, voc.get("elementen").size());
-        for (JsonNode e : voc.get("elementen")) assertFalse(e.has("regel"), e.toString());
+                + " niet aan welke daarvan het model draagt", voc.get("declarationError").asText());
+        assertEquals(2, voc.get("elements").size());
+        for (JsonNode e : voc.get("elements")) assertFalse(e.has("line"), e.toString());
     }
 
     /** A scenario source goes through the scenario entry rule of uchar's parser: uchar's golden
@@ -184,11 +184,11 @@ class PlaygroundDeclarationsTest {
     void a_scenario_source_with_vocabularies() throws IOException {
         String source = golden("jutterswet-vocabulaires") + "\n"
                 + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
-        JsonNode voc = Playground.analyseer(source, "cgm").get("vocabulaires");
-        assertNull(voc.get("declaratieFout"), voc.toString());
+        JsonNode voc = Playground.analyseer(source, "cgm").get("vocabularies");
+        assertNull(voc.get("declarationError"), voc.toString());
         JsonNode jutter = expected(voc, "OBJECTTYPE", null, "Jutter", 11);
-        assertEquals("JUTTER", jutter.at("/benamingen/cgm").asText());
-        assertEquals("strandjutter", jutter.at("/benamingen/handboek").asText());
+        assertEquals("JUTTER", jutter.at("/designations/cgm").asText());
+        assertEquals("strandjutter", jutter.at("/designations/handboek").asText());
         expected(voc, "ENUMERATIEWAARDE", "Vondstsoort", "barnsteen", 6);
         expected(voc, "ROL", "vondstaanmelding", "vondst", 25);
         expected(voc, "REGELGROEP", null, "premieberekening", 28);
@@ -256,9 +256,9 @@ class PlaygroundDeclarationsTest {
     }
 
     private static JsonNode element(JsonNode voc, String kind, String owner, String canonical) {
-        for (JsonNode e : voc.get("elementen"))
-            if (e.get("soort").asText().equals(kind) && e.get("canoniek").asText().equals(canonical)
-                    && (owner == null ? e.get("eigenaar").isNull() : owner.equals(e.get("eigenaar").asText())))
+        for (JsonNode e : voc.get("elements"))
+            if (e.get("kind").asText().equals(kind) && e.get("canonical").asText().equals(canonical)
+                    && (owner == null ? e.get("owner").isNull() : owner.equals(e.get("owner").asText())))
                 return e;
         throw new AssertionError("geen element " + kind + " " + owner + " " + canonical + " in " + voc);
     }
@@ -267,9 +267,9 @@ class PlaygroundDeclarationsTest {
     private static JsonNode expected(JsonNode voc, String kind, String owner, String canonical, int line,
                                      String... comment) {
         JsonNode e = element(voc, kind, owner, canonical);
-        assertEquals(line, e.path("regel").asInt(-1), e.toString());
+        assertEquals(line, e.path("line").asInt(-1), e.toString());
         List<String> wasRead = new ArrayList<>();
-        for (JsonNode c : e.get("commentaar")) wasRead.add(c.asText());
+        for (JsonNode c : e.get("comment")) wasRead.add(c.asText());
         assertEquals(List.of(comment), wasRead, e.toString());
         return e;
     }

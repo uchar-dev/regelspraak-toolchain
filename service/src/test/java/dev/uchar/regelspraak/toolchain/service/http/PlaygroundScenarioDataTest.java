@@ -44,7 +44,7 @@ class PlaygroundScenarioDataTest {
             """;
 
     private static JsonNode scenario(ObjectNode a, int i) {
-        return a.at("/scenario/resultaten/" + i);
+        return a.at("/scenario/results/" + i);
     }
 
     private static int lineOf(String source, String text) {
@@ -78,38 +78,38 @@ class PlaygroundScenarioDataTest {
             """;
         JsonNode s = scenario(Playground.analyseer(source), 0);
         assertEquals("PASS", s.get("status").asText(), s.toString());
-        assertEquals(lineOf(source, "Scenario twee helpers"), s.get("regel").asInt());
+        assertEquals(lineOf(source, "Scenario twee helpers"), s.get("line").asInt());
 
-        JsonNode v = s.at("/verwachtingen/0");
-        assertEquals("attributeValue B premie", v.get("bron").asText(), "bron blijft uchars korte vorm");
-        assertEquals(lineOf(source, "- de premie van B is 20,00 €"), v.get("regel").asInt(), v.toString());
-        assertEquals("- de premie van B is 20,00 €", v.get("regeltekst").asText());
+        JsonNode v = s.at("/expectations/0");
+        assertEquals("attributeValue B premie", v.get("source").asText(), "bron blijft uchars korte vorm");
+        assertEquals(lineOf(source, "- de premie van B is 20,00 €"), v.get("line").asInt(), v.toString());
+        assertEquals("- de premie van B is 20,00 €", v.get("lineText").asText());
 
-        JsonNode sit = s.get("situatie");
-        assertEquals("2026-01-01", sit.get("peildatum").asText());
-        JsonNode b = sit.at("/objecten/0");
+        JsonNode sit = s.get("situation");
+        assertEquals("2026-01-01", sit.get("asOfDate").asText());
+        JsonNode b = sit.at("/objects/0");
         assertEquals("B", b.get("label").asText());
-        assertEquals("Berging", b.get("objecttype").asText());
-        assertEquals(List.of("opbrengst", "helpersaantal"), names(b.get("attributen"), "attribuut"));
-        assertEquals("100", b.at("/attributen/0/waarde").asText());
-        assertEquals("EUR", b.at("/attributen/0/eenheid").asText(), b.toString());
-        assertEquals(lineOf(source, "- de opbrengst is 100 €"), b.at("/attributen/0/regel").asInt());
+        assertEquals("Berging", b.get("objectType").asText());
+        assertEquals(List.of("opbrengst", "helpersaantal"), names(b.get("attributes"), "attribute"));
+        assertEquals("100", b.at("/attributes/0/value").asText());
+        assertEquals("EUR", b.at("/attributes/0/unit").asText(), b.toString());
+        assertEquals(lineOf(source, "- de opbrengst is 100 €"), b.at("/attributes/0/line").asInt());
         JsonNode p = sit.at("/parameters/0");
         assertEquals("premiepercentage", p.get("parameter").asText(), p.toString());
-        assertEquals("20", p.get("waarde").asText());
-        assertEquals("%", p.get("eenheid").asText());
+        assertEquals("20", p.get("value").asText());
+        assertEquals("%", p.get("unit").asText());
 
-        JsonNode f = s.get("fixpunt");
-        assertFalse(s.has("fixpuntFout"), s.toString());
-        JsonNode fb = f.at("/objecten/0");
+        JsonNode f = s.get("fixpoint");
+        assertFalse(s.has("fixpointError"), s.toString());
+        JsonNode fb = f.at("/objects/0");
         assertEquals("B", fb.get("object").asText());
         List<String> rows = new ArrayList<>();
-        for (JsonNode w : fb.get("waarden"))
-            rows.add(w.get("attribuut").asText() + "=" + w.get("waarde").asText() + " " + w.get("herkomst").asText());
-        assertEquals(List.of("opbrengst=100 invoer", "helpersaantal=2 invoer", "helpersdeel=50 afgeleid",
-                "premie=20 afgeleid"), rows);
-        assertEquals("EUR", fb.at("/waarden/3/eenheid").asText(), fb.toString());
-        for (String list : new String[]{"gemaakteObjecten", "koppelingen", "fouten", "inconsistenties"})
+        for (JsonNode w : fb.get("values"))
+            rows.add(w.get("attribute").asText() + "=" + w.get("value").asText() + " " + w.get("origin").asText());
+        assertEquals(List.of("opbrengst=100 input", "helpersaantal=2 input", "helpersdeel=50 derived",
+                "premie=20 derived"), rows);
+        assertEquals("EUR", fb.at("/values/3/unit").asText(), fb.toString());
+        for (String list : new String[]{"madeObjects", "links", "faults", "inconsistencies"})
             assertEquals(0, f.get(list).size(), list + ": " + f);
     }
 
@@ -128,13 +128,13 @@ class PlaygroundScenarioDataTest {
             - de premie van B is 20,00 €
             """), 0);
         assertEquals("FAIL", s.get("status").asText(), s.toString());
-        assertTrue(s.get("uitlegFout").asText().startsWith("uchars replay speelde de case niet uit: "), s.toString());
-        JsonNode error = s.at("/fixpunt/fouten/0");
-        assertEquals("DELING_DOOR_NUL", error.get("soort").asText(), s.toString());
-        assertEquals("helpersdeel van een berging", error.get("regel").asText());
-        assertEquals("B", error.get("onderwerp").asText());
-        assertTrue(error.get("zin").asText().contains("deling door nul"), error.toString());
-        assertEquals(1, s.at("/fixpunt/fouten").size());
+        assertTrue(s.get("explanationError").asText().startsWith("uchars replay speelde de case niet uit: "), s.toString());
+        JsonNode error = s.at("/fixpoint/faults/0");
+        assertEquals("DIVISION_BY_ZERO", error.get("kind").asText(), s.toString());
+        assertEquals("helpersdeel van een berging", error.get("rule").asText());
+        assertEquals("B", error.get("subject").asText());
+        assertTrue(error.get("sentence").asText().contains("deling door nul"), error.toString());
+        assertEquals(1, s.at("/fixpoint/faults").size());
     }
 
     /** uchar's golden {@code jutterswet-strandmelding} creates a Strandrecht per Melding. The made objects follow the
@@ -156,22 +156,22 @@ class PlaygroundScenarioDataTest {
         ObjectNode a = Playground.analyseer(source);
         JsonNode s = scenario(a, 0);
         assertEquals("PASS", s.get("status").asText(), s.toString());
-        JsonNode f = s.get("fixpunt");
-        assertEquals(List.of("M2", "M1", "#1", "#2"), names(f.get("objecten"), "object"));
-        assertEquals("creatie", f.at("/objecten/2/waarden/0/herkomst").asText(), f.toString());
-        assertEquals("10.00", f.at("/objecten/2/waarden/0/waarde").asText());
-        JsonNode g = f.get("gemaakteObjecten");
+        JsonNode f = s.get("fixpoint");
+        assertEquals(List.of("M2", "M1", "#1", "#2"), names(f.get("objects"), "object"));
+        assertEquals("creation", f.at("/objects/2/values/0/origin").asText(), f.toString());
+        assertEquals("10.00", f.at("/objects/2/values/0/value").asText());
+        JsonNode g = f.get("madeObjects");
         assertEquals(List.of("#1", "#2"), names(g, "object"));
-        assertEquals(List.of("M1", "M2"), names(g, "onderwerp"));
-        assertEquals("maak een strandrecht bij elke melding", g.at("/0/creatie").asText());
-        assertEquals("Strandrecht", g.at("/0/objecttype").asText());
-        JsonNode k = f.get("koppelingen");
+        assertEquals(List.of("M1", "M2"), names(g, "subject"));
+        assertEquals("maak een strandrecht bij elke melding", g.at("/0/creation").asText());
+        assertEquals("Strandrecht", g.at("/0/objectType").asText());
+        JsonNode k = f.get("links");
         assertEquals(2, k.size(), k.toString());
-        assertEquals("strandmelding", k.at("/0/feittype").asText());
-        assertEquals("melding", k.at("/0/eersteRol").asText());
-        assertEquals("M1", k.at("/0/eerste").asText());
-        assertEquals("gemeld strandrecht", k.at("/0/tweedeRol").asText());
-        assertEquals("#1", k.at("/0/tweede").asText());
+        assertEquals("strandmelding", k.at("/0/factType").asText());
+        assertEquals("melding", k.at("/0/firstRole").asText());
+        assertEquals("M1", k.at("/0/first").asText());
+        assertEquals("gemeld strandrecht", k.at("/0/secondRole").asText());
+        assertEquals("#1", k.at("/0/second").asText());
         assertEquals(a, Playground.analyseer(source), "twee analyses van één bron geven dezelfde boom");
     }
 
@@ -192,13 +192,13 @@ class PlaygroundScenarioDataTest {
             """;
         JsonNode s = scenario(Playground.analyseer(source), 0);
         assertEquals("PASS", s.get("status").asText(), s.toString());
-        JsonNode inc = s.at("/fixpunt/inconsistenties");
+        JsonNode inc = s.at("/fixpoint/inconsistencies");
         assertEquals(1, inc.size(), inc.toString());
-        assertEquals("controle opgave waarde", inc.at("/0/regel").asText());
-        assertEquals("V", inc.at("/0/onderwerp").asText());
-        JsonNode characteristics = s.at("/fixpunt/objecten/0/kenmerken");
-        assertEquals(List.of("ter controle", "afwijkende opgave waarde"), names(characteristics, "kenmerk"));
-        assertEquals(List.of("afgeleid", "afgeleid"), names(characteristics, "herkomst"));
+        assertEquals("controle opgave waarde", inc.at("/0/rule").asText());
+        assertEquals("V", inc.at("/0/subject").asText());
+        JsonNode characteristics = s.at("/fixpoint/objects/0/characteristics");
+        assertEquals(List.of("ter controle", "afwijkende opgave waarde"), names(characteristics, "characteristic"));
+        assertEquals(List.of("derived", "derived"), names(characteristics, "origin"));
     }
 
     /** uchar's golden {@code jutterswet-vocabulaires} with the playground's scenario: the vocabularies at the root, and
@@ -209,45 +209,45 @@ class PlaygroundScenarioDataTest {
         String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs"))
                 + "\n" + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
         ObjectNode cgm = Playground.analyseer(source, "cgm");
-        JsonNode voc = cgm.get("vocabulaires");
-        assertEquals("cgm", voc.get("gekozen").asText());
-        assertEquals(List.of("handboek", "cgm"), names(voc.get("gedeclareerd"), "naam"));
-        assertTrue(voc.at("/gedeclareerd/1/standaard").asBoolean());
+        JsonNode voc = cgm.get("vocabularies");
+        assertEquals("cgm", voc.get("chosen").asText());
+        assertEquals(List.of("handboek", "cgm"), names(voc.get("declared"), "name"));
+        assertTrue(voc.at("/declared/1/default").asBoolean());
         JsonNode jutter = null;
-        for (JsonNode e : voc.get("elementen"))
-            if (e.get("soort").asText().equals("OBJECTTYPE") && e.get("canoniek").asText().equals("Jutter")) jutter = e;
+        for (JsonNode e : voc.get("elements"))
+            if (e.get("kind").asText().equals("OBJECTTYPE") && e.get("canonical").asText().equals("Jutter")) jutter = e;
         assertTrue(jutter != null, voc.toString());
-        assertEquals("JUTTER", jutter.at("/benamingen/cgm").asText());
-        assertEquals("strandjutter", jutter.at("/benamingen/handboek").asText());
+        assertEquals("JUTTER", jutter.at("/designations/cgm").asText());
+        assertEquals("strandjutter", jutter.at("/designations/handboek").asText());
 
         JsonNode s = scenario(cgm, 0);
-        JsonNode v1 = s.at("/situatie/objecten/1");
+        JsonNode v1 = s.at("/situation/objects/1");
         assertEquals("V1", v1.get("label").asText());
-        assertEquals("VONDST", v1.get("objecttype").asText());
-        assertEquals("Vondst", v1.get("objecttypeCanoniek").asText());
-        assertEquals("VONDST_SOORT", v1.at("/attributen/0/attribuut").asText());
-        assertEquals("BARNSTEEN", v1.at("/attributen/0/waarde").asText(), v1.toString());
-        assertEquals("barnsteen", v1.at("/attributen/0/waardeCanoniek").asText());
-        assertEquals("AANMELDER", v1.at("/rollen/0/rol").asText(), v1.toString());
-        assertEquals("PREMIE_TARIEF", s.at("/situatie/parameters/0/parameter").asText());
-        JsonNode fv1 = s.at("/fixpunt/objecten/1");
-        assertTrue(fv1.toString().contains("\"attribuut\":\"PREMIE\",\"attribuutCanoniek\":\"premie\""), fv1.toString());
-        assertTrue(fv1.toString().contains("\"kenmerk\":\"WAARDEVOL\""), fv1.toString());
+        assertEquals("VONDST", v1.get("objectType").asText());
+        assertEquals("Vondst", v1.get("objectTypeCanonical").asText());
+        assertEquals("VONDST_SOORT", v1.at("/attributes/0/attribute").asText());
+        assertEquals("BARNSTEEN", v1.at("/attributes/0/value").asText(), v1.toString());
+        assertEquals("barnsteen", v1.at("/attributes/0/valueCanonical").asText());
+        assertEquals("AANMELDER", v1.at("/roles/0/role").asText(), v1.toString());
+        assertEquals("PREMIE_TARIEF", s.at("/situation/parameters/0/parameter").asText());
+        JsonNode fv1 = s.at("/fixpoint/objects/1");
+        assertTrue(fv1.toString().contains("\"attribute\":\"PREMIE\",\"attributeCanonical\":\"premie\""), fv1.toString());
+        assertTrue(fv1.toString().contains("\"characteristic\":\"WAARDEVOL\""), fv1.toString());
 
         ObjectNode canonical = Playground.analyseer(source);
-        assertEquals("canoniek", canonical.at("/vocabulaires/gekozen").asText());
-        assertFalse(canonical.at("/scenario/resultaten/0/situatie").toString().contains("Canoniek\""),
+        assertEquals("canonical", canonical.at("/vocabularies/chosen").asText());
+        assertFalse(canonical.at("/scenario/results/0/situation").toString().contains("Canonical\""),
                 "in de canonieke keuze staat er geen tweede naam");
-        assertFalse(canonical.at("/scenario/resultaten/0/fixpunt").toString().contains("Canoniek\""));
+        assertFalse(canonical.at("/scenario/results/0/fixpoint").toString().contains("Canonical\""));
     }
 
     /** A source without a vocabulary lists none; its declarations are there, each without a designation. */
     @Test
     void without_vocabulary_empty_designations() {
-        JsonNode voc = Playground.analyseer(BERGING).get("vocabulaires");
-        assertEquals("canoniek", voc.get("gekozen").asText());
-        assertEquals(0, voc.get("gedeclareerd").size());
-        assertEquals(8, voc.get("elementen").size(), voc.toString());
-        for (JsonNode e : voc.get("elementen")) assertEquals(0, e.get("benamingen").size(), e.toString());
+        JsonNode voc = Playground.analyseer(BERGING).get("vocabularies");
+        assertEquals("canonical", voc.get("chosen").asText());
+        assertEquals(0, voc.get("declared").size());
+        assertEquals(8, voc.get("elements").size(), voc.toString());
+        for (JsonNode e : voc.get("elements")) assertEquals(0, e.get("designations").size(), e.toString());
     }
 }

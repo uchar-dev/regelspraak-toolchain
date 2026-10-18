@@ -78,14 +78,14 @@ class ChainServiceTest {
 
         // eigen lid
         assertEquals("integer", props.path("bergingsdiepte").path("type").asText());
-        assertEquals("m", props.path("bergingsdiepte").path("x-eenheid").asText());
+        assertEquals("m", props.path("bergingsdiepte").path("x-unit").asText());
         // geërfde attributen — met hun eigen JSON-type EN hun eenheid
         assertEquals("integer", props.path("vondstwaarde").path("type").asText(),
                 "het geërfde attribuut 'vondstwaarde' hoort in het subtype-schema te staan: " + props);
-        assertEquals("eur", props.path("vondstwaarde").path("x-eenheid").asText());
+        assertEquals("eur", props.path("vondstwaarde").path("x-unit").asText());
         assertEquals("number", props.path("bergloon").path("type").asText(),
                 "het geërfde attribuut 'bergloon' hoort in het subtype-schema te staan: " + props);
-        assertEquals("eur", props.path("bergloon").path("x-eenheid").asText());
+        assertEquals("eur", props.path("bergloon").path("x-unit").asText());
         // geërfde kenmerken — boolean-eigenschappen
         assertEquals("boolean", props.path("aangemeld").path("type").asText(),
                 "het geërfde kenmerk 'aangemeld' hoort in het subtype-schema te staan: " + props);
@@ -138,8 +138,8 @@ class ChainServiceTest {
                 .replace("\"Wrakstuk:meldplichtig\"", "\"Wrakstuk:gekaapt\"");
         ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(broken, MODEL));
         assertTrue(f.violations().stream().anyMatch(s ->
-                        s.kind() == Violation.Kind.ONBEKENDE_VERWIJZING && s.message().contains("gekaapt")),
-                () -> "verwacht een ONBEKENDE_VERWIJZING op 'gekaapt': " + f.violations());
+                        s.kind() == Violation.Kind.UNKNOWN_REFERENCE && s.message().contains("gekaapt")),
+                () -> "verwacht een UNKNOWN_REFERENCE op 'gekaapt': " + f.violations());
     }
 
     // ---------------- (ii) een verzoek met geërfde invoer levert de handberekende waarde ----------------
@@ -148,11 +148,11 @@ class ChainServiceTest {
     void request_with_inherited_attribute_and_inherited_characteristic_yields_the_hand_computed_value() {
         // W1: geërfd attribuut 240 eur + geërfd kenmerk aangemeld=true -> 240 x 0,25 = 60,00
         ObjectNode answer = CORE.process("bergloon", parse("""
-            { "instanties": [
+            { "instances": [
                 { "type": "Wrakstuk", "id": "W1",
-                  "attributen": { "vondstwaarde": 240, "bergingsdiepte": 12 },
-                  "kenmerken": { "aangemeld": true } } ] }"""));
-        assertAmount("60.00", find(answer, "W1", "attributen", "bergloon"), answer);
+                  "attributes": { "vondstwaarde": 240, "bergingsdiepte": 12 },
+                  "characteristics": { "aangemeld": true } } ] }"""));
+        assertAmount("60.00", find(answer, "W1", "attributes", "bergloon"), answer);
         assertEquals("Wrakstuk", instance(answer, "W1").path("type").asText(),
                 "het antwoord noemt het CONCRETE type van de instantie: " + answer);
     }
@@ -161,11 +161,11 @@ class ChainServiceTest {
     void the_inherited_characteristic_really_drives_the_condition() {
         // W2: zelfde waarde, aangemeld=false -> de voorwaarde is onwaar, niets vuurt, bergloon blijft leeg.
         ObjectNode answer = CORE.process("bergloon", parse("""
-            { "instanties": [
+            { "instances": [
                 { "type": "Wrakstuk", "id": "W2",
-                  "attributen": { "vondstwaarde": 240 },
-                  "kenmerken": { "aangemeld": false } } ] }"""));
-        JsonNode bergloon = find(answer, "W2", "attributen", "bergloon");
+                  "attributes": { "vondstwaarde": 240 },
+                  "characteristics": { "aangemeld": false } } ] }"""));
+        JsonNode bergloon = find(answer, "W2", "attributes", "bergloon");
         assertNotNull(bergloon, "de uitvoer-selector hoort ook op het subtype te gelden: " + answer);
         assertTrue(bergloon.isNull(), "zonder aanmelding vuurt de regel niet: " + answer);
     }
@@ -174,23 +174,23 @@ class ChainServiceTest {
     void the_supertype_itself_stays_simply_served() {
         // S1: dezelfde regel op een instantie van het SUPERtype -> 80 x 0,25 = 20,00
         ObjectNode answer = CORE.process("bergloon", parse("""
-            { "instanties": [
+            { "instances": [
                 { "type": "Strandvondst", "id": "S1",
-                  "attributen": { "vondstwaarde": { "waarde": 80, "eenheid": "eur" } },
-                  "kenmerken": { "aangemeld": true } } ] }"""));
-        assertAmount("20.00", find(answer, "S1", "attributen", "bergloon"), answer);
+                  "attributes": { "vondstwaarde": { "value": 80, "unit": "eur" } },
+                  "characteristics": { "aangemeld": true } } ] }"""));
+        assertAmount("20.00", find(answer, "S1", "attributes", "bergloon"), answer);
     }
 
     @Test
     void a_rule_on_the_subtype_writes_an_inherited_characteristic() {
         // meldplicht: W1 (240 > 100) -> true, W2 (80 > 100) -> false. Beide op het GEERFDE kenmerk.
         ObjectNode answer = CORE.process("meldplicht", parse("""
-            { "instanties": [
-                { "type": "Wrakstuk", "id": "W1", "attributen": { "vondstwaarde": 240 } },
-                { "type": "Wrakstuk", "id": "W2", "attributen": { "vondstwaarde": 80 } } ] }"""));
-        assertEquals(true, find(answer, "W1", "kenmerken", "meldplichtig").asBoolean(),
+            { "instances": [
+                { "type": "Wrakstuk", "id": "W1", "attributes": { "vondstwaarde": 240 } },
+                { "type": "Wrakstuk", "id": "W2", "attributes": { "vondstwaarde": 80 } } ] }"""));
+        assertEquals(true, find(answer, "W1", "characteristics", "meldplichtig").asBoolean(),
                 "240 eur > 100 eur: " + answer);
-        assertEquals(false, find(answer, "W2", "kenmerken", "meldplichtig").asBoolean(),
+        assertEquals(false, find(answer, "W2", "characteristics", "meldplichtig").asBoolean(),
                 "80 eur > 100 eur is onwaar: " + answer);
     }
 
@@ -198,17 +198,17 @@ class ChainServiceTest {
     void a_rule_on_the_supertype_assigns_the_characteristic_to_the_subtype_instance_and_explains_it() {
         // 'Een Strandvondst is bergingsplichtig indien zijn vondstwaarde groter is dan 500 eur' is op het
         // SUPERTYPE geschreven. W1 (600 eur) hoort hem te krijgen — én de uitleg hoort hem te noemen: het
-        // verhaal achter ?uitleg=true selecteert zijn kenmerktoekenningsregels per instantie.
+        // verhaal achter ?explanation=true selecteert zijn kenmerktoekenningsregels per instantie.
         ObjectNode answer = CORE.process("bergingsplicht", parse("""
-            { "instanties": [
-                { "type": "Wrakstuk", "id": "W1", "attributen": { "vondstwaarde": 600 } },
-                { "type": "Wrakstuk", "id": "W2", "attributen": { "vondstwaarde": 400 } } ] }"""), true);
-        assertEquals(true, find(answer, "W1", "kenmerken", "bergingsplichtig").asBoolean(),
+            { "instances": [
+                { "type": "Wrakstuk", "id": "W1", "attributes": { "vondstwaarde": 600 } },
+                { "type": "Wrakstuk", "id": "W2", "attributes": { "vondstwaarde": 400 } } ] }"""), true);
+        assertEquals(true, find(answer, "W1", "characteristics", "bergingsplichtig").asBoolean(),
                 "600 eur > 500 eur: " + answer);
-        assertEquals(false, find(answer, "W2", "kenmerken", "bergingsplichtig").asBoolean(),
+        assertEquals(false, find(answer, "W2", "characteristics", "bergingsplichtig").asBoolean(),
                 "400 eur > 500 eur is onwaar: " + answer);
 
-        JsonNode uitleg = answer.get("uitleg");
+        JsonNode uitleg = answer.get("explanation");
         assertNotNull(uitleg, "geen uitleg-array: " + answer);
         String story = uitleg.toString();
         assertTrue(story.contains("W1") && story.contains("bergingsplichtig"),
@@ -222,31 +222,31 @@ class ChainServiceTest {
     @Test
     void an_inherited_timeline_attribute_is_refused_loudly_on_the_subtype() {
         ServiceError f = assertThrows(ServiceError.class, () -> CORE.process("bergloon", parse("""
-            { "instanties": [
-                { "type": "Wrakstuk", "id": "W1", "attributen": { "meldtermijn": 30 } } ] }""")));
+            { "instances": [
+                { "type": "Wrakstuk", "id": "W1", "attributes": { "meldtermijn": 30 } } ] }""")));
         assertTrue(f.violations().stream().anyMatch(s ->
-                        s.kind() == Violation.Kind.NIET_ONDERSTEUND && s.message().contains("meldtermijn")),
-                () -> "een geërfd tijdlijn-attribuut hoort NIET_ONDERSTEUND te zijn (niet stil als scalar"
+                        s.kind() == Violation.Kind.UNSUPPORTED && s.message().contains("meldtermijn")),
+                () -> "een geërfd tijdlijn-attribuut hoort UNSUPPORTED te zijn (niet stil als scalar"
                         + " geschreven en niet 'onbekend'): " + f.violations());
     }
 
     @Test
     void an_inherited_timeline_characteristic_is_refused_loudly_on_the_subtype() {
         ServiceError f = assertThrows(ServiceError.class, () -> CORE.process("bergloon", parse("""
-            { "instanties": [
-                { "type": "Wrakstuk", "id": "W1", "kenmerken": { "verjaard": true } } ] }""")));
+            { "instances": [
+                { "type": "Wrakstuk", "id": "W1", "characteristics": { "verjaard": true } } ] }""")));
         assertTrue(f.violations().stream().anyMatch(s ->
-                        s.kind() == Violation.Kind.NIET_ONDERSTEUND && s.message().contains("verjaard")),
-                () -> "een geërfd tijdlijn-kenmerk hoort NIET_ONDERSTEUND te zijn: " + f.violations());
+                        s.kind() == Violation.Kind.UNSUPPORTED && s.message().contains("verjaard")),
+                () -> "een geërfd tijdlijn-kenmerk hoort UNSUPPORTED te zijn: " + f.violations());
     }
 
     @Test
     void a_real_unknown_member_stays_UNKNOWN_FIELD() {
         ServiceError f = assertThrows(ServiceError.class, () -> CORE.process("bergloon", parse("""
-            { "instanties": [
-                { "type": "Wrakstuk", "id": "W1", "kenmerken": { "gekaapt": true } } ] }""")));
+            { "instances": [
+                { "type": "Wrakstuk", "id": "W1", "characteristics": { "gekaapt": true } } ] }""")));
         assertTrue(f.violations().stream().anyMatch(s ->
-                        s.kind() == Violation.Kind.ONBEKEND_VELD && s.message().contains("gekaapt")),
+                        s.kind() == Violation.Kind.UNKNOWN_FIELD && s.message().contains("gekaapt")),
                 () -> "de keten mag geen enkel lid verzinnen: " + f.violations());
     }
 
@@ -260,17 +260,17 @@ class ChainServiceTest {
                     .uri(URI.create("http://127.0.0.1:" + service.port() + "/bergloon"))
                     .header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString("""
-                        { "instanties": [
+                        { "instances": [
                             { "type": "Wrakstuk", "id": "W1",
-                              "attributen": { "vondstwaarde": 240, "bergingsdiepte": 12 },
-                              "kenmerken": { "aangemeld": true } } ] }""", StandardCharsets.UTF_8))
+                              "attributes": { "vondstwaarde": 240, "bergingsdiepte": 12 },
+                              "characteristics": { "aangemeld": true } } ] }""", StandardCharsets.UTF_8))
                     .build();
             HttpResponse<String> res = client.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             assertEquals(200, res.statusCode(), "antwoord: " + res.body());
             JsonNode answer = DescriptorLoader.MAPPER.readTree(res.body());
             JsonNode bergloon = null;
-            for (JsonNode inst : answer.get("instanties"))
-                if ("W1".equals(inst.path("id").asText())) bergloon = inst.path("attributen").get("bergloon");
+            for (JsonNode inst : answer.get("instances"))
+                if ("W1".equals(inst.path("id").asText())) bergloon = inst.path("attributes").get("bergloon");
             assertNotNull(bergloon, "antwoord: " + res.body());
             assertEquals(0, new BigDecimal("60.00").compareTo(bergloon.decimalValue()), "antwoord: " + res.body());
         } finally {
@@ -287,7 +287,7 @@ class ChainServiceTest {
     }
 
     private static JsonNode instance(ObjectNode answer, String id) {
-        for (JsonNode inst : answer.get("instanties"))
+        for (JsonNode inst : answer.get("instances"))
             if (id.equals(inst.path("id").asText())) return inst;
         return com.fasterxml.jackson.databind.node.MissingNode.getInstance();
     }

@@ -19,7 +19,7 @@ import java.util.List;
 
 /**
  * CDI producer of the single {@link DecisionCore} the Quarkus adapter serves. It mirrors the shell/Helm config
- * contract exactly ({@code service-entrypoint.sh}): {@code DESCRIPTOR} points at the {@code .dienst.json},
+ * contract exactly ({@code service-entrypoint.sh}): {@code DESCRIPTOR} points at the {@code .service.json},
  * {@code BRONNEN_MANIFEST} at a text file listing one bron {@code .rgs} path per line, {@code ALLOW_MARKERS}
  * toggles strict-vs-marker mode. Those env-var NAMES are shared with the shell launcher so existing Helm values
  * apply unchanged. {@code DETAIL=true} starts the core with the details of a session on request, as

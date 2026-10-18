@@ -40,29 +40,29 @@ final class InfoBuilder {
         ServiceDescriptor descriptor = core.descriptor();
         ObjectNode root = NF.objectNode();
 
-        ObjectNode service = root.putObject("dienst");
+        ObjectNode service = root.putObject("service");
         if (descriptor.service() != null) {
-            service.put("naam", descriptor.service().name());
-            service.put("versie", descriptor.service().version());
+            service.put("name", descriptor.service().name());
+            service.put("version", descriptor.service().version());
         }
 
         ArrayNode entrypoints = root.putArray("entrypoints");
         ArrayNode skipped = NF.arrayNode();
         for (DecisionCore.Entrypoint ep : core.entrypoints().values()) {
             ObjectNode eNode = entrypoints.addObject();
-            eNode.put("naam", ep.descriptor().name());
-            eNode.put("pad", ep.descriptor().path());
-            if (ep.descriptor().vocabulary() != null) eNode.put("vocabulaire", ep.descriptor().vocabulary());
-            eNode.put("uitvoerbaar", ep.executable());
-            if (!ep.executable()) eNode.put("weigering", ep.refusal());
+            eNode.put("name", ep.descriptor().name());
+            eNode.put("path", ep.descriptor().path());
+            if (ep.descriptor().vocabulary() != null) eNode.put("vocabulary", ep.descriptor().vocabulary());
+            eNode.put("executable", ep.executable());
+            if (!ep.executable()) eNode.put("refusal", ep.refusal());
 
-            ArrayNode coverage = eNode.putArray("dekking");
+            ArrayNode coverage = eNode.putArray("coverage");
             for (Coverage d : ep.coverage()) {
                 ObjectNode dn = coverage.addObject();
-                dn.put("soort", d.category());
-                dn.put("naam", d.naam());
+                dn.put("kind", d.category());
+                dn.put("name", d.naam());
                 dn.put("verdict", d.verdict().name());
-                if (d.reason() != null && !d.reason().isEmpty()) dn.put("reden", d.reason());
+                if (d.reason() != null && !d.reason().isEmpty()) dn.put("reason", d.reason());
             }
 
             ArrayNode markers = eNode.putArray("markers");
@@ -72,34 +72,34 @@ final class InfoBuilder {
             }
         }
         root.set("entrypoints", entrypoints);
-        root.set("overgeslagen", skipped);
+        root.set("skipped", skipped);
 
         ObjectNode parameters = root.putObject("parameters");
         Map<String, JsonNode> params = descriptor.parameters();
         if (params != null)
             for (var e : params.entrySet()) parameters.set(e.getKey(), e.getValue());
 
-        ArrayNode parameterSets = root.putArray("parametersets");
+        ArrayNode parameterSets = root.putArray("parameterSets");
         for (ParameterSet set : core.parameterSets()) {
             ObjectNode sn = parameterSets.addObject();
-            sn.put("naam", set.naam());
-            ObjectNode values = sn.putObject("waarden");
+            sn.put("name", set.naam());
+            ObjectNode values = sn.putObject("values");
             for (var e : set.waarden().entrySet()) {
                 ArrayNode intervals = values.putArray(e.getKey());
                 for (ValueInterval wi : e.getValue()) {
                     ObjectNode iv = intervals.addObject();
                     Validity g = wi.validity();
-                    if (g.from() != null) iv.put("vanaf", g.from().toString()); else iv.putNull("vanaf");
-                    if (g.until() != null) iv.put("tot", g.until().toString()); else iv.putNull("tot");
-                    iv.set("waarde", renderValue(wi.value()));
+                    if (g.from() != null) iv.put("from", g.from().toString()); else iv.putNull("from");
+                    if (g.until() != null) iv.put("to", g.until().toString()); else iv.putNull("to");
+                    iv.set("value", renderValue(wi.value()));
                 }
             }
         }
 
-        ArrayNode warnings = root.putArray("periodeWaarschuwingen");
+        ArrayNode warnings = root.putArray("periodWarnings");
         for (String w : core.periodWarnings()) warnings.add(w);
 
-        if (!core.model().vocabularies.isEmpty()) root.set("vocabulaires", Completeness.info(core.model()));
+        if (!core.model().vocabularies.isEmpty()) root.set("vocabularies", Completeness.info(core.model()));
 
         return root;
     }

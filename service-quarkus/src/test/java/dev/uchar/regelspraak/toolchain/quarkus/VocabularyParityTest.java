@@ -37,16 +37,16 @@ class VocabularyParityTest {
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true);
     private static final String DESCRIPTOR = """
-            { "dienst": {"naam":"vocabulaires","versie":"1"},
+            { "service": {"name":"vocabularies","version":"1"},
               "entrypoints": [
-                { "naam":"premie","pad":"premie","scope": {"regelgroepen": ["premieberekening"]},
-                  "invoer": ["Jutter"], "uitvoer": ["Jutter.vondstbedrag", "Vondst.soort"] },
-                { "naam":"premie cgm","pad":"premie-cgm","scope": {"regelgroepen": ["premieberekening"]},
-                  "invoer": ["Jutter"], "uitvoer": ["Jutter.vondstbedrag"], "vocabulaire": "cgm" } ],
+                { "name":"premie","path":"premie","scope": {"ruleGroups": ["premieberekening"]},
+                  "input": ["Jutter"], "output": ["Jutter.vondstbedrag", "Vondst.soort"] },
+                { "name":"premie cgm","path":"premie-cgm","scope": {"ruleGroups": ["premieberekening"]},
+                  "input": ["Jutter"], "output": ["Jutter.vondstbedrag"], "vocabulary": "cgm" } ],
               "parameters": {} }""";
     private static final String REQUEST = """
-            { "instanties": [ { "type": "strandjutter", "id": "J1", "rollen": { "GEMELDE_VONDST": ["V1"] } },
-                              { "type": "Vondst", "id": "V1", "attributen": { "soort": "amber", "gewicht": 2 } } ],
+            { "instances": [ { "type": "strandjutter", "id": "J1", "roles": { "GEMELDE_VONDST": ["V1"] } },
+                              { "type": "Vondst", "id": "V1", "attributes": { "soort": "amber", "gewicht": 2 } } ],
               "parameters": { "premietarief": 5 } }""";
 
     private static DecisionCore core;
@@ -71,22 +71,22 @@ class VocabularyParityTest {
                 URI.create("http://127.0.0.1:" + service.port() + "/info")).GET().build(), HttpResponse.BodyHandlers.ofString());
         JsonNode jdk = MAPPER.readTree(r.body());
         assertEquals(jdk, InfoBuilder.assemble(core));
-        assertEquals(2, jdk.get("vocabulaires").size(), r.body());
-        assertEquals("cgm", jdk.at("/entrypoints/1/vocabulaire").asText(), r.body());
+        assertEquals(2, jdk.get("vocabularies").size(), r.body());
+        assertEquals("cgm", jdk.at("/entrypoints/1/vocabulary").asText(), r.body());
     }
 
     @Test
     void an_answer_in_a_vocabulary_is_equal() throws Exception {
         JsonNode body = compare("premie", "handboek", null, 200);
-        assertEquals("amber", body.at("/instanties/1/attributen/soort vondst").asText(), body.toString());
+        assertEquals("amber", body.at("/instances/1/attributes/soort vondst").asText(), body.toString());
         compare("premie-cgm", null, null, 200);
     }
 
     @Test
     void the_refusals_of_vocabularies_are_equal() throws Exception {
-        assertEquals("ONBEKEND_VOCABULAIRE", compare("premie", "wetboek", null, 400).at("/schendingen/0/soort").asText());
+        assertEquals("UNKNOWN_VOCABULARY", compare("premie", "wetboek", null, 400).at("/violations/0/kind").asText());
         JsonNode fixed = compare("premie", null, "cgm", 400);
-        assertTrue(fixed.get("schendingen").toString().contains("(invoervocabulaire 'cgm')"), fixed.toString());
+        assertTrue(fixed.get("violations").toString().contains("(invoervocabulaire 'cgm')"), fixed.toString());
     }
 
     /** The same POST to both adapters: the same status ({@code verwacht}) and body, which it returns. */
@@ -95,8 +95,8 @@ class VocabularyParityTest {
         DecideResource resource = new DecideResource();
         resource.core = core;
         Response quarkus = resource.process(path, null, vocabulary, invoervocabulaire, REQUEST);
-        String query = (vocabulary == null ? "" : "vocabulaire=" + vocabulary)
-                + (invoervocabulaire == null ? "" : (vocabulary == null ? "" : "&") + "invoervocabulaire=" + invoervocabulaire);
+        String query = (vocabulary == null ? "" : "vocabulary=" + vocabulary)
+                + (invoervocabulaire == null ? "" : (vocabulary == null ? "" : "&") + "inputVocabulary=" + invoervocabulaire);
         HttpResponse<String> jdk = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + service.port() + "/" + path + (query.isEmpty() ? "" : "?" + query)))
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(REQUEST)).build(),

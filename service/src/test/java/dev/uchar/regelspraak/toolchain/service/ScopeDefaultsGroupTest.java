@@ -601,7 +601,7 @@ class ScopeDefaultsGroupTest {
     @Test
     void the_input_element_lets_the_caller_supply_the_read_of_the_group() {
         DecisionCore core = assemble(EXCEPTION, descriptor("premie", List.of("premie"), "Jutter.premie",
-                ", \"invoerElementen\": [\"Jutter.bergdag\"]"));
+                ", \"inputElements\": [\"Jutter.bergdag\"]"));
         assertEquals(5, premie(core, "2026-05-30", "2026-06-02"));
         assertEquals(10, premie(core, "2026-05-30", "2026-05-31"));
     }
@@ -622,10 +622,10 @@ class ScopeDefaultsGroupTest {
     private static String descriptor(String path, List<String> ruleNames, List<String> input, String output,
                                      String extra) {
         return """
-            { "dienst": {"naam":"Jutterswet scopeproef","versie":"1"},
-              "entrypoints": [ { "naam":"%s","pad":"%s",
-                "scope": {"regelnamen": [%s]},
-                "invoer": [%s], "uitvoer": ["%s"]%s } ],
+            { "service": {"name":"Jutterswet scopeproef","version":"1"},
+              "entrypoints": [ { "name":"%s","path":"%s",
+                "scope": {"ruleNames": [%s]},
+                "input": [%s], "output": ["%s"]%s } ],
               "parameters": {} }""".formatted(path, path, list(ruleNames), list(input), output, extra);
     }
 
@@ -654,8 +654,8 @@ class ScopeDefaultsGroupTest {
     private static List<String> scopeViolations(String source, String descriptor) {
         ServiceError f = assertThrows(ServiceError.class, () -> assemble(source, descriptor),
                 "de dienst hoort niet te starten op een scope die een lezing mist");
-        assertTrue(f.violations().stream().allMatch(s -> s.kind() == Violation.Kind.SCOPE_ONVOLLEDIG),
-                () -> "verwacht alleen SCOPE_ONVOLLEDIG: " + f.violations());
+        assertTrue(f.violations().stream().allMatch(s -> s.kind() == Violation.Kind.INCOMPLETE_SCOPE),
+                () -> "verwacht alleen INCOMPLETE_SCOPE: " + f.violations());
         return f.violations().stream().map(Violation::message).toList();
     }
 
@@ -667,9 +667,9 @@ class ScopeDefaultsGroupTest {
     private static int premie(DecisionCore core, String type, String vinddag, String bergdag) {
         String attributes = "\"vinddag\": \"" + vinddag + "\""
                 + (bergdag == null ? "" : ", \"bergdag\": \"" + bergdag + "\"");
-        ObjectNode a = core.process("premie", parse("{ \"instanties\": [ { \"type\": \"" + type
-                + "\", \"id\": \"J1\", \"attributen\": { " + attributes + " } } ] }"));
-        JsonNode premie = a.path("instanties").path(0).path("attributen").get("premie");
+        ObjectNode a = core.process("premie", parse("{ \"instances\": [ { \"type\": \"" + type
+                + "\", \"id\": \"J1\", \"attributes\": { " + attributes + " } } ] }"));
+        JsonNode premie = a.path("instances").path(0).path("attributes").get("premie");
         assertNotNull(premie, () -> "antwoord: " + a);
         assertTrue(premie.isNumber(), () -> "antwoord: " + a);
         return premie.intValue();
@@ -685,11 +685,11 @@ class ScopeDefaultsGroupTest {
             for (String[] day : new String[][] { {"1", "2026-05-30"}, {"2", "2026-03-01"} })
                 instances.append(instances.length() == 0 ? "" : ", ").append("{ \"type\": \"").append(type)
                         .append("\", \"id\": \"").append(type.charAt(0)).append(day[0])
-                        .append("\", \"attributen\": { \"vinddag\": \"").append(day[1]).append("\" } }");
-        ObjectNode a = core.process("premie", parse("{ \"instanties\": [ " + instances + " ] }"));
+                        .append("\", \"attributes\": { \"vinddag\": \"").append(day[1]).append("\" } }");
+        ObjectNode a = core.process("premie", parse("{ \"instances\": [ " + instances + " ] }"));
         Map<String, Integer> sink = new LinkedHashMap<>();
-        for (JsonNode i : a.path("instanties")) {
-            JsonNode premie = i.path("attributen").get("premie");
+        for (JsonNode i : a.path("instances")) {
+            JsonNode premie = i.path("attributes").get("premie");
             sink.put(i.path("id").asText(), premie == null || premie.isNull() ? null : premie.intValue());
         }
         return sink;
