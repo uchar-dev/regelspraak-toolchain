@@ -11,7 +11,7 @@ import dev.uchar.regelspraak.model.Parameterset.WaardeInterval;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceDescriptor;
 import dev.uchar.regelspraak.toolchain.service.Completeness;
-import dev.uchar.regelspraak.transpiler.core.Dekking;
+import dev.uchar.regelspraak.transpiler.kern.Dekking;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;

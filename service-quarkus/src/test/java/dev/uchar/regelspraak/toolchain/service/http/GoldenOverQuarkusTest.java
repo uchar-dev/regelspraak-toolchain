@@ -172,7 +172,7 @@ class GoldenOverQuarkusTest {
         ClassLoader cl = scenario.getClass().getClassLoader();
         Class<?> snv = Class.forName("dev.uchar.regelspraak.toolchain.service.http.SituationToRequest", true, cl);
         Class<?> rsClass = Class.forName("dev.uchar.regelspraak.ir.ResolvedScenario", true, cl);
-        var m = snv.getDeclaredMethod("bouw", rsClass);
+        var m = snv.getDeclaredMethod("assemble", rsClass);
         m.setAccessible(true);
         return (ObjectNode) m.invoke(null, scenario);
     }

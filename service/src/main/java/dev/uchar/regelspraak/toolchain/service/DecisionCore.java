@@ -22,8 +22,8 @@ import dev.uchar.regelspraak.graaf.ProducentConsument.ElementSleutel;
 import dev.uchar.regelspraak.model.Parameterset;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
-import dev.uchar.regelspraak.transpiler.core.Dekking;
-import dev.uchar.regelspraak.transpiler.core.PeriodeDekking;
+import dev.uchar.regelspraak.transpiler.kern.Dekking;
+import dev.uchar.regelspraak.transpiler.kern.PeriodeDekking;
 import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 
 import org.kie.api.KieBase;

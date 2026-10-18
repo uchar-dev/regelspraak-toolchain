@@ -123,7 +123,7 @@ echo "H2 PASS: GoldenOverHttpTest tegen de in-cluster dienst (26 over HTTP gerep
 step "H3"
 # Install the marker descriptor with allowMarkers=false → the service exits 3 → CrashLoopBackOff.
 h upgrade --install "$MARKER_RELEASE" "$CHART" --set image.tag="$TAG" \
-    --set descriptor=/app/rules/marker/marker.service.json \
+    --set descriptor=/app/rules/marker/marker.dienst.json \
     --set bronnenManifest=/app/rules/marker/manifest.txt
 
 MARKER_POD=""
@@ -157,7 +157,7 @@ echo "H3: fail-fast exit 3 bevestigd (CrashLoopBackOff by design)"
 
 # Same descriptor/manifest, nu MET --allow-markers → start schoon; een verzoek krijgt 503.
 h upgrade "$MARKER_RELEASE" "$CHART" --set image.tag="$TAG" \
-    --set descriptor=/app/rules/marker/marker.service.json \
+    --set descriptor=/app/rules/marker/marker.dienst.json \
     --set bronnenManifest=/app/rules/marker/manifest.txt \
     --set allowMarkers=true
 k rollout status "deploy/$MARKER_RELEASE" --timeout=600s

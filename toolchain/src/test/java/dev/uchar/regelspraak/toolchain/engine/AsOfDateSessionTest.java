@@ -4,7 +4,7 @@ import dev.uchar.regelspraak.ir.Geldigheid;
 import dev.uchar.regelspraak.model.Parameterset;
 import dev.uchar.regelspraak.model.Parameterset.WaardeInterval;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.transpiler.core.Dekking;
+import dev.uchar.regelspraak.transpiler.kern.Dekking;
 
 import org.junit.jupiter.api.Test;
 

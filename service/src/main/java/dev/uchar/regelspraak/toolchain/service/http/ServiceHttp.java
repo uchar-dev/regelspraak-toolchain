@@ -24,7 +24,7 @@ import dev.uchar.regelspraak.toolchain.service.Violation;
 import dev.uchar.regelspraak.toolchain.service.RequestOptions;
 import dev.uchar.regelspraak.toolchain.service.Completeness;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
-import dev.uchar.regelspraak.transpiler.core.Dekking;
+import dev.uchar.regelspraak.transpiler.kern.Dekking;
 
 import java.io.IOException;
 import java.io.InputStream;

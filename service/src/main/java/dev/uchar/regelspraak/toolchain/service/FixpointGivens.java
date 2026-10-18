@@ -13,7 +13,7 @@ import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
-import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.kern.Namen;
 import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 import dev.uchar.regelspraak.transpiler.tms.Fixpunt.AfgeleidKenmerk;
 import dev.uchar.regelspraak.transpiler.tms.Fixpunt.AfgeleideWaarde;

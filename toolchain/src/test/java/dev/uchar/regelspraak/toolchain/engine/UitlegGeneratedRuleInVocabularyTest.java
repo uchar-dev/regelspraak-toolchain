@@ -6,7 +6,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.Herkomstvorm;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.kern.Namen;
 
 import org.junit.jupiter.api.Test;
 

@@ -1,7 +1,7 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.kern.Namen;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;

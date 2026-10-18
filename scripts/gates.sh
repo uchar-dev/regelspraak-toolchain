@@ -61,7 +61,7 @@ step() {
 step pin        bash scripts/check-pin.sh
 step reactor    mvn -B -o verify
 step tweelingen bash scripts/check-tweelingen.sh
-step replay     bash scripts/check-service-replay.sh
+step replay     bash scripts/check-dienst-replay.sh
 step manifest   make --no-print-directory scenario-test
 step image      make --no-print-directory image
 step kind-smoke make --no-print-directory kind-smoke

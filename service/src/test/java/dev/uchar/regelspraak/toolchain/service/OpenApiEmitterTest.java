@@ -244,7 +244,7 @@ class OpenApiEmitterTest {
     // ------------------------------------------------------------------ helpers
 
     private static String component(Objecttype ot) {
-        return dev.uchar.regelspraak.transpiler.core.Namen.ident(ot.naam, true);
+        return dev.uchar.regelspraak.transpiler.kern.Namen.ident(ot.naam, true);
     }
 
     /** A property lookup tolerant of the resolver's case-insensitive attribuut/kenmerk naming. */

@@ -6,7 +6,7 @@ import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
 import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.core.Dekking;
+import dev.uchar.regelspraak.transpiler.kern.Dekking;
 import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 import dev.uchar.regelspraak.transpiler.tms.Invoervormfout;
 import org.junit.jupiter.api.Test;

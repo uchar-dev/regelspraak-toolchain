@@ -7,7 +7,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.Feittype;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Rol;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Vocabulaire;
-import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.kern.Namen;
 
 import java.util.List;
 
