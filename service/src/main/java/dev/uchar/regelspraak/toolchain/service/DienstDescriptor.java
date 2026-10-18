@@ -35,14 +35,14 @@ import java.util.Map;
  */
 @JsonIgnoreProperties(ignoreUnknown = true)
 public record DienstDescriptor(
-        Dienst dienst,
-        List<Entrypoint> entrypoints,
-        Map<String, JsonNode> parameters,
-        String parametersets) {
+        @JsonProperty("dienst") Dienst dienst,
+        @JsonProperty("entrypoints") List<Entrypoint> entrypoints,
+        @JsonProperty("parameters") Map<String, JsonNode> parameters,
+        @JsonProperty("parametersets") String parametersets) {
 
     /** The service identity block. */
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Dienst(String naam, String versie) {}
+    public record Dienst(@JsonProperty("naam") String naam, @JsonProperty("versie") String versie) {}
 
     /**
      * One entry point: a name, its URL path (fase 3), the rule scope it fires, the objecttypen it accepts
@@ -71,11 +71,11 @@ public record DienstDescriptor(
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Entrypoint(
-            String naam,
-            String pad,
-            Scope scope,
-            List<String> invoer,
-            List<String> uitvoer,
+            @JsonProperty("naam") String naam,
+            @JsonProperty("pad") String pad,
+            @JsonProperty("scope") Scope scope,
+            @JsonProperty("invoer") List<String> invoer,
+            @JsonProperty("uitvoer") List<String> uitvoer,
             @JsonProperty("invoerElementen") List<String> invoerElementen,
             @JsonProperty("scopeControleUit") boolean scopeControleUit,
             @JsonProperty("vocabulaire") String vocabulaire) {
