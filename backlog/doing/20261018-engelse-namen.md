@@ -96,3 +96,51 @@ hernoemd; in `bin/regelspraak` is alleen de klasse `ServiceMain` gevolgd.
 staan (de rijen zonder declaratie hier) en de imports van `kern` volgen daarmee. (2) `tools/naming/` gaat weg na het programma. (3) De
 javadoc-`{@code ...}` met een JSON-sleutel is door `triage` (code-markup) soms vertaald; dat is commentaar, geen gedrag.
 
+
+## Result (deel 2: pin-bump, volgen van uchar en de zichtbare API, 2026-10-18)
+
+**Pin.** `uchar` staat op `e2343945` (main van uchar met `rename-public-api`); `make check-pin` groen, de versies in de ouder-pom
+zijn gelijk. Commits op `card/engelse-namen`: `cc0cf44` pin en imports (`graaf` is `graph`, `kern` is `core`, `transpiler.kern` is
+`transpiler.core`) en de plekken die javac meldde; `8240cce` namen van uchar in javadoc, README en `docs/ENGINE.md`; daarna de
+zichtbare API (4b): `3c8f5b0` JSON-sleutels, queryparameters, enumconstanten en goldens, `9a48874` configuratie (env, Helm, Docker),
+`a34239f` Python, `a57a5dc` de laatste Nederlandse Java-identifiers (`uitleg`, `houder`, `invoervocabulaire`), `45a62c5` CLI, Make,
+scripts en docs, `a9c639c` een veldpad van de getuige.
+
+**Hoe uchar gevolgd werd.** `javac_follow.py` (kopie in `/tmp/tc2/jf.py`, drie verbeteringen: het type uit `location.1` en uit
+`invalid.mref`, en de naam vóór de kolom bij `doesnt.exist`; de rij kiest op het nieuwe type, via de typerijen van de tabel) volgde
+toolchain, service en service-quarkus, main en test, tot javac schoon was. Met de hand: `Parameterset` was door de eerste
+bouwer als `Parameterset` blijven staan (uchar heet `ParameterSet`); de rij `Vocabulary.taal` ontbreekt in `MAPPING.tsv` (nu
+`language`); `RuleGraph.Node::eindOutput`; de leesplekken achter een uitgesloten regel (`RegelSpraakRuntime.get(..., "regel")`).
+Reflectie op uchar-namen: alleen `ResolvedScenario`/`assemble` in `GoldenOverQuarkusTest`, die klopt. Wat de eerste bouwer
+had laten liggen en wat nu klopt: `getResource("negatief")` wees naar de hernoemde map `negative` (een verouderde map in
+`target/` verborg dat), `ChainSource` noemde `keten/`, `kind-smoke.sh` gaf `-Ddienst.url` aan een test die `service.url` leest en
+las `VERWACHT` terwijl het script `EXPECTED` zette, en de uitleg/de tekst van `ScenarioOracleTest` zocht `Rekenfout:` in een
+diagnose die uchar nu `ComputeFault:` noemt.
+
+**De zichtbare API (4b).** Alle JSON-sleutels van verzoek, antwoord, `/info`, playground en OpenAPI (tabel in de README, alinea
+"Contract change"), de queryparameters (`explanation`, `vocabulary`, `inputVocabulary`, `coverage`, `fixpoint`, `?via=service`),
+de schemanamen, de statuswaarden (`EVALUATION_FAULT`, `NO_FIXPOINT`), `Violation.Kind` (`UNKNOWN_FIELD`, `WRONG_TYPE`,
+`UNSUPPORTED`, ...), `EvaluationFault.Kind` (`DIVISION_BY_ZERO`, `COMPUTE_FAULT`, ...), de herkomst (`derived`, `input`,
+`creation`), de pseudovocabulaire `canonical`, `FIRED`/`NOT_FIRED` en de `RuleGraph.NodeKind`-waarden (`RULE`, `ATTRIBUTE`, ...)
+in de JSON. De descriptor is `<naam>.service.json` (ook `examples/toka/toka.service.json`), het getuigebestand `.witness.json`.
+Env: `PORT`, `SOURCES_MANIFEST` (Helm `sourcesManifest`), `REPLAY_WORKERS`, `SERVICE_URL`; chart en image `decision-service`, de Helm-waarden
+`port` en `parameterSets`. CLI: `graph`, `--port`, `--explanation`, `--vocabulary`, `--exclusions`, `--parameter-sets`, `--witness`,
+`--workers`; Make: `gates-no-docker` (was `poorten`; `gates` bestond al), `check-twins`, `check-service-replay`, `graph`;
+bestanden `scripts/twins/`, `service_replay.py`, `vocabulary_replay.py`, `as-of-date-vintage-check.sh`, `toka-manifest-exclusions.txt`,
+`csv_to_beslistabel.py`. `playground.html` is herschreven met Engelse identifiers (UI-tekst blijft Nederlands) en leest de nieuwe
+sleutels; de Python-scripts via een tokenizer met woordenlijst. De vier OpenAPI-goldens zijn opnieuw gegenereerd door de emitter
+(regel- en bytetelling gelijk; alleen de namen verschillen). De tests volgen met een woordenlijst op sleutelplekken; domeinwoorden
+die samenvallen met een sleutel (`soort`, `aantal`, `waarde` als attribuutnaam) zijn per geval hersteld.
+
+**Gates.** `make gates-no-docker` groen op de eindstand (de eerste volledige run viel op twee eigen fouten: een shellvariabele die ik
+in `tools/check-skips.sh` half had hernoemd en een veldpad in het getuigebestand); daarna `make gates` groen in 8m34s: pin, reactor
+1.619 / 140 / 332 / 53 testgevallen (gelijk aan de meting op `97d25bb`), twins (3 + 2 cases, 34 verzoeken, 4 getuigenissen),
+replay (225 goldens, 599 cases), manifest (29 ok, 3 uitgesloten, 0 mismatch), image en kind-smoke (H2, H3, H4 PASS).
+
+**Bewust zo gelaten, en de vragen aan de eigenaar.**
+1. `rekendatum` blijft het verzoeksleutel en de global (de oorsprong is RegelSpraak); `peildatum` is `asOfDate`. Wil de eigenaar `evaluationDate`?
+2. De waarden van `coverage[].kind` in `/info` (`regel`, `defaults`) komen van uchar (`DroolsBackend.coverage`) en blijven Nederlands tot uchar ze Engels maakt.
+3. Meldingen noemen nog de oude namen in hun tekst (bijvoorbeeld "queryparameter invoervocabulaire", "dienst.naam ontbreekt" is wel gevolgd);
+   dat is stap 7. De OpenAPI-beschrijvingen zijn proza en noemen de sleutels nu in hun nieuwe spelling waar ik het zag.
+4. `docs/historisch/` is ongewijzigd. `tools/naming/frozen/toolchain.tsv` noemt nog namen die nu Engels zijn; de map gaat na het programma weg.
+5. De Helm-chart en het image heten `decision-service`; wie een eigen values-bestand heeft, moet `poort`, `bronnenManifest` en `parametersets` omzetten.
