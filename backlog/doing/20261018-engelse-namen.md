@@ -58,8 +58,8 @@ Een volgende sessie doet de pin-bump, `javac_follow.py` en `make poorten` / `mak
 `43e73e7` de inhoud (staat in `.git-blame-ignore-revs`); `f0f27f1` grenzen met uchar en de buitenwereld; `4cc6003` `CLAUDE.md` en
 README.
 
-**Aantallen.** Tabel 1.362 rijen (1.161 translation, 201 improved, waarvan 6 met een eigen scope). Bevroren lijst 155 namen. Beslislijst
-17.8k rijen: 11.0k door `triage --default-keep`, 6.8k rest (69 change in README, `docs/`, `pom.xml`), 14 correcties (paden en
+**Aantallen.** Tabel 1.362 rijen (1.161 translation, 201 improved, waarvan 7 met een eigen scope). Bevroren lijst 154 namen. Beslislijst
+17.841 rijen: 11.0k door `triage --default-keep`, 6.8k rest (69 change in README, `docs/`, `pom.xml`), 14 correcties (paden en
 een klassenaam die een string leest), samen 269 change. 12.5k identifiers in 124 inhoudsbestanden. `inventory` meldt nog 7 namen, allemaal in
 shellscripts waar een zichtbare naam staat (`--poort`, `check-dienst-replay`, `vocabulaire-dubbelzinnig`, `--getuige`, de melding
 "niet gezet") plus `Fout` van uchar; ze staan niet in de bevroren lijst omdat die op naam voor de hele zone werkt en dan de Javanamen
@@ -74,7 +74,7 @@ shellscripts waar een zichtbare naam staat (`--poort`, `check-dienst-replay`, `v
 service, `verwerk` en `verwerken` process, `gegevens` data, `kern` core, `ontleding` parse, `poort` port, `aan` enabled, plus de hele
 woorden `betekenis`, `achtervoegsel`, `opgetreden`, `gouden`, `gerapporteerd`, `volledigheid`, `verenigbare`, `statussen`, `ingehouden`
 en `zichtbare`. De paden in de kopie wijzen naar `tools/naming/` in plaats van `scripts/lib/naming/`. De 155 gemelde rijen kregen een
-naam van de sessie; 46 rijen zijn zonder verandering van naam `improved` omdat hun woorden niet op de woordenlijst passen. De rij `Fout`
+naam van de sessie; 201 rijen zijn in totaal `improved`, ook de rijen waarvan de woorden niet op de woordenlijst passen. De rij `Fout`
 is met de hand naar scope `Evaluatiefout.Fout` gezet, omdat de distributie en uchar beide een `Fout` hebben.
 Het gereedschap hernoemt wat het niet kan typeren: de leesplekken van uchar-leden achter een lambda-parameter (`s.naam()`,
 `.vormen()`), het pakket `kern` in de imports, enum-constanten in een `case` (`ALLE`, `KENMERK`, bevroren), vlaggen en bestandsnamen in
@@ -86,7 +86,7 @@ op `core`.
 `Schending.Soort` en `Evaluatiefout.Soort`, subcommando's en vlaggen (`--poort`, `--uitsluitingen`, `--getuige`), Make-targets,
 `POORT`, `BRONNEN_MANIFEST`, `bronnenManifest`, `REPLAY_WERKERS`, de extensie `.dienst.json`, de scriptnamen `check-*.sh`, de domeinnamen in testmateriaal
 (`jutterswet-*`, `toka-*`, `vocabulaire-dubbelzinnig`, `strandmelding`). De 154 namen staan in `tools/naming/frozen/toolchain.tsv`, waarvan
-113 namen van uchar die hier alleen in tekst staan en met de pin-bump meegaan.
+ruim honderd namen van uchar die hier alleen in tekst staan en met de pin-bump meegaan.
 
 **Python, JavaScript en `bin/regelspraak` blijven buiten deze stap** (OPEN 6): `scripts/dienst_replay.py`,
 `scripts/vocabulaire_replay.py`, `tools/csv_naar_beslistabel.py` en `playground.html` zijn niet gelezen door het gereedschap en dus niet
