@@ -34,7 +34,7 @@ import java.util.stream.Stream;
  * each one. This class writes the lowering to a scratch directory, hands it to the report and names each report
  * after its scenario. It compares nothing itself: a verdict here is uchar's replay verdict.
  *
- * <p>{@link #runWithUitleg} adds to each report the explanation of its outcome in words. uchar's report carries the
+ * <p>{@link #runWithExplanation} adds to each report the explanation of its outcome in words. uchar's report carries the
  * verdicts and the firings but not the fired facts (an explanation is presentation, its record says), so each played
  * scenario is played once more, in a session of its own on the same build ({@link CaseSession}), and the
  * {@link Verbaliser} explains that session's facts. The explanation is given only when that session fired what
@@ -48,13 +48,13 @@ public final class ScenarioRunner {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** A scenario's report with the explanation of its outcome: {@code uitleg} one sentence per characteristic an
-     *  attribution rule decided, and {@code uitlegError} why there is none when a played scenario has none (null
+    /** A scenario's report with the explanation of its outcome: {@code explanation} one sentence per characteristic an
+     *  attribution rule decided, and {@code explanationError} why there is none when a played scenario has none (null
      *  otherwise; a MARKER scenario has no explanation and no reason beside its own diagnose). {@code session} is the
      *  case played in a session of its own, with uchar's reading of its fixpoint ({@link CaseSession.Outcome#fixpoint}),
      *  when that session follows uchar's replay, and {@code sessionError} why there is none otherwise (both null for a
      *  MARKER scenario and without an explanation asked). */
-    public record Explained(ScenarioResult result, List<String> uitleg, String uitlegError,
+    public record Explained(ScenarioResult result, List<String> explanation, String explanationError,
                             CaseSession.Outcome session, String sessionError) {}
 
     /** Resolve {@code source} under the scenario frontend and run every scenario in it. A resolve error throws
@@ -74,17 +74,17 @@ public final class ScenarioRunner {
     }
 
     /** {@link #run(ScenarioBundle)} with the explanation of each played scenario's outcome. */
-    public static List<Explained> runWithUitleg(ScenarioBundle bundle) {
+    public static List<Explained> runWithExplanation(ScenarioBundle bundle) {
         return play(bundle, true, null);
     }
 
-    /** {@link #runWithUitleg(ScenarioBundle)} with the explanation in vocabulary {@code vocabulaire}
+    /** {@link #runWithExplanation(ScenarioBundle)} with the explanation in vocabulary {@code vocabulaire}
      *  ({@link Naming#van}; null or {@link Naming#CANONICAL} for the canonical names). */
-    public static List<Explained> runWithUitleg(ScenarioBundle bundle, String vocabulary) {
+    public static List<Explained> runWithExplanation(ScenarioBundle bundle, String vocabulary) {
         return play(bundle, true, vocabulary);
     }
 
-    private static List<Explained> play(ScenarioBundle bundle, boolean withUitleg, String vocabulary) {
+    private static List<Explained> play(ScenarioBundle bundle, boolean withExplanation, String vocabulary) {
         if (!bundle.isOk()) throw new ResolveError(diagnostics(bundle));
         List<ResolvedScenario> scenarios = bundle.scenarios();
         if (scenarios.isEmpty()) return List.of();
@@ -131,14 +131,14 @@ public final class ScenarioRunner {
             // (UcharBuild, this distribution's one way to a build). When the replay played no case (the facade
             // refused the document, every report is MARKER) there is nothing to explain and no build to make.
             boolean played = report.stream().anyMatch(r -> r.status() != ScenarioResult.Status.MARKER);
-            DroolsBackend.Build build = withUitleg && played ? UcharBuild.assemble(JSON.readTree(document),
+            DroolsBackend.Build build = withExplanation && played ? UcharBuild.assemble(JSON.readTree(document),
                     DroolsBackend.Branch.EXEC_MODEL) : null;
             List<Explained> sink = new ArrayList<>();
             for (int i = 0; i < scenarios.size(); i++) {
                 ScenarioResult r = report.get(i);
                 ScenarioResult named = new ScenarioResult(scenarios.get(i).naam(), r.status(),
                         r.expectations(), r.trace(), r.coverage(), r.diagnostic());
-                sink.add(withUitleg ? uitleg(build, named, JSON.readTree(Files.readString(cases.get(i))), vocabulary)
+                sink.add(withExplanation ? explanation(build, named, JSON.readTree(Files.readString(cases.get(i))), vocabulary)
                         : new Explained(named, List.of(), null, null, null));
             }
             return sink;
@@ -162,7 +162,7 @@ public final class ScenarioRunner {
      *  {@code build}, checked against what uchar's replay reported, then verbalised in {@code vocabulaire}. The build's
      *  model is the one uchar's loader read from the IR document; the document carries uchar's table of origins
      *  (IR-SPEC ch. 2.13), so that model tells the rules uchar wrote. */
-    private static Explained uitleg(DroolsBackend.Build build, ScenarioResult r, JsonNode c, String vocabulary) {
+    private static Explained explanation(DroolsBackend.Build build, ScenarioResult r, JsonNode c, String vocabulary) {
         if (r.status() == ScenarioResult.Status.MARKER) return new Explained(r, List.of(), null, null, null);
         if (r.expectations().isEmpty() && r.status() == ScenarioResult.Status.FAIL)
             return notPlayedOut(build, r, c);
@@ -196,23 +196,23 @@ public final class ScenarioRunner {
      *  the replay throws; a session that reaches its fixpoint without one did not run as the replay ran. The session
      *  raises what the replay raised where the replay raised it before the write-back, and that is its reason. */
     private static Explained notPlayedOut(DroolsBackend.Build build, ScenarioResult r, JsonNode c) {
-        String noUitleg = "uchars replay speelde de case niet uit: " + r.diagnostic();
+        String noExplanation = "uchars replay speelde de case niet uit: " + r.diagnostic();
         CaseSession.Outcome session;
         try {
             session = CaseSession.play(build, c);
         } catch (CaseSession.NotPlayable e) {
-            return new Explained(r, List.of(), noUitleg, null,
+            return new Explained(r, List.of(), noExplanation, null,
                     "de eigen sessie speelt deze case niet: " + e.getMessage());
         } catch (RuntimeException e) {
             // uchar's report names the same failure as this case's FAIL; the session reports it as well
-            return new Explained(r, List.of(), noUitleg, null,
+            return new Explained(r, List.of(), noExplanation, null,
                     "de eigen sessie speelde de case evenmin uit: " + e.getClass().getSimpleName() + ": "
                             + e.getMessage());
         }
         if (session.fixpoint().faults().isEmpty())
-            return new Explained(r, List.of(), noUitleg, null, "de eigen sessie kwam zonder evaluatiefout op haar"
+            return new Explained(r, List.of(), noExplanation, null, "de eigen sessie kwam zonder evaluatiefout op haar"
                     + " fixpunt, waar uchars replay de case niet uitspeelde");
-        return new Explained(r, List.of(), noUitleg, session, null);
+        return new Explained(r, List.of(), noExplanation, session, null);
     }
 
     /** The first attribute or characteristic expectation whose value in the explanation's session differs from the

@@ -175,9 +175,9 @@ public final class Verbaliser {
                     + operandProse(vg.right(), bean, ucharText);
         }
         if (c instanceof Condition.CharacteristicCheck k) {
-            Objecttype houder = k.navigation() == null ? subject
+            Objecttype holder = k.navigation() == null ? subject
                     : model.roleTargetTypeToSubject(subject, k.navigation());
-            Predicate predicate = predicate(houder, k.characteristic(), !k.negation(), summary(c));
+            Predicate predicate = predicate(holder, k.characteristic(), !k.negation(), summary(c));
             // zonder soort geen werkwoord: dan de voorwaarde zoals de regel haar schrijft, zoals hieronder
             if (predicate == null) return "aan de voorwaarde \"" + summary(c) + "\" is voldaan";
             String who = k.navigation() == null ? "het onderwerp" : "de " + naming.roleFrom(subject, k.navigation());
@@ -477,16 +477,16 @@ public final class Verbaliser {
         String clause() { return namePart + " " + verb; }
     }
 
-    /** Kenmerk {@code characteristic} van {@code houder} als gezegde, met het werkwoord dat §3.5 zijn soort geeft en de
+    /** Kenmerk {@code characteristic} van {@code holder} als gezegde, met het werkwoord dat §3.5 zijn soort geeft en de
      *  ontkenning die Tabel 16 erbij schrijft: bijvoeglijk "is (niet) X", bezittelijk "heeft &lt;lidwoord&gt; X" of
      *  "heeft geen X", zelfstandig "is een X" of "is geen X". De soort is die van de declaratie, ook in een ander
      *  vocabulaire; de naam is die van {@link Naming}. Het model draagt het lidwoord van een declaratie niet, dus
      *  komt het bij een aanwezig bezittelijk kenmerk uit {@code ruleText}, de tekst van de regel die het kenmerk
-     *  noemt. Null wanneer {@code houder} geen kenmerk {@code characteristic} kent. */
-    private Predicate predicate(Objecttype houder, String characteristic, boolean present, String ruleText) {
-        Objecttype.CharacteristicKind kind = houder == null ? null : houder.characteristicKind(characteristic);
+     *  noemt. Null wanneer {@code holder} geen kenmerk {@code characteristic} kent. */
+    private Predicate predicate(Objecttype holder, String characteristic, boolean present, String ruleText) {
+        Objecttype.CharacteristicKind kind = holder == null ? null : holder.characteristicKind(characteristic);
         if (kind == null) return null;
-        String name = naming.characteristic(houder, characteristic);
+        String name = naming.characteristic(holder, characteristic);
         return switch (kind) {
             case BIJVOEGLIJK -> new Predicate("is", present ? name : "niet " + name);
             case ZELFSTANDIG -> new Predicate("is", (present ? "een " : "geen ") + name);

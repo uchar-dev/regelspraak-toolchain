@@ -214,18 +214,18 @@ public final class RegelSpraakEngine {
 
         /**
          * States the order of a to-many list (uchar's {@code Invoer.lijst}): {@code members} are the members whose
-         * reference field {@code role} holds {@code houder}, in this order, {@code role} being the role the holder plays,
+         * reference field {@code role} holds {@code holder}, in this order, {@code role} being the role the holder plays,
          * the name of that field; the list names every bean of the input whose field holds the holder, each once. The
          * order decides only which member a fault of a fold names, where the fold reads its members one by one and stops
          * at the first fault; without the statement a list holds its members in the order of the inserts. Before the
          * first {@link #fire}, as {@link #insert}; there uchar's entry refuses a list that does not fit the beans.
          */
-        public Session list(Object houder, String role, List<?> members) {
-            Objects.requireNonNull(houder, "houder");
+        public Session list(Object holder, String role, List<?> members) {
+            Objects.requireNonNull(holder, "houder");
             Objects.requireNonNull(role, "rol");
             List<Object> order = List.copyOf(members);   // the order as given now, not as the list reads at the fire
             beforeFirstFire("lijst", "een lijst erbij");
-            feeds.add(i -> i.list(houder, role, order));
+            feeds.add(i -> i.list(holder, role, order));
             return this;
         }
 

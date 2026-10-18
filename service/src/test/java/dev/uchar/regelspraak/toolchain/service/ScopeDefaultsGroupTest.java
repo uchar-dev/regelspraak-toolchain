@@ -609,7 +609,7 @@ class ScopeDefaultsGroupTest {
     @Test
     void scopeCheckOptOut_lets_the_group_start_untested() {
         DecisionCore core = assemble(EXCEPTION, descriptor("premie", List.of("premie"), "Jutter.premie",
-                ", \"scopeControleUit\": true"));
+                ", \"scopeCheckOptOut\": true"));
         assertNotNull(core.entrypoint("premie"));
     }
 

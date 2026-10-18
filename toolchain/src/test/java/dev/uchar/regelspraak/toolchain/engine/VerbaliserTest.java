@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.*;
  * HAND-COMPUTED outcome, so the assertions are EXACT sentences, not a mere "non-empty": the verhaal must justify a
  * kenmerk with the norm AND the evaluated feiten in NL-notatie, and — for a kenmerk that was withheld — name the
  * first failing conjunct with its evaluated value. The golden over the real TOKA minderjarig decision is pinned in the
- * service's {@code UitlegServiceTest}.
+ * service's {@code ExplanationServiceTest}.
  */
 class VerbaliserTest {
 
@@ -31,7 +31,7 @@ class VerbaliserTest {
             """;
 
     /** Fire one Vlucht with {@code afstand} km and return the verhaal the verbaliser tells about it as "V1". */
-    private static List<String> uitlegForVlucht(int afstand) {
+    private static List<String> explanationForVlucht(int afstand) {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(BELAST);
         Object v1 = engine.newInstance("Vlucht");
         RegelSpraakRuntime.set(v1, Namen.ident("afstand tot bestemming", false), new BigDecimal(afstand));
@@ -48,7 +48,7 @@ class VerbaliserTest {
     @Test void assigned_characteristic_accounts_for_itself_with_the_facts() {
         assertEquals(List.of(
                 "V1 is belast, omdat de afstand tot bestemming van de Vlucht (200 km) is groter dan 100 km"),
-                uitlegForVlucht(200));
+                explanationForVlucht(200));
     }
 
     /** A WITHHELD kenmerk: the guard did not hold, so the verhaal names the failing comparison with its read
@@ -57,6 +57,6 @@ class VerbaliserTest {
         assertEquals(List.of(
                 "V1 is niet belast, want niet geldt: de afstand tot bestemming van de Vlucht (50 km)"
                         + " is groter dan 100 km"),
-                uitlegForVlucht(50));
+                explanationForVlucht(50));
     }
 }

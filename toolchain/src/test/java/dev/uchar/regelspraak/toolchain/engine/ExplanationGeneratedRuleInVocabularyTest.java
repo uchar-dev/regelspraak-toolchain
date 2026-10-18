@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * same generated attribute and where its name looks like a generated one: what uchar generated is read in uchar's
  * table of origins ({@code RegelSpraakModel.generatedFrom}), not from a name.
  */
-class UitlegGeneratedRuleInVocabularyTest {
+class ExplanationGeneratedRuleInVocabularyTest {
 
     private static final String MODEL = """
             Vocabulaire cgm (taal: nl)
@@ -86,16 +86,16 @@ class UitlegGeneratedRuleInVocabularyTest {
             - V1 is zwaar
             """;
 
-    private static List<String> uitleg(String vocabulary) {
-        return uitleg(ScenarioResolver.resolve(DOCUMENT), vocabulary);
+    private static List<String> explanation(String vocabulary) {
+        return explanation(ScenarioResolver.resolve(DOCUMENT), vocabulary);
     }
 
-    private static List<String> uitleg(ScenarioBundle bundle, String vocabulary) {
-        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(bundle, vocabulary);
+    private static List<String> explanation(ScenarioBundle bundle, String vocabulary) {
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(bundle, vocabulary);
         assertEquals(1, u.size());
         assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
-        assertNull(u.get(0).uitlegError(), u.get(0)::uitlegError);
-        return u.get(0).uitleg();
+        assertNull(u.get(0).explanationError(), u.get(0)::explanationError);
+        return u.get(0).explanation();
     }
 
     /** The author's rule, the same in every vocabulary: it reads the generated attribute in the author's words. */
@@ -114,7 +114,7 @@ class UitlegGeneratedRuleInVocabularyTest {
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave meldingsdatum, want niet geldt: zijn opgegeven meldingsdatum"
                         + " (onbekend) gevuld is"),
-                uitleg(Naming.CANONICAL));
+                explanation(Naming.CANONICAL));
     }
 
     @Test
@@ -128,7 +128,7 @@ class UitlegGeneratedRuleInVocabularyTest {
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is"),
-                uitleg("cgm"));
+                explanation("cgm"));
     }
 
     @Test
@@ -142,7 +142,7 @@ class UitlegGeneratedRuleInVocabularyTest {
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave dag van de melding, want niet geldt: zijn opgegeven dag van de"
                         + " melding (onbekend) gevuld is"),
-                uitleg("handboek"));
+                explanation("handboek"));
     }
 
     /** uchar generated the row's rule, and the text of its operand is the author's column header: it stays as written,
@@ -152,7 +152,7 @@ class UitlegGeneratedRuleInVocabularyTest {
         ScenarioBundle bundle = ScenarioResolver.resolve(DECISION_TABLE);
         assertEquals(List.of(OriginForm.BESLISTABELRIJ),
                 bundle.model().generated.values().stream().map(GeneratedFrom::form).toList());
-        assertEquals(List.of("V1 is zwaar, omdat zijn gewicht (12) is groter dan 10"), uitleg(bundle, "cgm"));
+        assertEquals(List.of("V1 is zwaar, omdat zijn gewicht (12) is groter dan 10"), explanation(bundle, "cgm"));
     }
 
     /** The decision service explains on the model it resolved from its sources, which carries uchar's table of

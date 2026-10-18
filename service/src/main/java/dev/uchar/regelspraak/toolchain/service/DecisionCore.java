@@ -457,9 +457,9 @@ public final class DecisionCore {
         for (String sel : ep.inputElementsOrEmpty()) {
             OutputSelector u = OutputSelector.parse(sel);
             if (u == null) continue;
-            RegelSpraakModel.Objecttype houder = DescriptorLoader.objectType(model, u.objectType());
-            inputElements.add(houder == null ? ElementKey.van(u.objectType(), u.member(), u.characteristic())
-                    : ProducerConsumer.elementOf(houder, u.member(), u.characteristic()));
+            RegelSpraakModel.Objecttype holder = DescriptorLoader.objectType(model, u.objectType());
+            inputElements.add(holder == null ? ElementKey.van(u.objectType(), u.member(), u.characteristic())
+                    : ProducerConsumer.elementOf(holder, u.member(), u.characteristic()));
         }
         // A tree of exceptions is lowered to one group named after its base rule, an unordered block without a
         // carrier to one group per member; the opgave marker and a subtype's own exceptions get a group whose name
@@ -557,12 +557,12 @@ public final class DecisionCore {
     }
 
     /** As {@link #process(String, JsonNode, RequestOptions)} with only the explanation asked for or not. */
-    public ObjectNode process(String path, JsonNode requestTree, boolean uitleg) {
-        return process(path, requestTree, new RequestOptions(uitleg, null, null));
+    public ObjectNode process(String path, JsonNode requestTree, boolean explanation) {
+        return process(path, requestTree, new RequestOptions(explanation, null, null));
     }
 
     /**
-     * Handle a request with what it asks beside its body. When {@code uitleg} is asked, an {@code "explanation"} array is
+     * Handle a request with what it asks beside its body. When {@code explanation} is asked, an {@code "explanation"} array is
      * added to the response — one NL sentence per assigned/withheld kenmerk of a request instance, justified with the
      * evaluated operandwaarden (§norm read via the IR, not the programmer); without it the response tree has no such
      * key. The request's names are read by a {@link NameReader}, liberally or in the input vocabulary the request
@@ -606,13 +606,13 @@ public final class DecisionCore {
         List<Violation> choices = new ArrayList<>();
         Naming output = naming(options.vocabulary() != null ? options.vocabulary()
                 : ep.descriptor().vocabulary(), "vocabulary", choices);
-        if (options.invoervocabulaire() != null) naming(options.invoervocabulaire(), "inputVocabulary", choices);
+        if (options.inputVocabulary() != null) naming(options.inputVocabulary(), "inputVocabulary", choices);
         if (!detail)
             for (String flag : options.detailFlags())
                 choices.add(Violation.van(Violation.Kind.UNSUPPORTED, flag, "de dienst is zonder DETAIL gestart"
                         + " en geeft geen " + flag + "; start hem met DETAIL=true of --detail"));
         if (!choices.isEmpty()) throw new ServiceError("verzoek valideert niet", choices);
-        RequestMapper mapper = new RequestMapper(model, ep.build(), new NameReader(model, options.invoervocabulaire()));
+        RequestMapper mapper = new RequestMapper(model, ep.build(), new NameReader(model, options.inputVocabulary()));
         RequestMapper.Result mr = mapper.map(new Request(requestTree));
         if (!mr.violations().isEmpty())
             throw new ServiceError("verzoek valideert niet", mr.violations());
@@ -652,7 +652,7 @@ public final class DecisionCore {
         }
         ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());
-        if (options.uitleg()) addUitleg(answer, outcome, mr, setGlobals, ep, output);
+        if (options.explanation()) addExplanation(answer, outcome, mr, setGlobals, ep, output);
         if (withDetail) answer.setAll(detail(options, ep, observer, outcome.fixpoint(), null, input, output));
         return new Assessment(answer, outcome.comparison());
     }
@@ -718,7 +718,7 @@ public final class DecisionCore {
      * the keys are {@link RequestMapper#globalName}, which the verbalisator reads a {@code ParameterRef} on. A pure
      * read of the already-fired beans — nothing re-fires.
      */
-    private void addUitleg(ObjectNode answer, Executor.Outcome outcome, RequestMapper.Result mr,
+    private void addExplanation(ObjectNode answer, Executor.Outcome outcome, RequestMapper.Result mr,
                                Map<String, Object> setGlobals, Entrypoint ep, Naming naming) {
         Map<String, Object> globals = new LinkedHashMap<>(ep.defaultGlobals());
         globals.putAll(setGlobals);

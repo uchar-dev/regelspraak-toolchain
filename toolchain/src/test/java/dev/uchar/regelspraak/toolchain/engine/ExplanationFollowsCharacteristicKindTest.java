@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * where it writes none; the model does not carry the declaration's article. In a vocabulary the name is the
  * designation and the verb stays the one of the declared kind.
  */
-class UitlegFollowsCharacteristicKindTest {
+class ExplanationFollowsCharacteristicKindTest {
 
     private static final String DOCUMENT = """
             Vocabulaire cgm (taal: nl)
@@ -107,12 +107,12 @@ class UitlegFollowsCharacteristicKindTest {
             - R1 is uitgesloten
             """;
 
-    private static List<String> uitleg(String document, String vocabulary) {
-        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(ScenarioResolver.resolve(document), vocabulary);
+    private static List<String> explanation(String document, String vocabulary) {
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(document), vocabulary);
         assertEquals(1, u.size());
         assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
-        assertNull(u.get(0).uitlegError(), u.get(0)::uitlegError);
-        return u.get(0).uitleg();
+        assertNull(u.get(0).explanationError(), u.get(0)::explanationError);
+        return u.get(0).explanation();
     }
 
     @Test
@@ -132,7 +132,7 @@ class UitlegFollowsCharacteristicKindTest {
                 "R3 is geen recht op grond-van-de-wia, want niet geldt: het onderwerp geen lopende uitkering is",
                 "R3 is herleefbaar, omdat het onderwerp een lopende uitkering is en het onderwerp niet geschorst is",
                 "R3 heeft geen recht op uitkering, want niet geldt: het onderwerp geschorst is"),
-                uitleg(DOCUMENT, Naming.CANONICAL));
+                explanation(DOCUMENT, Naming.CANONICAL));
     }
 
     @Test
@@ -152,7 +152,7 @@ class UitlegFollowsCharacteristicKindTest {
                 "R3 is geen WIA-recht, want niet geldt: het onderwerp geen lopende uitkering is",
                 "R3 is HERLEEFBAAR, omdat het onderwerp een lopende uitkering is en het onderwerp niet geschorst is",
                 "R3 heeft geen recht op uitkering, want niet geldt: het onderwerp geschorst is"),
-                uitleg(DOCUMENT, "cgm"));
+                explanation(DOCUMENT, "cgm"));
     }
 
     /** The uitleg plays the IR document, whose check over a role carries its role binding beside the condition, not
@@ -163,6 +163,6 @@ class UitlegFollowsCharacteristicKindTest {
         assertEquals(List.of(
                 "R1 is uitgesloten, omdat aan de voorwaarde \"de samenloop van het Recht een wia-recht heeft\""
                         + " is voldaan"),
-                uitleg(DOCUMENT_ROLE, Naming.CANONICAL));
+                explanation(DOCUMENT_ROLE, Naming.CANONICAL));
     }
 }

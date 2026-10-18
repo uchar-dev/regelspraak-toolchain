@@ -36,8 +36,8 @@ import dev.uchar.regelspraak.toolchain.service.RequestOptions;
  *       {@link AnswerBuilder#noFixpoint} builds, as {@code ServiceHttp} sends it.</li>
  *   <li>{@code GET /info} → the SAME manifest {@code ServiceHttp} serves (via {@link InfoBuilder}).</li>
  * </ul>
- * The query parameters are {@code ServiceHttp}'s: {@code uitleg}, {@code vocabulaire} (the vocabulary of the answer),
- * {@code invoervocabulaire} (the one the request's names are read in), and the detail flags {@code trace},
+ * The query parameters are {@code ServiceHttp}'s: {@code explanation}, {@code vocabulaire} (the vocabulary of the answer),
+ * {@code inputVocabulary} (the one the request's names are read in), and the detail flags {@code trace},
  * {@code dekking} and {@code fixpunt}, which the core answers when {@code DETAIL} started it with detail
  * ({@link CoreProducer}) and refuses with a 400 otherwise.
  *
@@ -65,9 +65,9 @@ public class DecideResource {
     @Path("{path}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response process(@PathParam("path") String path, @QueryParam("explanation") String uitleg,
+    public Response process(@PathParam("path") String path, @QueryParam("explanation") String explanation,
                             @QueryParam("vocabulary") String vocabulary,
-                            @QueryParam("inputVocabulary") String invoervocabulaire,
+                            @QueryParam("inputVocabulary") String inputVocabulary,
                             @QueryParam("trace") String trace, @QueryParam("coverage") String coverage,
                             @QueryParam("fixpoint") String fixpoint, String body) {
         JsonNode tree;
@@ -85,8 +85,8 @@ public class DecideResource {
         try {
             // ?explanation=true (or a bare ?uitleg) opts into the Verbalisator verhaal, and the detail flags read the same
             // way; any other value = no (mirror of ServiceHttp.isRequested)
-            ObjectNode answer = core.process(path, tree, new RequestOptions(isRequested(uitleg), vocabulary,
-                    invoervocabulaire, isRequested(trace), isRequested(coverage), isRequested(fixpoint)));
+            ObjectNode answer = core.process(path, tree, new RequestOptions(isRequested(explanation), vocabulary,
+                    inputVocabulary, isRequested(trace), isRequested(coverage), isRequested(fixpoint)));
             return response(200, answer);
         } catch (DecisionCore.UnknownPath unknown) {
             // ServiceHttp answers an unknown path from its catch-all route, which names the request path, slash
@@ -104,13 +104,13 @@ public class DecideResource {
     }
 
     /** A request that asks no detail of its session: the resource method without the detail flags. */
-    public Response process(String path, String uitleg, String vocabulary, String invoervocabulaire, String body) {
-        return process(path, uitleg, vocabulary, invoervocabulaire, null, null, null, body);
+    public Response process(String path, String explanation, String vocabulary, String inputVocabulary, String body) {
+        return process(path, explanation, vocabulary, inputVocabulary, null, null, null, body);
     }
 
     /** A request that names no vocabulary: {@link #process(String, String, String, String, String)} without them. */
-    public Response process(String path, String uitleg, String body) {
-        return process(path, uitleg, null, null, body);
+    public Response process(String path, String explanation, String body) {
+        return process(path, explanation, null, null, body);
     }
 
     /** A query flag as {@code ServiceHttp.isRequested} reads it: {@code true} (case-insensitive) or bare. */

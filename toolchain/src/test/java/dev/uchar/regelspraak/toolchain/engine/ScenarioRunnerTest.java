@@ -87,7 +87,7 @@ class ScenarioRunnerTest {
      *  justifies the characteristic with the operand values the condition read. The rule with a parameter shows that
      *  the session carries the situation's parameters as globals. */
     @Test void uitleg_of_a_played_scenario() {
-        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
             Objecttype de Vlucht (mv: Vluchten)
                 de afstand tot bestemming Numeriek (positief geheel getal) met eenheid km;
                 de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
@@ -112,9 +112,9 @@ class ScenarioRunnerTest {
             """));
         assertEquals(1, u.size());
         assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
-        assertNull(u.get(0).uitlegError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegError());
-        assertEquals(1, u.get(0).uitleg().size(), u.get(0).uitleg()::toString);
-        String sentence = u.get(0).uitleg().get(0);
+        assertNull(u.get(0).explanationError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).explanationError());
+        assertEquals(1, u.get(0).explanation().size(), u.get(0).explanation()::toString);
+        String sentence = u.get(0).explanation().get(0);
         assertTrue(sentence.startsWith("V1 is belast, omdat") && sentence.contains("200"), sentence);
     }
 
@@ -122,7 +122,7 @@ class ScenarioRunnerTest {
      *  fires and writes back through uchar's entry, so it fires what uchar's replay reported, row for row under the
      *  name of the form, and the verbaliser reads the derived retourafstand on the bean. */
     @Test void uitleg_reads_a_derived_value_without_deviating_trace() {
-        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
             Objecttype de Vlucht (mv: Vluchten)
                 de afstand tot bestemming Numeriek (positief geheel getal);
                 de retourafstand Numeriek (positief geheel getal);
@@ -148,9 +148,9 @@ class ScenarioRunnerTest {
         assertEquals(Status.PASS, r.status(), r::diagnostic);
         assertEquals(List.of("retourafstandregel", "belastregel"),
                 r.trace().firings().stream().map(ScenarioResult.Firing::regel).toList(), r.trace()::toString);
-        assertNull(u.get(0).uitlegError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegError());
+        assertNull(u.get(0).explanationError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).explanationError());
         assertEquals(List.of("V1 is belast, omdat de retourafstand van de Vlucht (400) is groter dan 300"),
-                u.get(0).uitleg());
+                u.get(0).explanation());
     }
 
     /** The model of uchar's {@code SubtypeRolvullerWitnessTest.de_wederkerige_rol_spiegelt_ook_voor_een_subtype}: W, a
@@ -159,7 +159,7 @@ class ScenarioRunnerTest {
      *  V's maatwaarde as 5 and gives its explanation. Asked of W's own type alone, the session read V's maatwaarde
      *  empty, and the explanation was withheld. */
     @Test void uitleg_with_a_reciprocal_role_on_a_subtype_is_not_withheld() {
-        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
             Objecttype de Vondst (mv: Vondsten)
                 de waarde Numeriek (geheel getal);
                 de maatwaarde Numeriek (geheel getal);
@@ -183,7 +183,7 @@ class ScenarioRunnerTest {
             """));
         assertEquals(1, u.size());
         assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
-        assertNull(u.get(0).uitlegError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegError());
+        assertNull(u.get(0).explanationError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).explanationError());
     }
 
     /** A leeg expectation: a rule whose guard does not match leaves the doel unset → the attribuut reads leeg. */

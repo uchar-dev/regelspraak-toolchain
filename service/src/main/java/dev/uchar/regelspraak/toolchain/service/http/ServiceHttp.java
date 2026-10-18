@@ -52,8 +52,8 @@ import java.util.concurrent.TimeoutException;
  *   <li>{@code POST /<pad>} for every entry point: the body is read as JSON (BigDecimal-for-floats so no request
  *       number is ever a double), handed to {@link DecisionCore#process}, and the response tree is written back
  *       with {@code 200} and {@code Content-Type: application/json; charset=UTF-8}. The query carries what the
- *       request asks beside its body ({@link #options}): {@code uitleg}, {@code vocabulaire} (the vocabulary of the
- *       answer), {@code invoervocabulaire} (the one the request's names are read in), and the detail flags
+ *       request asks beside its body ({@link #options}): {@code explanation}, {@code vocabulaire} (the vocabulary of the
+ *       answer), {@code inputVocabulary} (the one the request's names are read in), and the detail flags
  *       {@code trace}, {@code dekking} and {@code fixpunt}, which a core started with detail answers
  *       ({@link dev.uchar.regelspraak.toolchain.service.CoreConfig#detail()}) and any other refuses with a 400.</li>
  *   <li>{@code GET /info}: the service manifest — dienst identity, one entry per entry point carrying its path,
@@ -224,14 +224,14 @@ public final class ServiceHttp {
     }
 
     /** Whether the query string opts into the uitleg field: {@code explanation=true} (case-insensitive) or a bare
-     *  {@code uitleg}. Any other value (incl. {@code explanation=false}) means no — the response is byte-identical to
+     *  {@code explanation}. Any other value (incl. {@code explanation=false}) means no — the response is byte-identical to
      *  a request without the flag. Null/empty query → false. Public so a test can pin the parse (the Quarkus
      *  adapter carries the equivalent inline). */
-    public static boolean requiresUitleg(String rawQuery) {
+    public static boolean requiresExplanation(String rawQuery) {
         return isRequested(rawQuery, "explanation");
     }
 
-    /** Whether the query string sets the flag {@code naam} as {@link #requiresUitleg} reads {@code uitleg}: the first
+    /** Whether the query string sets the flag {@code naam} as {@link #requiresExplanation} reads {@code explanation}: the first
      *  parameter of that name (compared case-insensitively) with the value {@code true} (case-insensitive), or bare. */
     public static boolean isRequested(String rawQuery, String name) {
         if (rawQuery == null || rawQuery.isEmpty()) return false;
@@ -245,17 +245,17 @@ public final class ServiceHttp {
         return false;
     }
 
-    /** What the query of a request asks beside its body: {@link #requiresUitleg}, the values of {@code vocabulaire} and
-     *  {@code invoervocabulaire} ({@link #queryValue}), and the detail flags {@code trace}, {@code dekking} and
+    /** What the query of a request asks beside its body: {@link #requiresExplanation}, the values of {@code vocabulaire} and
+     *  {@code inputVocabulary} ({@link #queryValue}), and the detail flags {@code trace}, {@code dekking} and
      *  {@code fixpunt} ({@link #isRequested}). The Quarkus adapter reads the same six parameters. */
     public static RequestOptions options(String rawQuery) {
-        return new RequestOptions(requiresUitleg(rawQuery), queryValue(rawQuery, "vocabulary"),
+        return new RequestOptions(requiresExplanation(rawQuery), queryValue(rawQuery, "vocabulary"),
                 queryValue(rawQuery, "inputVocabulary"), isRequested(rawQuery, "trace"), isRequested(rawQuery, "coverage"),
                 isRequested(rawQuery, "fixpoint"));
     }
 
     /** The decoded value of the first query parameter {@code naam} (its name compared case-insensitively, as
-     *  {@code uitleg}), the empty text for a bare {@code naam}, or null when the query does not carry it. */
+     *  {@code explanation}), the empty text for a bare {@code naam}, or null when the query does not carry it. */
     public static String queryValue(String rawQuery, String name) {
         if (rawQuery == null || rawQuery.isEmpty()) return null;
         for (String part : rawQuery.split("&")) {

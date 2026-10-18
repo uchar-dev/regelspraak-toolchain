@@ -90,13 +90,13 @@ class VocabularyParityTest {
     }
 
     /** The same POST to both adapters: the same status ({@code verwacht}) and body, which it returns. */
-    private static JsonNode compare(String path, String vocabulary, String invoervocabulaire, int expected)
+    private static JsonNode compare(String path, String vocabulary, String inputVocabulary, int expected)
             throws Exception {
         DecideResource resource = new DecideResource();
         resource.core = core;
-        Response quarkus = resource.process(path, null, vocabulary, invoervocabulaire, REQUEST);
+        Response quarkus = resource.process(path, null, vocabulary, inputVocabulary, REQUEST);
         String query = (vocabulary == null ? "" : "vocabulary=" + vocabulary)
-                + (invoervocabulaire == null ? "" : (vocabulary == null ? "" : "&") + "inputVocabulary=" + invoervocabulaire);
+                + (inputVocabulary == null ? "" : (vocabulary == null ? "" : "&") + "inputVocabulary=" + inputVocabulary);
         HttpResponse<String> jdk = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + service.port() + "/" + path + (query.isEmpty() ? "" : "?" + query)))
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(REQUEST)).build(),

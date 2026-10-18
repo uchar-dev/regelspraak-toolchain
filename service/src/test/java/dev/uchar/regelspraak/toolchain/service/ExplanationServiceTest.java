@@ -15,10 +15,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The {@code ?explanation=true} optional response field (fase: UITLEG-generator). Proves the service exposes the
  * {@link dev.uchar.regelspraak.toolchain.engine.Verbaliser} verhaal as an ADDITIVE, descriptor-independent field — present
- * only when asked, and a NO-OP for existing callers (no {@code uitleg} key on the plain path, so no contract
- * breaks). Also pins the {@link ServiceHttp#requiresUitleg} query-flag parsing the HTTP adapter uses.
+ * only when asked, and a NO-OP for existing callers (no {@code explanation} key on the plain path, so no contract
+ * breaks). Also pins the {@link ServiceHttp#requiresExplanation} query-flag parsing the HTTP adapter uses.
  */
-class UitlegServiceTest {
+class ExplanationServiceTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper();
     private static DecisionCore CORE;
@@ -91,15 +91,15 @@ class UitlegServiceTest {
     /** The HTTP adapter's query-flag parsing: explanation=true / a bare uitleg opt IN; explanation=false / absent opt OUT. */
     @Test
     void requires_uitleg_reads_the_query_correct() {
-        assertTrue(ServiceHttp.requiresUitleg("explanation=true"));
-        assertTrue(ServiceHttp.requiresUitleg("explanation=TRUE"));
-        assertTrue(ServiceHttp.requiresUitleg("explanation"));
-        assertTrue(ServiceHttp.requiresUitleg("foo=bar&explanation=true"));
-        assertFalse(ServiceHttp.requiresUitleg("explanation=false"));
-        assertFalse(ServiceHttp.requiresUitleg("explanation=nee"));
-        assertFalse(ServiceHttp.requiresUitleg(""));
-        assertFalse(ServiceHttp.requiresUitleg(null));
-        assertFalse(ServiceHttp.requiresUitleg("andere=waarde"));
+        assertTrue(ServiceHttp.requiresExplanation("explanation=true"));
+        assertTrue(ServiceHttp.requiresExplanation("explanation=TRUE"));
+        assertTrue(ServiceHttp.requiresExplanation("explanation"));
+        assertTrue(ServiceHttp.requiresExplanation("foo=bar&explanation=true"));
+        assertFalse(ServiceHttp.requiresExplanation("explanation=false"));
+        assertFalse(ServiceHttp.requiresExplanation("explanation=nee"));
+        assertFalse(ServiceHttp.requiresExplanation(""));
+        assertFalse(ServiceHttp.requiresExplanation(null));
+        assertFalse(ServiceHttp.requiresExplanation("andere=waarde"));
     }
 
     private static JsonNode parse(String json) {

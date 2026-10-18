@@ -86,7 +86,7 @@ import java.util.Set;
  *       element it comes from ({@link #vocabularies});</li>
  *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: per scenario uchar's report
  *       (status, per expectation verwacht/werkelijk, the coverage), its {@code trace} (per fired rule the labels it
- *       bound and how often) and its {@code uitleg} ({@link ScenarioRunner#runWithUitleg}), or {@code uitlegError};
+ *       bound and how often) and its {@code explanation} ({@link ScenarioRunner#runWithExplanation}), or {@code explanationError};
  *       beside it the source line of the scenario and of each expectation, the {@code situatie} uchar's scenario
  *       resolver gives, and the {@code fixpunt} of the case's own session, or {@code fixpointError}
  *       ({@link ScenarioData}).</li>
@@ -251,7 +251,7 @@ public final class Playground {
         } else if (scenario) {
             ArrayNode arr = root.putObject("scenario").putArray("results");
             List<ResolvedScenario> scenarios = bundle.scenarios();
-            List<ScenarioRunner.Explained> explained = ScenarioRunner.runWithUitleg(bundle, vocabulary);
+            List<ScenarioRunner.Explained> explained = ScenarioRunner.runWithExplanation(bundle, vocabulary);
             if (explained.size() != scenarios.size())
                 throw new IllegalStateException("de scenariorunner gaf " + explained.size() + " rapport(en) voor "
                         + scenarios.size() + " scenario('s)");
@@ -302,9 +302,9 @@ public final class Playground {
             for (String l : firing.labels()) labels.add(l);
             tn.put("count", firing.count());
         }
-        ArrayNode uitleg = n.putArray("explanation");
-        for (String z : u.uitleg()) uitleg.add(z);
-        if (u.uitlegError() != null) n.put("explanationError", u.uitlegError());
+        ArrayNode explanation = n.putArray("explanation");
+        for (String z : u.explanation()) explanation.add(z);
+        if (u.explanationError() != null) n.put("explanationError", u.explanationError());
         n.set("situation", ScenarioData.situation(s, model, naming));
         if (u.session() != null) {
             try {
@@ -421,7 +421,7 @@ public final class Playground {
         String diagnostic = "";
         List<ExpectationResult> expectations = List.of();
         com.fasterxml.jackson.databind.JsonNode session = NF.objectNode();   // trace, dekking, uitleg, fixpunt
-        String uitlegError = null;
+        String explanationError = null;
         try {
             path = service.pathForScope(s.scope());
             RequestOptions options = new RequestOptions(true, vocabulary == null ? Naming.CANONICAL : vocabulary,
@@ -451,13 +451,13 @@ public final class Playground {
             diagnostic = caseName + ": ERROR " + uchar.getClass().getSimpleName() + ": "
                     + String.valueOf(uchar.getMessage()).replace('\n', ' ');
             session = error.detail();
-            uitlegError = "de dienst gaf een evaluatiefout (422) en geeft dan geen uitleg";
+            explanationError = "de dienst gaf een evaluatiefout (422) en geeft dan geen uitleg";
         } catch (NoFixpoint none) {
             // uchar's report makes such a case a FAIL with its sentence after the name of the case file, no ERROR
             status = ScenarioResult.Status.FAIL;
             diagnostic = caseName + ": " + none.getMessage();
             session = none.detail();
-            uitlegError = "de dienst bereikte geen fixpunt (422) en geeft dan geen uitleg";
+            explanationError = "de dienst bereikte geen fixpunt (422) en geeft dan geen uitleg";
         }
         n.put("name", s.naam());
         n.put("status", status.name());
@@ -475,7 +475,7 @@ public final class Playground {
         }
         for (String field : List.of("coverage", "trace", "explanation"))
             n.set(field, session.has(field) ? session.get(field) : NF.arrayNode());
-        if (uitlegError != null) n.put("explanationError", uitlegError);
+        if (explanationError != null) n.put("explanationError", explanationError);
         n.set("situation", ScenarioData.situation(s, model, naming));
         if (session.has("fixpoint")) n.set("fixpoint", session.get("fixpoint"));
         if (session.has("fixpointError")) n.put("fixpointError", session.get("fixpointError").asText());

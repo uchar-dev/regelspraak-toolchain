@@ -20,27 +20,27 @@ import java.util.stream.Collectors;
  * CLI for the {@link ScenarioRunner}. Usage:
  *
  * <pre>{@code
- *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] [--uitleg] [--vocabulaire <naam>] <file.rgs> [<file.rgs> ...]
- *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] --manifest <manifest> [--uitsluitingen <lijst>]
+ *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] [--explanation] [--vocabulary <naam>] <file.rgs> [<file.rgs> ...]
+ *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] --manifest <manifest> [--exclusions <lijst>]
  * }</pre>
  *
  * Multiple files are CONCATENATED in argument order (objectmodel + rules + scenario file). Per scenario one line
  * PASS/FAIL/MARKER; a FAIL prints per expectation its position in the scenario with verwacht/werkelijk, the trace
- * and the coverage lines; {@code --trace} prints the trace even for a PASS; {@code --uitleg} prints under each
- * played scenario the explanation of its outcome ({@link ScenarioRunner#runWithUitleg}), or why there is none;
- * {@code --vocabulaire} names the rules of the trace and the coverage, and the declarations in the explanation, in a
+ * and the coverage lines; {@code --trace} prints the trace even for a PASS; {@code --explanation} prints under each
+ * played scenario the explanation of its outcome ({@link ScenarioRunner#runWithExplanation}), or why there is none;
+ * {@code --vocabulary} names the rules of the trace and the coverage, and the declarations in the explanation, in a
  * vocabulary the model declares ({@link Naming}; {@code canoniek} for the canonical names), and an unknown one is
  * a wrong invocation. Exit codes: {@code 1} as soon as a scenario FAILS (or the source does not resolve — with the
  * diagnostics); else {@code 3} as soon as a scenario is a MARKER (uchar does not carry its document); else {@code 0}.
  * With no files: exit {@code 2}.
  *
  * <p>{@code --manifest} runs every line of a manifest ({@code <verwachte-exit> <scenario.rgs> <companion.rgs...>})
- * and exits {@code 0} when no line mismatches, else {@code 1}. {@code --uitsluitingen} names the scenarios uchar's
+ * and exits {@code 0} when no line mismatches, else {@code 1}. {@code --exclusions} names the scenarios uchar's
  * scenario resolver refuses, one per line as {@code <scenario-pad>|<fragment van uchars weigering>|<reden>}: such a
  * line must be refused with that fragment, and a listed scenario uchar accepts, or one the manifest does not carry,
  * is a mismatch, so the list cannot outlive its reason.
  *
- * <p>One option of the former runner is refused by name: {@code --parametersets}. uchar's scenario resolver refuses
+ * <p>One option of the former runner is refused by name: {@code --parameter-sets}. uchar's scenario resolver refuses
  * a scenario whose carried rules read a parameter its situation does not set, so the case files of such a scenario
  * are never written and a parameter set has no case file to go into.
  */
@@ -53,16 +53,16 @@ public final class ScenarioRunnerCli {
 
     /** The command {@code args} names, printed to {@code System.out} and {@code System.err}; returns its exit code. */
     static int run(String[] args) {
-        boolean trace = false, uitleg = false;
+        boolean trace = false, explanation = false;
         Path manifest = null, exclusions = null;
         String vocabulary = null;
         List<Path> files = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
             if (a.equals("--trace")) trace = true;
-            else if (a.equals("--uitleg")) uitleg = true;
-            else if (a.equals("--parametersets")) {
-                System.err.println("--parametersets: uchars scenarioresolver weigert een scenario waarvan een gedragen "
+            else if (a.equals("--explanation")) explanation = true;
+            else if (a.equals("--parameter-sets")) {
+                System.err.println("--parameter-sets: uchars scenarioresolver weigert een scenario waarvan een gedragen "
                         + "regel een parameter leest die de situatie niet zet, dus de casebestanden waarin een "
                         + "parameterset zou moeten komen worden nooit geschreven");
                 return 2;
@@ -72,13 +72,13 @@ public final class ScenarioRunnerCli {
                 if (i + 1 >= args.length) { System.err.println("--manifest verwacht een pad naar het manifest-bestand"); return 2; }
                 manifest = Path.of(args[++i]);
             }
-            else if (a.equals("--uitsluitingen")) {
-                if (i + 1 >= args.length) { System.err.println("--uitsluitingen verwacht een pad naar de lijst"); return 2; }
+            else if (a.equals("--exclusions")) {
+                if (i + 1 >= args.length) { System.err.println("--exclusions verwacht een pad naar de lijst"); return 2; }
                 exclusions = Path.of(args[++i]);
             }
-            else if (a.equals("--vocabulaire")) {
-                if (vocabulary != null) { System.err.println("--vocabulaire mag maar één keer"); return 2; }
-                if (i + 1 >= args.length) { System.err.println("--vocabulaire verwacht de naam van een vocabulaire"); return 2; }
+            else if (a.equals("--vocabulary")) {
+                if (vocabulary != null) { System.err.println("--vocabulary mag maar één keer"); return 2; }
+                if (i + 1 >= args.length) { System.err.println("--vocabulary verwacht de naam van een vocabulaire"); return 2; }
                 vocabulary = args[++i];
             }
             else if (a.startsWith("--")) { System.err.println("onbekende optie: " + a); return 2; }
@@ -90,11 +90,11 @@ public final class ScenarioRunnerCli {
         // regel dezelfde OK/MISMATCH-uitvoer als de shell-loop, zodat `make scenario-test` vergelijkbaar blijft.
         if (manifest != null) {
             if (!files.isEmpty()) { System.err.println("--manifest neemt zelf de scenario's uit het manifest; geef geen losse .rgs-paden mee"); return 2; }
-            if (uitleg) { System.err.println("--uitleg geldt voor losse .rgs-bestanden, niet voor --manifest"); return 2; }
-            if (vocabulary != null) { System.err.println("--vocabulaire geldt voor losse .rgs-bestanden, niet voor --manifest"); return 2; }
+            if (explanation) { System.err.println("--explanation geldt voor losse .rgs-bestanden, niet voor --manifest"); return 2; }
+            if (vocabulary != null) { System.err.println("--vocabulary geldt voor losse .rgs-bestanden, niet voor --manifest"); return 2; }
             return runManifest(manifest, exclusions, trace);
         }
-        if (exclusions != null) { System.err.println("--uitsluitingen hoort bij --manifest"); return 2; }
+        if (exclusions != null) { System.err.println("--exclusions hoort bij --manifest"); return 2; }
 
         if (files.isEmpty()) {
             System.err.println("geen .rgs-bestand opgegeven: geef één of meer .rgs-paden, of --manifest <pad>");
@@ -120,11 +120,11 @@ public final class ScenarioRunnerCli {
                 try {
                     naming = Naming.van(bundle.model(), vocabulary);
                 } catch (Naming.VocabularyError f) {
-                    System.err.println("--vocabulaire: " + f.getMessage());
+                    System.err.println("--vocabulary: " + f.getMessage());
                     return 2;
                 }
             }
-            results = uitleg ? ScenarioRunner.runWithUitleg(bundle, vocabulary)
+            results = explanation ? ScenarioRunner.runWithExplanation(bundle, vocabulary)
                     : ScenarioRunner.run(bundle).stream()
                             .map(r -> new ScenarioRunner.Explained(r, List.of(), null, null, null)).toList();
         } catch (ScenarioRunner.ResolveError f) {
@@ -134,7 +134,7 @@ public final class ScenarioRunnerCli {
         }
 
         return reportAndCode(results.stream().map(ScenarioRunner.Explained::result).toList(), trace,
-                uitleg ? results : null, naming);
+                explanation ? results : null, naming);
     }
 
     /** Print each result (FAIL detail / MARKER / optional trace) and return the run's exit code: 1 if any FAIL, else
@@ -144,11 +144,11 @@ public final class ScenarioRunnerCli {
         return reportAndCode(results, trace, null, null);
     }
 
-    /** As above; with {@code uitleg} (the same scenarios, explained) each played scenario's explanation follows, and
+    /** As above; with {@code explanation} (the same scenarios, explained) each played scenario's explanation follows, and
      *  with {@code naming} the rules of the trace and the coverage go by their names in its vocabulary (null: as
      *  uchar's report names them). */
     private static int reportAndCode(List<ScenarioResult> results, boolean trace,
-                                        List<ScenarioRunner.Explained> uitleg, Naming naming) {
+                                        List<ScenarioRunner.Explained> explanation, Naming naming) {
         boolean anyFail = false, anyMarker = false;
         for (int n = 0; n < results.size(); n++) {
             ScenarioResult r = results.get(n);
@@ -171,18 +171,18 @@ public final class ScenarioRunnerCli {
                 printCoverage(r, naming);
             }
             if (trace && r.status() != Status.FAIL) printTrace(r, naming);
-            if (uitleg != null && r.status() != Status.MARKER) printUitleg(uitleg.get(n));
+            if (explanation != null && r.status() != Status.MARKER) printExplanation(explanation.get(n));
         }
         return anyFail ? 1 : anyMarker ? 3 : 0;
     }
 
-    private static void printUitleg(ScenarioRunner.Explained u) {
-        if (u.uitlegError() != null) {
-            System.out.println("    geen uitleg: " + u.uitlegError());
+    private static void printExplanation(ScenarioRunner.Explained u) {
+        if (u.explanationError() != null) {
+            System.out.println("    geen uitleg: " + u.explanationError());
             return;
         }
-        System.out.println("    uitleg:" + (u.uitleg().isEmpty() ? " (geen kenmerktoekenning om te verantwoorden)" : ""));
-        for (String sentence : u.uitleg()) System.out.println("      " + sentence);
+        System.out.println("    uitleg:" + (u.explanation().isEmpty() ? " (geen kenmerktoekenning om te verantwoorden)" : ""));
+        for (String sentence : u.explanation()) System.out.println("      " + sentence);
     }
 
     /** A scenario uchar's scenario resolver refuses: its refusal must carry {@code fragment}. */

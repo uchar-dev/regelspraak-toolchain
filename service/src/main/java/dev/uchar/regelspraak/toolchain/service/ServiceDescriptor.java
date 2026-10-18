@@ -77,7 +77,7 @@ public record ServiceDescriptor(
             @JsonProperty("input") List<String> input,
             @JsonProperty("output") List<String> output,
             @JsonProperty("inputElements") List<String> inputElements,
-            @JsonProperty("scopeControleUit") boolean scopeCheckOptOut,
+            @JsonProperty("scopeCheckOptOut") boolean scopeCheckOptOut,
             @JsonProperty("vocabulary") String vocabulary) {
 
         public List<String> inputElementsOrEmpty() { return inputElements == null ? List.of() : inputElements; }

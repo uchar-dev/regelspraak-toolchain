@@ -132,11 +132,11 @@ public final class Naming {
         return designate(found, written);
     }
 
-    /** Attribute {@code naam} of {@code houder}, looked up on the type of its chain that declares it. */
-    public String attribute(Objecttype houder, String name) { return designate(attributeOf(houder, name), name); }
+    /** Attribute {@code naam} of {@code holder}, looked up on the type of its chain that declares it. */
+    public String attribute(Objecttype holder, String name) { return designate(attributeOf(holder, name), name); }
 
-    /** Characteristic {@code naam} of {@code houder}, looked up on the type of its chain that declares it. */
-    public String characteristic(Objecttype houder, String name) { return designate(characteristicOf(houder, name), name); }
+    /** Characteristic {@code naam} of {@code holder}, looked up on the type of its chain that declares it. */
+    public String characteristic(Objecttype holder, String name) { return designate(characteristicOf(holder, name), name); }
 
     /** A named form ({@link Benoembaar.Soort#VORM}) by a model entry's name: a version suffix ({@code " #2"}) stays
      *  behind the designation, as it stood behind the form name. */
@@ -162,11 +162,11 @@ public final class Naming {
         return model.benaming(vocabulary, b).orElse(name);
     }
 
-    /** Attribute {@code naam} of {@code houder} as a declaration: its declared spelling, owned by the type of the chain
+    /** Attribute {@code naam} of {@code holder} as a declaration: its declared spelling, owned by the type of the chain
      *  that declares it (IR-SPEC ch. 2.2, the owner a designation is written on), or null when none does. */
-    public static Designatable attributeOf(Objecttype houder, String name) {
-        if (houder == null || name == null) return null;
-        for (Objecttype t : houder.chain())
+    public static Designatable attributeOf(Objecttype holder, String name) {
+        if (holder == null || name == null) return null;
+        for (Objecttype t : holder.chain())
             for (String a : t.attributen.keySet())
                 if (a.equalsIgnoreCase(name)) return Designatable.attribute(t.naam, a);
         return null;
@@ -188,9 +188,9 @@ public final class Naming {
     }
 
     /** The characteristic twin of {@link #attributeOf}. */
-    public static Designatable characteristicOf(Objecttype houder, String name) {
-        if (houder == null || name == null) return null;
-        for (Objecttype t : houder.chain())
+    public static Designatable characteristicOf(Objecttype holder, String name) {
+        if (holder == null || name == null) return null;
+        for (Objecttype t : holder.chain())
             for (String k : t.kenmerken)
                 if (k.equalsIgnoreCase(name)) return Designatable.characteristic(t.naam, k);
         return null;

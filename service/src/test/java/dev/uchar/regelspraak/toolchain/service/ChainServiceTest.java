@@ -208,9 +208,9 @@ class ChainServiceTest {
         assertEquals(false, find(answer, "W2", "characteristics", "bergingsplichtig").asBoolean(),
                 "400 eur > 500 eur is onwaar: " + answer);
 
-        JsonNode uitleg = answer.get("explanation");
-        assertNotNull(uitleg, "geen uitleg-array: " + answer);
-        String story = uitleg.toString();
+        JsonNode explanation = answer.get("explanation");
+        assertNotNull(explanation, "geen uitleg-array: " + answer);
+        String story = explanation.toString();
         assertTrue(story.contains("W1") && story.contains("bergingsplichtig"),
                 "de uitleg hoort de toekenning op de subtype-instantie te verklaren: " + story);
         assertTrue(story.contains("W2"),

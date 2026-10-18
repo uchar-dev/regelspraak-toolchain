@@ -16,7 +16,7 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The session {@link ScenarioRunner#runWithUitleg} gives beside each report: the case played in a session of its own,
+ * The session {@link ScenarioRunner#runWithExplanation} gives beside each report: the case played in a session of its own,
  * with uchar's reading of its fixpoint ({@code DroolsBackend.fixpointOf}) taken before the write-back. It is there when the
  * session follows uchar's replay; for a case the replay did not play out it is there when evaluation faults stand at
  * its fixpoint, the faults that made the replay's write-back throw, now as data; a MARKER scenario has none.
@@ -38,7 +38,7 @@ class ScenarioRunnerSessionTest {
             """;
 
     private static List<ScenarioRunner.Explained> play(String source) {
-        return ScenarioRunner.runWithUitleg(ScenarioResolver.resolve(source));
+        return ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(source));
     }
 
     /** A played scenario: the fixpoint carries every derived value, the one without an expectation too, on the bean of
@@ -81,8 +81,8 @@ class ScenarioRunnerSessionTest {
         ScenarioRunner.Explained s = u.get(0);
         assertEquals(Status.FAIL, s.result().status(), s.result()::diagnostic);
         assertTrue(s.result().expectations().isEmpty(), s.result().expectations()::toString);
-        assertTrue(s.uitlegError().startsWith("uchars replay speelde de case niet uit: "), s::uitlegError);
-        assertTrue(s.uitleg().isEmpty());
+        assertTrue(s.explanationError().startsWith("uchars replay speelde de case niet uit: "), s::explanationError);
+        assertTrue(s.explanation().isEmpty());
         assertNull(s.sessionError(), s::sessionError);
         List<Fault> errors = s.session().fixpoint().faults();
         assertEquals(1, errors.size(), errors::toString);

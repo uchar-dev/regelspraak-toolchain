@@ -22,9 +22,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * ({@code DecisionCore.buildFromDocument}). The document carries uchar's table of origins (IR-SPEC ch. 2.13, the field
  * {@code origin}) and the loader reads it back, so that model itself says that uchar wrote {@code afwijking opgave X}:
  * in a vocabulary the explanation names the attribute its operands read in that vocabulary, as it does on the
- * frontend's model. The document is the one of {@code UitlegGeneratedRuleInVocabularyTest}.
+ * frontend's model. The document is the one of {@code ExplanationGeneratedRuleInVocabularyTest}.
  */
-class UitlegOriginFromIrTest {
+class ExplanationOriginFromIrTest {
 
     private static final String MODEL = """
             Vocabulaire cgm (taal: nl)
@@ -74,11 +74,11 @@ class UitlegOriginFromIrTest {
                 "V2 is niet zelf gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is");
-        assertEquals(expected, uitleg(engine.model(), beans), "op het model van de frontend");
-        assertEquals(expected, uitleg(fromIr, beans), "op het model uit het IR-document");
+        assertEquals(expected, explanation(engine.model(), beans), "op het model van de frontend");
+        assertEquals(expected, explanation(fromIr, beans), "op het model uit het IR-document");
     }
 
-    private static List<String> uitleg(RegelSpraakModel model, Map<String, Object> beans) {
+    private static List<String> explanation(RegelSpraakModel model, Map<String, Object> beans) {
         Objecttype vondst = model.objectTypeByName("Vondst");
         Map<String, Objecttype> types = new LinkedHashMap<>();
         for (String label : beans.keySet()) types.put(label, vondst);

@@ -11,7 +11,7 @@ import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 
 /**
  * The distribution's CLI over uchar's frontend and backend. {@code --ir} is uchar's own emitter mode
- * ({@link Resolver#irMode}); {@code --drl}, {@code --facts} and {@code --graaf}/{@code --graaf-mmd} are
+ * ({@link Resolver#irMode}); {@code --drl}, {@code --facts} and {@code --graph}/{@code --graph-mmd} are
  * output modes this distribution adds on top of uchar's public API: the DRL text of uchar's DRL-text branch, the
  * fact beans uchar's generator writes, and uchar's rule graph.
  */
@@ -82,7 +82,7 @@ public final class RegelSpraakCli {
         return 0;
     }
 
-    /** The --graaf / --graaf-mmd mode body: {@code rest} = [out, file.rgs...] after flag removal — the FIRST
+    /** The --graph / --graph-mmd mode body: {@code rest} = [out, file.rgs...] after flag removal — the FIRST
      *  remaining arg is the output file, the rest are the source files of the model chain (concatenated in
      *  order). {@code html} picks the self-contained HTML page (embedded Mermaid via CDN) over the bare Mermaid
      *  text. Returns the process exit code (0 = graaf geschreven, 1 = resolver-fouten, 2 = usage) instead of
@@ -92,7 +92,7 @@ public final class RegelSpraakCli {
      *  ({@link ProducerConsumer#sourceNavigation}). */
     public static int graphMode(java.util.List<String> rest, boolean html) throws java.io.IOException {
         if (rest.size() < 2) {
-            System.err.println("usage: RegelSpraakCli " + (html ? "--graaf" : "--graaf-mmd") + " <out> <file.rgs...>");
+            System.err.println("usage: RegelSpraakCli " + (html ? "--graph" : "--graph-mmd") + " <out> <file.rgs...>");
             return 2;
         }
         java.nio.file.Path out = java.nio.file.Path.of(rest.get(0));
@@ -125,7 +125,7 @@ public final class RegelSpraakCli {
      *  With --facts &lt;outdir&gt;, generate the implied fact-model beans (§13.3) into &lt;outdir&gt;
      *  and exit 0. --facts is model-level: it builds no KieBase and does NOT apply the exit-3 marker discipline
      *  (that discipline is about RULE lowering, orthogonal to the fact-model the beans encode).
-     *  With --graaf &lt;out.html&gt; / --graaf-mmd &lt;out.mmd&gt; over one-or-more source files, emit the
+     *  With --graph &lt;out.html&gt; / --graph-mmd &lt;out.mmd&gt; over one-or-more source files, emit the
      *  regelgraaf (dataflow regels &harr; gegevens) as a self-contained HTML page (embedded Mermaid via CDN) or
      *  as bare Mermaid text (offline-usable). Also model-level.
      *  With --ir &lt;out.json&gt; over one-or-more source files, delegate to uchar's {@link Resolver#irMode} to emit
@@ -139,15 +139,15 @@ public final class RegelSpraakCli {
             System.exit(2);
         }
         boolean facts = rest.remove("--facts");
-        boolean graph = rest.remove("--graaf");
-        boolean graphMmd = rest.remove("--graaf-mmd");
+        boolean graph = rest.remove("--graph");
+        boolean graphMmd = rest.remove("--graph-mmd");
         boolean ir = rest.remove("--ir");
         int outputModes = (drl ? 1 : 0) + (facts ? 1 : 0) + (graph || graphMmd ? 1 : 0) + (ir ? 1 : 0);
-        if (outputModes > 1) { System.err.println("usage: --drl, --facts, --graaf[-mmd] en --ir sluiten elkaar uit"); System.exit(2); }
+        if (outputModes > 1) { System.err.println("usage: --drl, --facts, --graph[-mmd] en --ir sluiten elkaar uit"); System.exit(2); }
         if (ir) System.exit(Resolver.irMode(rest));   // the emitter path is uchar's own
         if (graph || graphMmd) System.exit(graphMode(rest, graph));
         if (facts) System.exit(factsMode(rest));
-        if (rest.isEmpty()) { System.err.println("usage: RegelSpraakCli [--drl | --facts <outdir> | --graaf <out.html> | --graaf-mmd <out.mmd> | --ir <out.json>] <file.rgs...>"); System.exit(2); }
+        if (rest.isEmpty()) { System.err.println("usage: RegelSpraakCli [--drl | --facts <outdir> | --graph <out.html> | --graph-mmd <out.mmd> | --ir <out.json>] <file.rgs...>"); System.exit(2); }
         Chain chain = Chain.read(rest);
         RegelSpraakModel m = Resolver.resolve(chain.source());
         if (drl) {

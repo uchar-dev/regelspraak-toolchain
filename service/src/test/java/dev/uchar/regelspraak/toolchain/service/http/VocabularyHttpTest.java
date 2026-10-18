@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The vocabularies over HTTP: the query parameters {@code vocabulaire} and {@code invoervocabulaire} as the adapter
+ * The vocabularies over HTTP: the query parameters {@code vocabulaire} and {@code inputVocabulary} as the adapter
  * reads them ({@link ServiceHttp#options}), the answer and the refusals they give, and the {@code vocabularies} block of
  * {@code /info} — per vocabulary whether it is complete and which declarations have no designation — which a model
  * without vocabularies does not get. Served: uchar's golden {@code jutterswet-vocabulaires} (the submodule).

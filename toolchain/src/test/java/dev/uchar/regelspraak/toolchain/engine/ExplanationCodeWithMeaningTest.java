@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * designation that differs only as uchar does not tell declared names apart ({@code Namen.norm}), and a value without a
  * designation, stay as they were; the canonical choice does not change.
  */
-class UitlegCodeWithMeaningTest {
+class ExplanationCodeWithMeaningTest {
 
     private static final String DOCUMENT = """
             Vocabulaire cgm (taal: nl)
@@ -49,12 +49,12 @@ class UitlegCodeWithMeaningTest {
             - U3 is niet beëindigd door inkomsten
             """;
 
-    private static List<String> uitleg(String vocabulary) {
-        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(ScenarioResolver.resolve(DOCUMENT), vocabulary);
+    private static List<String> explanation(String vocabulary) {
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(DOCUMENT), vocabulary);
         assertEquals(1, u.size());
         assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
-        assertNull(u.get(0).uitlegError(), u.get(0)::uitlegError);
-        return u.get(0).uitleg();
+        assertNull(u.get(0).explanationError(), u.get(0)::explanationError);
+        return u.get(0).explanation();
     }
 
     @Test
@@ -66,7 +66,7 @@ class UitlegCodeWithMeaningTest {
                         + " is gelijk aan 01 · Hoogte inkomsten uit verzekerde arbeid",
                 "U3 is niet beëindigd door inkomsten, want niet geldt: zijn reden (Onbekend)"
                         + " is gelijk aan 01 · Hoogte inkomsten uit verzekerde arbeid"),
-                uitleg("cgm"));
+                explanation("cgm"));
     }
 
     @Test
@@ -78,6 +78,6 @@ class UitlegCodeWithMeaningTest {
                         + " is gelijk aan Hoogte inkomsten uit verzekerde arbeid",
                 "U3 is niet beëindigd door inkomsten, want niet geldt: zijn reden (Onbekend)"
                         + " is gelijk aan Hoogte inkomsten uit verzekerde arbeid"),
-                uitleg(Naming.CANONICAL));
+                explanation(Naming.CANONICAL));
     }
 }

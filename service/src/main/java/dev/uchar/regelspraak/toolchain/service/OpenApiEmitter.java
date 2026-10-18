@@ -54,11 +54,11 @@ import java.util.List;
  * ({@link NameReader}), so for a model with vocabularies each object type, property and entry point lists its other
  * spellings — the canonical one and those of the other vocabularies — in {@code x-spellingen}, each enumeration its
  * values' in {@code x-waardespellingen}, and says in its description that the service accepts them; the operations
- * document the query parameters {@code vocabulaire} and {@code invoervocabulaire}, and the info block names the
+ * document the query parameters {@code vocabulaire} and {@code inputVocabulary}, and the info block names the
  * document's vocabulary in {@code x-vocabulaire}. A model without vocabularies gets none of this, so its document is
  * the one it always was.
  *
- * <p><b>What a request asks beside its body.</b> Every operation documents the flag {@code uitleg} and the detail flags
+ * <p><b>What a request asks beside its body.</b> Every operation documents the flag {@code explanation} and the detail flags
  * {@code trace}, {@code dekking} and {@code fixpunt}, which a service gives only when it was started with detail
  * ({@link CoreConfig#detail()}) and otherwise refuses with a 400; the fields they add stand in {@code Answer} and, for
  * the detail, in {@code EvaluationFault}, with the components {@code Trace}, {@code Dekking} and {@code Fixpunt}.
@@ -550,10 +550,10 @@ public final class OpenApiEmitter {
         details.put("description", "dezelfde inconsistenties met hun onderwerp: het id van de instantie waarover de"
                 + " toets ging, of null als dat geen instantie van het verzoek is.");
 
-        ObjectNode uitleg = props.putObject("explanation");
-        uitleg.put("type", "array");
-        uitleg.putObject("items").put("type", "string");
-        uitleg.put("description", "met de vlag explanation: een zin per toegekend of onthouden kenmerk van een instantie van"
+        ObjectNode explanation = props.putObject("explanation");
+        explanation.put("type", "array");
+        explanation.putObject("items").put("type", "string");
+        explanation.put("description", "met de vlag explanation: een zin per toegekend of onthouden kenmerk van een instantie van"
                 + " het verzoek, met de waarden waarop hij rust.");
         detailFields(props);
         return s;
