@@ -22,7 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 /**
- * Pins the {@code RegelSpraakCli --facts} CLI path (exposed as {@link RegelSpraakCli#factsNaarDisk}): it writes a
+ * Pins the {@code RegelSpraakCli --facts} CLI path (exposed as {@link RegelSpraakCli#factsToDisk}): it writes a
  * fact-model that (a) COMPILES as pure-JDK beans and (b) SATISFIES uchar's {@link ContractValidator} for the model
  * it came from — generate-then-validate closes the loop, so the generator and the validator can never drift. The
  * fixture is the TOKA model foundation (the manifest's companion model files: examples/toka/toka-01..16 plus
@@ -58,33 +58,33 @@ class FactModelCliTest {
                     "examples/toka-scenarios/scenario-model-extensie.rgs"))
             .collect(Collectors.toList());
 
-    @Test void gegenereerde_toka_facts_compileren_en_valideren(@TempDir Path work) throws IOException {
+    @Test void generated_toka_facts_compile_and_validate(@TempDir Path work) throws IOException {
         Path repo = Path.of("..");   // the module runs from toolchain/; the fixtures sit at the repository root
         assumeTrue(Files.isReadable(repo.resolve(MODEL_FOUNDATION.get(0))), "TOKA fixtures absent");
 
-        String bron = MODEL_FOUNDATION.stream()
+        String source = MODEL_FOUNDATION.stream()
                 .map(p -> read(repo.resolve(p)))
                 .collect(Collectors.joining("\n"));
-        RegelSpraakModel model = Resolver.resolve(bron);
+        RegelSpraakModel model = Resolver.resolve(source);
         assertTrue(model.isOk(), () -> "model-foundation moet schoon resolveren: " + model.errors());
 
         // The CLI's own write path — generate the beans to disk exactly as `Resolver --facts` does.
         Path src = work.resolve("src");
-        int n = RegelSpraakCli.factsNaarDisk(model, src);
+        int n = RegelSpraakCli.factsToDisk(model, src);
         assertEquals(model.objecttypen.size() + 2, n, "één bean per objecttype + Segment + Inconsistentie");
 
         // Compile the generated sources as pure-JDK beans (no external classpath) and load them.
         Path classes = work.resolve("classes");
         Files.createDirectories(classes);
-        List<String> bronBestanden;
+        List<String> sourceFiles;
         try (Stream<Path> ss = Files.walk(src)) {
-            bronBestanden = ss.filter(p -> p.toString().endsWith(".java"))
+            sourceFiles = ss.filter(p -> p.toString().endsWith(".java"))
                     .map(Path::toString).collect(Collectors.toList());
         }
         JavaCompiler javac = ToolProvider.getSystemJavaCompiler();
         assertNotNull(javac, "geen JDK-compiler beschikbaar (draai op een JDK, niet een JRE)");
         List<String> args = new java.util.ArrayList<>(List.of("-d", classes.toString()));
-        args.addAll(bronBestanden);
+        args.addAll(sourceFiles);
         int rc = javac.run(null, null, null, args.toArray(new String[0]));
         assertEquals(0, rc, "gegenereerde TOKA-facts moeten pure-JDK compileren");
 
@@ -93,15 +93,15 @@ class FactModelCliTest {
         // it resolves java.* but knows nothing of dev.uchar.regelspraak.facts, so the fresh classes win.
         try (URLClassLoader cl = new URLClassLoader(new URL[]{classes.toUri().toURL()},
                 ClassLoader.getPlatformClassLoader())) {
-            List<String> schendingen = ContractValidator.valideer(model, cl);
-            assertTrue(schendingen.isEmpty(),
-                    () -> "gegenereerde facts moeten de eigen contract-validator leeg laten: " + schendingen);
+            List<String> violations = ContractValidator.valideer(model, cl);
+            assertTrue(violations.isEmpty(),
+                    () -> "gegenereerde facts moeten de eigen contract-validator leeg laten: " + violations);
         }
     }
 
-    @Test void facts_modus_foutinvoer_exit1_en_schrijft_niets(@TempDir Path work) throws IOException {
+    @Test void facts_mode_error_input_exit1_and_writes_nothing(@TempDir Path work) throws IOException {
         // A clean-parsing model with a single type error (Tekst toegekend aan een Numeriek).
-        String bron = """
+        String source = """
                 Objecttype de Persoon (mv: Personen)
                     de leeftijd Numeriek (geheel getal);
                     de naam Tekst;
@@ -110,19 +110,19 @@ class FactModelCliTest {
                     geldig altijd
                         De leeftijd van een Persoon moet berekend worden als de naam van de Persoon.
                 """;
-        Path bronBestand = work.resolve("fout.rgs");
-        Files.writeString(bronBestand, bron);
-        assertFalse(Resolver.resolve(bron).isOk(), "de fixture moet een typefout opleveren");
+        Path sourceFile = work.resolve("fout.rgs");
+        Files.writeString(sourceFile, source);
+        assertFalse(Resolver.resolve(source).isOk(), "de fixture moet een typefout opleveren");
 
-        // Drive the REAL CLI path (main is exactly `System.exit(factsModus(rest))`): the error discipline is
+        // Drive the REAL CLI path (main is exactly `System.exit(factsMode(rest))`): the error discipline is
         // exit 1 with NOTHING written — the outdir must not even be created.
         Path outdir = work.resolve("uit");
-        int exit = RegelSpraakCli.factsModus(List.of(outdir.toString(), bronBestand.toString()));
+        int exit = RegelSpraakCli.factsMode(List.of(outdir.toString(), sourceFile.toString()));
         assertEquals(1, exit, "resolver-fout moet exit 1 geven");
         assertFalse(Files.exists(outdir), "het foutpad mag niets onder de outdir aanmaken");
 
         // And the usage discipline: a missing argument is exit 2, equally write-free.
-        assertEquals(2, RegelSpraakCli.factsModus(List.of(outdir.toString())), "ontbrekend bronbestand moet exit 2 geven");
+        assertEquals(2, RegelSpraakCli.factsMode(List.of(outdir.toString())), "ontbrekend bronbestand moet exit 2 geven");
         assertFalse(Files.exists(outdir));
     }
 

@@ -22,10 +22,10 @@ mkdir -p "$LOGS"
 BEGIN=$(date +%s)
 NR=0
 
-duur() { local s=$1; if [ "$s" -ge 60 ]; then printf '%dm%02ds' $((s / 60)) $((s % 60)); else printf '%ds' "$s"; fi; }
+duration() { local s=$1; if [ "$s" -ge 60 ]; then printf '%dm%02ds' $((s / 60)) $((s % 60)); else printf '%ds' "$s"; fi; }
 
 # De kern van een geslaagde stap, uit zijn log.
-kern() {
+core() {
   case "$1" in
     pin)        grep -E '^PASS' "$2" | tail -1 ;;
     reactor)    printf 'testgevallen per module %s\n' \
@@ -39,31 +39,31 @@ kern() {
 }
 
 # stap <naam> <commando...>
-stap() {
-  local naam=$1; shift
+step() {
+  local name=$1; shift
   NR=$((NR + 1))
-  local log="$LOGS/$NR-$naam.log" begin
+  local log="$LOGS/$NR-$name.log" begin
   begin=$(date +%s)
   "$@" >"$log" 2>&1
   local code=$?
   local t=$(( $(date +%s) - begin ))
   if [ "$code" -eq 0 ]; then
-    printf 'gates: %d %-10s GROEN %7s  %s\n' "$NR" "$naam" "$(duur "$t")" "$(kern "$naam" "$log")"
+    printf 'gates: %d %-10s GROEN %7s  %s\n' "$NR" "$name" "$(duration "$t")" "$(core "$name" "$log")"
     return
   fi
-  printf 'gates: %d %-10s ROOD  %7s  exit %d, uitvoer in %s:\n' "$NR" "$naam" "$(duur "$t")" "$code" "$log"
+  printf 'gates: %d %-10s ROOD  %7s  exit %d, uitvoer in %s:\n' "$NR" "$name" "$(duration "$t")" "$code" "$log"
   tail -n 20 "$log" | sed 's/^/      /'
   printf 'gates: ROOD bij stap %d (%s) na %s; de stappen daarna zijn niet gedraaid\n' \
-    "$NR" "$naam" "$(duur $(( $(date +%s) - BEGIN )))"
+    "$NR" "$name" "$(duration $(( $(date +%s) - BEGIN )))"
   exit 1
 }
 
-stap pin        bash scripts/check-pin.sh
-stap reactor    mvn -B -o verify
-stap tweelingen bash scripts/check-tweelingen.sh
-stap replay     bash scripts/check-dienst-replay.sh
-stap manifest   make --no-print-directory scenario-test
-stap image      make --no-print-directory image
-stap kind-smoke make --no-print-directory kind-smoke
+step pin        bash scripts/check-pin.sh
+step reactor    mvn -B -o verify
+step tweelingen bash scripts/check-tweelingen.sh
+step replay     bash scripts/check-service-replay.sh
+step manifest   make --no-print-directory scenario-test
+step image      make --no-print-directory image
+step kind-smoke make --no-print-directory kind-smoke
 
-echo "gates: GROEN — $NR stappen in $(duur $(( $(date +%s) - BEGIN ))); de uitvoer staat in $LOGS/"
+echo "gates: GROEN — $NR stappen in $(duration $(( $(date +%s) - BEGIN ))); de uitvoer staat in $LOGS/"

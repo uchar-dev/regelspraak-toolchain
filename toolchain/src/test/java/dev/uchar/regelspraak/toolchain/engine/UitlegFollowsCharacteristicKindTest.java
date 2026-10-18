@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * where it writes none; the model does not carry the declaration's article. In a vocabulary the name is the
  * designation and the verb stays the one of the declared kind.
  */
-class UitlegVolgtDeKenmerksoortTest {
+class UitlegFollowsCharacteristicKindTest {
 
     private static final String DOCUMENT = """
             Vocabulaire cgm (taal: nl)
@@ -81,7 +81,7 @@ class UitlegVolgtDeKenmerksoortTest {
             """;
 
     /** A check on a characteristic of another object, reached over a role. */
-    private static final String DOCUMENT_ROL = """
+    private static final String DOCUMENT_ROLE = """
             Objecttype het Recht (mv: Rechten)
                 is uitgesloten kenmerk (bijvoeglijk);
 
@@ -107,16 +107,16 @@ class UitlegVolgtDeKenmerksoortTest {
             - R1 is uitgesloten
             """;
 
-    private static List<String> uitleg(String document, String vocabulaire) {
-        List<ScenarioRunner.Uitgelegd> u = ScenarioRunner.runMetUitleg(ScenarioResolver.resolve(document), vocabulaire);
+    private static List<String> uitleg(String document, String vocabulary) {
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(ScenarioResolver.resolve(document), vocabulary);
         assertEquals(1, u.size());
-        assertEquals(Status.PASS, u.get(0).resultaat().status(), () -> u.get(0).resultaat().diagnose());
-        assertNull(u.get(0).uitlegFout(), u.get(0)::uitlegFout);
+        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnose());
+        assertNull(u.get(0).uitlegError(), u.get(0)::uitlegError);
         return u.get(0).uitleg();
     }
 
     @Test
-    void het_werkwoord_volgt_de_soort() {
+    void the_verb_follows_the_kind() {
         assertEquals(List.of(
                 "R1 heeft de uitkeringsduur verstreken, omdat het onderwerp het verzoek heeft en het onderwerp een"
                         + " lopende uitkering is en het onderwerp geschorst is",
@@ -132,11 +132,11 @@ class UitlegVolgtDeKenmerksoortTest {
                 "R3 is geen recht op grond-van-de-wia, want niet geldt: het onderwerp geen lopende uitkering is",
                 "R3 is herleefbaar, omdat het onderwerp een lopende uitkering is en het onderwerp niet geschorst is",
                 "R3 heeft geen recht op uitkering, want niet geldt: het onderwerp geschorst is"),
-                uitleg(DOCUMENT, Naamgeving.CANONIEK));
+                uitleg(DOCUMENT, Naming.CANONICAL));
     }
 
     @Test
-    void in_een_vocabulaire_blijft_het_werkwoord_dat_van_de_soort() {
+    void in_a_vocabulary_the_verb_that_is_of_the_kind_stays() {
         assertEquals(List.of(
                 "R1 heeft de Indicatie uitkeringsduur verstreken, omdat het onderwerp het verzoek heeft en het"
                         + " onderwerp een lopende uitkering is en het onderwerp geschorst is",
@@ -159,10 +159,10 @@ class UitlegVolgtDeKenmerksoortTest {
      *  on it, so the characteristic is looked up on the subject. It is none of the subject's, its kind is unknown,
      *  and the condition stands as the rule writes it; before, the uitleg said "het onderwerp wia-recht is". */
     @Test
-    void zonder_soort_staat_de_voorwaarde_zoals_de_regel_haar_schrijft() {
+    void without_kind_the_condition_stands_like_the_rule_writes_it() {
         assertEquals(List.of(
                 "R1 is uitgesloten, omdat aan de voorwaarde \"de samenloop van het Recht een wia-recht heeft\""
                         + " is voldaan"),
-                uitleg(DOCUMENT_ROL, Naamgeving.CANONIEK));
+                uitleg(DOCUMENT_ROLE, Naming.CANONICAL));
     }
 }

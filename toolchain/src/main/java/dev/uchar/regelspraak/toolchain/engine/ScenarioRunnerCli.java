@@ -27,9 +27,9 @@ import java.util.stream.Collectors;
  * Multiple files are CONCATENATED in argument order (objectmodel + rules + scenario file). Per scenario one line
  * PASS/FAIL/MARKER; a FAIL prints per expectation its position in the scenario with verwacht/werkelijk, the trace
  * and the coverage lines; {@code --trace} prints the trace even for a PASS; {@code --uitleg} prints under each
- * played scenario the explanation of its outcome ({@link ScenarioRunner#runMetUitleg}), or why there is none;
+ * played scenario the explanation of its outcome ({@link ScenarioRunner#runWithUitleg}), or why there is none;
  * {@code --vocabulaire} names the rules of the trace and the coverage, and the declarations in the explanation, in a
- * vocabulary the model declares ({@link Naamgeving}; {@code canoniek} for the canonical names), and an unknown one is
+ * vocabulary the model declares ({@link Naming}; {@code canoniek} for the canonical names), and an unknown one is
  * a wrong invocation. Exit codes: {@code 1} as soon as a scenario FAILS (or the source does not resolve — with the
  * diagnostics); else {@code 3} as soon as a scenario is a MARKER (uchar does not carry its document); else {@code 0}.
  * With no files: exit {@code 2}.
@@ -48,14 +48,14 @@ public final class ScenarioRunnerCli {
     private ScenarioRunnerCli() {}
 
     public static void main(String[] args) {
-        System.exit(voerUit(args));
+        System.exit(run(args));
     }
 
     /** The command {@code args} names, printed to {@code System.out} and {@code System.err}; returns its exit code. */
-    static int voerUit(String[] args) {
+    static int run(String[] args) {
         boolean trace = false, uitleg = false;
-        Path manifest = null, uitsluitingen = null;
-        String vocabulaire = null;
+        Path manifest = null, exclusions = null;
+        String vocabulary = null;
         List<Path> files = new ArrayList<>();
         for (int i = 0; i < args.length; i++) {
             String a = args[i];
@@ -74,12 +74,12 @@ public final class ScenarioRunnerCli {
             }
             else if (a.equals("--uitsluitingen")) {
                 if (i + 1 >= args.length) { System.err.println("--uitsluitingen verwacht een pad naar de lijst"); return 2; }
-                uitsluitingen = Path.of(args[++i]);
+                exclusions = Path.of(args[++i]);
             }
             else if (a.equals("--vocabulaire")) {
-                if (vocabulaire != null) { System.err.println("--vocabulaire mag maar één keer"); return 2; }
+                if (vocabulary != null) { System.err.println("--vocabulaire mag maar één keer"); return 2; }
                 if (i + 1 >= args.length) { System.err.println("--vocabulaire verwacht de naam van een vocabulaire"); return 2; }
-                vocabulaire = args[++i];
+                vocabulary = args[++i];
             }
             else if (a.startsWith("--")) { System.err.println("onbekende optie: " + a); return 2; }
             else files.add(Path.of(a));
@@ -91,19 +91,19 @@ public final class ScenarioRunnerCli {
         if (manifest != null) {
             if (!files.isEmpty()) { System.err.println("--manifest neemt zelf de scenario's uit het manifest; geef geen losse .rgs-paden mee"); return 2; }
             if (uitleg) { System.err.println("--uitleg geldt voor losse .rgs-bestanden, niet voor --manifest"); return 2; }
-            if (vocabulaire != null) { System.err.println("--vocabulaire geldt voor losse .rgs-bestanden, niet voor --manifest"); return 2; }
-            return draaiManifest(manifest, uitsluitingen, trace);
+            if (vocabulary != null) { System.err.println("--vocabulaire geldt voor losse .rgs-bestanden, niet voor --manifest"); return 2; }
+            return runManifest(manifest, exclusions, trace);
         }
-        if (uitsluitingen != null) { System.err.println("--uitsluitingen hoort bij --manifest"); return 2; }
+        if (exclusions != null) { System.err.println("--uitsluitingen hoort bij --manifest"); return 2; }
 
         if (files.isEmpty()) {
             System.err.println("geen .rgs-bestand opgegeven: geef één of meer .rgs-paden, of --manifest <pad>");
             return 2;
         }
 
-        String bron;
+        String source;
         try {
-            bron = files.stream()
+            source = files.stream()
                     .map(p -> { try { return Files.readString(p); } catch (IOException e) { throw new UncheckedIOException(e); } })
                     .collect(Collectors.joining("\n"));
         } catch (UncheckedIOException e) {
@@ -111,97 +111,97 @@ public final class ScenarioRunnerCli {
             return 1;
         }
 
-        List<ScenarioRunner.Uitgelegd> resultaten;
-        Naamgeving naamgeving = null;
+        List<ScenarioRunner.Explained> results;
+        Naming naming = null;
         try {
-            var bundel = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(bron);
+            var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
             // the vocabulary is the model's: known only once the source resolves, and asked before anything runs
-            if (vocabulaire != null && bundel.isOk()) {
+            if (vocabulary != null && bundle.isOk()) {
                 try {
-                    naamgeving = Naamgeving.van(bundel.model(), vocabulaire);
-                } catch (Naamgeving.Vocabulairefout f) {
+                    naming = Naming.van(bundle.model(), vocabulary);
+                } catch (Naming.VocabularyError f) {
                     System.err.println("--vocabulaire: " + f.getMessage());
                     return 2;
                 }
             }
-            resultaten = uitleg ? ScenarioRunner.runMetUitleg(bundel, vocabulaire)
-                    : ScenarioRunner.run(bundel).stream()
-                            .map(r -> new ScenarioRunner.Uitgelegd(r, List.of(), null, null, null)).toList();
-        } catch (ScenarioRunner.ResolveFout f) {
-            System.err.println("de bron resolvet niet — " + f.diagnostiek().size() + " diagnose(s):");
-            for (String d : f.diagnostiek()) System.err.println("  " + d);
+            results = uitleg ? ScenarioRunner.runWithUitleg(bundle, vocabulary)
+                    : ScenarioRunner.run(bundle).stream()
+                            .map(r -> new ScenarioRunner.Explained(r, List.of(), null, null, null)).toList();
+        } catch (ScenarioRunner.ResolveError f) {
+            System.err.println("de bron resolvet niet — " + f.diagnostics().size() + " diagnose(s):");
+            for (String d : f.diagnostics()) System.err.println("  " + d);
             return 1;
         }
 
-        return rapporteerEnCode(resultaten.stream().map(ScenarioRunner.Uitgelegd::resultaat).toList(), trace,
-                uitleg ? resultaten : null, naamgeving);
+        return reportAndCode(results.stream().map(ScenarioRunner.Explained::result).toList(), trace,
+                uitleg ? results : null, naming);
     }
 
     /** Print each result (FAIL detail / MARKER / optional trace) and return the run's exit code: 1 if any FAIL, else
      *  3 if any MARKER, else 0 — the single-file CLI's exit contract, extracted so {@code --manifest} reuses it. A
      *  FAIL without a failed expectation (no fixpoint, or a case the replay could not play) prints its diagnose. */
-    private static int rapporteerEnCode(List<ScenarioResultaat> resultaten, boolean trace) {
-        return rapporteerEnCode(resultaten, trace, null, null);
+    private static int reportAndCode(List<ScenarioResultaat> results, boolean trace) {
+        return reportAndCode(results, trace, null, null);
     }
 
     /** As above; with {@code uitleg} (the same scenarios, explained) each played scenario's explanation follows, and
-     *  with {@code naamgeving} the rules of the trace and the coverage go by their names in its vocabulary (null: as
+     *  with {@code naming} the rules of the trace and the coverage go by their names in its vocabulary (null: as
      *  uchar's report names them). */
-    private static int rapporteerEnCode(List<ScenarioResultaat> resultaten, boolean trace,
-                                        List<ScenarioRunner.Uitgelegd> uitleg, Naamgeving naamgeving) {
-        boolean enigeFail = false, enigeMarker = false;
-        for (int n = 0; n < resultaten.size(); n++) {
-            ScenarioResultaat r = resultaten.get(n);
+    private static int reportAndCode(List<ScenarioResultaat> results, boolean trace,
+                                        List<ScenarioRunner.Explained> uitleg, Naming naming) {
+        boolean anyFail = false, anyMarker = false;
+        for (int n = 0; n < results.size(); n++) {
+            ScenarioResultaat r = results.get(n);
             System.out.println(r.status() + "  " + r.naam());
             if (r.status() == Status.FAIL) {
-                enigeFail = true;
-                boolean gemeld = false;
+                anyFail = true;
+                boolean reported = false;
                 for (VerwachtingResultaat v : r.verwachtingen())
                     if (!v.ok()) {
-                        gemeld = true;
+                        reported = true;
                         System.out.println("    verwachting " + v.positie() + " FOUT: " + v.bron().trim()
                                 + "  (verwacht=" + v.verwacht() + ", werkelijk=" + v.werkelijk() + ")");
                     }
-                if (!gemeld) System.out.println("    FOUT: " + r.diagnose());
-                drukTrace(r, naamgeving);
-                drukDekking(r, naamgeving);
+                if (!reported) System.out.println("    FOUT: " + r.diagnose());
+                printTrace(r, naming);
+                printCoverage(r, naming);
             } else if (r.status() == Status.MARKER) {
-                enigeMarker = true;
+                anyMarker = true;
                 System.out.println("    MARKER: " + r.diagnose());
-                drukDekking(r, naamgeving);
+                printCoverage(r, naming);
             }
-            if (trace && r.status() != Status.FAIL) drukTrace(r, naamgeving);
-            if (uitleg != null && r.status() != Status.MARKER) drukUitleg(uitleg.get(n));
+            if (trace && r.status() != Status.FAIL) printTrace(r, naming);
+            if (uitleg != null && r.status() != Status.MARKER) printUitleg(uitleg.get(n));
         }
-        return enigeFail ? 1 : enigeMarker ? 3 : 0;
+        return anyFail ? 1 : anyMarker ? 3 : 0;
     }
 
-    private static void drukUitleg(ScenarioRunner.Uitgelegd u) {
-        if (u.uitlegFout() != null) {
-            System.out.println("    geen uitleg: " + u.uitlegFout());
+    private static void printUitleg(ScenarioRunner.Explained u) {
+        if (u.uitlegError() != null) {
+            System.out.println("    geen uitleg: " + u.uitlegError());
             return;
         }
         System.out.println("    uitleg:" + (u.uitleg().isEmpty() ? " (geen kenmerktoekenning om te verantwoorden)" : ""));
-        for (String zin : u.uitleg()) System.out.println("      " + zin);
+        for (String sentence : u.uitleg()) System.out.println("      " + sentence);
     }
 
     /** A scenario uchar's scenario resolver refuses: its refusal must carry {@code fragment}. */
-    private record Uitsluiting(String fragment, String reden) {}
+    private record Exclusion(String fragment, String reason) {}
 
     /**
      * Run every manifest line in this one JVM. Each line is {@code <verwachte-exit> <scenario.rgs> <companion.rgs...>};
      * the sources are concatenated in that order, as the single-file CLI concatenates its arguments, and reduced to
      * that CLI's exit code (1 FAIL or resolve error, 3 MARKER, else 0). A line is OK when that code is the expected
-     * one; a scenario named in {@code uitsluitingenPad} is OK when the resolver refuses it with the listed fragment.
+     * one; a scenario named in {@code exclusionsPath} is OK when the resolver refuses it with the listed fragment.
      * Prints one line per manifest line and a summary, and returns 0 when no line mismatches and every exclusion
      * was met, 1 otherwise, and 1 for a manifest without lines.
      */
-    private static int draaiManifest(Path manifest, Path uitsluitingenPad, boolean trace) {
-        List<String> regels;
-        Map<String, Uitsluiting> uitsluitingen;
+    private static int runManifest(Path manifest, Path exclusionsPath, boolean trace) {
+        List<String> lines;
+        Map<String, Exclusion> exclusions;
         try {
-            regels = Files.readAllLines(manifest);
-            uitsluitingen = leesUitsluitingen(uitsluitingenPad);
+            lines = Files.readAllLines(manifest);
+            exclusions = readExclusions(exclusionsPath);
         } catch (IOException e) {
             System.err.println("kon het manifest of de uitsluitingen niet lezen: " + e.getMessage());
             return 2;
@@ -210,52 +210,52 @@ public final class ScenarioRunnerCli {
             return 2;
         }
         // the manifest lists paths relative to the directory the CLI runs in (the repository root for make)
-        int ok = 0, uitgesloten = 0, mismatch = 0, gelezen = 0;
-        java.util.Set<String> gezien = new java.util.HashSet<>();
-        for (String regel : regels) {
-            String r = regel.strip();
+        int ok = 0, uitgesloten = 0, mismatch = 0, wasRead = 0;
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (String line : lines) {
+            String r = line.strip();
             if (r.isEmpty() || r.startsWith("#")) continue;
-            gelezen++;
-            String[] velden = r.split("\\s+");
-            int verwacht;
-            try { verwacht = Integer.parseInt(velden[0]); }
+            wasRead++;
+            String[] fields = r.split("\\s+");
+            int expected;
+            try { expected = Integer.parseInt(fields[0]); }
             catch (NumberFormatException nfe) { System.err.println("manifestregel zonder geldige verwachte exitcode: " + r); return 2; }
-            if (velden.length < 2) { System.err.println("manifestregel zonder scenario: " + r); return 2; }
-            List<Path> paden = new ArrayList<>();
-            for (int i = 1; i < velden.length; i++) paden.add(Path.of(velden[i]));
-            String naam = paden.get(0).getFileName().toString();
-            Uitsluiting u = uitsluitingen.get(velden[1]);
+            if (fields.length < 2) { System.err.println("manifestregel zonder scenario: " + r); return 2; }
+            List<Path> paths = new ArrayList<>();
+            for (int i = 1; i < fields.length; i++) paths.add(Path.of(fields[i]));
+            String name = paths.get(0).getFileName().toString();
+            Exclusion u = exclusions.get(fields[1]);
             if (u != null) {
-                gezien.add(velden[1]);
-                String weigering = weigering(paden);
-                if (weigering != null && weigering.contains(u.fragment())) {
-                    System.out.println("  UITGESLOTEN  " + naam + "  (" + u.reden() + ")");
+                seen.add(fields[1]);
+                String refusal = refusal(paths);
+                if (refusal != null && refusal.contains(u.fragment())) {
+                    System.out.println("  UITGESLOTEN  " + name + "  (" + u.reason() + ")");
                     uitgesloten++;
                 } else {
                     System.out.println("  MISMATCH (uitgesloten, maar uchar weigert het niet met '" + u.fragment() + "'"
-                            + (weigering == null ? ": het resolvet" : ": " + weigering) + ")  " + naam);
+                            + (refusal == null ? ": het resolvet" : ": " + refusal) + ")  " + name);
                     mismatch++;
                 }
                 continue;
             }
-            int got = draaiRegel(paden, trace);
-            if (got == verwacht) {
-                System.out.println("  OK (exit " + got + ")  " + naam);
+            int got = runLine(paths, trace);
+            if (got == expected) {
+                System.out.println("  OK (exit " + got + ")  " + name);
                 ok++;
             } else {
-                System.out.println("  MISMATCH (verwacht exit " + verwacht + ", kreeg " + got + ")  " + naam);
+                System.out.println("  MISMATCH (verwacht exit " + expected + ", kreeg " + got + ")  " + name);
                 mismatch++;
             }
         }
-        for (String pad : uitsluitingen.keySet())
-            if (!gezien.contains(pad)) {
-                System.out.println("  MISMATCH (uitgesloten, maar het manifest draagt het niet)  " + pad);
+        for (String path : exclusions.keySet())
+            if (!seen.contains(path)) {
+                System.out.println("  MISMATCH (uitgesloten, maar het manifest draagt het niet)  " + path);
                 mismatch++;
             }
         System.out.println("-------------------------------------------------------------------");
-        System.out.println("manifest: " + gelezen + " regels, " + ok + " ok, " + uitgesloten + " uitgesloten, "
+        System.out.println("manifest: " + wasRead + " regels, " + ok + " ok, " + uitgesloten + " uitgesloten, "
                 + mismatch + " mismatch");
-        if (gelezen == 0) {
+        if (wasRead == 0) {
             System.out.println("MANIFEST FAALT: het manifest telt geen regels");
             return 1;
         }
@@ -266,91 +266,91 @@ public final class ScenarioRunnerCli {
         return 0;
     }
 
-    /** The exclusions of {@code pad} by scenario path, or none without a list. */
-    private static Map<String, Uitsluiting> leesUitsluitingen(Path pad) throws IOException {
-        Map<String, Uitsluiting> uit = new LinkedHashMap<>();
-        if (pad == null) return uit;
-        for (String regel : Files.readAllLines(pad)) {
-            String r = regel.strip();
+    /** The exclusions of {@code path} by scenario path, or none without a list. */
+    private static Map<String, Exclusion> readExclusions(Path path) throws IOException {
+        Map<String, Exclusion> sink = new LinkedHashMap<>();
+        if (path == null) return sink;
+        for (String line : Files.readAllLines(path)) {
+            String r = line.strip();
             if (r.isEmpty() || r.startsWith("#")) continue;
-            String[] velden = r.split("\\|", 3);
-            if (velden.length != 3 || velden[1].isBlank() || velden[2].isBlank())
+            String[] fields = r.split("\\|", 3);
+            if (fields.length != 3 || fields[1].isBlank() || fields[2].isBlank())
                 throw new IllegalArgumentException("uitsluiting zonder '<scenario>|<fragment>|<reden>': " + r);
-            if (uit.put(velden[0].strip(), new Uitsluiting(velden[1].strip(), velden[2].strip())) != null)
-                throw new IllegalArgumentException("scenario twee keer uitgesloten: " + velden[0].strip());
+            if (sink.put(fields[0].strip(), new Exclusion(fields[1].strip(), fields[2].strip())) != null)
+                throw new IllegalArgumentException("scenario twee keer uitgesloten: " + fields[0].strip());
         }
-        return uit;
+        return sink;
     }
 
-    /** The resolver's refusal of the concatenated {@code paden}, its diagnostics on one line; null when it resolves. */
-    private static String weigering(List<Path> paden) {
-        String bron;
+    /** The resolver's refusal of the concatenated {@code paths}, its diagnostics on one line; null when it resolves. */
+    private static String refusal(List<Path> paths) {
+        String source;
         try {
-            bron = leesBron(paden);
+            source = readSource(paths);
         } catch (UncheckedIOException e) {
             return "kon een bestand niet lezen: " + e.getCause().getMessage();
         }
-        var bundel = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(bron);
-        if (bundel.isOk()) return null;
+        var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
+        if (bundle.isOk()) return null;
         List<String> d = new ArrayList<>();
-        for (var fout : bundel.model().errors()) d.add(fout.message());
+        for (var error : bundle.model().errors()) d.add(error.message());
         return String.join("; ", d);
     }
 
-    private static String leesBron(List<Path> paden) {
-        return paden.stream()
+    private static String readSource(List<Path> paths) {
+        return paths.stream()
                 .map(p -> { try { return Files.readString(p); } catch (IOException e) { throw new UncheckedIOException(e); } })
                 .collect(Collectors.joining("\n"));
     }
 
     /** Run ONE manifest line's concatenated sources and return its exit code (1 FAIL/resolve-fout, 3 MARKER, else
-     *  0) WITHOUT the per-scenario stdout noise — the single-JVM analog of forking the CLI over {@code paden}. A
-     *  read/resolve failure is exit 1, mirroring the single-file path's ResolveFout→1 / read-error→1. */
-    private static int draaiRegel(List<Path> paden, boolean trace) {
-        String bron;
+     *  0) WITHOUT the per-scenario stdout noise — the single-JVM analog of forking the CLI over {@code paths}. A
+     *  read/resolve failure is exit 1, mirroring the single-file path's ResolveError→1 / read-error→1. */
+    private static int runLine(List<Path> paths, boolean trace) {
+        String source;
         try {
-            bron = paden.stream()
+            source = paths.stream()
                     .map(p -> { try { return Files.readString(p); } catch (IOException e) { throw new UncheckedIOException(e); } })
                     .collect(Collectors.joining("\n"));
         } catch (UncheckedIOException e) {
             System.err.println("kon een bestand niet lezen: " + e.getCause().getMessage());
             return 1;
         }
-        List<ScenarioResultaat> resultaten;
+        List<ScenarioResultaat> results;
         try {
-            resultaten = ScenarioRunner.run(bron);
-        } catch (ScenarioRunner.ResolveFout f) {
+            results = ScenarioRunner.run(source);
+        } catch (ScenarioRunner.ResolveError f) {
             return 1;
         }
         // Reuse the exact per-run exit contract; suppress the per-scenario detail unless --trace (the shell loop
         // printed only OK/MISMATCH per line).
-        return trace ? rapporteerEnCode(resultaten, trace) : stilCode(resultaten);
+        return trace ? reportAndCode(results, trace) : silentCode(results);
     }
 
     /** The exit code for a result list WITHOUT printing (1 FAIL, else 3 MARKER, else 0). */
-    private static int stilCode(List<ScenarioResultaat> resultaten) {
+    private static int silentCode(List<ScenarioResultaat> results) {
         boolean fail = false, marker = false;
-        for (ScenarioResultaat r : resultaten) {
+        for (ScenarioResultaat r : results) {
             if (r.status() == Status.FAIL) fail = true;
             else if (r.status() == Status.MARKER) marker = true;
         }
         return fail ? 1 : marker ? 3 : 0;
     }
 
-    private static void drukTrace(ScenarioResultaat r, Naamgeving naamgeving) {
+    private static void printTrace(ScenarioResultaat r, Naming naming) {
         System.out.println("    trace (" + r.trace().totaal() + " vuring(en)):");
         for (Vuring v : r.trace().vuringen())
-            System.out.println("      " + regelnaam(v.regel(), naamgeving) + (v.labels().isEmpty() ? "" : " @ " + v.labels())
+            System.out.println("      " + ruleName(v.regel(), naming) + (v.labels().isEmpty() ? "" : " @ " + v.labels())
                     + " x" + v.aantal());
     }
 
-    private static void drukDekking(ScenarioResultaat r, Naamgeving naamgeving) {
+    private static void printCoverage(ScenarioResultaat r, Naming naming) {
         System.out.println("    dekking:");
         for (DekkingRegel d : r.dekking())
-            System.out.println("      " + regelnaam(d.regel(), naamgeving) + " : " + d.soort());
+            System.out.println("      " + ruleName(d.regel(), naming) + " : " + d.soort());
     }
 
-    private static String regelnaam(String regel, Naamgeving naamgeving) {
-        return naamgeving == null ? regel : naamgeving.vorm(regel);
+    private static String ruleName(String line, Naming naming) {
+        return naming == null ? line : naming.form(line);
     }
 }

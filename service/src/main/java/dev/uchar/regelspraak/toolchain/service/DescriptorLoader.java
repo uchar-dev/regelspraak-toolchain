@@ -6,7 +6,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
-import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
+import dev.uchar.regelspraak.toolchain.engine.Naming;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -18,10 +18,10 @@ import java.util.Set;
 /**
  * Reads a {@code <naam>.dienst.json} descriptor and validates it against the RESOLVED model — every regel,
  * regelgroep, objecttype, attribuut, kenmerk and parameter it names must exist, or the load fails naming the
- * offending value. ALL violations are collected first, then thrown together as a single {@link DienstFout},
+ * offending value. ALL violations are collected first, then thrown together as a single {@link ServiceError},
  * so a malformed descriptor surfaces its complete diagnostic set in one round trip (decision 1).
  *
- * <p>The parse is a Jackson bind to {@link DienstDescriptor} (unknown fields ignored, so a descriptor may
+ * <p>The parse is a Jackson bind to {@link ServiceDescriptor} (unknown fields ignored, so a descriptor may
  * carry doc-only keys); the numeric values under {@code parameters} are kept as raw {@link JsonNode}s and
  * decoded per-parameter datatype later by the request mapper — never as {@code double}.
  */
@@ -35,147 +35,147 @@ public final class DescriptorLoader {
     private DescriptorLoader() {}
 
     /** Parse + validate a descriptor file against {@code model}. */
-    public static DienstDescriptor laad(Path descriptorBestand, RegelSpraakModel model) throws IOException {
-        return laad(Files.readString(descriptorBestand), model);
+    public static ServiceDescriptor load(Path descriptorFile, RegelSpraakModel model) throws IOException {
+        return load(Files.readString(descriptorFile), model);
     }
 
     /** Parse + validate a descriptor from its JSON text against {@code model}. */
-    public static DienstDescriptor laad(String json, RegelSpraakModel model) {
-        DienstDescriptor d;
+    public static ServiceDescriptor load(String json, RegelSpraakModel model) {
+        ServiceDescriptor d;
         try {
-            d = MAPPER.readValue(json, DienstDescriptor.class);
+            d = MAPPER.readValue(json, ServiceDescriptor.class);
         } catch (IOException e) {
-            throw new DienstFout("descriptor is geen geldige JSON", List.of(
-                    Schending.van(Schending.Soort.MALFORMED, "", e.getMessage())));
+            throw new ServiceError("descriptor is geen geldige JSON", List.of(
+                    Violation.van(Violation.Kind.MALFORMED, "", e.getMessage())));
         }
-        List<Schending> s = valideer(d, model);
-        if (!s.isEmpty()) throw new DienstFout("descriptor valideert niet tegen het model", s);
+        List<Violation> s = validate(d, model);
+        if (!s.isEmpty()) throw new ServiceError("descriptor valideert niet tegen het model", s);
         return d;
     }
 
     /** Collect every descriptor→model mismatch (no throwing) — the validation core, reused by tests. The rule
      *  names of a scope are checked against the forms of {@code model} with its own defaults groups. */
-    public static List<Schending> valideer(DienstDescriptor d, RegelSpraakModel model) {
-        return valideer(d, model, VormIndex.van(model, model.prioritizedDefaults));
+    public static List<Violation> validate(ServiceDescriptor d, RegelSpraakModel model) {
+        return validate(d, model, FormIndex.van(model, model.prioritizedDefaults));
     }
 
-    /** As {@link #valideer(DienstDescriptor, RegelSpraakModel)}, with the forms a scope may name given: a rule name
-     *  must carry a form of {@code vormen} or be a rule the source declares. */
-    public static List<Schending> valideer(DienstDescriptor d, RegelSpraakModel model, VormIndex vormen) {
-        List<Schending> uit = new ArrayList<>();
-        if (d == null) { uit.add(Schending.van(Schending.Soort.MALFORMED, "", "leeg descriptor")); return uit; }
-        if (d.dienst() == null || d.dienst().naam() == null || d.dienst().naam().isBlank())
-            uit.add(Schending.van(Schending.Soort.MALFORMED, "dienst.naam", "dienst.naam ontbreekt"));
+    /** As {@link #validate(ServiceDescriptor, RegelSpraakModel)}, with the forms a scope may name given: a rule name
+     *  must carry a form of {@code forms} or be a rule the source declares. */
+    public static List<Violation> validate(ServiceDescriptor d, RegelSpraakModel model, FormIndex forms) {
+        List<Violation> sink = new ArrayList<>();
+        if (d == null) { sink.add(Violation.van(Violation.Kind.MALFORMED, "", "leeg descriptor")); return sink; }
+        if (d.service() == null || d.service().name() == null || d.service().name().isBlank())
+            sink.add(Violation.van(Violation.Kind.MALFORMED, "dienst.naam", "dienst.naam ontbreekt"));
         // 'canoniek' chooses the canonical names in a request, so a vocabulary of that name could never be chosen
-        String gereserveerd = Naamgeving.gereserveerd(model);
-        if (gereserveerd != null) uit.add(Schending.van(Schending.Soort.MALFORMED, "vocabulaires", gereserveerd));
+        String reserved = Naming.reserved(model);
+        if (reserved != null) sink.add(Violation.van(Violation.Kind.MALFORMED, "vocabulaires", reserved));
 
-        Set<String> groepnamen = new java.util.LinkedHashSet<>();
-        for (var g : model.regelGroepen) groepnamen.add(g.naam());
+        Set<String> groupNames = new java.util.LinkedHashSet<>();
+        for (var g : model.regelGroepen) groupNames.add(g.naam());
 
         // parameters block
         if (d.parameters() != null)
             for (String p : d.parameters().keySet())
                 if (parameter(model, p) == null)
-                    uit.add(Schending.van(Schending.Soort.ONBEKENDE_VERWIJZING, "parameters." + p,
+                    sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, "parameters." + p,
                             "onbekende parameter '" + p + "'"));
 
-        List<DienstDescriptor.Entrypoint> eps = d.entrypoints() == null ? List.of() : d.entrypoints();
+        List<ServiceDescriptor.Entrypoint> eps = d.entrypoints() == null ? List.of() : d.entrypoints();
         for (int i = 0; i < eps.size(); i++) {
-            DienstDescriptor.Entrypoint ep = eps.get(i);
-            String pad = "entrypoints[" + i + "]";
-            if (ep.naam() == null || ep.naam().isBlank())
-                uit.add(Schending.van(Schending.Soort.MALFORMED, pad + ".naam", "entrypoint-naam ontbreekt"));
-            if (ep.pad() == null || ep.pad().isBlank())
-                uit.add(Schending.van(Schending.Soort.MALFORMED, pad + ".pad", "entrypoint-pad ontbreekt"));
-            if (ep.vocabulaire() != null && gereserveerd == null) {
+            ServiceDescriptor.Entrypoint ep = eps.get(i);
+            String path = "entrypoints[" + i + "]";
+            if (ep.name() == null || ep.name().isBlank())
+                sink.add(Violation.van(Violation.Kind.MALFORMED, path + ".naam", "entrypoint-naam ontbreekt"));
+            if (ep.path() == null || ep.path().isBlank())
+                sink.add(Violation.van(Violation.Kind.MALFORMED, path + ".pad", "entrypoint-pad ontbreekt"));
+            if (ep.vocabulary() != null && reserved == null) {
                 try {
-                    Naamgeving.van(model, ep.vocabulaire());
-                } catch (Naamgeving.Vocabulairefout f) {
-                    uit.add(Schending.van(Schending.Soort.ONBEKEND_VOCABULAIRE, pad + ".vocabulaire", f.getMessage()));
+                    Naming.van(model, ep.vocabulary());
+                } catch (Naming.VocabularyError f) {
+                    sink.add(Violation.van(Violation.Kind.ONBEKEND_VOCABULAIRE, path + ".vocabulaire", f.getMessage()));
                 }
             }
 
             // scope
             if (ep.scope() == null
-                    || (ep.scope().regelnamenOfLeeg().isEmpty() && ep.scope().regelgroepenOfLeeg().isEmpty())) {
-                uit.add(Schending.van(Schending.Soort.MALFORMED, pad + ".scope",
+                    || (ep.scope().ruleNamesOrEmpty().isEmpty() && ep.scope().ruleGroupsOrEmpty().isEmpty())) {
+                sink.add(Violation.van(Violation.Kind.MALFORMED, path + ".scope",
                         "scope moet minstens één regelnaam of regelgroep noemen"));
             } else {
-                List<String> rn = ep.scope().regelnamenOfLeeg();
+                List<String> rn = ep.scope().ruleNamesOrEmpty();
                 for (int j = 0; j < rn.size(); j++)
-                    if (!vormen.bestaat(rn.get(j)))
-                        uit.add(Schending.van(Schending.Soort.ONBEKENDE_VERWIJZING,
-                                pad + ".scope.regelnamen[" + j + "]", "onbekende regel '" + rn.get(j) + "'"));
-                List<String> rg = ep.scope().regelgroepenOfLeeg();
+                    if (!forms.exists(rn.get(j)))
+                        sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING,
+                                path + ".scope.regelnamen[" + j + "]", "onbekende regel '" + rn.get(j) + "'"));
+                List<String> rg = ep.scope().ruleGroupsOrEmpty();
                 for (int j = 0; j < rg.size(); j++)
-                    if (!groepnamen.contains(rg.get(j)))
-                        uit.add(Schending.van(Schending.Soort.ONBEKENDE_VERWIJZING,
-                                pad + ".scope.regelgroepen[" + j + "]", "onbekende regelgroep '" + rg.get(j) + "'"));
+                    if (!groupNames.contains(rg.get(j)))
+                        sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING,
+                                path + ".scope.regelgroepen[" + j + "]", "onbekende regelgroep '" + rg.get(j) + "'"));
             }
 
             // invoer objecttypen
-            List<String> inv = ep.invoer() == null ? List.of() : ep.invoer();
+            List<String> inv = ep.input() == null ? List.of() : ep.input();
             for (int j = 0; j < inv.size(); j++)
-                if (objecttype(model, inv.get(j)) == null)
-                    uit.add(Schending.van(Schending.Soort.ONBEKENDE_VERWIJZING, pad + ".invoer[" + j + "]",
+                if (objectType(model, inv.get(j)) == null)
+                    sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, path + ".invoer[" + j + "]",
                             "onbekend objecttype '" + inv.get(j) + "'"));
 
             // uitvoer: "Objecttype.attribuut" | "Objecttype:kenmerk"
-            List<String> uitv = ep.uitvoer() == null ? List.of() : ep.uitvoer();
-            for (int j = 0; j < uitv.size(); j++)
-                valideerUitvoer(model, uitv.get(j), pad + ".uitvoer[" + j + "]", uit);
+            List<String> outputs = ep.output() == null ? List.of() : ep.output();
+            for (int j = 0; j < outputs.size(); j++)
+                validateOutput(model, outputs.get(j), path + ".uitvoer[" + j + "]", sink);
 
-            // invoerElementen: same selector syntax as uitvoer — element-level scope-completeness opt-outs
-            List<String> invEl = ep.invoerElementenOfLeeg();
+            // inputElements: same selector syntax as uitvoer — element-level scope-completeness opt-outs
+            List<String> invEl = ep.inputElementsOrEmpty();
             for (int j = 0; j < invEl.size(); j++)
-                valideerUitvoer(model, invEl.get(j), pad + ".invoerElementen[" + j + "]", uit);
+                validateOutput(model, invEl.get(j), path + ".invoerElementen[" + j + "]", sink);
         }
-        return uit;
+        return sink;
     }
 
     /** Validate one {@code "Objecttype.attribuut"} / {@code "Objecttype:kenmerk"} selector. */
-    static void valideerUitvoer(RegelSpraakModel model, String sel, String veld, List<Schending> uit) {
-        Uitvoerselector u = Uitvoerselector.ontleed(sel);
+    static void validateOutput(RegelSpraakModel model, String sel, String field, List<Violation> sink) {
+        OutputSelector u = OutputSelector.parse(sel);
         if (u == null) {
-            uit.add(Schending.van(Schending.Soort.MALFORMED, veld,
+            sink.add(Violation.van(Violation.Kind.MALFORMED, field,
                     "uitvoer '" + sel + "' moet 'Objecttype.attribuut' of 'Objecttype:kenmerk' zijn"));
             return;
         }
-        Objecttype ot = objecttype(model, u.objecttype());
+        Objecttype ot = objectType(model, u.objectType());
         if (ot == null) {
-            uit.add(Schending.van(Schending.Soort.ONBEKENDE_VERWIJZING, veld,
-                    "onbekend objecttype '" + u.objecttype() + "' in uitvoer '" + sel + "'"));
+            sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, field,
+                    "onbekend objecttype '" + u.objectType() + "' in uitvoer '" + sel + "'"));
             return;
         }
-        if (u.kenmerk()) {
-            if (!heeftKenmerk(ot, u.lid()))
-                uit.add(Schending.van(Schending.Soort.ONBEKENDE_VERWIJZING, veld,
-                        "onbekend kenmerk '" + u.lid() + "' op objecttype '" + u.objecttype() + "'"));
+        if (u.characteristic()) {
+            if (!hasCharacteristic(ot, u.member()))
+                sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, field,
+                        "onbekend kenmerk '" + u.member() + "' op objecttype '" + u.objectType() + "'"));
         } else {
-            if (ot.attribuut(u.lid()) == null)
-                uit.add(Schending.van(Schending.Soort.ONBEKENDE_VERWIJZING, veld,
-                        "onbekend attribuut '" + u.lid() + "' op objecttype '" + u.objecttype() + "'"));
+            if (ot.attribuut(u.member()) == null)
+                sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, field,
+                        "onbekend attribuut '" + u.member() + "' op objecttype '" + u.objectType() + "'"));
         }
     }
 
     // ---- model lookups (case-insensitive on names, matching the resolver's own tolerance) ----
 
-    static Objecttype objecttype(RegelSpraakModel model, String naam) {
-        if (naam == null) return null;
-        Objecttype ot = model.objecttypen.get(naam);
+    static Objecttype objectType(RegelSpraakModel model, String name) {
+        if (name == null) return null;
+        Objecttype ot = model.objecttypen.get(name);
         if (ot != null) return ot;
         for (Objecttype o : model.objecttypen.values())
-            if (o.naam.equalsIgnoreCase(naam)) return o;
+            if (o.naam.equalsIgnoreCase(name)) return o;
         return null;
     }
 
-    static RegelSpraakModel.Parameter parameter(RegelSpraakModel model, String naam) {
-        if (naam == null) return null;
-        RegelSpraakModel.Parameter p = model.parameters.get(naam);
+    static RegelSpraakModel.Parameter parameter(RegelSpraakModel model, String name) {
+        if (name == null) return null;
+        RegelSpraakModel.Parameter p = model.parameters.get(name);
         if (p != null) return p;
         for (RegelSpraakModel.Parameter q : model.parameters.values())
-            if (q.naam().equalsIgnoreCase(naam)) return q;
+            if (q.naam().equalsIgnoreCase(name)) return q;
         return null;
     }
 
@@ -184,30 +184,30 @@ public final class DescriptorLoader {
      *  request may set it — so the own list alone answers "onbekend kenmerk" for a member that exists. The
      *  model's own chain walk ({@link Objecttype#kenmerkNaam}) is the authority; it is case-insensitive exactly
      *  as the old own-list scan was. */
-    static boolean heeftKenmerk(Objecttype ot, String naam) {
-        return ot != null && ot.kenmerkNaam(naam) != null;
+    static boolean hasCharacteristic(Objecttype ot, String name) {
+        return ot != null && ot.kenmerkNaam(name) != null;
     }
 
     /** The chain-closed kenmerk NAMES of {@code ot}, nearest declaration first — the list-shaped twin of
-     *  {@link #heeftKenmerk}, for the reader that must ENUMERATE the kenmerken rather than ask about one
+     *  {@link #hasCharacteristic}, for the reader that must ENUMERATE the kenmerken rather than ask about one
      *  ({@link OpenApiEmitter}). It lives here so service/ walks the kenmerk chain in exactly one place; the
      *  attribuut side needs no twin because the model already ships {@link Objecttype#attribuutLeden} (the
      *  kenmerken are a List, not a member-keyed map, so {@code opKetenKaart} does not cover them). A nearer
      *  declaration wins and a name is listed once, matched case-insensitively like the lookups above. */
-    static List<String> kenmerkLeden(Objecttype ot) {
-        List<String> uit = new ArrayList<>();
-        if (ot == null) return uit;
+    static List<String> characteristicMembers(Objecttype ot) {
+        List<String> sink = new ArrayList<>();
+        if (ot == null) return sink;
         for (Objecttype t : ot.keten())
             for (String k : t.kenmerken)
-                if (uit.stream().noneMatch(g -> g.equalsIgnoreCase(k))) uit.add(k);
-        return uit;
+                if (sink.stream().noneMatch(g -> g.equalsIgnoreCase(k))) sink.add(k);
+        return sink;
     }
 
     /** Whether an instance of {@code ot} is selected by an objecttype named {@code naam} — the ⊑ of IR-SPEC
      *  ch. 2.2, not name equality: a Wrakstuk IS a Strandvondst, so a rule declared on the supertype fires on
      *  it (that is what the transpilers lower) and a descriptor written against the supertype must therefore
-     *  reach it too. Used by the uitvoer selectors ({@link AntwoordBouwer}) and the invoer contract
-     *  ({@link BeslisserKern}); on a model without subtypes the chain is one element long and this is exactly
+     *  reach it too. Used by the uitvoer selectors ({@link AnswerBuilder}) and the invoer contract
+     *  ({@link DecisionCore}); on a model without subtypes the chain is one element long and this is exactly
      *  the old case-insensitive name equality. An unresolvable {@code naam} selects nothing (it is already a
      *  descriptor-validation error).
      *
@@ -215,7 +215,7 @@ public final class DescriptorLoader {
      *  arguments must come from ONE resolved model instance. Every caller today passes the core's own
      *  {@code this.model} and resolves {@code naam} against that same model here, so the condition holds by
      *  construction; a future caller that resolves a second model would have to pass its own, not another's. */
-    static boolean objectMatch(RegelSpraakModel model, Objecttype ot, String naam) {
-        return ot != null && ot.isEen(objecttype(model, naam));
+    static boolean objectMatch(RegelSpraakModel model, Objecttype ot, String name) {
+        return ot != null && ot.isEen(objectType(model, name));
     }
 }

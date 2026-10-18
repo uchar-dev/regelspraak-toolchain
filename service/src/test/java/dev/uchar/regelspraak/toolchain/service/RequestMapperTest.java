@@ -16,170 +16,170 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Request → beans mapping and its typed violations (decision 4). The mapper is driven directly (no engine)
- * so a violation is observed as a {@link Schending} carrying its field path, exactly what fase 3 turns into a
+ * so a violation is observed as a {@link Violation} carrying its field path, exactly what fase 3 turns into a
  * 400 naming the field.
  */
-class VerzoekMapperTest {
+class RequestMapperTest {
 
     private static RegelSpraakModel MODEL;
-    private static VerzoekMapper MAPPER;
+    private static RequestMapper MAPPER;
 
     @BeforeAll
-    static void bouw() {
-        StringBuilder bron = new StringBuilder();
-        for (String tekst : TokaBron.bronPerBestand().values()) bron.append(tekst).append('\n');
-        MODEL = Resolver.resolve(bron.toString());
-        MAPPER = new VerzoekMapper(MODEL, TokaBron.build());
+    static void assemble() {
+        StringBuilder source = new StringBuilder();
+        for (String text : TokaSource.sourcePerFile().values()) source.append(text).append('\n');
+        MODEL = Resolver.resolve(source.toString());
+        MAPPER = new RequestMapper(MODEL, TokaSource.build());
     }
 
-    private static VerzoekMapper.Resultaat map(String json) {
-        return MAPPER.map(new Verzoek(parse(json)));
+    private static RequestMapper.Result map(String json) {
+        return MAPPER.map(new Request(parse(json)));
     }
 
     @Test
-    void geldig_verzoek_mapt_zonder_schending() {
+    void valid_request_maps_without_violation() {
         var r = map("""
             { "instanties": [
                 { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
                 { "type": "Natuurlijk persoon", "id": "P1",
                   "attributen": { "geboortedatum": "1990-06-15" }, "rollen": { "reis": "V1" } } ] }""");
-        assertTrue(r.schendingen().isEmpty(), "onverwachte schendingen: " + r.schendingen());
-        assertEquals(2, r.wereld().beans().size());
+        assertTrue(r.violations().isEmpty(), "onverwachte schendingen: " + r.violations());
+        assertEquals(2, r.world().beans().size());
     }
 
     @Test
-    void onbekend_attribuut_noemt_het_veld() {
+    void unknown_attribute_names_the_field() {
         var r = map("""
             { "instanties": [ { "type": "Natuurlijk persoon", "id": "P1",
                 "attributen": { "schoenmaat": 42 } } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.ONBEKEND_VELD
-                && s.veld().equals("instanties[0].attributen.schoenmaat")
-                && s.bericht().contains("schoenmaat")), r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.ONBEKEND_VELD
+                && s.field().equals("instanties[0].attributen.schoenmaat")
+                && s.message().contains("schoenmaat")), r.violations().toString());
     }
 
     @Test
-    void onbekend_objecttype_noemt_het_veld() {
+    void unknown_object_type_names_the_field() {
         var r = map("""
             { "instanties": [ { "type": "Ruimteschip", "id": "R1" } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.ONBEKEND_VELD && s.veld().equals("instanties[0].type")), r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.ONBEKEND_VELD && s.field().equals("instanties[0].type")), r.violations().toString());
     }
 
     @Test
-    void verkeerd_datatype_wordt_gemeld() {
+    void wrong_datatype_is_reported() {
         // geboortedatum is a Datum -> a number is ill-typed
         var r = map("""
             { "instanties": [ { "type": "Natuurlijk persoon", "id": "P1",
                 "attributen": { "geboortedatum": 12345 } } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.VERKEERD_TYPE
-                && s.veld().equals("instanties[0].attributen.geboortedatum")), r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.VERKEERD_TYPE
+                && s.field().equals("instanties[0].attributen.geboortedatum")), r.violations().toString());
     }
 
     @Test
-    void eenheid_bearing_getal_accepteert_object_met_juiste_eenheid() {
+    void unit_bearing_number_accepts_object_with_correct_unit() {
         // afstand tot bestemming: Numeriek (geheel getal) met eenheid km
         var r = map("""
             { "instanties": [ { "type": "Vlucht", "id": "V1",
                 "attributen": { "afstand tot bestemming": { "waarde": 200, "eenheid": "km" } } } ] }""");
-        assertTrue(r.schendingen().isEmpty(), "onverwacht: " + r.schendingen());
+        assertTrue(r.violations().isEmpty(), "onverwacht: " + r.violations());
     }
 
     @Test
-    void eenheid_mismatch_wordt_gemeld() {
+    void unit_mismatch_is_reported() {
         var r = map("""
             { "instanties": [ { "type": "Vlucht", "id": "V1",
                 "attributen": { "afstand tot bestemming": { "waarde": 200, "eenheid": "mijl" } } } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.VERKEERDE_EENHEID
-                && s.veld().equals("instanties[0].attributen.afstand tot bestemming")
-                && s.bericht().contains("km")), r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.VERKEERDE_EENHEID
+                && s.field().equals("instanties[0].attributen.afstand tot bestemming")
+                && s.message().contains("km")), r.violations().toString());
     }
 
     @Test
-    void plain_getal_op_eenheid_attribuut_mag() {
+    void plain_number_on_unit_attribute_may() {
         var r = map("""
             { "instanties": [ { "type": "Vlucht", "id": "V1",
                 "attributen": { "afstand tot bestemming": 200 } } ] }""");
-        assertTrue(r.schendingen().isEmpty(), "onverwacht: " + r.schendingen());
+        assertTrue(r.violations().isEmpty(), "onverwacht: " + r.violations());
     }
 
     @Test
-    void onbekende_enumeratie_waarde_wordt_gemeld() {
+    void unknown_enumeration_value_is_reported() {
         // luchthaven van vertrek is a Luchthavens enumeratie
         var r = map("""
             { "instanties": [ { "type": "Vlucht", "id": "V1",
                 "attributen": { "luchthaven van vertrek": "Mars Base One" } } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.ONBEKENDE_ENUM_WAARDE
-                && s.veld().equals("instanties[0].attributen.luchthaven van vertrek")), r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.ONBEKENDE_ENUM_WAARDE
+                && s.field().equals("instanties[0].attributen.luchthaven van vertrek")), r.violations().toString());
     }
 
     @Test
-    void geldige_enumeratie_waarde_mapt() {
+    void valid_enumeration_value_maps() {
         var r = map("""
             { "instanties": [ { "type": "Vlucht", "id": "V1",
                 "attributen": { "luchthaven van vertrek": "Amsterdam Schiphol" } } ] }""");
-        assertTrue(r.schendingen().isEmpty(), "onverwacht: " + r.schendingen());
+        assertTrue(r.violations().isEmpty(), "onverwacht: " + r.violations());
     }
 
     @Test
-    void onbekend_kenmerk_wordt_gemeld() {
+    void unknown_characteristic_is_reported() {
         var r = map("""
             { "instanties": [ { "type": "Natuurlijk persoon", "id": "P1",
                 "kenmerken": { "onsterfelijk": true } } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.ONBEKEND_VELD
-                && s.veld().equals("instanties[0].kenmerken.onsterfelijk")), r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.ONBEKEND_VELD
+                && s.field().equals("instanties[0].kenmerken.onsterfelijk")), r.violations().toString());
     }
 
     @Test
-    void onbekende_rol_wordt_gemeld() {
+    void unknown_role_is_reported() {
         var r = map("""
             { "instanties": [ { "type": "Natuurlijk persoon", "id": "P1",
                 "rollen": { "ruimteschip": "X" } } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.ONBEKEND_VELD
-                && s.veld().contains("rollen.ruimteschip")), r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.ONBEKEND_VELD
+                && s.field().contains("rollen.ruimteschip")), r.violations().toString());
     }
 
     @Test
-    void onbekende_parameter_in_verzoek_wordt_gemeld() {
+    void unknown_parameter_in_request_is_reported() {
         var r = map("""
             { "parameters": { "tarief op pluto": 5 },
               "instanties": [ { "type": "Vlucht", "id": "V1" } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.ONBEKEND_VELD
-                && s.veld().equals("parameters.tarief op pluto")), r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.ONBEKEND_VELD
+                && s.field().equals("parameters.tarief op pluto")), r.violations().toString());
     }
 
     @Test
-    void geldige_parameter_wordt_global() {
+    void valid_parameter_becomes_global() {
         var r = map("""
             { "parameters": { "volwassenleeftijd": 18 },
               "instanties": [ { "type": "Vlucht", "id": "V1" } ] }""");
-        assertTrue(r.schendingen().isEmpty(), "onverwacht: " + r.schendingen());
-        assertNotNull(r.wereld().globals().get("volwassenleeftijd"));
-        assertEquals(0, new BigDecimal("18").compareTo((BigDecimal) r.wereld().globals().get("volwassenleeftijd")));
+        assertTrue(r.violations().isEmpty(), "onverwacht: " + r.violations());
+        assertNotNull(r.world().globals().get("volwassenleeftijd"));
+        assertEquals(0, new BigDecimal("18").compareTo((BigDecimal) r.world().globals().get("volwassenleeftijd")));
     }
 
     @Test
-    void rekendatum_wordt_overgenomen() {
+    void evaluation_date_is_adopted() {
         var r = map("""
             { "rekendatum": "2024-01-01",
               "instanties": [ { "type": "Vlucht", "id": "V1" } ] }""");
-        assertTrue(r.schendingen().isEmpty());
-        assertEquals(java.time.LocalDate.of(2024, 1, 1), r.wereld().rekendatum());
+        assertTrue(r.violations().isEmpty());
+        assertEquals(java.time.LocalDate.of(2024, 1, 1), r.world().evaluationDate());
     }
 
     @Test
-    void json_getal_wordt_bigdecimal_nooit_double() {
+    void json_number_becomes_bigdecimal_never_double() {
         var r = map("""
             { "instanties": [ { "type": "Natuurlijk persoon", "id": "P1",
                 "attributen": { "te betalen belasting": 30.00 } } ] }""");
-        assertTrue(r.schendingen().isEmpty(), r.schendingen().toString());
-        Object bean = r.wereld().beans().get("P1");
+        assertTrue(r.violations().isEmpty(), r.violations().toString());
+        Object bean = r.world().beans().get("P1");
         Object v = dev.uchar.regelspraak.runtime.RegelSpraakRuntime.get(bean, "teBetalenBelasting");
         assertTrue(v instanceof BigDecimal, "waarde moet BigDecimal zijn, was " + (v == null ? "null" : v.getClass()));
     }

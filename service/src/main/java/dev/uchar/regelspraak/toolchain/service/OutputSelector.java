@@ -10,27 +10,27 @@ package dev.uchar.regelspraak.toolchain.service;
  *
  * @param objecttype the objecttype name
  * @param lid        the attribuut or kenmerk name
- * @param kenmerk    true when this is a {@code :kenmerk} selector, false for a {@code .attribuut} selector
+ * @param kenmerk    true when this is a {@code :characteristic} selector, false for a {@code .attribuut} selector
  */
-public record Uitvoerselector(String objecttype, String lid, boolean kenmerk) {
+public record OutputSelector(String objectType, String member, boolean characteristic) {
 
-    /** Parse a selector, or null when it is neither an {@code Objecttype.attribuut} nor {@code Objecttype:kenmerk}. */
-    public static Uitvoerselector ontleed(String sel) {
+    /** Parse a selector, or null when it is neither an {@code Objecttype.attribuut} nor {@code Objecttype:characteristic}. */
+    public static OutputSelector parse(String sel) {
         if (sel == null) return null;
         int colon = sel.indexOf(':');
         int dot = sel.indexOf('.');
         // whichever separator comes FIRST decides the form; a ':' before any '.' is a kenmerk selector.
         if (colon >= 0 && (dot < 0 || colon < dot)) {
             String ot = sel.substring(0, colon).trim();
-            String lid = sel.substring(colon + 1).trim();
-            if (ot.isEmpty() || lid.isEmpty()) return null;
-            return new Uitvoerselector(ot, lid, true);
+            String member = sel.substring(colon + 1).trim();
+            if (ot.isEmpty() || member.isEmpty()) return null;
+            return new OutputSelector(ot, member, true);
         }
         if (dot >= 0) {
             String ot = sel.substring(0, dot).trim();
-            String lid = sel.substring(dot + 1).trim();
-            if (ot.isEmpty() || lid.isEmpty()) return null;
-            return new Uitvoerselector(ot, lid, false);
+            String member = sel.substring(dot + 1).trim();
+            if (ot.isEmpty() || member.isEmpty()) return null;
+            return new OutputSelector(ot, member, false);
         }
         return null;
     }

@@ -15,18 +15,18 @@ import java.util.Map;
  * Test fixtures for the vocabularies. {@link #GOLDEN}: uchar's golden {@code jutterswet-vocabulaires} (the
  * submodule), two vocabularies with a designation on every declaration, served with the descriptor under
  * {@code src/test/resources/vocabulaires/} (an entry point without and one with a default vocabulary).
- * {@link #DUBBELZINNIG}: own material in which names read as two declarations — {@code bedrag} is the vondstbedrag in
+ * {@link #AMBIGUOUS}: own material in which names read as two declarations — {@code bedrag} is the vondstbedrag in
  * {@code handboek} and the premiebedrag in {@code cgm}; {@code toeslag} is a canonical name and the {@code handboek}
  * designation of the basisbedrag; the value {@code hout} is canonical and the {@code handboek} designation of
  * {@code wrakhout} — and whose vocabularies are incomplete.
  */
-final class VocabulaireBron {
+final class VocabularySource {
 
-    private VocabulaireBron() {}
+    private VocabularySource() {}
 
-    static final Path GOLDEN = TokaBron.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires");
+    static final Path GOLDEN = TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires");
 
-    static final String DUBBELZINNIG = """
+    static final String AMBIGUOUS = """
             Vocabulaire handboek (taal: nl)
             Vocabulaire cgm
 
@@ -56,14 +56,14 @@ final class VocabulaireBron {
                     Het vondstbedrag van een Jutter moet ongelijk zijn aan het premiebedrag van de Jutter.
             """;
 
-    static final String DUBBELZINNIG_DESCRIPTOR = """
+    static final String AMBIGUOUS_DESCRIPTOR = """
             { "dienst": {"naam":"dubbelzinnig","versie":"1"},
               "entrypoints": [ { "naam":"uitkering","pad":"uitkering",
                 "scope": {"regelnamen": ["uitkering van een jutter", "houtjutter", "bedragen verschillen"]},
                 "invoer": ["Jutter"], "uitvoer": ["Jutter.uitkering", "Jutter.houtsoort", "Jutter:houtjutter"] } ],
               "parameters": {} }""";
 
-    static String bron() {
+    static String source() {
         try {
             return Files.readString(GOLDEN.resolve("bron.rgs"));
         } catch (IOException e) {
@@ -71,23 +71,23 @@ final class VocabulaireBron {
         }
     }
 
-    static String descriptorJson() { return KetenBron.lees("vocabulaires/jutterswet-vocabulaires.dienst.json"); }
+    static String descriptorJson() { return ChainSource.read("vocabularies/jutterswet-vocabulaires.dienst.json"); }
 
-    static RegelSpraakModel model() { return Resolver.resolve(bron()); }
+    static RegelSpraakModel model() { return Resolver.resolve(source()); }
 
-    static BeslisserKern kern() {
-        return BeslisserKern.bouw(descriptorJson(), Map.of("bron.rgs", bron()), KernConfig.strikt(),
+    static DecisionCore core() {
+        return DecisionCore.assemble(descriptorJson(), Map.of("bron.rgs", source()), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader());
     }
 
-    static BeslisserKern dubbelzinnig() {
-        return BeslisserKern.bouw(DUBBELZINNIG_DESCRIPTOR, Map.of("dubbelzinnig.rgs", DUBBELZINNIG),
-                KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
+    static DecisionCore ambiguous() {
+        return DecisionCore.assemble(AMBIGUOUS_DESCRIPTOR, Map.of("dubbelzinnig.rgs", AMBIGUOUS),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
     }
 
-    static JsonNode json(String tekst) {
+    static JsonNode json(String text) {
         try {
-            return DescriptorLoader.MAPPER.readTree(tekst);
+            return DescriptorLoader.MAPPER.readTree(text);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
@@ -119,7 +119,7 @@ final class VocabulaireBron {
                   "attributen": { "soort vondst": "bericht in een fles", "gewicht in kilogram": 0.40 } } ] }""";
 
     /** The same request with the names mixed: canonical, 'handboek' and 'cgm', a relation instead of a role. */
-    static final String CASE1_GEMENGD = """
+    static final String CASE1_MIXED = """
             { "parameters": { "PREMIE_TARIEF": 3 },
               "instanties": [
                 { "type": "JUTTER", "id": "J1", "attributen": { "NAAM": "Aukje" }, "rollen": { "vondsten": ["V1"] } },

@@ -3,18 +3,18 @@ package dev.uchar.regelspraak.toolchain.service;
 /**
  * A typed validation violation (a <i>schending</i>) — the single currency of every fail-fast check in the
  * service core. It carries the KIND of problem, a machine-usable FIELD PATH naming exactly what was wrong
- * ({@code "instanties[0].attributen.leeftijd"}, {@code "entrypoints[2].scope.regelnamen[0]"},
+ * ({@code "instanties[0].attributes.leeftijd"}, {@code "entrypoints[2].scope.ruleNames[0]"},
  * {@code "parameters.volwassenleeftijd"}), and a human-readable message. Fase 3 turns a request-mapping
- * violation into a 400 whose body names {@link #veld()}, and a startup (descriptor/marker) violation into a
+ * violation into a 400 whose body names {@link #field()}, and a startup (descriptor/marker) violation into a
  * refused start naming the offending value.
  *
  * @param soort   the category of violation
  * @param veld    the field path that located the problem (dot/bracket notation), never null (may be "")
  * @param bericht the human diagnostic, always naming the offending value
  */
-public record Schending(Soort soort, String veld, String bericht) {
+public record Violation(Kind kind, String field, String message) {
 
-    public enum Soort {
+    public enum Kind {
         /** A descriptor references a regel/regelgroep/objecttype/attribuut/kenmerk/parameter the model lacks. */
         ONBEKENDE_VERWIJZING,
         /** An in-scope construct is a marker (not lowered / overgeslagen) and markers are not allowed. */
@@ -34,7 +34,7 @@ public record Schending(Soort soort, String veld, String bericht) {
         /** A request or a descriptor entry point names a vocabulary the model does not declare. */
         ONBEKEND_VOCABULAIRE,
         /** A construct the service core deliberately does not support (dimensie/tijdlijn-valued input), or a detail of
-         *  the session a core started without detail does not give ({@link KernConfig#detail()}). */
+         *  the session a core started without detail does not give ({@link CoreConfig#detail()}). */
         NIET_ONDERSTEUND,
         /** The entrypoint declares an invoer objecttype but the request supplies no instance of it. The invoer
          *  list is the declared contract; an absent required instance can never fire meaningfully (the scoped
@@ -49,11 +49,11 @@ public record Schending(Soort soort, String veld, String bericht) {
         MALFORMED
     }
 
-    public static Schending van(Soort soort, String veld, String bericht) {
-        return new Schending(soort, veld == null ? "" : veld, bericht);
+    public static Violation van(Kind kind, String field, String message) {
+        return new Violation(kind, field == null ? "" : field, message);
     }
 
     @Override public String toString() {
-        return soort + (veld.isEmpty() ? "" : " [" + veld + "]") + ": " + bericht;
+        return kind + (field.isEmpty() ? "" : " [" + field + "]") + ": " + message;
     }
 }

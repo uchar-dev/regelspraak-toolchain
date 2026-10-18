@@ -17,7 +17,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * designation that differs only as uchar does not tell declared names apart ({@code Namen.norm}), and a value without a
  * designation, stay as they were; the canonical choice does not change.
  */
-class UitlegCodeMetBetekenisTest {
+class UitlegCodeWithMeaningTest {
 
     private static final String DOCUMENT = """
             Vocabulaire cgm (taal: nl)
@@ -49,16 +49,16 @@ class UitlegCodeMetBetekenisTest {
             - U3 is niet beëindigd door inkomsten
             """;
 
-    private static List<String> uitleg(String vocabulaire) {
-        List<ScenarioRunner.Uitgelegd> u = ScenarioRunner.runMetUitleg(ScenarioResolver.resolve(DOCUMENT), vocabulaire);
+    private static List<String> uitleg(String vocabulary) {
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(ScenarioResolver.resolve(DOCUMENT), vocabulary);
         assertEquals(1, u.size());
-        assertEquals(Status.PASS, u.get(0).resultaat().status(), () -> u.get(0).resultaat().diagnose());
-        assertNull(u.get(0).uitlegFout(), u.get(0)::uitlegFout);
+        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnose());
+        assertNull(u.get(0).uitlegError(), u.get(0)::uitlegError);
         return u.get(0).uitleg();
     }
 
     @Test
-    void een_code_staat_met_haar_waarde_erachter() {
+    void a_code_stands_with_its_value_behind_it() {
         assertEquals(List.of(
                 "U1 is beëindigd door inkomsten, omdat zijn reden (01 · Hoogte inkomsten uit verzekerde arbeid)"
                         + " is gelijk aan 01 · Hoogte inkomsten uit verzekerde arbeid",
@@ -70,7 +70,7 @@ class UitlegCodeMetBetekenisTest {
     }
 
     @Test
-    void canoniek_noemt_alleen_de_waarde() {
+    void canonical_names_only_the_value() {
         assertEquals(List.of(
                 "U1 is beëindigd door inkomsten, omdat zijn reden (Hoogte inkomsten uit verzekerde arbeid)"
                         + " is gelijk aan Hoogte inkomsten uit verzekerde arbeid",
@@ -78,6 +78,6 @@ class UitlegCodeMetBetekenisTest {
                         + " is gelijk aan Hoogte inkomsten uit verzekerde arbeid",
                 "U3 is niet beëindigd door inkomsten, want niet geldt: zijn reden (Onbekend)"
                         + " is gelijk aan Hoogte inkomsten uit verzekerde arbeid"),
-                uitleg(Naamgeving.CANONIEK));
+                uitleg(Naming.CANONICAL));
     }
 }

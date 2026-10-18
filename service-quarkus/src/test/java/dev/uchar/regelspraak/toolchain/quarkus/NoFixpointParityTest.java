@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
-import dev.uchar.regelspraak.toolchain.service.KernConfig;
-import dev.uchar.regelspraak.toolchain.service.TokaBron;
-import dev.uchar.regelspraak.toolchain.service.http.DienstHttp;
+import dev.uchar.regelspraak.toolchain.service.DecisionCore;
+import dev.uchar.regelspraak.toolchain.service.CoreConfig;
+import dev.uchar.regelspraak.toolchain.service.TokaSource;
+import dev.uchar.regelspraak.toolchain.service.http.ServiceHttp;
 
 import jakarta.ws.rs.core.Response;
 
@@ -28,18 +28,18 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The Quarkus adapter and {@code DienstHttp} over one kern answer a request whose session reaches no fixpoint with the
+ * The Quarkus adapter and {@code ServiceHttp} over one kern answer a request whose session reaches no fixpoint with the
  * same 422 and the same body, byte for byte, without and with the detail flags: uchar's red golden
  * {@code jutterswet-budgetgrens-over}, whose chain from a Wachter of rang 1 passes uchar's creation budget. A plain
- * JUnit test, as {@link FoutParityTest} and {@link DetailParityTest}: the resource is called directly with the kern
- * set, and {@code DienstHttp} is asked over HTTP on an ephemeral port.
+ * JUnit test, as {@link ErrorParityTest} and {@link DetailParityTest}: the resource is called directly with the kern
+ * set, and {@code ServiceHttp} is asked over HTTP on an ephemeral port.
  */
-class GeenFixpuntParityTest {
+class NoFixpointParityTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true);
 
-    private static final Path ROOD = TokaBron.REPO.resolve("uchar/corpus/rood/jutterswet-budgetgrens-over");
+    private static final Path RED = TokaSource.REPO.resolve("uchar/corpus/rood/jutterswet-budgetgrens-over");
     private static final String DESCRIPTOR = """
             { "dienst": {"naam":"estafette","versie":"1"},
               "entrypoints": [ { "naam":"estafette","pad":"estafette",
@@ -47,51 +47,51 @@ class GeenFixpuntParityTest {
                                          "tweede keten aan het plafond", "werf de lange keten"]},
                 "invoer": ["Wachter"], "uitvoer": ["Wachter.opvolgerrang"] } ],
               "parameters": {} }""";
-    private static final String VERZOEK =
+    private static final String REQUEST =
             "{\"instanties\":[{\"type\":\"Wachter\",\"id\":\"W1\",\"attributen\":{\"rang\":1,\"ketennummer\":1}}]}";
 
-    private static BeslisserKern kern;
-    private static DienstHttp dienst;
+    private static DecisionCore core;
+    private static ServiceHttp service;
     /** The sentence uchar pins for the Drools branch on this chain, in its own red case. */
     private static String fragment;
 
     @BeforeAll
-    static void bouw() throws Exception {
-        kern = BeslisserKern.bouw(DESCRIPTOR, Map.of("bron.rgs", Files.readString(ROOD.resolve("bron.rgs"))),
-                KernConfig.strikt().metDetail(), Thread.currentThread().getContextClassLoader());
-        dienst = DienstHttp.bind(kern, "127.0.0.1", 0).start();
-        fragment = MAPPER.readTree(Files.readString(ROOD.resolve("case1.json"))).at("/expectedFault/drools").asText();
+    static void assemble() throws Exception {
+        core = DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", Files.readString(RED.resolve("bron.rgs"))),
+                CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
+        service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
+        fragment = MAPPER.readTree(Files.readString(RED.resolve("case1.json"))).at("/expectedFault/drools").asText();
     }
 
     @AfterAll
     static void stop() {
-        if (dienst != null) dienst.stop(0);
+        if (service != null) service.stop(0);
     }
 
     @Test
-    void zonder_vlag_dezelfde_422() throws Exception {
-        JsonNode body = vergelijk(null, null, null, "");
+    void without_flag_the_same_422() throws Exception {
+        JsonNode body = compare(null, null, null, "");
         assertEquals("GEEN_FIXPUNT", body.path("status").asText(), body.toString());
         assertTrue(body.path("fout").asText().startsWith(fragment), body.toString());
     }
 
     @Test
-    void met_de_detailvlaggen_dezelfde_422() throws Exception {
-        JsonNode body = vergelijk("true", "true", "true", "?trace=true&dekking=true&fixpunt=true");
+    void with_the_detail_flags_the_same_422() throws Exception {
+        JsonNode body = compare("true", "true", "true", "?trace=true&dekking=true&fixpunt=true");
         assertEquals("GEEN_FIXPUNT", body.path("status").asText(), body.toString());
         assertTrue(body.path("trace").size() > 0, body.toString());
         assertEquals(body.path("fout"), body.path("fixpuntFout"), body.toString());
     }
 
     /** The same POST to both adapters: a 422 from each and the same body, which it returns. */
-    private static JsonNode vergelijk(String trace, String dekking, String fixpunt, String query) throws Exception {
-        BeslisResource resource = new BeslisResource();
-        resource.kern = kern;
-        Response quarkus = resource.verwerk("estafette", null, null, null, trace, dekking, fixpunt, VERZOEK);
+    private static JsonNode compare(String trace, String coverage, String fixpoint, String query) throws Exception {
+        DecideResource resource = new DecideResource();
+        resource.core = core;
+        Response quarkus = resource.process("estafette", null, null, null, trace, coverage, fixpoint, REQUEST);
         HttpResponse<String> jdk = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
-                        URI.create("http://127.0.0.1:" + dienst.poort() + "/estafette" + query))
+                        URI.create("http://127.0.0.1:" + service.port() + "/estafette" + query))
                 .header("Content-Type", "application/json")
-                .POST(HttpRequest.BodyPublishers.ofString(VERZOEK, StandardCharsets.UTF_8)).build(),
+                .POST(HttpRequest.BodyPublishers.ofString(REQUEST, StandardCharsets.UTF_8)).build(),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
         assertEquals(422, jdk.statusCode(), jdk.body());
         assertEquals(422, quarkus.getStatus(), String.valueOf(quarkus.getEntity()));

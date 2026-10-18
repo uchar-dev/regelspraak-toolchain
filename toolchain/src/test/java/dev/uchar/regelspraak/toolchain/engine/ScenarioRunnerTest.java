@@ -17,14 +17,14 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class ScenarioRunnerTest {
 
-    private static ScenarioResultaat één(String bron) {
-        List<ScenarioResultaat> r = ScenarioRunner.run(bron);
+    private static ScenarioResultaat één(String source) {
+        List<ScenarioResultaat> r = ScenarioRunner.run(source);
         assertEquals(1, r.size(), () -> "verwachtte precies één scenario, kreeg " + r.size());
         return r.get(0);
     }
 
     /** The contract's worked example, shrunk: heffing = afstand × tarief = 200 × 0,30 = 60,00 EUR. */
-    @Test void attribuutwaarde_en_kenmerk_en_consistent() {
+    @Test void attribute_value_and_characteristic_and_consistent() {
         ScenarioResultaat r = één("""
             Objecttype de Vlucht (mv: Vluchten)
                 de afstand tot bestemming Numeriek (positief geheel getal) met eenheid km;
@@ -56,7 +56,7 @@ class ScenarioRunnerTest {
      *  (uchar's bean model since 2026-09-28), and the role writer finds it along the value's class line. Before that
      *  lookup the session failed with "kon setVondst(Wrakvondst) niet aanroepen op Melding" while uchar's own replay
      *  played the same case. */
-    @Test void subtype_in_de_rol_van_zijn_supertype() {
+    @Test void subtype_in_the_role_of_its_supertype() {
         ScenarioResultaat r = één("""
             Objecttype de Vondst (mv: Vondsten)
                 de waarde Numeriek (geheel getal);
@@ -86,8 +86,8 @@ class ScenarioRunnerTest {
     /** The explanation of a played scenario: its own session fires what uchar's replay reported, and the verbaliser
      *  justifies the characteristic with the operand values the condition read. The rule with a parameter shows that
      *  the session carries the situation's parameters as globals. */
-    @Test void uitleg_van_een_gespeeld_scenario() {
-        List<ScenarioRunner.Uitgelegd> u = ScenarioRunner.runMetUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
+    @Test void uitleg_of_a_played_scenario() {
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
             Objecttype de Vlucht (mv: Vluchten)
                 de afstand tot bestemming Numeriek (positief geheel getal) met eenheid km;
                 de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
@@ -111,18 +111,18 @@ class ScenarioRunnerTest {
             - V1 is een belast
             """));
         assertEquals(1, u.size());
-        assertEquals(Status.PASS, u.get(0).resultaat().status(), () -> u.get(0).resultaat().diagnose());
-        assertNull(u.get(0).uitlegFout(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegFout());
+        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnose());
+        assertNull(u.get(0).uitlegError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegError());
         assertEquals(1, u.get(0).uitleg().size(), u.get(0).uitleg()::toString);
-        String zin = u.get(0).uitleg().get(0);
-        assertTrue(zin.startsWith("V1 is belast, omdat") && zin.contains("200"), zin);
+        String sentence = u.get(0).uitleg().get(0);
+        assertTrue(sentence.startsWith("V1 is belast, omdat") && sentence.contains("200"), sentence);
     }
 
     /** The explanation of a characteristic whose condition reads a derived value. The session of the explanation fills,
      *  fires and writes back through uchar's entry, so it fires what uchar's replay reported, row for row under the
      *  name of the form, and the verbaliser reads the derived retourafstand on the bean. */
-    @Test void uitleg_leest_een_afgeleide_waarde_zonder_afwijkend_spoor() {
-        List<ScenarioRunner.Uitgelegd> u = ScenarioRunner.runMetUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
+    @Test void uitleg_reads_a_derived_value_without_deviating_trace() {
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
             Objecttype de Vlucht (mv: Vluchten)
                 de afstand tot bestemming Numeriek (positief geheel getal);
                 de retourafstand Numeriek (positief geheel getal);
@@ -144,11 +144,11 @@ class ScenarioRunnerTest {
             - V1 is een belast
             """));
         assertEquals(1, u.size());
-        ScenarioResultaat r = u.get(0).resultaat();
+        ScenarioResultaat r = u.get(0).result();
         assertEquals(Status.PASS, r.status(), r::diagnose);
         assertEquals(List.of("retourafstandregel", "belastregel"),
                 r.trace().vuringen().stream().map(ScenarioResultaat.Vuring::regel).toList(), r.trace()::toString);
-        assertNull(u.get(0).uitlegFout(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegFout());
+        assertNull(u.get(0).uitlegError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegError());
         assertEquals(List.of("V1 is belast, omdat de retourafstand van de Vlucht (400) is groter dan 300"),
                 u.get(0).uitleg());
     }
@@ -158,8 +158,8 @@ class ScenarioRunnerTest {
      *  of W's types, and so does the explanation's session, which shares the role writer with the service: it reads
      *  V's maatwaarde as 5 and gives its explanation. Asked of W's own type alone, the session read V's maatwaarde
      *  empty, and the explanation was withheld. */
-    @Test void uitleg_met_een_wederkerige_rol_op_een_subtype_wordt_niet_ingehouden() {
-        List<ScenarioRunner.Uitgelegd> u = ScenarioRunner.runMetUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
+    @Test void uitleg_with_a_reciprocal_role_on_a_subtype_is_not_withheld() {
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve("""
             Objecttype de Vondst (mv: Vondsten)
                 de waarde Numeriek (geheel getal);
                 de maatwaarde Numeriek (geheel getal);
@@ -182,12 +182,12 @@ class ScenarioRunnerTest {
             - de maatwaarde van W is 2
             """));
         assertEquals(1, u.size());
-        assertEquals(Status.PASS, u.get(0).resultaat().status(), () -> u.get(0).resultaat().diagnose());
-        assertNull(u.get(0).uitlegFout(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegFout());
+        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnose());
+        assertNull(u.get(0).uitlegError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).uitlegError());
     }
 
     /** A leeg expectation: a rule whose guard does not match leaves the doel unset → the attribuut reads leeg. */
-    @Test void leeg_verwachting() {
+    @Test void empty_expectation() {
         ScenarioResultaat r = één("""
             Objecttype de Vlucht (mv: Vluchten)
                 de afstand tot bestemming Numeriek (positief geheel getal) met eenheid km;
@@ -209,7 +209,7 @@ class ScenarioRunnerTest {
     }
 
     /** A §9.5 consistency rule (a "moet"-vergelijking): the two ports differ → CONSISTENT; equal → INCONSISTENT. */
-    @Test void consistent_en_inconsistent_paar() {
+    @Test void consistent_and_inconsistent_pair() {
         String model = """
             Objecttype de Vlucht (mv: Vluchten)
                 de vertrekcode Tekst;
@@ -233,7 +233,7 @@ class ScenarioRunnerTest {
         assertEquals(Status.PASS, ok.status(), () -> "verwacht PASS (AMS != BRU): " + ok.diagnose() + " / " + ok.verwachtingen());
 
         // inconsistent: AMS == AMS (a rondvlucht)
-        ScenarioResultaat fout = één(model + """
+        ScenarioResultaat error = één(model + """
             Situatie rondvlucht:
             een Vlucht V1
             - de vertrekcode is "AMS"
@@ -244,13 +244,13 @@ class ScenarioRunnerTest {
             Met als verwacht resultaat:
             - de gegevens zijn inconsistent
             """);
-        assertEquals(Status.PASS, fout.status(), () -> "verwacht PASS (AMS == AMS is inconsistent): "
-                + fout.diagnose() + " / " + fout.verwachtingen());
+        assertEquals(Status.PASS, error.status(), () -> "verwacht PASS (AMS == AMS is inconsistent): "
+                + error.diagnose() + " / " + error.verwachtingen());
     }
 
     /** A to-many aggregation (som van alle deelnemers), wired from the MANY side's to-one reference: each
      *  Deelnemer's {@code contingent} points at C1, and the som-van-alle over that rol totals 30 + 12 = 42. */
-    @Test void naar_veel_rol() {
+    @Test void to_many_role() {
         ScenarioResultaat r = één("""
             Objecttype het Contingent (mv: Contingenten)
                 de totaal Numeriek (geheel getal);
@@ -284,7 +284,7 @@ class ScenarioRunnerTest {
 
     /** The to-many {@code zijn}-list form on the ONE side: {@code de deelnemer zijn D1 en D2} — the runner wires
      *  each MANY-side target's reverse to-one reference back to the ONE-side subject. Same total 42. */
-    @Test void naar_veel_rol_zijn_lijst() {
+    @Test void to_many_role_its_list() {
         ScenarioResultaat r = één("""
             Objecttype het Contingent (mv: Contingenten)
                 de totaal Numeriek (geheel getal);
@@ -343,7 +343,7 @@ class ScenarioRunnerTest {
     /** A §4.2 geldig-vanaf rule: the peildatum sets the rekendatum so the version window is open. The scenario is
      *  not named "met peildatum": in uchar's grammar that phrase is the header token that sets the peildatum, and a
      *  scenario name cannot contain it. */
-    @Test void peildatum_geldig_vanaf() {
+    @Test void as_of_date_valid_from() {
         ScenarioResultaat r = één("""
             Objecttype de Vlucht (mv: Vluchten)
                 de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
@@ -366,7 +366,7 @@ class ScenarioRunnerTest {
 
     /** A LOWERED rule whose emitted DRL carries a Tekst literal that CONTAINS the marker sentinel ("/* TODO") must
      *  NOT be mistaken for a marker and stripped — the strip blanks string literals first (as the manifest does). */
-    @Test void tekstliteral_met_marker_sentinel_wordt_niet_gestript() {
+    @Test void text_literal_with_marker_sentinel_is_not_stripped() {
         ScenarioResultaat r = één("""
             Objecttype de Vlucht (mv: Vluchten)
                 de omschrijving Tekst;

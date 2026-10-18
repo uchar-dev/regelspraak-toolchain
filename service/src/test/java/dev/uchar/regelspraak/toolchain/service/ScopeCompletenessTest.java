@@ -12,17 +12,17 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Scope-completeness validation at service build (the systemic defect: a descriptor allow-list scopes rules
  * without transitive expansion, so a scoped rule whose condition reads a kenmerk that ONLY a non-scoped rule
  * assigns evaluates that kenmerk silently as false — semantically diverging from the source concatenation the
- * scenariotoetsen run on). {@link BeslisserKern#bouw} must refuse startup naming the gap, unless the entry point
- * declares the consumed element as an {@code invoerElementen} caller-input or opts the check out entirely.
+ * scenariotoetsen run on). {@link DecisionCore#assemble} must refuse startup naming the gap, unless the entry point
+ * declares the consumed element as an {@code inputElements} caller-input or opts the check out entirely.
  *
  * <p>The model is self-contained (its own Objecttype), so the core compiles its beans in memory and needs no
  * external fact classes.
  */
-class ScopeVolledigheidTest {
+class ScopeCompletenessTest {
 
     /** Two rules: "bepaal volwassen" ASSIGNS the kenmerk 'volwassen'; "bepaal korting" READS it in its
      *  condition and writes 'korting'. Scoping only the reader leaves the kenmerk's sole producer out of scope. */
-    private static final String BRON = """
+    private static final String SOURCE = """
         Objecttype de Persoon (mv: Personen)
             de leeftijd Numeriek (geheel getal);
             de korting Numeriek (getal met 2 decimalen) met eenheid EUR;
@@ -35,9 +35,9 @@ class ScopeVolledigheidTest {
         De korting van een Persoon moet gesteld worden op 5,00 EUR indien de Persoon volwassen is.
         """;
 
-    private static Map<String, String> bron() {
+    private static Map<String, String> source() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("scope.rgs", BRON);
+        m.put("scope.rgs", SOURCE);
         return m;
     }
 
@@ -51,20 +51,20 @@ class ScopeVolledigheidTest {
     }
 
     @Test
-    void producent_buiten_scope_weigert_start_en_noemt_het_kenmerk() {
-        DienstFout f = assertThrows(DienstFout.class, () -> BeslisserKern.bouw(
-                descriptor(""), bron(), KernConfig.strikt(),
+    void producer_outside_scope_refuses_start_and_names_the_characteristic() {
+        ServiceError f = assertThrows(ServiceError.class, () -> DecisionCore.assemble(
+                descriptor(""), source(), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader()));
-        assertTrue(f.schendingen().stream().anyMatch(s -> s.soort() == Schending.Soort.SCOPE_ONVOLLEDIG),
-                f.getMessage() + " / " + f.schendingen());
-        assertTrue(f.schendingen().stream().anyMatch(s -> s.bericht().contains("volwassen")),
-                f.schendingen().toString());
-        assertTrue(f.schendingen().stream().anyMatch(s -> s.bericht().contains("bepaal volwassen")),
-                f.schendingen().toString());
+        assertTrue(f.violations().stream().anyMatch(s -> s.kind() == Violation.Kind.SCOPE_ONVOLLEDIG),
+                f.getMessage() + " / " + f.violations());
+        assertTrue(f.violations().stream().anyMatch(s -> s.message().contains("volwassen")),
+                f.violations().toString());
+        assertTrue(f.violations().stream().anyMatch(s -> s.message().contains("bepaal volwassen")),
+                f.violations().toString());
     }
 
     @Test
-    void producent_in_scope_start_schoon() {
+    void producer_in_scope_starts_clean() {
         // scope BOTH rules -> the kenmerk's producer is in scope -> no violation.
         String d = """
             { "dienst": {"naam":"scope-ok","versie":"1"},
@@ -72,17 +72,17 @@ class ScopeVolledigheidTest {
                 "scope": {"regelnamen": ["bepaal korting", "bepaal volwassen"]},
                 "invoer": ["Persoon"], "uitvoer": ["Persoon.korting"] } ],
               "parameters": {} }""";
-        BeslisserKern kern = BeslisserKern.bouw(d, bron(), KernConfig.strikt(),
+        DecisionCore core = DecisionCore.assemble(d, source(), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader());
-        assertTrue(kern.entrypoint("bepaal-korting") != null);
+        assertTrue(core.entrypoint("bepaal-korting") != null);
     }
 
     @Test
-    void invoerElement_declaratie_start_schoon() {
+    void input_element_declaration_starts_clean() {
         // declare the consumed kenmerk as a caller-supplied invoerElement -> the missing producer is intentional.
-        BeslisserKern kern = BeslisserKern.bouw(
-                descriptor(", \"invoerElementen\": [\"Persoon:volwassen\"]"), bron(),
-                KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
-        assertTrue(kern.entrypoint("bepaal-korting") != null);
+        DecisionCore core = DecisionCore.assemble(
+                descriptor(", \"invoerElementen\": [\"Persoon:volwassen\"]"), source(),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        assertTrue(core.entrypoint("bepaal-korting") != null);
     }
 }

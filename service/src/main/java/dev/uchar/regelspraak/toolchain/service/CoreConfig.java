@@ -13,14 +13,14 @@ package dev.uchar.regelspraak.toolchain.service;
  *                     ({@code fixpunt}). Off by default: they show every intermediate value, where the answer gives the
  *                     selected {@code uitvoer} alone, so a request that asks them of a core started without is a 400.
  */
-public record KernConfig(boolean allowMarkers, boolean detail) {
+public record CoreConfig(boolean allowMarkers, boolean detail) {
 
     /** The strict default: markers refuse startup. */
-    public static KernConfig strikt() { return new KernConfig(false, false); }
+    public static CoreConfig strict() { return new CoreConfig(false, false); }
 
     /** The permissive posture: start with markers, expose them. */
-    public static KernConfig metMarkers() { return new KernConfig(true, false); }
+    public static CoreConfig withMarkers() { return new CoreConfig(true, false); }
 
     /** This configuration with the details of a session on request. */
-    public KernConfig metDetail() { return new KernConfig(allowMarkers, true); }
+    public CoreConfig withDetail() { return new CoreConfig(allowMarkers, true); }
 }

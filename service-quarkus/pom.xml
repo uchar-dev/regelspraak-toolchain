@@ -14,8 +14,8 @@
   <name>RegelSpraak decision service, Quarkus HTTP adapter</name>
 
   <!--
-    A Quarkus HTTP adapter over the framework-agnostic service core (BeslisserKern, reused unchanged):
-    health/readiness probes, config injection and, host-side, a native image. The JDK-HttpServer DienstHttp
+    A Quarkus HTTP adapter over the framework-agnostic service core (DecisionCore, reused unchanged):
+    health/readiness probes, config injection and, host-side, a native image. The JDK-HttpServer ServiceHttp
     stays the default delivery.
 
     The Quarkus BOM is imported here only. Its Jackson (2.17 at Quarkus 3.15) would replace the Jackson uchar
@@ -62,7 +62,7 @@
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-smallrye-health</artifactId>
     </dependency>
-    <!-- ArC (CDI) for the @ApplicationScoped producer that builds the BeslisserKern singleton. -->
+    <!-- ArC (CDI) for the @ApplicationScoped producer that builds the DecisionCore singleton. -->
     <dependency>
       <groupId>io.quarkus</groupId>
       <artifactId>quarkus-arc</artifactId>

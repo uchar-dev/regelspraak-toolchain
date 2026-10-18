@@ -14,155 +14,155 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The request reader of the service ({@link NaamLezer} through {@link BeslisserKern#verwerk}): every name canonical or
+ * The request reader of the service ({@link NameReader} through {@link DecisionCore#process}): every name canonical or
  * a designation in any vocabulary, mixed within one request; a name that reads as two declarations refused with both
  * readings; the input vocabulary pinned as the way out; an unknown vocabulary refused with the declared ones. The
  * golden {@code jutterswet-vocabulaires} gives the expectations of its case1 (V1 premie 9.00, J1 vondstbedrag 12.60,
- * J2 1.20); the own material {@link VocabulaireBron#DUBBELZINNIG} gives the ambiguities.
+ * J2 1.20); the own material {@link VocabularySource#AMBIGUOUS} gives the ambiguities.
  */
-class NaamLezerTest {
+class NameReaderTest {
 
-    private static BeslisserKern GOLDEN;
-    private static BeslisserKern DUBBELZINNIG;
+    private static DecisionCore GOLDEN;
+    private static DecisionCore AMBIGUOUS;
 
     @BeforeAll
-    static void bouw() {
-        GOLDEN = VocabulaireBron.kern();
-        DUBBELZINNIG = VocabulaireBron.dubbelzinnig();
+    static void assemble() {
+        GOLDEN = VocabularySource.core();
+        AMBIGUOUS = VocabularySource.ambiguous();
     }
 
-    private static JsonNode instantie(ObjectNode antwoord, String id) {
-        for (JsonNode i : antwoord.get("instanties")) if (id.equals(i.get("id").asText())) return i;
-        throw new AssertionError("geen instantie " + id + " in " + antwoord);
+    private static JsonNode instance(ObjectNode answer, String id) {
+        for (JsonNode i : answer.get("instanties")) if (id.equals(i.get("id").asText())) return i;
+        throw new AssertionError("geen instantie " + id + " in " + answer);
     }
 
-    private static void geeftCase1(ObjectNode antwoord) {
-        assertEquals(0, new BigDecimal("9.00").compareTo(instantie(antwoord, "V1").at("/attributen/premie").decimalValue()),
-                antwoord.toString());
+    private static void givesCase1(ObjectNode answer) {
+        assertEquals(0, new BigDecimal("9.00").compareTo(instance(answer, "V1").at("/attributen/premie").decimalValue()),
+                answer.toString());
         assertEquals(0, new BigDecimal("12.60").compareTo(
-                instantie(antwoord, "J1").at("/attributen/vondstbedrag").decimalValue()), antwoord.toString());
+                instance(answer, "J1").at("/attributen/vondstbedrag").decimalValue()), answer.toString());
         assertEquals(0, new BigDecimal("1.20").compareTo(
-                instantie(antwoord, "J2").at("/attributen/vondstbedrag").decimalValue()), antwoord.toString());
-        assertTrue(instantie(antwoord, "V1").at("/kenmerken/waardevol").asBoolean(), antwoord.toString());
-        assertTrue(instantie(antwoord, "J1").at("/kenmerken/premiewaardig").asBoolean(), antwoord.toString());
+                instance(answer, "J2").at("/attributen/vondstbedrag").decimalValue()), answer.toString());
+        assertTrue(instance(answer, "V1").at("/kenmerken/waardevol").asBoolean(), answer.toString());
+        assertTrue(instance(answer, "J1").at("/kenmerken/premiewaardig").asBoolean(), answer.toString());
     }
 
-    private static Schending enige(DienstFout f) {
-        assertEquals(1, f.schendingen().size(), f.getMessage());
-        return f.schendingen().get(0);
-    }
-
-    @Test
-    void elke_naam_in_een_vocabulaire_wordt_gelezen() {
-        geeftCase1(GOLDEN.verwerk("premie", VocabulaireBron.json(VocabulaireBron.CASE1_HANDBOEK)));
+    private static Violation only(ServiceError f) {
+        assertEquals(1, f.violations().size(), f.getMessage());
+        return f.violations().get(0);
     }
 
     @Test
-    void een_gemengde_spelling_met_een_relatie_wordt_gelezen() {
-        geeftCase1(GOLDEN.verwerk("premie", VocabulaireBron.json(VocabulaireBron.CASE1_GEMENGD)));
+    void every_name_in_a_vocabulary_is_read() {
+        givesCase1(GOLDEN.process("premie", VocabularySource.json(VocabularySource.CASE1_HANDBOEK)));
     }
 
     @Test
-    void een_canoniek_verzoek_wordt_gelezen_als_altijd() {
-        geeftCase1(GOLDEN.verwerk("premie", VocabulaireBron.json(VocabulaireBron.CASE1)));
+    void a_mixed_spelling_with_a_relation_is_read() {
+        givesCase1(GOLDEN.process("premie", VocabularySource.json(VocabularySource.CASE1_MIXED)));
     }
 
     @Test
-    void een_naam_die_in_twee_vocabulaires_twee_declaraties_noemt_is_dubbelzinnig() {
-        DienstFout f = assertThrows(DienstFout.class, () -> DUBBELZINNIG.verwerk("uitkering", VocabulaireBron.json("""
+    void a_canonical_request_is_read_as_always() {
+        givesCase1(GOLDEN.process("premie", VocabularySource.json(VocabularySource.CASE1)));
+    }
+
+    @Test
+    void a_name_that_names_two_declarations_in_two_vocabularies_is_ambiguous() {
+        ServiceError f = assertThrows(ServiceError.class, () -> AMBIGUOUS.process("uitkering", VocabularySource.json("""
             { "instanties": [ { "type": "Jutter", "id": "J1", "attributen": { "bedrag": 10 } } ] }""")));
-        Schending s = enige(f);
-        assertEquals(Schending.Soort.DUBBELZINNIGE_NAAM, s.soort());
-        assertEquals("instanties[0].attributen.bedrag", s.veld());
+        Violation s = only(f);
+        assertEquals(Violation.Kind.DUBBELZINNIGE_NAAM, s.kind());
+        assertEquals("instanties[0].attributen.bedrag", s.field());
         assertEquals("de naam 'bedrag' is dubbelzinnig: in het vocabulaire 'handboek' het attribuut 'vondstbedrag' van"
                 + " 'Jutter', in het vocabulaire 'cgm' het attribuut 'premiebedrag' van 'Jutter'; zet het vocabulaire"
-                + " erbij met de queryparameter invoervocabulaire (handboek of cgm)", s.bericht());
+                + " erbij met de queryparameter invoervocabulaire (handboek of cgm)", s.message());
     }
 
     @Test
-    void een_benaming_tegenover_een_canonieke_naam_is_dubbelzinnig() {
-        DienstFout f = assertThrows(DienstFout.class, () -> DUBBELZINNIG.verwerk("uitkering", VocabulaireBron.json("""
+    void a_designation_opposite_a_canonical_name_is_ambiguous() {
+        ServiceError f = assertThrows(ServiceError.class, () -> AMBIGUOUS.process("uitkering", VocabularySource.json("""
             { "instanties": [ { "type": "Jutter", "id": "J1", "attributen": { "toeslag": 10, "houtsoort": "hout" } } ] }""")));
-        assertEquals(2, f.schendingen().size(), f.getMessage());
+        assertEquals(2, f.violations().size(), f.getMessage());
         // cgm gives the toeslag no designation, so there its effective name is the canonical one
         assertEquals("de naam 'toeslag' is dubbelzinnig: als canonieke naam en in het vocabulaire 'cgm' het attribuut"
                 + " 'toeslag' van 'Jutter', in het vocabulaire 'handboek' het attribuut 'basisbedrag' van 'Jutter'; zet"
                 + " het vocabulaire erbij met de queryparameter invoervocabulaire (canoniek, cgm of handboek)",
-                f.schendingen().get(0).bericht());
-        assertEquals(Schending.Soort.DUBBELZINNIGE_NAAM, f.schendingen().get(1).soort());
-        assertEquals("instanties[0].attributen.houtsoort", f.schendingen().get(1).veld());
+                f.violations().get(0).message());
+        assertEquals(Violation.Kind.DUBBELZINNIGE_NAAM, f.violations().get(1).kind());
+        assertEquals("instanties[0].attributen.houtsoort", f.violations().get(1).field());
         assertEquals("de naam 'hout' is dubbelzinnig: als canonieke naam en in het vocabulaire 'cgm' de waarde 'hout'"
                 + " van domein 'Houtsoort', in het vocabulaire 'handboek' de waarde 'wrakhout' van domein 'Houtsoort';"
                 + " zet het vocabulaire erbij met de queryparameter invoervocabulaire (canoniek, cgm of handboek)",
-                f.schendingen().get(1).bericht());
+                f.violations().get(1).message());
     }
 
     @Test
-    void het_vastgezette_invoervocabulaire_beslist() {
-        String verzoek = """
+    void the_fixed_invoervocabulaire_decides() {
+        String request = """
             { "instanties": [ { "type": "Jutter", "id": "J1",
                 "attributen": { "bedrag": 10, "premiebedrag": 2.5, "toeslag": 1, "bijslag": 0.25, "houtsoort": "hout" } } ] }""";
-        ObjectNode handboek = DUBBELZINNIG.verwerk("uitkering", VocabulaireBron.json(verzoek),
-                new VerzoekOpties(false, null, "handboek"));
-        JsonNode j1 = instantie(handboek, "J1");
+        ObjectNode handboek = AMBIGUOUS.process("uitkering", VocabularySource.json(request),
+                new RequestOptions(false, null, "handboek"));
+        JsonNode j1 = instance(handboek, "J1");
         assertEquals(0, new BigDecimal("13.75").compareTo(j1.at("/attributen/uitkering").decimalValue()), j1.toString());
         assertEquals("wrakhout", j1.at("/attributen/houtsoort").asText(), "'hout' is in het handboek de wrakhout");
         assertTrue(j1.at("/kenmerken/houtjutter").asBoolean(), j1.toString());
 
-        ObjectNode canoniek = DUBBELZINNIG.verwerk("uitkering", VocabulaireBron.json("""
+        ObjectNode canonical = AMBIGUOUS.process("uitkering", VocabularySource.json("""
             { "instanties": [ { "type": "Jutter", "id": "J1",
                 "attributen": { "vondstbedrag": 1, "premiebedrag": 2, "basisbedrag": 3, "toeslag": 4, "houtsoort": "hout" } } ] }"""),
-                new VerzoekOpties(false, null, "canoniek"));
-        assertEquals(0, new BigDecimal("10").compareTo(instantie(canoniek, "J1").at("/attributen/uitkering").decimalValue()));
-        assertEquals("hout", instantie(canoniek, "J1").at("/attributen/houtsoort").asText());
+                new RequestOptions(false, null, "canoniek"));
+        assertEquals(0, new BigDecimal("10").compareTo(instance(canonical, "J1").at("/attributen/uitkering").decimalValue()));
+        assertEquals("hout", instance(canonical, "J1").at("/attributen/houtsoort").asText());
     }
 
     @Test
-    void onder_een_vastgezet_vocabulaire_is_een_andere_spelling_onbekend() {
-        DienstFout f = assertThrows(DienstFout.class, () -> GOLDEN.verwerk("premie",
-                VocabulaireBron.json(VocabulaireBron.CASE1), new VerzoekOpties(false, null, "handboek")));
-        List<String> berichten = f.schendingen().stream().map(Schending::bericht).toList();
-        assertTrue(berichten.contains("onbekende parameter 'premietarief' (invoervocabulaire 'handboek')"), berichten.toString());
-        assertTrue(berichten.contains("onbekend objecttype 'Jutter' (invoervocabulaire 'handboek')"), berichten.toString());
+    void under_a_fixed_vocabulary_another_spelling_is_unknown() {
+        ServiceError f = assertThrows(ServiceError.class, () -> GOLDEN.process("premie",
+                VocabularySource.json(VocabularySource.CASE1), new RequestOptions(false, null, "handboek")));
+        List<String> messages = f.violations().stream().map(Violation::message).toList();
+        assertTrue(messages.contains("onbekende parameter 'premietarief' (invoervocabulaire 'handboek')"), messages.toString());
+        assertTrue(messages.contains("onbekend objecttype 'Jutter' (invoervocabulaire 'handboek')"), messages.toString());
 
-        DienstFout waarde = assertThrows(DienstFout.class, () -> GOLDEN.verwerk("premie", VocabulaireBron.json("""
+        ServiceError value = assertThrows(ServiceError.class, () -> GOLDEN.process("premie", VocabularySource.json("""
             { "instanties": [ { "type": "aangespoeld voorwerp", "id": "V1", "attributen": { "soort vondst": "barnsteen" } } ] }"""),
-                new VerzoekOpties(false, null, "handboek")));
-        Schending s = enige(waarde);
-        assertEquals(Schending.Soort.ONBEKENDE_ENUM_WAARDE, s.soort());
+                new RequestOptions(false, null, "handboek")));
+        Violation s = only(value);
+        assertEquals(Violation.Kind.ONBEKENDE_ENUM_WAARDE, s.kind());
         assertEquals("'barnsteen' is geen waarde van domein 'Vondstsoort' (toegestaan in het invoervocabulaire"
-                + " 'handboek': [hout van een wrak, amber, bericht in een fles])", s.bericht());
+                + " 'handboek': [hout van een wrak, amber, bericht in een fles])", s.message());
     }
 
     @Test
-    void twee_spellingen_van_een_declaratie_in_een_object_zijn_twee_waarden() {
-        DienstFout f = assertThrows(DienstFout.class, () -> GOLDEN.verwerk("premie", VocabulaireBron.json("""
+    void two_spellings_of_a_declaration_in_an_object_are_two_values() {
+        ServiceError f = assertThrows(ServiceError.class, () -> GOLDEN.process("premie", VocabularySource.json("""
             { "instanties": [ { "type": "Vondst", "id": "V1", "attributen": { "gewicht": 1, "GEWICHT": 2 } } ] }""")));
-        Schending s = enige(f);
-        assertEquals(Schending.Soort.MALFORMED, s.soort());
-        assertEquals("instanties[0].attributen.GEWICHT", s.veld());
+        Violation s = only(f);
+        assertEquals(Violation.Kind.MALFORMED, s.kind());
+        assertEquals("instanties[0].attributen.GEWICHT", s.field());
         assertEquals("het attribuut 'gewicht' van 'Vondst' staat twee keer in deze instantie: als 'gewicht' en als"
-                + " 'GEWICHT'", s.bericht());
+                + " 'GEWICHT'", s.message());
     }
 
     @Test
-    void een_onbekend_vocabulaire_is_een_eigen_weigering() {
-        DienstFout f = assertThrows(DienstFout.class, () -> GOLDEN.verwerk("premie",
-                VocabulaireBron.json(VocabulaireBron.CASE1), new VerzoekOpties(false, "wetboek", "Handboek2")));
-        assertEquals(2, f.schendingen().size(), f.getMessage());
-        assertEquals(Schending.Soort.ONBEKEND_VOCABULAIRE, f.schendingen().get(0).soort());
-        assertEquals("vocabulaire", f.schendingen().get(0).veld());
+    void an_unknown_vocabulary_is_a_refusal_of_its_own() {
+        ServiceError f = assertThrows(ServiceError.class, () -> GOLDEN.process("premie",
+                VocabularySource.json(VocabularySource.CASE1), new RequestOptions(false, "wetboek", "Handboek2")));
+        assertEquals(2, f.violations().size(), f.getMessage());
+        assertEquals(Violation.Kind.ONBEKEND_VOCABULAIRE, f.violations().get(0).kind());
+        assertEquals("vocabulaire", f.violations().get(0).field());
         assertEquals("het vocabulaire 'wetboek' is niet gedeclareerd; het model declareert 'handboek' en 'cgm', en"
-                + " 'canoniek' kiest de canonieke namen", f.schendingen().get(0).bericht());
-        assertEquals("invoervocabulaire", f.schendingen().get(1).veld());
+                + " 'canoniek' kiest de canonieke namen", f.violations().get(0).message());
+        assertEquals("invoervocabulaire", f.violations().get(1).field());
     }
 
     @Test
-    void een_onbekende_naam_houdt_de_bestaande_weigering() {
-        DienstFout f = assertThrows(DienstFout.class, () -> GOLDEN.verwerk("premie", VocabulaireBron.json("""
+    void an_unknown_name_keeps_the_existing_refusal() {
+        ServiceError f = assertThrows(ServiceError.class, () -> GOLDEN.process("premie", VocabularySource.json("""
             { "instanties": [ { "type": "strandjutter", "id": "J1", "attributen": { "schoenmaat": 42 } } ] }""")));
-        Schending s = enige(f);
-        assertEquals(Schending.Soort.ONBEKEND_VELD, s.soort());
-        assertEquals("onbekend attribuut 'schoenmaat' op objecttype 'Jutter'", s.bericht());
+        Violation s = only(f);
+        assertEquals(Violation.Kind.ONBEKEND_VELD, s.kind());
+        assertEquals("onbekend attribuut 'schoenmaat' op objecttype 'Jutter'", s.message());
     }
 }

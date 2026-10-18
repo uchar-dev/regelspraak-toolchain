@@ -18,50 +18,50 @@ import static org.junit.jupiter.api.Assertions.*;
  * the concatenation is a line no file has, so a diagnostic in a chain names the file and the line in that file; one
  * file keeps uchar's own diagnostic text.
  */
-class KetenTest {
+class ChainTest {
 
     private static final String BOOT = "Objecttype de Boot (mv: Boten)\n    de lengte Numeriek (getal met 2 decimalen);\n";
     private static final String HAVEN = "Objecttype de Haven (mv: Havens)\n    de naam Tekst;\n";
     /** Line 3 writes an attribute the object type does not declare: an ERROR on that line. */
-    private static final String FOUTE_REGEL =
+    private static final String WRONG_LINE =
             "Regel breedte\ngeldig altijd\nDe breedte van een Boot moet berekend worden als 3.\n";
 
     @TempDir Path map;
 
-    private String schrijf(String naam, String tekst) throws IOException {
-        Path p = map.resolve(naam);
-        Files.writeString(p, tekst);
+    private String write(String name, String text) throws IOException {
+        Path p = map.resolve(name);
+        Files.writeString(p, text);
         return p.toString();
     }
 
     @Test
-    void een_diagnose_in_een_keten_noemt_bestand_en_regel_in_dat_bestand() throws IOException {
-        String boot = schrijf("boot.rgs", BOOT);
-        String regel = schrijf("regel.rgs", FOUTE_REGEL);
-        var keten = RegelSpraakCli.Keten.lees(List.of(boot, regel));
-        RegelSpraakModel m = Resolver.resolve(keten.bron());
-        var fout = m.diagnostics.stream().filter(RegelSpraakModel.Diagnostic::isError).findFirst().orElseThrow();
-        assertEquals(6, fout.line(), "regel 3 van het tweede bestand is regel 6 van de keten");
-        assertTrue(keten.melding(fout).startsWith("ERROR (" + regel + ":3): "), keten.melding(fout));
+    void a_diagnostic_in_a_chain_names_file_and_line_in_that_file() throws IOException {
+        String boot = write("boot.rgs", BOOT);
+        String line = write("regel.rgs", WRONG_LINE);
+        var chain = RegelSpraakCli.Chain.read(List.of(boot, line));
+        RegelSpraakModel m = Resolver.resolve(chain.source());
+        var error = m.diagnostics.stream().filter(RegelSpraakModel.Diagnostic::isError).findFirst().orElseThrow();
+        assertEquals(6, error.line(), "regel 3 van het tweede bestand is regel 6 van de keten");
+        assertTrue(chain.message(error).startsWith("ERROR (" + line + ":3): "), chain.message(error));
     }
 
     @Test
-    void een_enkel_bestand_houdt_de_diagnose_van_uchar() throws IOException {
-        String regel = schrijf("regel.rgs", BOOT + FOUTE_REGEL);
-        var keten = RegelSpraakCli.Keten.lees(List.of(regel));
-        RegelSpraakModel m = Resolver.resolve(keten.bron());
-        var fout = m.diagnostics.stream().filter(RegelSpraakModel.Diagnostic::isError).findFirst().orElseThrow();
-        assertEquals(fout.toString(), keten.melding(fout));
+    void a_single_file_keeps_the_diagnostic_of_uchar() throws IOException {
+        String line = write("regel.rgs", BOOT + WRONG_LINE);
+        var chain = RegelSpraakCli.Chain.read(List.of(line));
+        RegelSpraakModel m = Resolver.resolve(chain.source());
+        var error = m.diagnostics.stream().filter(RegelSpraakModel.Diagnostic::isError).findFirst().orElseThrow();
+        assertEquals(error.toString(), chain.message(error));
     }
 
     @Test
-    void facts_over_een_keten_schrijft_de_beans_van_elk_bestand() throws IOException {
-        String boot = schrijf("boot.rgs", BOOT);
-        String haven = schrijf("haven.rgs", HAVEN);
-        Path uit = map.resolve("uit");
-        assertEquals(0, RegelSpraakCli.factsModus(List.of(uit.toString(), boot, haven)));
-        Path pakket = uit.resolve(FactModelGenerator.PAKKET.replace('.', '/'));
-        assertTrue(Files.isRegularFile(pakket.resolve("Boot.java")), "Boot.java uit het eerste bestand");
-        assertTrue(Files.isRegularFile(pakket.resolve("Haven.java")), "Haven.java uit het tweede bestand");
+    void facts_over_a_chain_writes_the_beans_of_each_file() throws IOException {
+        String boot = write("boot.rgs", BOOT);
+        String haven = write("haven.rgs", HAVEN);
+        Path sink = map.resolve("uit");
+        assertEquals(0, RegelSpraakCli.factsMode(List.of(sink.toString(), boot, haven)));
+        Path pkg = sink.resolve(FactModelGenerator.PAKKET.replace('.', '/'));
+        assertTrue(Files.isRegularFile(pkg.resolve("Boot.java")), "Boot.java uit het eerste bestand");
+        assertTrue(Files.isRegularFile(pkg.resolve("Haven.java")), "Haven.java uit het tweede bestand");
     }
 }

@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** The forms of a model by the names a descriptor scope uses: over the real TOKA sources, and over a small model with
  *  a decision table, a rule group and an exception block (a defaults group). */
-class VormIndexTest {
+class FormIndexTest {
 
     private static final String KLEIN = """
         Objecttype het Aanspoelsel (mv: Aanspoelsels)
@@ -49,51 +49,51 @@ class VormIndexTest {
                 indien zijn stuks groter is dan 10.
         """;
 
-    private static VormIndex klein() {
+    private static FormIndex klein() {
         RegelSpraakModel m = Resolver.resolve(KLEIN);
         assertTrue(m.isOk(), m.errors().toString());
-        return VormIndex.van(m, m.prioritizedDefaults);
+        return FormIndex.van(m, m.prioritizedDefaults);
     }
 
     @Test
-    void toka_regels_dragen_hun_vorm() {
-        RegelSpraakModel m = TokaBron.model();
-        VormIndex index = VormIndex.van(m, m.prioritizedDefaults);
-        assertEquals(1, index.vormenVan("bepaal leeftijd").size(), index.alle().toString());
-        assertEquals(1, index.vormenVan("Totaal te betalen belasting").size(), index.alle().toString());
-        // toka-45 is NOT in the served set since besluit 16Y (see TokaBron), so its rule is not nameable
-        assertFalse(index.bestaat("belasting op basis van afstand"),
+    void toka_rules_carry_their_form() {
+        RegelSpraakModel m = TokaSource.model();
+        FormIndex index = FormIndex.van(m, m.prioritizedDefaults);
+        assertEquals(1, index.formsOf("bepaal leeftijd").size(), index.all().toString());
+        assertEquals(1, index.formsOf("Totaal te betalen belasting").size(), index.all().toString());
+        // toka-45 is NOT in the served set since besluit 16Y (see TokaSource), so its rule is not nameable
+        assertFalse(index.exists("belasting op basis van afstand"),
                 "toka-45 hoort sinds besluit 16Y niet in de geserveerde bronset te zitten");
         // a decision table's rows are forms of their own, and the table's name carries all three
-        assertEquals(1, index.vormenVan("Woonregio factor 1").size());
-        assertEquals(3, index.vormenVan("Woonregio factor").size(), index.alle().toString());
-        assertFalse(index.bestaat("bestaat niet"));
+        assertEquals(1, index.formsOf("Woonregio factor 1").size());
+        assertEquals(3, index.formsOf("Woonregio factor").size(), index.all().toString());
+        assertFalse(index.exists("bestaat niet"));
     }
 
     @Test
-    void een_tabelnaam_draagt_haar_rijen_en_een_rij_zichzelf() {
-        VormIndex index = klein();
+    void a_table_name_carries_its_rows_and_a_row_itself() {
+        FormIndex index = klein();
         assertEquals(List.of("rubriek van een aanspoelsel 1", "rubriek van een aanspoelsel 2"),
-                index.vormenVan("rubriek van een aanspoelsel"));
-        assertEquals(List.of("rubriek van een aanspoelsel 2"), index.vormenVan("Rubriek van een  aanspoelsel 2"),
+                index.formsOf("rubriek van een aanspoelsel"));
+        assertEquals(List.of("rubriek van een aanspoelsel 2"), index.formsOf("Rubriek van een  aanspoelsel 2"),
                 "een naam vergelijkt zoals uchars scenariolaag: spaties samengevoegd, hoofdletters gelijk");
     }
 
     @Test
-    void een_basisregel_met_uitzondering_is_een_defaultsgroep_en_de_uitzondering_heeft_geen_vorm() {
-        VormIndex index = klein();
-        assertEquals(List.of("uitsluiting"), index.vormenVan("uitsluiting"));
-        assertTrue(index.bestaat("gekeurd"), "de uitzondering is een gedeclareerde regel");
-        assertTrue(index.vormenVan("gekeurd").isEmpty(), "zij gaat op in de defaultsgroep van haar basisregel");
-        VormIndex.Keuze keuze = index.scope(new DienstDescriptor.Scope(List.of("gekeurd"), null));
-        assertTrue(keuze.vormen().isEmpty(), keuze.toString());
-        assertEquals(List.of("gekeurd"), keuze.zonderVorm());
+    void a_base_rule_with_exception_is_a_defaults_group_and_the_exception_has_no_form() {
+        FormIndex index = klein();
+        assertEquals(List.of("uitsluiting"), index.formsOf("uitsluiting"));
+        assertTrue(index.exists("gekeurd"), "de uitzondering is een gedeclareerde regel");
+        assertTrue(index.formsOf("gekeurd").isEmpty(), "zij gaat op in de defaultsgroep van haar basisregel");
+        FormIndex.Choice choice = index.scope(new ServiceDescriptor.Scope(List.of("gekeurd"), null));
+        assertTrue(choice.forms().isEmpty(), choice.toString());
+        assertEquals(List.of("gekeurd"), choice.withoutForm());
     }
 
     @Test
-    void een_regelgroep_draagt_de_vormen_van_haar_leden() {
-        VormIndex.Keuze keuze = klein().scope(new DienstDescriptor.Scope(null, List.of("weging")));
-        assertEquals(List.of("weegplicht"), keuze.vormen());
-        assertTrue(keuze.zonderVorm().isEmpty(), keuze.toString());
+    void a_rule_group_carries_the_forms_of_its_members() {
+        FormIndex.Choice choice = klein().scope(new ServiceDescriptor.Scope(null, List.of("weging")));
+        assertEquals(List.of("weegplicht"), choice.forms());
+        assertTrue(choice.withoutForm().isEmpty(), choice.toString());
     }
 }

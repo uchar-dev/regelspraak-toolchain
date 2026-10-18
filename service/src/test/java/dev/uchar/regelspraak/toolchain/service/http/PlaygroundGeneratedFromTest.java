@@ -7,9 +7,9 @@ import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
-import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
-import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
-import dev.uchar.regelspraak.toolchain.service.TokaBron;
+import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
+import dev.uchar.regelspraak.toolchain.service.TokaSource;
 
 import org.junit.jupiter.api.Test;
 
@@ -31,14 +31,14 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * An element uchar made itself carries {@code gegenereerdUit} in {@code vocabulaires.elementen}, and a name of the
- * coverage that is no element stands in {@code gegenereerd} with its origin: uchar's tables
+ * An element uchar made itself carries {@code generatedFrom} in {@code vocabularies.elements}, and a name of the
+ * coverage that is no element stands in {@code generated} with its origin: uchar's tables
  * ({@code RegelSpraakModel.gegenereerd}, {@code TmsTranspiler.gegenereerd}), never a reading of the name. The source
  * below has the shapes of herleving-ww v2: the opgave marker on {@code maxdatum} of a subtype of a subtype and on
  * {@code herlevingsdatum}, a second {@code maxdatum} without one, a base rule on the middle type with a deviation for
  * its subtype, and a written name that begins with "berekende".
  */
-class PlaygroundGegenereerdUitTest {
+class PlaygroundGeneratedFromTest {
 
     private static final String HERLEVING = """
             Eenheidsysteem Tijd
@@ -92,40 +92,40 @@ class PlaygroundGegenereerdUitTest {
 
     private static final String ONTSLAG = "RechtOpUitkeringWwBijOntslag";
 
-    /** The element of {@code vocabulaires.elementen} with this kind, owner and canonical name. */
-    private static JsonNode element(JsonNode analyse, String soort, String eigenaar, String canoniek) {
+    /** The element of {@code vocabularies.elements} with this kind, owner and canonical name. */
+    private static JsonNode element(JsonNode analyse, String kind, String owner, String canonical) {
         for (JsonNode e : analyse.get("vocabulaires").get("elementen"))
-            if (e.get("soort").asText().equals(soort) && e.get("canoniek").asText().equals(canoniek)
-                    && (eigenaar == null ? e.get("eigenaar").isNull() : eigenaar.equals(e.get("eigenaar").asText())))
+            if (e.get("soort").asText().equals(kind) && e.get("canoniek").asText().equals(canonical)
+                    && (owner == null ? e.get("eigenaar").isNull() : owner.equals(e.get("eigenaar").asText())))
                 return e;
-        throw new AssertionError("geen element " + soort + " " + eigenaar + "." + canoniek);
+        throw new AssertionError("geen element " + kind + " " + owner + "." + canonical);
     }
 
-    private static String uit(JsonNode g) {
+    private static String sink(JsonNode g) {
         return g.get("soort").asText() + " " + (g.get("eigenaar").isNull() ? "" : g.get("eigenaar").asText() + ".")
                 + g.get("naam").asText() + " (" + g.get("vorm").asText() + ")";
     }
 
-    /** Every element as "SOORT eigenaar.naam <- <uit>" for those with {@code gegenereerdUit}, in the list's order. */
-    private static List<String> gegenereerdeElementen(JsonNode analyse) {
-        List<String> uit = new ArrayList<>();
+    /** Every element as "SOORT owner.name <- <uit>" for those with {@code generatedFrom}, in the list's order. */
+    private static List<String> generatedElements(JsonNode analyse) {
+        List<String> sink = new ArrayList<>();
         for (JsonNode e : analyse.get("vocabulaires").get("elementen")) {
             JsonNode g = e.get("gegenereerdUit");
             if (g == null) continue;
-            uit.add(e.get("soort").asText() + " " + (e.get("eigenaar").isNull() ? "" : e.get("eigenaar").asText() + ".")
-                    + e.get("canoniek").asText() + " <- " + uit(g));
+            sink.add(e.get("soort").asText() + " " + (e.get("eigenaar").isNull() ? "" : e.get("eigenaar").asText() + ".")
+                    + e.get("canoniek").asText() + " <- " + sink(g));
         }
-        return uit;
+        return sink;
     }
 
-    private static Map<String, String> gegenereerdeNamen(JsonNode analyse) {
-        Map<String, String> uit = new TreeMap<>();
+    private static Map<String, String> generatedNames(JsonNode analyse) {
+        Map<String, String> sink = new TreeMap<>();
         for (JsonNode g : analyse.get("gegenereerd"))
-            uit.put(g.get("naam").asText(), g.get("soort").asText() + " <- " + uit(g.get("gegenereerdUit")));
-        return uit;
+            sink.put(g.get("naam").asText(), g.get("soort").asText() + " <- " + sink(g.get("gegenereerdUit")));
+        return sink;
     }
 
-    @Test void de_elementen_van_de_markering_en_de_subtypegroep_zeggen_waaruit_ze_komen() {
+    @Test void the_elements_of_the_marking_and_the_subtype_group_say_where_they_come_from() {
         ObjectNode a = Playground.analyseer(HERLEVING);
         assertTrue(a.get("resolver").get("ok").asBoolean(), () -> a.get("resolver").toString());
         String maxdatum = "ATTRIBUUT " + ONTSLAG + ".maxdatum (opgave-boven-berekening)";
@@ -144,11 +144,11 @@ class PlaygroundGegenereerdUitTest {
                 "VORM herlevingstermijn voor " + ONTSLAG + " <- VORM herlevingstermijn (uitzondering-voor-subtype)",
                 "VORM opgave boven berekening maxdatum <- " + maxdatum,
                 "VORM opgave boven berekening herlevingsdatum <- " + herleving),
-                gegenereerdeElementen(a));
+                generatedElements(a));
         // the key and its order: the source element's kind, owner and name, then the form's key
-        JsonNode berekend = element(a, "ATTRIBUUT", ONTSLAG, "berekende maxdatum");
-        assertEquals(List.of("soort", "eigenaar", "naam", "vorm"), veldnamen(berekend.get("gegenereerdUit")));
-        assertNull(berekend.get("regel"), "een gegenereerd element heeft geen declaratie");
+        JsonNode computed = element(a, "ATTRIBUUT", ONTSLAG, "berekende maxdatum");
+        assertEquals(List.of("soort", "eigenaar", "naam", "vorm"), fieldNames(computed.get("gegenereerdUit")));
+        assertNull(computed.get("regel"), "een gegenereerd element heeft geen declaratie");
         assertTrue(element(a, "VORM", null, "herlevingstermijn voor " + ONTSLAG).get("gegenereerdUit")
                 .get("eigenaar").isNull());
         // written names: the marked attribute, the other maxdatum, a name with "berekende", the base of the group
@@ -162,7 +162,7 @@ class PlaygroundGegenereerdUitTest {
         }
     }
 
-    @Test void een_stapel_in_de_dekking_staat_in_gegenereerd_met_het_lid_zoals_gedeclareerd() {
+    @Test void a_stack_in_the_coverage_is_in_generated_with_the_member_like_declared() {
         ObjectNode a = Playground.analyseer(HERLEVING);
         assertTrue(a.get("uitvoerbaar").asBoolean(), () -> a.path("weigering").asText());
         assertEquals(Map.of(
@@ -174,20 +174,20 @@ class PlaygroundGegenereerdUitTest {
                 "defaults <- ATTRIBUUT " + ONTSLAG + ".maxdatum (defaultsstapel)",
                 "defaults A:RechtOpUitkeringPeriode.herlevingsdatum",
                 "defaults <- ATTRIBUUT RechtOpUitkeringPeriode.herlevingsdatum (defaultsstapel)"),
-                gegenereerdeNamen(a));
-        assertEquals(List.of("naam", "soort", "gegenereerdUit"), veldnamen(a.get("gegenereerd").get(0)));
+                generatedNames(a));
+        assertEquals(List.of("naam", "soort", "gegenereerdUit"), fieldNames(a.get("gegenereerd").get(0)));
         // every name of the coverage is an element or stands in gegenereerd
-        Set<String> vormen = new HashSet<>();
+        Set<String> forms = new HashSet<>();
         for (JsonNode e : a.get("vocabulaires").get("elementen"))
-            if (e.get("soort").asText().equals("VORM")) vormen.add(e.get("canoniek").asText());
-        Set<String> gegenereerd = gegenereerdeNamen(a).keySet();
+            if (e.get("soort").asText().equals("VORM")) forms.add(e.get("canoniek").asText());
+        Set<String> generated = generatedNames(a).keySet();
         for (JsonNode d : a.get("dekking"))
-            assertTrue(vormen.contains(d.get("naam").asText()) ^ gegenereerd.contains(d.get("naam").asText()),
+            assertTrue(forms.contains(d.get("naam").asText()) ^ generated.contains(d.get("naam").asText()),
                     d::toString);
     }
 
-    @Test void een_versie_heet_in_gegenereerd_zoals_in_de_dekking_van_een_scenario() {
-        String bron = """
+    @Test void a_version_named_in_generated_like_in_the_coverage_of_a_scenario() {
+        String source = """
                 Vocabulaire cgm (standaard) (taal: nl)
 
                 Objecttype de Jutter (mv: Jutters) (bezield) (cgm: JUTTER)
@@ -199,87 +199,87 @@ class PlaygroundGegenereerdUitTest {
                     geldig t/m 31-12-2025
                         Het gewicht van een Jutter moet gesteld worden op 2.
                 """;
-        ObjectNode canoniek = Playground.analyseer(bron);
+        ObjectNode canonical = Playground.analyseer(source);
         assertEquals(Map.of("gewicht #1", "regel <- VORM gewicht (versie)", "gewicht #2",
-                "regel <- VORM gewicht (versie)"), gegenereerdeNamen(canoniek));
-        assertNull(canoniek.get("gegenereerd").get(0).get("naamCanoniek"));
-        ObjectNode cgm = Playground.analyseer(bron, "cgm");
-        List<String> namen = new ArrayList<>(), canoniekeNamen = new ArrayList<>();
+                "regel <- VORM gewicht (versie)"), generatedNames(canonical));
+        assertNull(canonical.get("gegenereerd").get(0).get("naamCanoniek"));
+        ObjectNode cgm = Playground.analyseer(source, "cgm");
+        List<String> names = new ArrayList<>(), canonicalNames = new ArrayList<>();
         for (JsonNode g : cgm.get("gegenereerd")) {
-            namen.add(g.get("naam").asText());
-            canoniekeNamen.add(g.get("naamCanoniek").asText());
+            names.add(g.get("naam").asText());
+            canonicalNames.add(g.get("naamCanoniek").asText());
         }
-        assertEquals(List.of("R_GEWICHT #1", "R_GEWICHT #2"), namen);
-        assertEquals(List.of("gewicht #1", "gewicht #2"), canoniekeNamen);
+        assertEquals(List.of("R_GEWICHT #1", "R_GEWICHT #2"), names);
+        assertEquals(List.of("gewicht #1", "gewicht #2"), canonicalNames);
         // the origin stays canonical, as the owner and name of an element do
-        assertEquals("VORM gewicht (versie)", uit(cgm.get("gegenereerd").get(1).get("gegenereerdUit")));
+        assertEquals("VORM gewicht (versie)", sink(cgm.get("gegenereerd").get(1).get("gegenereerdUit")));
     }
 
     /**
-     * Over every golden of uchar with a {@code bron.rgs}: an element has a declaration ({@code regel}) or an origin
-     * ({@code gegenereerdUit}), never both, and every name of the coverage of a golden the exec-model branch builds
-     * is an element or stands in {@code gegenereerd}.
+     * Over every golden of uchar with a {@code source.rgs}: an element has a declaration ({@code line}) or an origin
+     * ({@code generatedFrom}), never both, and every name of the coverage of a golden the exec-model branch builds
+     * is an element or stands in {@code generated}.
      */
     /** Floors of the sweep below, measured 2026-10-15 on uchar's corpus at the pin of this card: elements, elements with
      *  an origin, goldens the exec-model branch builds, and effective stacks in their coverage. */
-    private static final int MIN_ELEMENTEN = 1648, MIN_GEGENEREERD = 71, MIN_GEBOUWD = 122, MIN_STAPELS = 39;
+    private static final int MIN_ELEMENTS = 1648, MIN_GENERATED = 71, MIN_BUILT = 122, MIN_STACKS = 39;
 
-    @Test void elke_golden_heeft_per_element_een_declaratie_of_een_herkomst() throws IOException {
-        List<Path> bronnen;
-        try (Stream<Path> s = Files.list(TokaBron.REPO.resolve("uchar/corpus/golden"))) {
-            bronnen = s.map(p -> p.resolve("bron.rgs")).filter(Files::isRegularFile).sorted().toList();
+    @Test void every_golden_has_per_element_a_declaration_or_an_origin() throws IOException {
+        List<Path> sources;
+        try (Stream<Path> s = Files.list(TokaSource.REPO.resolve("uchar/corpus/golden"))) {
+            sources = s.map(p -> p.resolve("bron.rgs")).filter(Files::isRegularFile).sorted().toList();
         }
-        List<String> fouten = new ArrayList<>();
-        int elementen = 0, gegenereerd = 0, gebouwd = 0, stapels = 0;
-        for (Path p : bronnen) {
-            String bron = Files.readString(p);
+        List<String> errors = new ArrayList<>();
+        int elements = 0, generated = 0, built = 0, stacks = 0;
+        for (Path p : sources) {
+            String source = Files.readString(p);
             String golden = p.getParent().getFileName().toString();
-            boolean scenario = Playground.bevatScenario(bron);
-            RegelSpraakModel model = scenario ? ScenarioResolver.resolve(bron).model() : Resolver.resolve(bron);
+            boolean scenario = Playground.containsScenario(source);
+            RegelSpraakModel model = scenario ? ScenarioResolver.resolve(source).model() : Resolver.resolve(source);
             if (!model.isOk()) continue;
-            Naamgeving naamgeving = Naamgeving.van(model, null);
-            JsonNode voc = Playground.vocabulaires(model, naamgeving, Playground.parse(bron, scenario));
-            if (voc.has("declaratieFout")) fouten.add(golden + ": " + voc.get("declaratieFout").asText());
-            Set<String> vormen = new HashSet<>();
+            Naming naming = Naming.van(model, null);
+            JsonNode voc = Playground.vocabularies(model, naming, Playground.parse(source, scenario));
+            if (voc.has("declaratieFout")) errors.add(golden + ": " + voc.get("declaratieFout").asText());
+            Set<String> forms = new HashSet<>();
             for (JsonNode e : voc.get("elementen")) {
-                elementen++;
-                boolean regel = e.has("regel"), uit = e.has("gegenereerdUit");
-                if (uit) gegenereerd++;
-                if (e.get("soort").asText().equals("VORM")) vormen.add(e.get("canoniek").asText());
-                if (regel == uit) fouten.add(golden + ": " + e + (regel ? " heeft beide" : " heeft geen van beide"));
+                elements++;
+                boolean line = e.has("regel"), sink = e.has("gegenereerdUit");
+                if (sink) generated++;
+                if (e.get("soort").asText().equals("VORM")) forms.add(e.get("canoniek").asText());
+                if (line == sink) errors.add(golden + ": " + e + (line ? " heeft beide" : " heeft geen van beide"));
             }
             DroolsBackend.Build build;
             try {
-                build = UcharBouw.bouw(model, DroolsBackend.Branch.EXEC_MODEL);
-            } catch (UcharBouw.NietGedragen n) {
+                build = UcharBuild.assemble(model, DroolsBackend.Branch.EXEC_MODEL);
+            } catch (UcharBuild.NotCarried n) {
                 continue;
             }
-            gebouwd++;
-            JsonNode namen = Playground.gegenereerd(build, model, naamgeving);
-            Set<String> genoemd = new HashSet<>();
-            for (JsonNode g : namen) {
-                genoemd.add(g.get("naam").asText());
-                if (g.get("soort").asText().equals("defaults")) stapels++;
+            built++;
+            JsonNode names = Playground.generated(build, model, naming);
+            Set<String> named = new HashSet<>();
+            for (JsonNode g : names) {
+                named.add(g.get("naam").asText());
+                if (g.get("soort").asText().equals("defaults")) stacks++;
             }
             for (var d : build.dekking())
-                if (vormen.contains(d.naam()) == genoemd.contains(d.naam()))
-                    fouten.add(golden + ": de dekkingnaam '" + d.naam() + "' is "
-                            + (vormen.contains(d.naam()) ? "een element en gegenereerd" : "geen element en niet gegenereerd"));
+                if (forms.contains(d.naam()) == named.contains(d.naam()))
+                    errors.add(golden + ": de dekkingnaam '" + d.naam() + "' is "
+                            + (forms.contains(d.naam()) ? "een element en gegenereerd" : "geen element en niet gegenereerd"));
         }
-        assertEquals(List.of(), fouten);
-        int n = elementen, g = gegenereerd, b = gebouwd, s = stapels;
-        assertTrue(n >= MIN_ELEMENTEN && g >= MIN_GEGENEREERD && b >= MIN_GEBOUWD && s >= MIN_STAPELS,
+        assertEquals(List.of(), errors);
+        int n = elements, g = generated, b = built, s = stacks;
+        assertTrue(n >= MIN_ELEMENTS && g >= MIN_GENERATED && b >= MIN_BUILT && s >= MIN_STACKS,
                 () -> n + " elementen, " + g + " gegenereerd, " + b + " goldens gebouwd, " + s + " stapels; de vloeren "
-                        + List.of(MIN_ELEMENTEN, MIN_GEGENEREERD, MIN_GEBOUWD, MIN_STAPELS));
+                        + List.of(MIN_ELEMENTS, MIN_GENERATED, MIN_BUILT, MIN_STACKS));
     }
 
-    private static List<String> veldnamen(JsonNode n) {
-        List<String> uit = new ArrayList<>();
-        n.fieldNames().forEachRemaining(uit::add);
-        return uit;
+    private static List<String> fieldNames(JsonNode n) {
+        List<String> sink = new ArrayList<>();
+        n.fieldNames().forEachRemaining(sink::add);
+        return sink;
     }
 
-    @Test void zonder_gegenereerde_namen_geen_herkomst() {
+    @Test void without_generated_names_no_origin() {
         ObjectNode a = Playground.analyseer(HERLEVING.replace(" (mag opgegeven worden)", "")
                 .replace("""
                         Afwijking van herlevingstermijn: herlevingstermijn na zelfstandig werk
@@ -288,7 +288,7 @@ class PlaygroundGegenereerdUitTest {
                                 indien zijn einde zelfstandig werk gevuld is.
                         """, ""));
         assertTrue(a.get("resolver").get("ok").asBoolean(), () -> a.get("resolver").toString());
-        assertEquals(List.of(), gegenereerdeElementen(a));
+        assertEquals(List.of(), generatedElements(a));
         assertFalse(a.get("gegenereerd").elements().hasNext(), () -> a.get("gegenereerd").toString());
     }
 }

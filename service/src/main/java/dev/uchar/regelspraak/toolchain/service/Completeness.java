@@ -15,37 +15,37 @@ import java.util.List;
  * vocabulary complete, so for every other one a consumer reads the fallback here instead of guessing it. The
  * declarations are those uchar can designate ({@link RegelSpraakModel#benoembaar}), in its order.
  */
-public final class Volledigheid {
+public final class Completeness {
 
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);
 
-    private Volledigheid() {}
+    private Completeness() {}
 
     /** The declarations of {@code model} without a designation in vocabulary {@code vocabulaire}. */
-    public static List<Benoembaar> zonderBenaming(RegelSpraakModel model, String vocabulaire) {
-        return model.benoembaar().stream().filter(b -> model.benaming(vocabulaire, b).isEmpty()).toList();
+    public static List<Benoembaar> withoutDesignation(RegelSpraakModel model, String vocabulary) {
+        return model.benoembaar().stream().filter(b -> model.benaming(vocabulary, b).isEmpty()).toList();
     }
 
     /** The {@code vocabulaires} block of {@code /info}: per vocabulary its {@code naam}, {@code standaard},
-     *  {@code taal} (when declared), whether it is {@code volledig}, and {@code zonderBenaming}, each declaration as
+     *  {@code taal} (when declared), whether it is {@code volledig}, and {@code withoutDesignation}, each declaration as
      *  {@code {soort, eigenaar?, naam}} by its canonical name. */
     public static ArrayNode info(RegelSpraakModel model) {
-        ArrayNode uit = NF.arrayNode();
+        ArrayNode sink = NF.arrayNode();
         for (RegelSpraakModel.Vocabulaire v : model.vocabulaires) {
-            ObjectNode vn = uit.addObject();
+            ObjectNode vn = sink.addObject();
             vn.put("naam", v.naam());
             vn.put("standaard", v.standaard());
             if (v.taal() != null) vn.put("taal", v.taal());
-            List<Benoembaar> zonder = zonderBenaming(model, v.naam());
-            vn.put("volledig", zonder.isEmpty());
-            ArrayNode lijst = vn.putArray("zonderBenaming");
-            for (Benoembaar b : zonder) {
-                ObjectNode bn = lijst.addObject();
+            List<Benoembaar> without = withoutDesignation(model, v.naam());
+            vn.put("volledig", without.isEmpty());
+            ArrayNode list = vn.putArray("zonderBenaming");
+            for (Benoembaar b : without) {
+                ObjectNode bn = list.addObject();
                 bn.put("soort", b.soort().name());
                 if (b.eigenaar() != null) bn.put("eigenaar", b.eigenaar());
                 bn.put("naam", b.naam());
             }
         }
-        return uit;
+        return sink;
     }
 }

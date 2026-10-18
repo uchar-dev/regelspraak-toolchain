@@ -3,9 +3,9 @@ package dev.uchar.regelspraak.toolchain.service.http;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
-import dev.uchar.regelspraak.toolchain.service.KernConfig;
-import dev.uchar.regelspraak.toolchain.service.TokaBron;
+import dev.uchar.regelspraak.toolchain.service.DecisionCore;
+import dev.uchar.regelspraak.toolchain.service.CoreConfig;
+import dev.uchar.regelspraak.toolchain.service.TokaSource;
 
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -27,34 +27,34 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * Fase-3 HTTP adapter tests: a real {@link DienstHttp} on an ephemeral 127.0.0.1 port driven by
+ * Fase-3 HTTP adapter tests: a real {@link ServiceHttp} on an ephemeral 127.0.0.1 port driven by
  * {@link java.net.http.HttpClient}. Covers the happy round-trip over HTTP, the {@code /info} shape (per-regel
  * verdict + markers list when built with allow-markers), and the negative HTTP surface (400 naming the veld, 400
  * malformed / empty body, 404 unknown path, 405 wrong method, and the 500-never-leaks guarantee). Every server
  * is stopped in {@link AfterEach}.
  */
-class DienstHttpTest {
+class ServiceHttpTest {
 
-    private DienstHttp dienst;
+    private ServiceHttp service;
     private final HttpClient client = HttpClient.newBuilder().connectTimeout(Duration.ofSeconds(5)).build();
 
     @AfterEach
     void stop() {
-        if (dienst != null) dienst.stop(0);
-        dienst = null;
+        if (service != null) service.stop(0);
+        service = null;
     }
 
     // ---- fixtures ----
 
     /** The full TOKA kern, strict: uchar carries every golden scope. */
-    private static BeslisserKern tokaKern() {
-        return BeslisserKern.bouw(TokaBron.descriptorJson(), TokaBron.bronPerBestand(),
-                KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
+    private static DecisionCore tokaCore() {
+        return DecisionCore.assemble(TokaSource.descriptorJson(), TokaSource.sourcePerFile(),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
     }
 
     /** A self-contained marker service (mirrors MarkerFailFastTest), built with markers ALLOWED so /info lists
      *  the marker rule, a day count as the value of a target that is not time-dependent. */
-    private static final String MARKER_BRON = """
+    private static final String MARKER_SOURCE = """
         Objecttype de Vlucht (mv: Vluchten)
             de heffing Numeriek (niet-negatief geheel getal);
             is belast kenmerk (bijvoeglijk) voor elke dag;
@@ -69,15 +69,15 @@ class DienstHttpTest {
             "invoer": ["Vlucht"], "uitvoer": ["Vlucht.heffing"] } ],
           "parameters": {} }""";
 
-    private static BeslisserKern markerKern() {
-        Map<String, String> bron = new LinkedHashMap<>();
-        bron.put("marker.rgs", MARKER_BRON);
-        return BeslisserKern.bouw(MARKER_DESCRIPTOR, bron, KernConfig.metMarkers(),
+    private static DecisionCore markerCore() {
+        Map<String, String> source = new LinkedHashMap<>();
+        source.put("marker.rgs", MARKER_SOURCE);
+        return DecisionCore.assemble(MARKER_DESCRIPTOR, source, CoreConfig.withMarkers(),
                 Thread.currentThread().getContextClassLoader());
     }
 
     /** Two layers of exclusion in the exception dialect: the base rule and its exception form one defaults group. */
-    private static final String UITSLUITING_BRON = """
+    private static final String EXCLUSION_SOURCE = """
         Objecttype de Jutter (mv: Jutters) (bezield)
             is vergunning geweigerd kenmerk (bijvoeglijk);
             is weigering herroepen kenmerk (bijvoeglijk);
@@ -99,7 +99,7 @@ class DienstHttpTest {
 
     /** A self-contained VINTAGE service (fase 5): a two-vintage parameterset (volwassenleeftijd 18 in 2025 / 21
      *  from 2026) driving a rule, built over the String-form with an in-memory parametersets sidecar. */
-    private static final String VINTAGE_BRON = """
+    private static final String VINTAGE_SOURCE = """
         Objecttype de Persoon (mv: Personen)
             de grens Numeriek (geheel getal);
         Parameter de volwassenleeftijd : Numeriek (geheel getal);
@@ -121,127 +121,127 @@ class DienstHttpTest {
                   { "waarde": 18, "vanaf": "2025-01-01", "tot": "2025-12-31" },
                   { "waarde": 21, "vanaf": "2026-01-01" } ] } } ] }""";
 
-    private static BeslisserKern vintageKern() {
-        Map<String, String> bron = new LinkedHashMap<>();
-        bron.put("vintage.rgs", VINTAGE_BRON);
-        return BeslisserKern.bouw(VINTAGE_DESCRIPTOR, bron, KernConfig.strikt(),
+    private static DecisionCore vintageCore() {
+        Map<String, String> source = new LinkedHashMap<>();
+        source.put("vintage.rgs", VINTAGE_SOURCE);
+        return DecisionCore.assemble(VINTAGE_DESCRIPTOR, source, CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader(), VINTAGE_SETS);
     }
 
-    private void serveer(BeslisserKern kern) throws IOException {
-        dienst = DienstHttp.bind(kern, "127.0.0.1", 0).start();
+    private void serveer(DecisionCore core) throws IOException {
+        service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
     }
 
     // ---- HTTP helpers ----
 
-    private HttpResponse<String> post(String pad, String body) throws Exception {
+    private HttpResponse<String> post(String path, String body) throws Exception {
         HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create("http://127.0.0.1:" + dienst.poort() + pad))
+                .uri(URI.create("http://127.0.0.1:" + service.port() + path))
                 .header("Content-Type", "application/json")
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
         return client.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     }
 
-    private HttpResponse<String> get(String pad) throws Exception {
+    private HttpResponse<String> get(String path) throws Exception {
         HttpRequest req = HttpRequest.newBuilder()
-                .uri(URI.create("http://127.0.0.1:" + dienst.poort() + pad))
+                .uri(URI.create("http://127.0.0.1:" + service.port() + path))
                 .GET().build();
         return client.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     }
 
-    private static JsonNode boom(String json) throws Exception {
-        return DienstHttp.MAPPER.readTree(json);
+    private static JsonNode tree(String json) throws Exception {
+        return ServiceHttp.MAPPER.readTree(json);
     }
 
     // ---------------- happy round-trip ----------------
 
     @Test
     void happy_round_trip_bepaal_leeftijd_over_http() throws Exception {
-        serveer(tokaKern());
-        String verzoek = """
+        serveer(tokaCore());
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
                 { "type": "Natuurlijk persoon", "id": "P1",
                   "attributen": { "geboortedatum": "1990-06-15" },
                   "rollen": { "reis": "V1" } } ] }""";
-        HttpResponse<String> resp = post("/bepaal-leeftijd", verzoek);
+        HttpResponse<String> resp = post("/bepaal-leeftijd", request);
         assertEquals(200, resp.statusCode(), resp.body());
         assertTrue(resp.headers().firstValue("Content-Type").orElse("").contains("application/json"),
                 resp.headers().map().toString());
-        JsonNode antwoord = boom(resp.body());
-        JsonNode leeftijd = vind(antwoord, "P1", "attributen", "leeftijd");
+        JsonNode answer = tree(resp.body());
+        JsonNode leeftijd = find(answer, "P1", "attributen", "leeftijd");
         assertNotNull(leeftijd, resp.body());
         assertEquals(0, new BigDecimal("34").compareTo(leeftijd.decimalValue()), resp.body());
     }
 
     @Test
-    void happy_round_trip_totaal_te_betalen_over_http() throws Exception {
-        serveer(tokaKern());
-        String verzoek = """
+    void happy_round_trip_total_to_betalen_over_http() throws Exception {
+        serveer(tokaCore());
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Natuurlijk persoon", "id": "P1",
                   "attributen": { "te betalen belasting": 30.00 }, "rollen": { "reis": "V1" } },
                 { "type": "Natuurlijk persoon", "id": "P2",
                   "attributen": { "te betalen belasting": 20.00 }, "rollen": { "reis": "V1" } } ] }""";
-        HttpResponse<String> resp = post("/totaal-te-betalen-belasting", verzoek);
+        HttpResponse<String> resp = post("/totaal-te-betalen-belasting", request);
         assertEquals(200, resp.statusCode(), resp.body());
-        JsonNode totaal = vind(boom(resp.body()), "V1", "attributen", "totaal te betalen belasting");
-        assertNotNull(totaal, resp.body());
-        assertEquals(0, new BigDecimal("50.00").compareTo(totaal.decimalValue()), resp.body());
+        JsonNode total = find(tree(resp.body()), "V1", "attributen", "totaal te betalen belasting");
+        assertNotNull(total, resp.body());
+        assertEquals(0, new BigDecimal("50.00").compareTo(total.decimalValue()), resp.body());
         // exact BigDecimal render, never a double: the value round-trips as a JSON number, never a double.
-        assertTrue(totaal.isNumber(), resp.body());
-        assertFalse(totaal.isDouble(), "een som mag NOOIT als double renderen: " + resp.body());
+        assertTrue(total.isNumber(), resp.body());
+        assertFalse(total.isDouble(), "een som mag NOOIT als double renderen: " + resp.body());
     }
 
     // ---------------- fase 5: vintage over HTTP (G1(b)) ----------------
 
     @Test
-    void g1b_twee_peildatums_over_http_leveren_verschillende_uitkomsten() throws Exception {
-        serveer(vintageKern());
+    void g1b_two_as_of_dates_over_http_yield_different_outcomes() throws Exception {
+        serveer(vintageCore());
         // two requests differing ONLY in the peildatum field -> two different pinned outcomes.
         HttpResponse<String> r2025 = post("/grens",
                 "{ \"peildatum\": \"2025-06-01\", \"instanties\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
         assertEquals(200, r2025.statusCode(), r2025.body());
-        assertEquals(0, new BigDecimal("18").compareTo(vind(boom(r2025.body()), "P1", "attributen", "grens").decimalValue()),
+        assertEquals(0, new BigDecimal("18").compareTo(find(tree(r2025.body()), "P1", "attributen", "grens").decimalValue()),
                 r2025.body());
 
         HttpResponse<String> r2026 = post("/grens",
                 "{ \"peildatum\": \"2026-06-01\", \"instanties\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
         assertEquals(200, r2026.statusCode(), r2026.body());
-        assertEquals(0, new BigDecimal("21").compareTo(vind(boom(r2026.body()), "P1", "attributen", "grens").decimalValue()),
+        assertEquals(0, new BigDecimal("21").compareTo(find(tree(r2026.body()), "P1", "attributen", "grens").decimalValue()),
                 r2026.body());
     }
 
     @Test
-    void g6_geen_peildatum_multi_vintage_over_http_is_400_veld_peildatum() throws Exception {
-        serveer(vintageKern());
+    void g6_no_as_of_date_multi_vintage_over_http_is_400_field_as_of_date() throws Exception {
+        serveer(vintageCore());
         HttpResponse<String> resp = post("/grens",
                 "{ \"instanties\": [ { \"type\": \"Persoon\", \"id\": \"P1\" } ] }");
         assertEquals(400, resp.statusCode(), resp.body());
-        boolean noemtPeildatum = false;
-        for (JsonNode s : boom(resp.body()).get("schendingen"))
-            if ("peildatum".equals(s.path("veld").asText())) noemtPeildatum = true;
-        assertTrue(noemtPeildatum, "de 400 hoort veld 'peildatum' te noemen: " + resp.body());
+        boolean namesAsOfDate = false;
+        for (JsonNode s : tree(resp.body()).get("schendingen"))
+            if ("peildatum".equals(s.path("veld").asText())) namesAsOfDate = true;
+        assertTrue(namesAsOfDate, "de 400 hoort veld 'peildatum' te noemen: " + resp.body());
     }
 
     @Test
-    void info_toont_parametersets_met_geldigheidsranges() throws Exception {
-        serveer(vintageKern());
-        JsonNode info = boom(get("/info").body());
+    void info_shows_parameter_sets_with_validity_ranges() throws Exception {
+        serveer(vintageCore());
+        JsonNode info = tree(get("/info").body());
         assertTrue(info.get("parametersets").isArray(), info.toString());
         assertEquals(1, info.get("parametersets").size(), info.toString());
         JsonNode set = info.get("parametersets").get(0);
         assertEquals("leeftijden", set.get("naam").asText(), set.toString());
-        JsonNode intervallen = set.get("waarden").get("volwassenleeftijd");
-        assertEquals(2, intervallen.size(), set.toString());
+        JsonNode intervals = set.get("waarden").get("volwassenleeftijd");
+        assertEquals(2, intervals.size(), set.toString());
         // first interval: 18, 2025-01-01..2025-12-31 ; second: 21, 2026-01-01..open
-        assertEquals("2025-01-01", intervallen.get(0).get("vanaf").asText(), set.toString());
-        assertEquals("2025-12-31", intervallen.get(0).get("tot").asText(), set.toString());
-        assertEquals(0, new BigDecimal("18").compareTo(intervallen.get(0).get("waarde").decimalValue()), set.toString());
-        assertEquals("2026-01-01", intervallen.get(1).get("vanaf").asText(), set.toString());
-        assertTrue(intervallen.get(1).get("tot").isNull(), "open tot: " + set);
+        assertEquals("2025-01-01", intervals.get(0).get("vanaf").asText(), set.toString());
+        assertEquals("2025-12-31", intervals.get(0).get("tot").asText(), set.toString());
+        assertEquals(0, new BigDecimal("18").compareTo(intervals.get(0).get("waarde").decimalValue()), set.toString());
+        assertEquals("2026-01-01", intervals.get(1).get("vanaf").asText(), set.toString());
+        assertTrue(intervals.get(1).get("tot").isNull(), "open tot: " + set);
         // grensregel is 'geldig altijd' but the parameter is only valued from 2025 -> a pre-2025 coverage gap
         // WARNING is present and names the parameter (gate G3 visible on /info).
         assertTrue(info.get("periodeWaarschuwingen").isArray(), info.toString());
@@ -254,12 +254,12 @@ class DienstHttpTest {
     // ---------------- /info ----------------
 
     @Test
-    void info_shape_over_toka_met_per_regel_verdict() throws Exception {
-        serveer(tokaKern());
+    void info_shape_over_toka_with_per_rule_verdict() throws Exception {
+        serveer(tokaCore());
         HttpResponse<String> resp = get("/info");
         assertEquals(200, resp.statusCode(), resp.body());
         assertTrue(resp.headers().firstValue("Content-Type").orElse("").contains("application/json"));
-        JsonNode info = boom(resp.body());
+        JsonNode info = tree(resp.body());
 
         assertTrue(info.get("dienst").has("naam"), resp.body());
         assertTrue(info.get("dienst").has("versie"), resp.body());
@@ -272,30 +272,30 @@ class DienstHttpTest {
         assertTrue(info.get("overgeslagen").isEmpty(), "strikte TOKA heeft geen markers: " + info.get("overgeslagen"));
 
         // find the bepaal-leeftijd entrypoint and assert its dekking carries a per-regel LOWERED verdict
-        JsonNode ep = entrypointMet(info, "bepaal-leeftijd");
+        JsonNode ep = entrypointWith(info, "bepaal-leeftijd");
         assertNotNull(ep, resp.body());
         assertTrue(ep.get("dekking").isArray(), resp.body());
         assertTrue(ep.get("markers").isArray(), resp.body());
         assertTrue(ep.get("markers").isEmpty(), "bepaal-leeftijd lowert: " + ep.get("markers"));
         assertTrue(ep.get("uitvoerbaar").asBoolean(), ep.toString());
         assertFalse(ep.has("weigering"), ep.toString());
-        boolean heeftLowered = false;
+        boolean hasLowered = false;
         for (JsonNode d : ep.get("dekking")) {
             assertTrue(d.has("soort") && d.has("naam") && d.has("verdict"), d.toString());
-            if ("LOWERED".equals(d.get("verdict").asText())) heeftLowered = true;
+            if ("LOWERED".equals(d.get("verdict").asText())) hasLowered = true;
         }
-        assertTrue(heeftLowered, "bepaal-leeftijd dekking hoort een LOWERED-verdict te tonen: " + ep.get("dekking"));
+        assertTrue(hasLowered, "bepaal-leeftijd dekking hoort een LOWERED-verdict te tonen: " + ep.get("dekking"));
     }
 
     @Test
-    void info_feitcreatie_toont_haar_verdict() throws Exception {
+    void info_fact_creation_shows_its_verdict() throws Exception {
         // The entry point's document carries the feitcreatie form of the full model, and the exec-model branch lowers
         // it. Until the scope was taken per form, the entry point was built from the foundation plus the toka-29 file
         // alone, where uchar's frontend makes no form of it, and /info showed an empty dekking for a build without
         // the rule.
-        serveer(tokaKern());
-        JsonNode info = boom(get("/info").body());
-        JsonNode ep = entrypointMet(info, "passagier-met-recht-op-treinmiles");
+        serveer(tokaCore());
+        JsonNode info = tree(get("/info").body());
+        JsonNode ep = entrypointWith(info, "passagier-met-recht-op-treinmiles");
         assertNotNull(ep, info.toString());
         assertTrue(ep.get("uitvoerbaar").asBoolean(), ep.toString());
         assertEquals(1, ep.get("dekking").size(), ep.toString());
@@ -305,66 +305,66 @@ class DienstHttpTest {
     }
 
     @Test
-    void een_scope_zonder_vorm_is_een_marker_met_uchars_reden() throws Exception {
+    void a_scope_without_form_is_a_marker_with_uchar_reason() throws Exception {
         // an exception rule goes up in the defaults group of its base rule and has no form of its own: an entry point
         // that scopes it alone would carry nothing, so it is a marker and a request gets the MARKER answer
-        Map<String, String> bron = new LinkedHashMap<>();
-        bron.put("uitsluiting.rgs", UITSLUITING_BRON);
+        Map<String, String> source = new LinkedHashMap<>();
+        source.put("uitsluiting.rgs", EXCLUSION_SOURCE);
         String descriptor = """
             { "dienst": {"naam":"uitsluiting","versie":"1"},
               "entrypoints": [ { "naam":"herroeping","pad":"herroeping",
                 "scope": {"regelnamen": ["herroepen weigering"]},
                 "invoer": ["Jutter"], "uitvoer": ["Jutter:uitgesloten"] } ],
               "parameters": {} }""";
-        serveer(BeslisserKern.bouw(descriptor, bron, KernConfig.metMarkers(),
+        serveer(DecisionCore.assemble(descriptor, source, CoreConfig.withMarkers(),
                 Thread.currentThread().getContextClassLoader()));
-        JsonNode ep = entrypointMet(boom(get("/info").body()), "herroeping");
+        JsonNode ep = entrypointWith(tree(get("/info").body()), "herroeping");
         assertNotNull(ep);
         assertFalse(ep.get("uitvoerbaar").asBoolean(), ep.toString());
         assertTrue(ep.get("weigering").asText().contains("geen vorm"), ep.toString());
         HttpResponse<String> resp = post("/herroeping", """
             { "instanties": [ { "type": "Jutter", "id": "M" } ] }""");
         assertEquals(503, resp.statusCode(), resp.body());
-        assertEquals("MARKER", boom(resp.body()).get("status").asText(), resp.body());
+        assertEquals("MARKER", tree(resp.body()).get("status").asText(), resp.body());
     }
 
     @Test
-    void info_dekking_toont_de_defaultsgroep_van_de_scope() throws Exception {
+    void info_coverage_shows_the_defaults_group_of_the_scope() throws Exception {
         // a defaults group is a form: an entry point that scopes it shows its verdict in the dekking
-        Map<String, String> bron = new LinkedHashMap<>();
-        bron.put("uitsluiting.rgs", UITSLUITING_BRON);
+        Map<String, String> source = new LinkedHashMap<>();
+        source.put("uitsluiting.rgs", EXCLUSION_SOURCE);
         String descriptor = """
             { "dienst": {"naam":"uitsluiting","versie":"1"},
               "entrypoints": [ { "naam":"penningrecht","pad":"penningrecht",
                 "scope": {"regelnamen": ["uitsluiting van het penningrecht", "penninggerechtigd tenzij uitgesloten"]},
                 "invoer": ["Jutter"], "uitvoer": ["Jutter:uitgesloten", "Jutter:penninggerechtigd"] } ],
               "parameters": {} }""";
-        serveer(BeslisserKern.bouw(descriptor, bron, KernConfig.strikt(),
+        serveer(DecisionCore.assemble(descriptor, source, CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader()));
-        JsonNode ep = entrypointMet(boom(get("/info").body()), "penningrecht");
+        JsonNode ep = entrypointWith(tree(get("/info").body()), "penningrecht");
         assertNotNull(ep);
-        java.util.Set<String> soorten = new java.util.TreeSet<>();
+        java.util.Set<String> kinds = new java.util.TreeSet<>();
         for (JsonNode d : ep.get("dekking")) {
-            soorten.add(d.get("soort").asText());
+            kinds.add(d.get("soort").asText());
             assertEquals("LOWERED", d.get("verdict").asText(), d.toString());
         }
-        assertEquals(java.util.Set.of("regel", "defaults"), soorten, ep.get("dekking").toString());
+        assertEquals(java.util.Set.of("regel", "defaults"), kinds, ep.get("dekking").toString());
 
         // and it fires: a refusal that is withdrawn leaves the Jutter penninggerechtigd
         HttpResponse<String> resp = post("/penningrecht", """
             { "instanties": [ { "type": "Jutter", "id": "M",
                 "kenmerken": { "vergunning geweigerd": true, "weigering herroepen": true } } ] }""");
         assertEquals(200, resp.statusCode(), resp.body());
-        JsonNode kenmerken = boom(resp.body()).get("instanties").get(0).get("kenmerken");
-        assertFalse(kenmerken.get("uitgesloten").asBoolean(), resp.body());
-        assertTrue(kenmerken.get("penninggerechtigd").asBoolean(), resp.body());
+        JsonNode characteristics = tree(resp.body()).get("instanties").get(0).get("kenmerken");
+        assertFalse(characteristics.get("uitgesloten").asBoolean(), resp.body());
+        assertTrue(characteristics.get("penninggerechtigd").asBoolean(), resp.body());
     }
 
     @Test
-    void info_lijst_de_markers_bij_allow_markers() throws Exception {
-        serveer(markerKern());
-        JsonNode info = boom(get("/info").body());
-        JsonNode ep = entrypointMet(info, "heffing-markert");
+    void info_lists_the_markers_at_allow_markers() throws Exception {
+        serveer(markerCore());
+        JsonNode info = tree(get("/info").body());
+        JsonNode ep = entrypointWith(info, "heffing-markert");
         assertNotNull(ep, info.toString());
         assertTrue(contains(ep.get("markers"), "heffing markert"),
                 "markers hoort de marker-regel te noemen: " + ep.get("markers"));
@@ -377,91 +377,91 @@ class DienstHttpTest {
     }
 
     @Test
-    void een_verzoek_aan_een_marker_entrypoint_is_503() throws Exception {
+    void a_request_to_a_marker_entrypoint_is_503() throws Exception {
         // started with markers allowed, the entrypoint exists but cannot fire: every request is refused by name,
         // never answered as if the marker rule did not exist
-        serveer(markerKern());
+        serveer(markerCore());
         HttpResponse<String> resp = post("/heffing-markert", """
             { "instanties": [ { "type": "Vlucht", "id": "V1" } ] }""");
         assertEquals(503, resp.statusCode(), resp.body());
-        JsonNode fout = boom(resp.body());
-        assertEquals("MARKER", fout.get("status").asText(), resp.body());
-        assertTrue(fout.get("fout").asText().contains("niet uitvoerbaar"), resp.body());
-        assertTrue(fout.get("reden").asText().contains("transpiler"), "de reden is uchars weigering: " + resp.body());
-        assertTrue(contains(fout.get("markers"), "heffing markert"), resp.body());
+        JsonNode error = tree(resp.body());
+        assertEquals("MARKER", error.get("status").asText(), resp.body());
+        assertTrue(error.get("fout").asText().contains("niet uitvoerbaar"), resp.body());
+        assertTrue(error.get("reden").asText().contains("transpiler"), "de reden is uchars weigering: " + resp.body());
+        assertTrue(contains(error.get("markers"), "heffing markert"), resp.body());
     }
 
     // ---------------- negative HTTP ----------------
 
     @Test
-    void _400_noemt_het_veld_bij_onbekend_attribuut() throws Exception {
-        serveer(tokaKern());
-        String verzoek = """
+    void _400_names_the_field_at_unknown_attribute() throws Exception {
+        serveer(tokaCore());
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1", "attributen": { "bestaat-niet": 3 } } ] }""";
-        HttpResponse<String> resp = post("/bepaal-leeftijd", verzoek);
+        HttpResponse<String> resp = post("/bepaal-leeftijd", request);
         assertEquals(400, resp.statusCode(), resp.body());
-        JsonNode body = boom(resp.body());
+        JsonNode body = tree(resp.body());
         assertEquals("verzoek valideert niet", body.get("fout").asText());
         assertTrue(body.get("schendingen").isArray() && !body.get("schendingen").isEmpty(), resp.body());
-        boolean noemtVeld = false;
+        boolean namesField = false;
         for (JsonNode s : body.get("schendingen")) {
             assertTrue(s.has("veld"), s.toString());
             assertTrue(s.has("fout"), s.toString());
             if (s.get("veld").asText().contains("bestaat-niet")
-                    || s.get("fout").asText().contains("bestaat-niet")) noemtVeld = true;
+                    || s.get("fout").asText().contains("bestaat-niet")) namesField = true;
         }
-        assertTrue(noemtVeld, "de 400 hoort het onbekende veld te noemen: " + resp.body());
+        assertTrue(namesField, "de 400 hoort het onbekende veld te noemen: " + resp.body());
     }
 
     @Test
-    void _400_bij_malformed_json_body() throws Exception {
-        serveer(tokaKern());
+    void _400_at_malformed_json_body() throws Exception {
+        serveer(tokaCore());
         HttpResponse<String> resp = post("/bepaal-leeftijd", "{ this is not json ");
         assertEquals(400, resp.statusCode(), resp.body());
-        JsonNode body = boom(resp.body());
+        JsonNode body = tree(resp.body());
         assertEquals("body", body.get("veld").asText(), resp.body());
     }
 
     @Test
-    void _400_bij_lege_body() throws Exception {
-        serveer(tokaKern());
+    void _400_at_empty_body() throws Exception {
+        serveer(tokaCore());
         HttpResponse<String> resp = post("/bepaal-leeftijd", "");
         assertEquals(400, resp.statusCode(), resp.body());
-        assertEquals("body", boom(resp.body()).get("veld").asText(), resp.body());
+        assertEquals("body", tree(resp.body()).get("veld").asText(), resp.body());
     }
 
     @Test
-    void _404_bij_onbekend_pad() throws Exception {
-        serveer(tokaKern());
+    void _404_at_unknown_path() throws Exception {
+        serveer(tokaCore());
         // an unknown path -> the catch-all context 404s with a JSON body naming the pad.
         HttpResponse<String> resp = post("/dit-pad-bestaat-niet", "{ \"instanties\": [] }");
         assertEquals(404, resp.statusCode(), resp.body());
-        assertTrue(boom(resp.body()).get("fout").asText().contains("dit-pad-bestaat-niet"), resp.body());
+        assertTrue(tree(resp.body()).get("fout").asText().contains("dit-pad-bestaat-niet"), resp.body());
     }
 
     @Test
-    void _405_bij_verkeerde_methode() throws Exception {
-        serveer(tokaKern());
+    void _405_at_wrong_method() throws Exception {
+        serveer(tokaCore());
         // GET on a POST-only entry point path -> 405 naming the method.
         HttpResponse<String> resp = get("/bepaal-leeftijd");
         assertEquals(405, resp.statusCode(), resp.body());
-        JsonNode body = boom(resp.body());
+        JsonNode body = tree(resp.body());
         assertTrue(body.get("fout").asText().contains("GET"), resp.body());
     }
 
     @Test
-    void _500_lekt_nooit_een_stacktrace_of_geheim() throws Exception {
+    void _500_never_leaks_a_stacktrace_or_secret() throws Exception {
         // Force an internal error via a verwerk delegate that throws a RuntimeException carrying a secret. The
         // adapter must answer 500 with {"fout":"interne fout"} and NEVER echo the message or a class name.
-        BeslisserKern kern = tokaKern();
-        DienstHttp.Verwerker exploderend = (pad, boom) -> {
+        DecisionCore core = tokaCore();
+        ServiceHttp.Processor exploding = (path, tree) -> {
             throw new RuntimeException("geheim");
         };
-        dienst = DienstHttp.bindMet(kern, exploderend, "127.0.0.1", 0).start();
+        service = ServiceHttp.bindWith(core, exploding, "127.0.0.1", 0).start();
         HttpResponse<String> resp = post("/bepaal-leeftijd", "{ \"instanties\": [] }");
         assertEquals(500, resp.statusCode(), resp.body());
-        assertEquals("interne fout", boom(resp.body()).get("fout").asText(), resp.body());
+        assertEquals("interne fout", tree(resp.body()).get("fout").asText(), resp.body());
         assertFalse(resp.body().contains("geheim"), "het geheim mag NOOIT in de body lekken: " + resp.body());
         assertFalse(resp.body().contains("RuntimeException"), "geen class-naam in de body: " + resp.body());
         assertFalse(resp.body().contains("Exception"), "geen class-naam in de body: " + resp.body());
@@ -469,22 +469,22 @@ class DienstHttpTest {
 
     // ---- helpers ----
 
-    private static JsonNode vind(JsonNode antwoord, String id, String groep, String lid) {
-        for (JsonNode inst : antwoord.get("instanties"))
+    private static JsonNode find(JsonNode answer, String id, String group, String member) {
+        for (JsonNode inst : answer.get("instanties"))
             if (id.equals(inst.path("id").asText()))
-                return inst.path(groep).get(lid);
+                return inst.path(group).get(member);
         return null;
     }
 
-    private static JsonNode entrypointMet(JsonNode info, String pad) {
+    private static JsonNode entrypointWith(JsonNode info, String path) {
         for (JsonNode ep : info.get("entrypoints"))
-            if (pad.equals(ep.path("pad").asText())) return ep;
+            if (path.equals(ep.path("pad").asText())) return ep;
         return null;
     }
 
-    private static boolean contains(JsonNode array, String waarde) {
+    private static boolean contains(JsonNode array, String value) {
         if (array == null || !array.isArray()) return false;
-        for (JsonNode n : array) if (waarde.equals(n.asText())) return true;
+        for (JsonNode n : array) if (value.equals(n.asText())) return true;
         return false;
     }
 }

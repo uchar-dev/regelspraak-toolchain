@@ -2,8 +2,8 @@ package dev.uchar.regelspraak.toolchain.service.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
-import dev.uchar.regelspraak.toolchain.service.KernConfig;
+import dev.uchar.regelspraak.toolchain.service.DecisionCore;
+import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -26,10 +26,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * is checked on each field a link of a 1:1 relation writes: the instance's own field, the far field (RUNTIME-SEMANTICS
  * ch. 5.7a), the far field through {@code relaties}, and the reverse leg of a reciprocal relation (§13.3.9.2).
  */
-class RolbotsingHttpTest {
+class RoleCollisionHttpTest {
 
     /** uchar's golden {@code jutterswet-kavelgrens}: a self-typed one-to-one relation. */
-    private static final String KAVEL_BRON = """
+    private static final String KAVEL_SOURCE = """
         Objecttype het Duinkavel (mv: Duinkavels)
             de kavelbreedte Numeriek (niet-negatief geheel getal);
             de noordbuurbreedte Numeriek (niet-negatief geheel getal);
@@ -57,7 +57,7 @@ class RolbotsingHttpTest {
           "parameters": {} }""";
 
     /** A reciprocal one-to-one relation. */
-    private static final String MAAT_BRON = """
+    private static final String MAAT_SOURCE = """
         Objecttype de Vondst (mv: Vondsten)
             de waarde Numeriek (geheel getal);
             de maatwaarde Numeriek (geheel getal);
@@ -79,15 +79,15 @@ class RolbotsingHttpTest {
           "parameters": {} }""";
 
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
-    private static DienstHttp kavel;
-    private static DienstHttp maat;
+    private static ServiceHttp kavel;
+    private static ServiceHttp maat;
 
     @BeforeAll
     static void start() throws Exception {
-        kavel = DienstHttp.bind(BeslisserKern.bouw(KAVEL_DESCRIPTOR, Map.of("kavel.rgs", KAVEL_BRON),
-                KernConfig.strikt(), Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
-        maat = DienstHttp.bind(BeslisserKern.bouw(MAAT_DESCRIPTOR, Map.of("maat.rgs", MAAT_BRON),
-                KernConfig.strikt(), Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
+        kavel = ServiceHttp.bind(DecisionCore.assemble(KAVEL_DESCRIPTOR, Map.of("kavel.rgs", KAVEL_SOURCE),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
+        maat = ServiceHttp.bind(DecisionCore.assemble(MAAT_DESCRIPTOR, Map.of("maat.rgs", MAAT_SOURCE),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
     }
 
     @AfterAll
@@ -98,19 +98,19 @@ class RolbotsingHttpTest {
 
     /** One link reaches both fields: K2 reads K1 as its noordbuur without a link of its own. */
     @Test
-    void een_link_van_een_een_op_een_relatie_geldt_beide_kanten_op() throws Exception {
+    void a_link_of_a_one_to_one_relation_applies_both_ways() throws Exception {
         HttpResponse<String> resp = post(kavel, "/buurbreedte", """
             {"instanties":[{"type":"Duinkavel","id":"K1","attributen":{"kavelbreedte":10},"rollen":{"zuidbuur":"K2"}},
               {"type":"Duinkavel","id":"K2","attributen":{"kavelbreedte":20}}]}""");
         assertEquals(200, resp.statusCode(), resp.body());
-        assertEquals("10", String.valueOf(vind(boom(resp.body()), "K2", "noordbuurbreedte")), resp.body());
-        assertEquals("20", String.valueOf(vind(boom(resp.body()), "K1", "zuidbuurbreedte")), resp.body());
+        assertEquals("10", String.valueOf(find(tree(resp.body()), "K2", "noordbuurbreedte")), resp.body());
+        assertEquals("20", String.valueOf(find(tree(resp.body()), "K1", "zuidbuurbreedte")), resp.body());
     }
 
     /** K1 names two zuidburen: its own to-one field gets a second target, on the link to K3. */
     @Test
-    void twee_doelen_op_het_eigen_veld() throws Exception {
-        assertBotsing(post(kavel, "/buurbreedte", """
+    void two_targets_on_its_own_field() throws Exception {
+        assertCollision(post(kavel, "/buurbreedte", """
             {"instanties":[{"type":"Duinkavel","id":"K1","rollen":{"zuidbuur":["K2","K3"]}},
               {"type":"Duinkavel","id":"K2"},{"type":"Duinkavel","id":"K3"}]}"""),
                 "instanties[0].rollen.zuidbuur", "zuidbuur");
@@ -119,8 +119,8 @@ class RolbotsingHttpTest {
     /** K1 and K3 both name K2 as their zuidbuur: K2's noordbuur field, the far field of the one-to-one relation, gets
      *  a second target by K3's link. */
     @Test
-    void twee_doelen_op_het_verre_veld() throws Exception {
-        assertBotsing(post(kavel, "/buurbreedte", """
+    void two_targets_on_the_far_field() throws Exception {
+        assertCollision(post(kavel, "/buurbreedte", """
             {"instanties":[{"type":"Duinkavel","id":"K1","rollen":{"zuidbuur":"K2"}},
               {"type":"Duinkavel","id":"K2"},{"type":"Duinkavel","id":"K3","rollen":{"zuidbuur":"K2"}}]}"""),
                 "instanties[2].rollen.zuidbuur", "noordbuur");
@@ -128,8 +128,8 @@ class RolbotsingHttpTest {
 
     /** As above, with the second link a relation of {@code relaties}: the violation names the role of the relation. */
     @Test
-    void twee_doelen_op_het_verre_veld_via_relaties() throws Exception {
-        assertBotsing(post(kavel, "/buurbreedte", """
+    void two_targets_on_the_far_field_via_relations() throws Exception {
+        assertCollision(post(kavel, "/buurbreedte", """
             {"instanties":[{"type":"Duinkavel","id":"K1","rollen":{"zuidbuur":"K2"}},
               {"type":"Duinkavel","id":"K2"},{"type":"Duinkavel","id":"K3"}],
              "relaties":[{"feittype":"kavelgrens","rollen":{"noordbuur":"K3","zuidbuur":"K2"}}]}"""),
@@ -138,39 +138,39 @@ class RolbotsingHttpTest {
 
     /** V1 and V3 both name V2 as their maat: the reverse leg of V3's link finds V2 bound to V1. */
     @Test
-    void twee_doelen_op_de_omgekeerde_poot_van_een_wederkerige_relatie() throws Exception {
-        assertBotsing(post(maat, "/maatwaarde", """
+    void two_targets_on_the_reversed_leg_of_a_reciprocal_relation() throws Exception {
+        assertCollision(post(maat, "/maatwaarde", """
             {"instanties":[{"type":"Vondst","id":"V1","rollen":{"maat":"V2"}},
               {"type":"Vondst","id":"V2"},{"type":"Vondst","id":"V3","rollen":{"maat":"V2"}}]}"""),
                 "instanties[2].rollen.maat", "maat");
     }
 
-    /** One violation, VERKEERD_TYPE on {@code veld}, in uchar's sentence of a to-one role {@code rol} with a second
+    /** One violation, VERKEERD_TYPE on {@code field}, in uchar's sentence of a to-one role {@code role} with a second
      *  target. */
-    private static void assertBotsing(HttpResponse<String> resp, String veld, String rol) throws Exception {
+    private static void assertCollision(HttpResponse<String> resp, String field, String role) throws Exception {
         assertEquals(400, resp.statusCode(), resp.body());
-        JsonNode body = boom(resp.body());
+        JsonNode body = tree(resp.body());
         assertEquals(1, body.path("schendingen").size(), resp.body());
         assertEquals("VERKEERD_TYPE", body.at("/schendingen/0/soort").asText(), resp.body());
-        assertEquals(veld, body.at("/schendingen/0/veld").asText(), resp.body());
-        String zin = body.at("/schendingen/0/fout").asText();
-        assertTrue(zin.contains("'" + rol + "'") && zin.contains("WF-013"), zin);
+        assertEquals(field, body.at("/schendingen/0/veld").asText(), resp.body());
+        String sentence = body.at("/schendingen/0/fout").asText();
+        assertTrue(sentence.contains("'" + role + "'") && sentence.contains("WF-013"), sentence);
     }
 
-    private static HttpResponse<String> post(DienstHttp naar, String pad, String body) throws Exception {
-        return CLIENT.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + naar.poort() + pad))
+    private static HttpResponse<String> post(ServiceHttp to, String path, String body) throws Exception {
+        return CLIENT.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + to.port() + path))
                         .header("Content-Type", "application/json")
                         .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8)).build(),
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
     }
 
-    private static JsonNode boom(String json) throws Exception {
-        return DienstHttp.MAPPER.readTree(json);
+    private static JsonNode tree(String json) throws Exception {
+        return ServiceHttp.MAPPER.readTree(json);
     }
 
-    private static JsonNode vind(JsonNode antwoord, String id, String attribuut) {
-        for (JsonNode inst : antwoord.get("instanties"))
-            if (id.equals(inst.path("id").asText())) return inst.path("attributen").get(attribuut);
+    private static JsonNode find(JsonNode answer, String id, String attribute) {
+        for (JsonNode inst : answer.get("instanties"))
+            if (id.equals(inst.path("id").asText())) return inst.path("attributen").get(attribute);
         return null;
     }
 }

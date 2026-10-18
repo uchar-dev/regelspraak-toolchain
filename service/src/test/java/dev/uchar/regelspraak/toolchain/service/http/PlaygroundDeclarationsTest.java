@@ -6,7 +6,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
-import dev.uchar.regelspraak.toolchain.service.TokaBron;
+import dev.uchar.regelspraak.toolchain.service.TokaSource;
 
 import org.junit.jupiter.api.Test;
 
@@ -28,12 +28,12 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The line and the comment of each declaration in {@code vocabulaires.elementen} ({@link Declaraties}): read from
+ * The line and the comment of each declaration in {@code vocabularies.elements} ({@link Declarations}): read from
  * uchar's parse, keyed by owner and name, with a member of an extension at its line there and the type the extension
  * names as its owner. The list is filled without a declared vocabulary too. An element uchar's frontend wrote has no
- * line; an element that couples to no single declaration gives {@code declaratieFout}.
+ * line; an element that couples to no single declaration gives {@code declarationError}.
  */
-class PlaygroundDeclaratiesTest {
+class PlaygroundDeclarationsTest {
 
     private static final String BERGING = """
             // de kop van het bestand, los van wat volgt
@@ -83,35 +83,35 @@ class PlaygroundDeclaratiesTest {
      *  has its line there and the extended type as its owner. Without a vocabulary every element is there, with
      *  empty {@code benamingen}. */
     @Test
-    void regel_en_commentaar_per_declaratie() {
+    void line_and_comment_per_declaration() {
         JsonNode voc = Playground.analyseer(BERGING).get("vocabulaires");
         assertNull(voc.get("declaratieFout"), voc.toString());
         assertEquals(0, voc.get("gedeclareerd").size());
         assertEquals(14, voc.get("elementen").size(), voc.toString());
         for (JsonNode e : voc.get("elementen")) assertEquals(0, e.get("benamingen").size(), e.toString());
 
-        verwacht(voc, "OBJECTTYPE", null, "Berging", regel(BERGING, "Objecttype de Berging"), "Bron: het type");
-        verwacht(voc, "ATTRIBUUT", "Berging", "maxdatum", regel(BERGING, "de maxdatum Datum in dagen;"),
+        expected(voc, "OBJECTTYPE", null, "Berging", line(BERGING, "Objecttype de Berging"), "Bron: het type");
+        expected(voc, "ATTRIBUUT", "Berging", "maxdatum", line(BERGING, "de maxdatum Datum in dagen;"),
                 "de maxdatum van de berging", "", "Bron: art. 1");
-        verwacht(voc, "ATTRIBUUT", "Berging", "opbrengst", regel(BERGING, "de opbrengst"));
-        verwacht(voc, "KENMERK", "Berging", "gesloten", regel(BERGING, "is gesloten"));
-        verwacht(voc, "OBJECTTYPE", null, "Duur", regel(BERGING, "Objecttype de Duur"), "Bron: de duur");
-        verwacht(voc, "ATTRIBUUT", "Duur", "maxdatum", regel(BERGING, "// Bron: art. 2") + 1, "Bron: art. 2");
-        verwacht(voc, "ATTRIBUUT", "Duur", "aantal", regel(BERGING, "het aantal"), "Bron: art. 3");
-        verwacht(voc, "ENUMERATIEWAARDE", "Soort", "hout", regel(BERGING, "'hout'"), "de eerste");
-        verwacht(voc, "ENUMERATIEWAARDE", "Soort", "steen", regel(BERGING, "'steen'"));
-        verwacht(voc, "PARAMETER", null, "tarief", regel(BERGING, "Parameter het tarief"), "Bron: het tarief");
-        verwacht(voc, "FEITTYPE", null, "bergingsduur", regel(BERGING, "Feittype bergingsduur"), "Bron: het feittype");
-        verwacht(voc, "ROL", "bergingsduur", "berging", regel(BERGING, "de berging Berging"), "Bron: de rol");
-        verwacht(voc, "ROL", "bergingsduur", "duur", regel(BERGING, "de duur Duur"));
-        verwacht(voc, "VORM", null, "opbrengst van een berging", regel(BERGING, "Regel opbrengst"), "Bron: de regel");
+        expected(voc, "ATTRIBUUT", "Berging", "opbrengst", line(BERGING, "de opbrengst"));
+        expected(voc, "KENMERK", "Berging", "gesloten", line(BERGING, "is gesloten"));
+        expected(voc, "OBJECTTYPE", null, "Duur", line(BERGING, "Objecttype de Duur"), "Bron: de duur");
+        expected(voc, "ATTRIBUUT", "Duur", "maxdatum", line(BERGING, "// Bron: art. 2") + 1, "Bron: art. 2");
+        expected(voc, "ATTRIBUUT", "Duur", "aantal", line(BERGING, "het aantal"), "Bron: art. 3");
+        expected(voc, "ENUMERATIEWAARDE", "Soort", "hout", line(BERGING, "'hout'"), "de eerste");
+        expected(voc, "ENUMERATIEWAARDE", "Soort", "steen", line(BERGING, "'steen'"));
+        expected(voc, "PARAMETER", null, "tarief", line(BERGING, "Parameter het tarief"), "Bron: het tarief");
+        expected(voc, "FEITTYPE", null, "bergingsduur", line(BERGING, "Feittype bergingsduur"), "Bron: het feittype");
+        expected(voc, "ROL", "bergingsduur", "berging", line(BERGING, "de berging Berging"), "Bron: de rol");
+        expected(voc, "ROL", "bergingsduur", "duur", line(BERGING, "de duur Duur"));
+        expected(voc, "VORM", null, "opbrengst van een berging", line(BERGING, "Regel opbrengst"), "Bron: de regel");
     }
 
     /** A member an extension repeats word for word keeps the declaration the type carries, the one in its head,
      *  also when the extension comes first; a new member of the extension has its own line. */
     @Test
-    void een_herhaling_in_een_extensie_houdt_de_kop() {
-        String naKop = """
+    void a_repetition_in_an_extension_keeps_the_head() {
+        String afterHead = """
                 Objecttype de Berging (mv: Bergingen)
                     // kop
                     de opbrengst Numeriek (geheel getal);
@@ -121,12 +121,12 @@ class PlaygroundDeclaratiesTest {
                     // nieuw
                     het aantal Numeriek (geheel getal);
                 """;
-        JsonNode voc = Playground.analyseer(naKop).get("vocabulaires");
+        JsonNode voc = Playground.analyseer(afterHead).get("vocabulaires");
         assertNotNull(voc, "uchar aanvaardt de letterlijke herhaling");
-        verwacht(voc, "ATTRIBUUT", "Berging", "opbrengst", 3, "kop");
-        verwacht(voc, "ATTRIBUUT", "Berging", "aantal", 8, "nieuw");
+        expected(voc, "ATTRIBUUT", "Berging", "opbrengst", 3, "kop");
+        expected(voc, "ATTRIBUUT", "Berging", "aantal", 8, "nieuw");
 
-        String voorKop = """
+        String beforeHead = """
                 Extensie van objecttype de Berging
                     // eerst
                     de opbrengst Numeriek (geheel getal);
@@ -134,22 +134,22 @@ class PlaygroundDeclaratiesTest {
                     // kop
                     de opbrengst Numeriek (geheel getal);
                 """;
-        JsonNode voor = Playground.analyseer(voorKop).get("vocabulaires");
-        assertNotNull(voor, "uchar aanvaardt de letterlijke herhaling");
-        verwacht(voor, "ATTRIBUUT", "Berging", "opbrengst", 6, "kop");
+        JsonNode before = Playground.analyseer(beforeHead).get("vocabulaires");
+        assertNotNull(before, "uchar aanvaardt de letterlijke herhaling");
+        expected(before, "ATTRIBUUT", "Berging", "opbrengst", 6, "kop");
     }
 
     /** uchar's golden {@code jutterswet-opgave-bedrag}: the marked attribute and the rules have their line and their
      *  {@code // Bron:} comment; the attributes, the characteristic and the forms the opgave marker adds are written
      *  by uchar's frontend and have none. */
     @Test
-    void wat_de_frontend_schreef_heeft_geen_regel() throws IOException {
-        String bron = golden("jutterswet-opgave-bedrag");
-        JsonNode voc = Playground.analyseer(bron).get("vocabulaires");
+    void what_the_frontend_wrote_has_no_line() throws IOException {
+        String source = golden("jutterswet-opgave-bedrag");
+        JsonNode voc = Playground.analyseer(source).get("vocabulaires");
         assertNull(voc.get("declaratieFout"), voc.toString());
-        verwacht(voc, "ATTRIBUUT", "Vondst", "waarde", 7);
-        verwacht(voc, "VORM", null, "waarde", 12, "Bron: art. 3k lid 1");
-        verwacht(voc, "VORM", null, "verzekerde waarde", 29, "Bron: art. 3k lid 5");
+        expected(voc, "ATTRIBUUT", "Vondst", "waarde", 7);
+        expected(voc, "VORM", null, "waarde", 12, "Bron: art. 3k lid 1");
+        expected(voc, "VORM", null, "verzekerde waarde", 29, "Bron: art. 3k lid 5");
         for (String[] g : List.of(new String[]{"ATTRIBUUT", "Vondst", "opgegeven waarde"},
                 new String[]{"ATTRIBUUT", "Vondst", "berekende waarde"},
                 new String[]{"KENMERK", "Vondst", "afwijkende opgave waarde"},
@@ -163,13 +163,13 @@ class PlaygroundDeclaratiesTest {
     /** uchar resolves an attribute declared twice in one head, and says not which declaration the model carries: the
      *  view names the element and both lines, and no element carries a line. */
     @Test
-    void een_dubbel_lid_geeft_declaratieFout() {
-        String bron = """
+    void a_duplicate_member_gives_declaration_error() {
+        String source = """
                 Objecttype de Berging (mv: Bergingen)
                     de opbrengst Numeriek (geheel getal);
                     de opbrengst Numeriek (geheel getal);
                 """;
-        JsonNode voc = Playground.analyseer(bron).get("vocabulaires");
+        JsonNode voc = Playground.analyseer(source).get("vocabulaires");
         assertNotNull(voc, "uchar resolvet de bron");
         assertEquals("Het attribuut 'opbrengst' van 'Berging' heeft declaraties op de regels [2, 3], en uchar geeft"
                 + " niet aan welke daarvan het model draagt", voc.get("declaratieFout").asText());
@@ -181,96 +181,96 @@ class PlaygroundDeclaratiesTest {
      *  {@code jutterswet-vocabulaires} with the playground's scenario, in {@code cgm}. The designations stay as they
      *  were; a rule in a rule group and the group itself have their lines. */
     @Test
-    void een_scenariobron_met_vocabulaires() throws IOException {
-        String bron = golden("jutterswet-vocabulaires") + "\n"
-                + Files.readString(Path.of("src/test/resources/vocabulaires/jutterswet-vocabulaires.scenario.rgs"));
-        JsonNode voc = Playground.analyseer(bron, "cgm").get("vocabulaires");
+    void a_scenario_source_with_vocabularies() throws IOException {
+        String source = golden("jutterswet-vocabulaires") + "\n"
+                + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
+        JsonNode voc = Playground.analyseer(source, "cgm").get("vocabulaires");
         assertNull(voc.get("declaratieFout"), voc.toString());
-        JsonNode jutter = verwacht(voc, "OBJECTTYPE", null, "Jutter", 11);
+        JsonNode jutter = expected(voc, "OBJECTTYPE", null, "Jutter", 11);
         assertEquals("JUTTER", jutter.at("/benamingen/cgm").asText());
         assertEquals("strandjutter", jutter.at("/benamingen/handboek").asText());
-        verwacht(voc, "ENUMERATIEWAARDE", "Vondstsoort", "barnsteen", 6);
-        verwacht(voc, "ROL", "vondstaanmelding", "vondst", 25);
-        verwacht(voc, "REGELGROEP", null, "premieberekening", 28);
-        verwacht(voc, "VORM", null, "premie van een vondst", 29);
+        expected(voc, "ENUMERATIEWAARDE", "Vondstsoort", "barnsteen", 6);
+        expected(voc, "ROL", "vondstaanmelding", "vondst", 25);
+        expected(voc, "REGELGROEP", null, "premieberekening", 28);
+        expected(voc, "VORM", null, "premie van een vondst", 29);
     }
 
     /** Every golden of uchar's corpus with a source couples: no element or declaration is left over, every object
      *  type, fact type, role, parameter, enumeration value and rule group has its declaration (uchar's frontend writes
      *  none of these in the corpus), and the line of each declaration carries the name it declares. */
     @Test
-    void elke_golden_koppelt() throws IOException {
-        Set<Benoembaar.Soort> altijd = EnumSet.of(Benoembaar.Soort.OBJECTTYPE, Benoembaar.Soort.FEITTYPE,
+    void every_golden_links() throws IOException {
+        Set<Benoembaar.Soort> always = EnumSet.of(Benoembaar.Soort.OBJECTTYPE, Benoembaar.Soort.FEITTYPE,
                 Benoembaar.Soort.ROL, Benoembaar.Soort.PARAMETER, Benoembaar.Soort.ENUMERATIEWAARDE,
                 Benoembaar.Soort.REGELGROEP);
-        List<Path> bronnen;
-        try (Stream<Path> s = Files.list(TokaBron.REPO.resolve("uchar/corpus/golden"))) {
-            bronnen = s.map(p -> p.resolve("bron.rgs")).filter(Files::isRegularFile).sorted().toList();
+        List<Path> sources;
+        try (Stream<Path> s = Files.list(TokaSource.REPO.resolve("uchar/corpus/golden"))) {
+            sources = s.map(p -> p.resolve("bron.rgs")).filter(Files::isRegularFile).sorted().toList();
         }
-        assertTrue(bronnen.size() > 100, "het corpus telt " + bronnen.size() + " bronnen");
-        int gekoppeld = 0;
-        List<String> fouten = new ArrayList<>();
-        for (Path p : bronnen) {
-            String bron = Files.readString(p);
-            boolean scenario = Playground.bevatScenario(bron);
-            Playground.Ontleding ontleding = Playground.parse(bron, scenario);
+        assertTrue(sources.size() > 100, "het corpus telt " + sources.size() + " bronnen");
+        int linked = 0;
+        List<String> errors = new ArrayList<>();
+        for (Path p : sources) {
+            String source = Files.readString(p);
+            boolean scenario = Playground.containsScenario(source);
+            Playground.ParseResult parseResult = Playground.parse(source, scenario);
             RegelSpraakModel model = scenario
-                    ? ScenarioResolver.resolve(bron).model() : Resolver.resolve(bron);
+                    ? ScenarioResolver.resolve(source).model() : Resolver.resolve(source);
             if (!model.isOk()) continue;
-            Map<Benoembaar, Declaraties.Declaratie> d;
+            Map<Benoembaar, Declarations.Declaration> d;
             try {
-                d = Declaraties.van(ontleding.document(), ontleding.tokens(), model);
-            } catch (Declaraties.Onkoppelbaar o) {
-                fouten.add(p.getParent().getFileName() + ": " + o.getMessage());
+                d = Declarations.van(parseResult.document(), parseResult.tokens(), model);
+            } catch (Declarations.Unlinkable o) {
+                errors.add(p.getParent().getFileName() + ": " + o.getMessage());
                 continue;
             }
-            List<String> regels = ScenarioGegevens.regels(bron);
+            List<String> lines = ScenarioData.lines(source);
             for (Benoembaar b : model.benoembaar()) {
-                Declaraties.Declaratie x = d.get(b);
+                Declarations.Declaration x = d.get(b);
                 if (x == null) {
-                    if (altijd.contains(b.soort()))
-                        fouten.add(p.getParent().getFileName() + ": " + b + " heeft geen declaratie");
+                    if (always.contains(b.soort()))
+                        errors.add(p.getParent().getFileName() + ": " + b + " heeft geen declaratie");
                     continue;
                 }
-                gekoppeld++;
-                String tekst = regels.get(x.regel() - 1).replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-                if (!tekst.contains(b.naam().toLowerCase(Locale.ROOT)))
-                    fouten.add(p.getParent().getFileName() + ": " + b + " op regel " + x.regel() + ": " + tekst);
+                linked++;
+                String text = lines.get(x.line() - 1).replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+                if (!text.contains(b.naam().toLowerCase(Locale.ROOT)))
+                    errors.add(p.getParent().getFileName() + ": " + b + " op regel " + x.line() + ": " + text);
             }
         }
-        assertEquals(List.of(), fouten);
-        assertTrue(gekoppeld > 1000, gekoppeld + " gekoppelde elementen");
+        assertEquals(List.of(), errors);
+        assertTrue(linked > 1000, linked + " gekoppelde elementen");
     }
 
     // ---------------- helpers ----------------
 
-    private static String golden(String naam) throws IOException {
-        return Files.readString(TokaBron.REPO.resolve("uchar/corpus/golden/" + naam + "/bron.rgs"));
+    private static String golden(String name) throws IOException {
+        return Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/" + name + "/bron.rgs"));
     }
 
-    /** The 1-based line of {@code bron} that begins, after its indentation, with {@code begin}. */
-    private static int regel(String bron, String begin) {
-        List<String> regels = ScenarioGegevens.regels(bron);
-        for (int i = 0; i < regels.size(); i++) if (regels.get(i).strip().startsWith(begin)) return i + 1;
+    /** The 1-based line of {@code source} that begins, after its indentation, with {@code begin}. */
+    private static int line(String source, String begin) {
+        List<String> lines = ScenarioData.lines(source);
+        for (int i = 0; i < lines.size(); i++) if (lines.get(i).strip().startsWith(begin)) return i + 1;
         throw new AssertionError("geen regel begint met '" + begin + "'");
     }
 
-    private static JsonNode element(JsonNode voc, String soort, String eigenaar, String canoniek) {
+    private static JsonNode element(JsonNode voc, String kind, String owner, String canonical) {
         for (JsonNode e : voc.get("elementen"))
-            if (e.get("soort").asText().equals(soort) && e.get("canoniek").asText().equals(canoniek)
-                    && (eigenaar == null ? e.get("eigenaar").isNull() : eigenaar.equals(e.get("eigenaar").asText())))
+            if (e.get("soort").asText().equals(kind) && e.get("canoniek").asText().equals(canonical)
+                    && (owner == null ? e.get("eigenaar").isNull() : owner.equals(e.get("eigenaar").asText())))
                 return e;
-        throw new AssertionError("geen element " + soort + " " + eigenaar + " " + canoniek + " in " + voc);
+        throw new AssertionError("geen element " + kind + " " + owner + " " + canonical + " in " + voc);
     }
 
-    /** Asserts the element's {@code regel} and {@code commentaar}, and returns it. */
-    private static JsonNode verwacht(JsonNode voc, String soort, String eigenaar, String canoniek, int regel,
-                                     String... commentaar) {
-        JsonNode e = element(voc, soort, eigenaar, canoniek);
-        assertEquals(regel, e.path("regel").asInt(-1), e.toString());
-        List<String> gelezen = new ArrayList<>();
-        for (JsonNode c : e.get("commentaar")) gelezen.add(c.asText());
-        assertEquals(List.of(commentaar), gelezen, e.toString());
+    /** Asserts the element's {@code line} and {@code comment}, and returns it. */
+    private static JsonNode expected(JsonNode voc, String kind, String owner, String canonical, int line,
+                                     String... comment) {
+        JsonNode e = element(voc, kind, owner, canonical);
+        assertEquals(line, e.path("regel").asInt(-1), e.toString());
+        List<String> wasRead = new ArrayList<>();
+        for (JsonNode c : e.get("commentaar")) wasRead.add(c.asText());
+        assertEquals(List.of(comment), wasRead, e.toString());
         return e;
     }
 }

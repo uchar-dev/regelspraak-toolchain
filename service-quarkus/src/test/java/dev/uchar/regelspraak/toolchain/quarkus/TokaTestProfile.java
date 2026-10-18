@@ -2,7 +2,7 @@ package dev.uchar.regelspraak.toolchain.quarkus;
 
 import io.quarkus.test.junit.QuarkusTestProfile;
 
-import dev.uchar.regelspraak.toolchain.service.TokaBron;
+import dev.uchar.regelspraak.toolchain.service.TokaSource;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -14,17 +14,17 @@ import java.util.Map;
 /**
  * The @QuarkusTest config profile that points {@code DESCRIPTOR} / {@code BRONNEN_MANIFEST} / {@code ALLOW_MARKERS}
  * at the TOKA fixtures, so the app boots the SAME 29-entrypoint TOKA service the service module tests use. The
- * bron paths + descriptor are read straight off {@link TokaBron} (the service test-jar), and a small
+ * bron paths + descriptor are read straight off {@link TokaSource} (the service test-jar), and a small
  * {@code BRONNEN_MANIFEST} file is generated (one absolute {@code .rgs} path per line, in
- * {@code TokaBron.bronPerBestand()} order) so the {@link KernProducer}'s manifest reader has a real file to read —
+ * {@code TokaSource.sourcePerFile()} order) so the {@link CoreProducer}'s manifest reader has a real file to read —
  * exactly mirroring {@code service-entrypoint.sh}. Nothing here is a hand-typed rule/value.
  */
 public class TokaTestProfile implements QuarkusTestProfile {
 
     @Override
     public Map<String, String> getConfigOverrides() {
-        Path descriptor = TokaBron.REPO.resolve("examples/toka/toka.dienst.json");
-        Path manifest = schrijfManifest();
+        Path descriptor = TokaSource.REPO.resolve("examples/toka/toka.dienst.json");
+        Path manifest = writeManifest();
         Map<String, String> cfg = new LinkedHashMap<>();
         cfg.put("DESCRIPTOR", descriptor.toString());
         cfg.put("BRONNEN_MANIFEST", manifest.toString());
@@ -32,12 +32,12 @@ public class TokaTestProfile implements QuarkusTestProfile {
         return cfg;
     }
 
-    /** Write the ordered bron .rgs paths (TokaBron's manifest order) to a temp file, one per line. */
-    private static Path schrijfManifest() {
+    /** Write the ordered bron .rgs paths (TokaSource's manifest order) to a temp file, one per line. */
+    private static Path writeManifest() {
         try {
             Path manifest = Files.createTempFile("toka-bronnen-", ".manifest");
-            // TokaBron.bronPerBestand() keys are the ordered bron path strings (LinkedHashMap, manifest order).
-            Files.write(manifest, TokaBron.bronPerBestand().keySet());
+            // TokaSource.sourcePerFile() keys are the ordered bron path strings (LinkedHashMap, manifest order).
+            Files.write(manifest, TokaSource.sourcePerFile().keySet());
             manifest.toFile().deleteOnExit();
             return manifest;
         } catch (IOException ioe) {

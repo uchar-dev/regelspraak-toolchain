@@ -21,9 +21,9 @@ import static org.junit.jupiter.api.Assertions.*;
  * scenario FAILS on a named expectation with a diagnose that carries the diverging value (verwacht vs werkelijk) —
  * so the runner cannot silently pass a bad expectation.
  */
-class ScenarioMutatieRunTest {
+class ScenarioMutationRunTest {
 
-    private static final Path MAP = Path.of("src/test/resources/scenario-mutaties");
+    private static final Path MAP = Path.of("src/test/resources/scenario-mutations");
 
     private static List<Path> fixtures() throws IOException {
         try (Stream<Path> s = Files.list(MAP)) {
@@ -32,7 +32,7 @@ class ScenarioMutatieRunTest {
     }
 
     @TestFactory
-    Stream<DynamicTest> elk_mutatiefixture_faalt_met_een_diagnose() throws IOException {
+    Stream<DynamicTest> each_mutation_fixture_fails_with_a_diagnostic() throws IOException {
         List<Path> fixtures = fixtures();
         assertTrue(fixtures.size() >= 10, () -> "G3 vereist ≥ 10 mutatiefixtures, gevonden: " + fixtures.size());
         return fixtures.stream().map(p -> DynamicTest.dynamicTest(p.getFileName().toString(), () -> {
@@ -47,9 +47,9 @@ class ScenarioMutatieRunTest {
             // at least one expectation is not-ok, named by its position in the scenario, and the diagnose names the
             // diverging value (verwacht + werkelijk). uchar's report names an expectation by its position in the
             // case; the scenario's source line does not reach the case file.
-            ScenarioResultaat.VerwachtingResultaat fout = r.verwachtingen().stream().filter(v -> !v.ok()).findFirst()
+            ScenarioResultaat.VerwachtingResultaat error = r.verwachtingen().stream().filter(v -> !v.ok()).findFirst()
                     .orElseThrow(() -> new AssertionError(p.getFileName() + ": minstens één verwachting hoort niet-ok te zijn"));
-            assertTrue(fout.positie() >= 1, () -> p.getFileName() + ": de falende verwachting hoort haar positie te dragen");
+            assertTrue(error.positie() >= 1, () -> p.getFileName() + ": de falende verwachting hoort haar positie te dragen");
             assertFalse(r.diagnose().isBlank(), () -> p.getFileName() + ": een falend scenario moet een diagnose dragen");
             assertTrue(r.diagnose().contains("verwacht") && r.diagnose().contains("werkelijk"),
                     () -> p.getFileName() + ": de diagnose moet verwacht én werkelijk noemen: " + r.diagnose());

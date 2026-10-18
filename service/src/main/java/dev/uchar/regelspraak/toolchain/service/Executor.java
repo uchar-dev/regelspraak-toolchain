@@ -16,27 +16,27 @@ import java.util.Map;
 
 /**
  * The per-request executor: given an entry point's {@link DroolsBackend.Build} (built once at startup by uchar,
- * immutable thereafter) and a mapped {@link Wereld}, it opens a FRESH session of the build's KieBase, sets the
+ * immutable thereafter) and a mapped {@link World}, it opens a FRESH session of the build's KieBase, sets the
  * parameter globals (the descriptor defaults, overridden by the request), sets the rekendatum global when the request
  * carried one, and then fills, fires and reads it through uchar's entry: {@link DroolsBackend#voegIn} puts the input
- * in that uchar's input step read ({@link Wereld#invoer()}), each to-many list in the replay's order, {@link DroolsBackend#vuur}
+ * in that uchar's input step read ({@link World#input()}), each to-many list in the replay's order, {@link DroolsBackend#vuur}
  * fires to the fixpoint, {@link DroolsBackend#lees} gives the evaluation faults that stand there, and where none
  * stands {@link DroolsBackend#zetAfgeleideWaarden} puts the derived values on the beans, which the branch keeps as
  * facts of the session until then. It returns the beans and the {@code Inconsistentie} facts for the response builder.
  * Session-per-request; the KieBase is shared and immutable, so this is thread-safe by construction.
  *
- * <p>Every fault that stands at the fixpoint leaves here as an {@link Evaluatiefout}, and nothing is written back: the
+ * <p>Every fault that stands at the fixpoint leaves here as an {@link EvaluationFault}, and nothing is written back: the
  * rules give no answer on this input. Such a fault is an evaluation fault by its place at the fixpoint, whatever its
  * type, so it is read as data before the write-back, which would throw it as an exception like those the entry throws
  * itself for a session used wrongly; those stay internal faults. A run without a fixpoint, at uchar's fire cap or at
- * its creation budget, leaves as a {@link GeenFixpunt} with uchar's sentence, and nothing is read or written back.
+ * its creation budget, leaves as a {@link NoFixpoint} with uchar's sentence, and nothing is read or written back.
  */
-public final class Uitvoerder {
+public final class Executor {
 
     private final DroolsBackend.Build build;
     private final Map<String, Object> defaultGlobals;   // descriptor parameter defaults (global name -> value)
 
-    public Uitvoerder(DroolsBackend.Build build, Map<String, Object> defaultGlobals) {
+    public Executor(DroolsBackend.Build build, Map<String, Object> defaultGlobals) {
         this.build = build;
         this.defaultGlobals = defaultGlobals == null ? Map.of() : defaultGlobals;
     }
@@ -44,122 +44,122 @@ public final class Uitvoerder {
     /** The result of a fire: the beans by id with the derived values written back, the firings, the
      *  inconsistenties, what stood at the fixpoint before the write-back, as uchar's entry reads it, and uchar's
      *  verdict on the expectations the caller gave ({@link DroolsBackend#vergelijk}), null when it gave none. */
-    public record Uitkomst(Map<String, Object> beans, int gevuurd, List<Object> inconsistenties, Fixpunt fixpunt,
-                           DroolsBackend.Vergelijking vergelijking) {}
+    public record Outcome(Map<String, Object> beans, int fired, List<Object> inconsistencies, Fixpunt fixpoint,
+                           DroolsBackend.Vergelijking comparison) {}
 
-    /** Fire the entry point's rules over {@code wereld} and return the beans with their derived values and the
+    /** Fire the entry point's rules over {@code world} and return the beans with their derived values and the
      *  inconsistenties. */
-    public Uitkomst vuur(Wereld wereld) {
-        return vuur(wereld, Map.of());
+    public Outcome fire(World world) {
+        return fire(world, Map.of());
     }
 
     /**
-     * Fire the entry point's rules over {@code wereld}, with {@code setGlobals} the parameterset-vintage resolved
+     * Fire the entry point's rules over {@code world}, with {@code setGlobals} the parameterset-vintage resolved
      * values (fase 5). PRECEDENCE (decision D): descriptor defaults FIRST, then the set-resolved values (the
-     * BeslisserKern conflict rule guarantees these never name the same parameter as a default), then the request
+     * DecisionCore conflict rule guarantees these never name the same parameter as a default), then the request
      * parameter overrides LAST (explicit caller-intent wins — mirrors the scenario situatie-override). The
-     * rekendatum global stays {@code wereld.rekendatum()} — that IS the peildatum (the one date authority).
+     * rekendatum global stays {@code world.evaluationDate()} — that IS the peildatum (the one date authority).
      *
      * @throws Evaluatiefout the evaluation faults that stand at the fixpoint, one or more, of any type
      */
-    public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals) {
-        return vuur(wereld, setGlobals, null);
+    public Outcome fire(World world, Map<String, Object> setGlobals) {
+        return fire(world, setGlobals, null);
     }
 
     /**
-     * As {@link #vuur(Wereld, Map)}, with {@code waarnemer} (null: none) recording what the session fires, through
+     * As {@link #fire(Wereld, Map)}, with {@code observer} (null: none) recording what the session fires, through
      * uchar's {@link DroolsBackend#vuur(DroolsBackend.Build, KieSession, DroolsBackend.Waarnemer)}. A waarnemer belongs
      * to one session, so the caller gives each request a fresh one and reads it after this returns or throws.
      *
      * @throws Evaluatiefout the evaluation faults that stand at the fixpoint, one or more, of any type, with the
      *                       fixpoint they stand at
      */
-    public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals, DroolsBackend.Waarnemer waarnemer) {
-        return vuur(wereld, setGlobals, waarnemer, null);
+    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Waarnemer observer) {
+        return fire(world, setGlobals, observer, null);
     }
 
     /**
-     * As {@link #vuur(Wereld, Map, DroolsBackend.Waarnemer)}, and with {@code verwachtingen} (null: none), the
+     * As {@link #fire(Wereld, Map, DroolsBackend.Waarnemer)}, and with {@code expectations} (null: none), the
      * {@code expected} of a {@code uchar-case-v0} case whose labels are ids of the request, uchar's verdict on them over
      * the written-back session ({@link DroolsBackend#vergelijk}, with the ids of the request as labels), before the
      * session is disposed. uchar compares; this class only hands the session over.
      *
      * @throws Evaluatiefout            the evaluation faults that stand at the fixpoint, with the fixpoint they stand
      *                                  at; nothing is compared then, as uchar's report compares nothing of such a case
-     * @throws GeenFixpunt              a run that reached no fixpoint, with uchar's sentence; nothing is compared
+     * @throws NoFixpoint              a run that reached no fixpoint, with uchar's sentence; nothing is compared
      * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare, in the
      *                                  sentence of its replay
      */
-    public Uitkomst vuur(Wereld wereld, Map<String, Object> setGlobals, DroolsBackend.Waarnemer waarnemer,
-                         JsonNode verwachtingen) {
+    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Waarnemer observer,
+                         JsonNode expectations) {
         // descriptor defaults first, set-vintage values next, request parameters override last
         Map<String, Object> globals = new LinkedHashMap<>(defaultGlobals);
         if (setGlobals != null) globals.putAll(setGlobals);
-        globals.putAll(wereld.globals());
+        globals.putAll(world.globals());
 
-        ClassLoader vorige = Thread.currentThread().getContextClassLoader();
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(build.beanLoader());   // Drools resolves fact types via the TCCL
-        KieSession sessie = build.kieBase().newKieSession();
+        KieSession session = build.kieBase().newKieSession();
         try {
             // the branch states the globals as facts at the first fire, so they all go on before it
-            for (var e : build.dagsoortGlobalen().entrySet()) setGlobalVeilig(sessie, e.getKey(), e.getValue());
-            for (var e : globals.entrySet()) setGlobalVeilig(sessie, e.getKey(), e.getValue());
-            LocalDate rd = wereld.rekendatum();
-            if (rd != null) setGlobalVeilig(sessie, "rekendatum", rd);
+            for (var e : build.dagsoortGlobalen().entrySet()) setGlobalSafe(session, e.getKey(), e.getValue());
+            for (var e : globals.entrySet()) setGlobalSafe(session, e.getKey(), e.getValue());
+            LocalDate rd = world.evaluationDate();
+            if (rd != null) setGlobalSafe(session, "rekendatum", rd);
             // the input as uchar's replay puts it in: the order of a list decides which member a fault of a fold
             // names, so the 422 names the member uchar's replay names on the same input
-            DroolsBackend.voegIn(build, sessie, wereld.invoer().invoer());
-            DroolsBackend.Vuring vuring = waarnemer == null ? DroolsBackend.vuur(build, sessie)
-                    : DroolsBackend.vuur(build, sessie, waarnemer);
-            if (vuring.geenFixpunt() != null) throw new GeenFixpunt(vuring.geenFixpunt());
+            DroolsBackend.voegIn(build, session, world.input().invoer());
+            DroolsBackend.Vuring firing = observer == null ? DroolsBackend.vuur(build, session)
+                    : DroolsBackend.vuur(build, session, observer);
+            if (firing.geenFixpunt() != null) throw new NoFixpoint(firing.geenFixpunt());
             // a fault names its object by the id of the request; a made object has none, and uchar names it as ref does
             Map<Object, String> label = new IdentityHashMap<>();
-            wereld.beans().forEach((id, bean) -> label.put(bean, id));
+            world.beans().forEach((id, bean) -> label.put(bean, id));
             // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
             // it as one exception among those the entry throws itself, so the faults are read as data first
-            Fixpunt fixpunt = DroolsBackend.lees(build, sessie, label::get);
-            if (!fixpunt.fouten().isEmpty()) throw Evaluatiefout.van(fixpunt, teruggeworpen(sessie, label, fixpunt));
-            DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
-            List<Object> inc = leesInconsistenties(sessie);
-            DroolsBackend.Vergelijking vergelijking = verwachtingen == null ? null
-                    : DroolsBackend.vergelijk(build, sessie, label::get, verwachtingen);
-            return new Uitkomst(wereld.beans(), vuring.vuringen(), inc, fixpunt, vergelijking);
+            Fixpunt fixpoint = DroolsBackend.lees(build, session, label::get);
+            if (!fixpoint.fouten().isEmpty()) throw EvaluationFault.van(fixpoint, rethrown(session, label, fixpoint));
+            DroolsBackend.zetAfgeleideWaarden(build, session, label::get);
+            List<Object> inc = readInconsistencies(session);
+            DroolsBackend.Vergelijking comparison = expectations == null ? null
+                    : DroolsBackend.vergelijk(build, session, label::get, expectations);
+            return new Outcome(world.beans(), firing.vuringen(), inc, fixpoint, comparison);
         } finally {
-            sessie.dispose();
-            Thread.currentThread().setContextClassLoader(vorige);
+            session.dispose();
+            Thread.currentThread().setContextClassLoader(previous);
         }
     }
 
     /** The exception uchar's write-back throws for the faults that stand at {@code fixpunt}: the fault's own for one,
      *  uchar's {@code Evaluatiefouten} for two or more. It writes nothing back then; a write-back that does not throw
      *  is a broken promise of uchar's entry. */
-    private RuntimeException teruggeworpen(KieSession sessie, Map<Object, String> label, Fixpunt fixpunt) {
+    private RuntimeException rethrown(KieSession session, Map<Object, String> label, Fixpunt fixpoint) {
         try {
-            DroolsBackend.zetAfgeleideWaarden(build, sessie, label::get);
+            DroolsBackend.zetAfgeleideWaarden(build, session, label::get);
         } catch (RuntimeException e) {
             return e;
         }
         throw new IllegalStateException("uchars terugzetting wierp niets, terwijl aan het fixpunt "
-                + fixpunt.fouten().size() + " evaluatiefout(en) staan, de eerste: " + fixpunt.fouten().get(0).melding());
+                + fixpoint.fouten().size() + " evaluatiefout(en) staan, de eerste: " + fixpoint.fouten().get(0).melding());
     }
 
     /** setGlobal tolerating a global the compiled DRL did not declare (a parameter no scoped rule reads is not
      *  registered as a global — writing it would throw; harmless to skip). Mirrors ScenarioRunner. */
-    private static void setGlobalVeilig(KieSession sessie, String naam, Object waarde) {
-        try { sessie.setGlobal(naam, waarde); }
-        catch (RuntimeException onbekend) { /* global not declared: no scoped rule reads it */ }
+    private static void setGlobalSafe(KieSession session, String name, Object value) {
+        try { session.setGlobal(name, value); }
+        catch (RuntimeException unknown) { /* global not declared: no scoped rule reads it */ }
     }
 
     /** uchar's generator writes the {@code Inconsistentie} bean for every model, so a class loader without it is not
      *  the one the KieBase was built against: that fails here rather than dropping every inconsistency. */
-    private List<Object> leesInconsistenties(KieSession sessie) {
-        String naam = FactModelGenerator.PAKKET + ".Inconsistentie";
+    private List<Object> readInconsistencies(KieSession session) {
+        String name = FactModelGenerator.PAKKET + ".Inconsistentie";
         Class<?> inc;
         try {
-            inc = Class.forName(naam, true, build.beanLoader());
+            inc = Class.forName(name, true, build.beanLoader());
         } catch (ClassNotFoundException e) {
-            throw new IllegalStateException("de bean-classloader van dit entrypoint draagt " + naam + " niet", e);
+            throw new IllegalStateException("de bean-classloader van dit entrypoint draagt " + name + " niet", e);
         }
-        return List.copyOf(sessie.getObjects(inc::isInstance));
+        return List.copyOf(session.getObjects(inc::isInstance));
     }
 }

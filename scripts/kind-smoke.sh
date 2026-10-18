@@ -51,7 +51,7 @@ cleanup() {
   if [ "$rc" -ne 0 ] && kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
     {
       echo "=================================================================="
-      echo "kind-smoke MISLUKT in stap '$STAP' (exit $rc); de oorzaak staat in de uitvoer hierboven."
+      echo "kind-smoke MISLUKT in stap '$STEP' (exit $rc); de oorzaak staat in de uitvoer hierboven."
       echo "De kind cluster '$CLUSTER' is blijven staan om te debuggen: kubectl --context $KCTX get pods -A"
       echo "Een volgende run hergebruikt hem. Ruim hem daarna op, want een draaiende cluster blijft CPU kosten:"
       echo "  kind delete cluster --name $CLUSTER"
@@ -60,8 +60,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-STAP=start
-stap() { STAP=$1; echo "== $1 =="; }
+STEP=start
+step() { STEP=$1; echo "== $1 =="; }
 
 # pf <svc>: stop any prior forward, start a fresh one, wait for /info.
 pf() {
@@ -81,7 +81,7 @@ pf() {
 }
 
 # ---- cluster ------------------------------------------------------------------
-stap "cluster"
+step "cluster"
 if kind get clusters 2>/dev/null | grep -qx "$CLUSTER"; then
   echo "hergebruik bestaande kind cluster '$CLUSTER'"
   k get nodes >/dev/null 2>&1 || {
@@ -94,12 +94,12 @@ else
 fi
 
 # ---- build + load -------------------------------------------------------------
-stap "build + load"
+step "build + load"
 make image TAG="$TAG"
 kind load docker-image "$IMG_REPO:$TAG" --name "$CLUSTER"
 
 # ---- install ------------------------------------------------------------------
-stap "install"
+step "install"
 h upgrade --install "$RELEASE" "$CHART" -f "$CHART/values-dev.yaml" --set image.tag="$TAG"
 k rollout status "deploy/$RELEASE" --timeout=600s
 
@@ -110,7 +110,7 @@ e = json.load(sys.stdin)["entrypoints"]
 print("/info:", len(e), "entrypoints,", sum(1 for x in e if x.get("uitvoerbaar")), "uitvoerbaar")'
 
 # ---- H2: cluster oracle -------------------------------------------------------
-stap "H2"
+step "H2"
 # The identical golden assertions (GoldenOverHttpTest) against the IN-CLUSTER service via
 # -Ddienst.url, in the reactor (the service module needs the modules below it). The
 # surefire goal runs alone after test-compile: the module's skip-pin step counts full
@@ -120,10 +120,10 @@ mvn -o -B -pl service -am test-compile surefire:test -Dtest=GoldenOverHttpTest \
 echo "H2 PASS: GoldenOverHttpTest tegen de in-cluster dienst (26 over HTTP gereproduceerd, 3 door uchar geweigerd)"
 
 # ---- H3: fail-fast ------------------------------------------------------------
-stap "H3"
+step "H3"
 # Install the marker descriptor with allowMarkers=false → the service exits 3 → CrashLoopBackOff.
 h upgrade --install "$MARKER_RELEASE" "$CHART" --set image.tag="$TAG" \
-    --set descriptor=/app/rules/marker/marker.dienst.json \
+    --set descriptor=/app/rules/marker/marker.service.json \
     --set bronnenManifest=/app/rules/marker/manifest.txt
 
 MARKER_POD=""
@@ -157,7 +157,7 @@ echo "H3: fail-fast exit 3 bevestigd (CrashLoopBackOff by design)"
 
 # Same descriptor/manifest, nu MET --allow-markers → start schoon; een verzoek krijgt 503.
 h upgrade "$MARKER_RELEASE" "$CHART" --set image.tag="$TAG" \
-    --set descriptor=/app/rules/marker/marker.dienst.json \
+    --set descriptor=/app/rules/marker/marker.service.json \
     --set bronnenManifest=/app/rules/marker/manifest.txt \
     --set allowMarkers=true
 k rollout status "deploy/$MARKER_RELEASE" --timeout=600s
@@ -171,7 +171,7 @@ echo "H3 PASS: met --allow-markers start de dienst, toont /info de marker en kri
 h uninstall "$MARKER_RELEASE"
 
 # ---- H4: rollout --------------------------------------------------------------
-stap "H4"
+step "H4"
 # Pinned request: a Vlucht op 2026-07-01 met een persoon geboren 2007-01-01 (19 jr).
 read -r -d '' H4_BODY <<'JSON' || true
 {"instanties":[{"type":"Vlucht","id":"V1","attributen":{"vluchtdatum":"2026-07-01"}},{"type":"Natuurlijk persoon","id":"P1","attributen":{"geboortedatum":"2007-01-01"},"rollen":{"reis":"V1"}}]}
@@ -196,7 +196,7 @@ RESP_A=$(curl -fsS -X POST "http://127.0.0.1:$PF_PORT/kenmerktoekenning-persoon-
     -H 'Content-Type: application/json' -d "$H4_BODY")
 echo "H4a respons (volwassenleeftijd 18): $RESP_A"
 # The heredoc IS python's stdin (it would shadow a pipe), so the response rides in via env.
-RESP="$RESP_A" VERWACHT=false python3 - <<'PY'
+RESP="$RESP_A" EXPECTED=false python3 - <<'PY'
 import json, os
 pid, verwacht = "P1", os.environ["VERWACHT"] == "true"
 resp = json.loads(os.environ["RESP"])
@@ -224,7 +224,7 @@ pf "$RELEASE"
 RESP_B=$(curl -fsS -X POST "http://127.0.0.1:$PF_PORT/kenmerktoekenning-persoon-minderjarig" \
     -H 'Content-Type: application/json' -d "$H4_BODY")
 echo "H4b respons (volwassenleeftijd 21): $RESP_B"
-RESP="$RESP_B" VERWACHT=true python3 - <<'PY'
+RESP="$RESP_B" EXPECTED=true python3 - <<'PY'
 import json, os
 pid, verwacht = "P1", os.environ["VERWACHT"] == "true"
 resp = json.loads(os.environ["RESP"])
@@ -242,7 +242,7 @@ echo "H4 PASS: descriptor-overlay wijzigt de beslissing over een rollout heen"
 
 # ---- teardown -----------------------------------------------------------------
 if [ "$TEARDOWN" = true ]; then
-  stap "teardown"
+  step "teardown"
   h uninstall "$RELEASE" || true
   kind delete cluster --name "$CLUSTER"
 fi

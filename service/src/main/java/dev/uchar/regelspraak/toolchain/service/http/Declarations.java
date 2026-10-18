@@ -59,27 +59,27 @@ import java.util.Set;
  *   <li>an attribute or characteristic declared more than once: the declaration the type carries, as uchar chooses it
  *       ({@code DefinitionResolver.bestaande}): the one in the head, else the first in document order. An extension
  *       repeats a member the type carries only word for word, which uchar checks (WF-002, dialect §7);</li>
- *   <li>any other element with more than one, or a member with more than one in a head: {@link Onkoppelbaar}.</li>
+ *   <li>any other element with more than one, or a member with more than one in a head: {@link Unlinkable}.</li>
  * </ul>
- * A declaration that couples to no element is {@link Onkoppelbaar} as well, except a rule: a rule that becomes no
+ * A declaration that couples to no element is {@link Unlinkable} as well, except a rule: a rule that becomes no
  * named form on the wire has no element (uchar's {@code Benamingen.keur} names a day kind, a start point and an
  * allocation without a method).
  */
-final class Declaraties {
+final class Declarations {
 
-    private Declaraties() {}
+    private Declarations() {}
 
     /** Where a declaration stands: its source line, and the comment lines directly above it, each without its
      *  {@code //} and stripped. */
-    record Declaratie(int regel, List<String> commentaar) {}
+    record Declaration(int line, List<String> comment) {}
 
     /** An element that couples to no single declaration, or a declaration that couples to no element. */
-    static final class Onkoppelbaar extends RuntimeException {
-        Onkoppelbaar(String zin) { super(zin); }
+    static final class Unlinkable extends RuntimeException {
+        Unlinkable(String sentence) { super(sentence); }
     }
 
     /** A declaration as the walk finds it: what it declares, whether it stands in an extension, and its context. */
-    private record Gevonden(Benoembaar element, boolean inExtensie, ParserRuleContext ctx) {}
+    private record Found(Benoembaar element, boolean inExtension, ParserRuleContext ctx) {}
 
     /**
      * The declaration of every element of {@code model} that has one in {@code document}, the tree uchar's parser
@@ -87,91 +87,91 @@ final class Declaraties {
      *
      * @throws Onkoppelbaar an element or a declaration that does not couple (see the class comment)
      */
-    static Map<Benoembaar, Declaratie> van(ParserRuleContext document, CommonTokenStream tokens,
+    static Map<Benoembaar, Declaration> van(ParserRuleContext document, CommonTokenStream tokens,
                                            RegelSpraakModel model) {
-        List<Gevonden> gevonden = new ArrayList<>();
+        List<Found> found = new ArrayList<>();
         for (ParseTree kind : document.children == null ? List.<ParseTree>of() : document.children) {
-            if (kind instanceof DefinitieContext d) definitie(d, gevonden);
-            else if (kind instanceof RegelContext r) regel(r, gevonden);
+            if (kind instanceof DefinitieContext d) definition(d, found);
+            else if (kind instanceof RegelContext r) line(r, found);
             else if (kind instanceof RegelGroepContext g) {
-                gevonden.add(new Gevonden(Benoembaar.regelgroep(src(g.kaleNaam())), false, g));
-                for (GroepLidContext lid : g.groepLid()) if (lid.regel() != null) regel(lid.regel(), gevonden);
+                found.add(new Found(Benoembaar.regelgroep(src(g.kaleNaam())), false, g));
+                for (GroepLidContext member : g.groepLid()) if (member.regel() != null) line(member.regel(), found);
             } else if (kind instanceof UitzonderingGroepContext ug) {
-                for (RegelContext r : ug.regel()) regel(r, gevonden);
+                for (RegelContext r : ug.regel()) line(r, found);
             }
         }
-        Map<Benoembaar, Declaratie> uit = new LinkedHashMap<>();
-        Set<Gevonden> gekoppeld = Collections.newSetFromMap(new IdentityHashMap<>());
+        Map<Benoembaar, Declaration> sink = new LinkedHashMap<>();
+        Set<Found> linked = Collections.newSetFromMap(new IdentityHashMap<>());
         for (Benoembaar b : model.benoembaar()) {
-            List<Gevonden> kandidaten = gevonden.stream().filter(g -> zelfde(g.element(), b)).toList();
-            if (kandidaten.isEmpty()) continue;
-            gekoppeld.addAll(kandidaten);
-            ParserRuleContext ctx = keuze(b, kandidaten);
-            uit.put(b, new Declaratie(ctx.getStart().getLine(), commentaar(ctx, tokens)));
+            List<Found> candidates = found.stream().filter(g -> same(g.element(), b)).toList();
+            if (candidates.isEmpty()) continue;
+            linked.addAll(candidates);
+            ParserRuleContext ctx = choice(b, candidates);
+            sink.put(b, new Declaration(ctx.getStart().getLine(), comment(ctx, tokens)));
         }
-        for (Gevonden g : gevonden)
-            if (!gekoppeld.contains(g) && g.element().soort() != Benoembaar.Soort.VORM)
-                throw new Onkoppelbaar(beschrijving(g.element()) + " op regel " + g.ctx().getStart().getLine()
+        for (Found g : found)
+            if (!linked.contains(g) && g.element().soort() != Benoembaar.Soort.VORM)
+                throw new Unlinkable(description(g.element()) + " op regel " + g.ctx().getStart().getLine()
                         + " is geen element van het model");
-        return uit;
+        return sink;
     }
 
-    private static void definitie(DefinitieContext d, List<Gevonden> uit) {
+    private static void definition(DefinitieContext d, List<Found> sink) {
         if (d.objectTypeDefinition() != null) {
-            ObjectTypeDefinitionContext kop = d.objectTypeDefinition();
-            String type = src(kop.objectTypeNaam());
-            uit.add(new Gevonden(Benoembaar.objecttype(type), false, kop));
-            for (ObjectTypeMemberContext m : kop.objectTypeMember()) lid(type, m, false, uit);
+            ObjectTypeDefinitionContext head = d.objectTypeDefinition();
+            String type = src(head.objectTypeNaam());
+            sink.add(new Found(Benoembaar.objecttype(type), false, head));
+            for (ObjectTypeMemberContext m : head.objectTypeMember()) member(type, m, false, sink);
         } else if (d.objectTypeExtensie() != null) {
-            ObjectTypeExtensieContext extensie = d.objectTypeExtensie();
-            String type = src(extensie.objectTypeNaam());
-            for (ObjectTypeMemberContext m : extensie.objectTypeMember()) lid(type, m, true, uit);
+            ObjectTypeExtensieContext extension = d.objectTypeExtensie();
+            String type = src(extension.objectTypeNaam());
+            for (ObjectTypeMemberContext m : extension.objectTypeMember()) member(type, m, true, sink);
         } else if (d.domeinDefinition() != null && d.domeinDefinition().enumeratieSpecificatie() != null) {
-            DomeinDefinitionContext domein = d.domeinDefinition();
-            String naam = src(domein.domeinNaam());
-            for (EnumeratieWaardeContext w : domein.enumeratieSpecificatie().enumeratieWaarde()) {
+            DomeinDefinitionContext domain = d.domeinDefinition();
+            String name = src(domain.domeinNaam());
+            for (EnumeratieWaardeContext w : domain.enumeratieSpecificatie().enumeratieWaarde()) {
                 String t = w.ENUM_LITERAL().getText();
-                uit.add(new Gevonden(Benoembaar.enumeratiewaarde(naam, t.substring(1, t.length() - 1)), false, w));
+                sink.add(new Found(Benoembaar.enumeratiewaarde(name, t.substring(1, t.length() - 1)), false, w));
             }
         } else if (d.parameterDefinition() != null) {
             ParameterDefinitionContext p = d.parameterDefinition();
-            uit.add(new Gevonden(Benoembaar.parameter(src(p.parameterNaam())), false, p));
+            sink.add(new Found(Benoembaar.parameter(src(p.parameterNaam())), false, p));
         } else if (d.feitTypeDefinition() != null) {
             FeitTypeDefinitionContext ft = d.feitTypeDefinition();
-            String naam = src(ft.feitTypeNaam());
-            uit.add(new Gevonden(Benoembaar.feittype(naam), false, ft));
+            String name = src(ft.feitTypeNaam());
+            sink.add(new Found(Benoembaar.feittype(name), false, ft));
             for (RolSpecificatieContext r : ft.rolSpecificatie())
-                uit.add(new Gevonden(Benoembaar.rol(naam, src(r.rolNaam())), false, r));
+                sink.add(new Found(Benoembaar.rol(name, src(r.rolNaam())), false, r));
         }
     }
 
-    private static void lid(String type, ObjectTypeMemberContext m, boolean extensie, List<Gevonden> uit) {
+    private static void member(String type, ObjectTypeMemberContext m, boolean extension, List<Found> sink) {
         if (m.attribuutSpecificatie() != null) {
             AttribuutSpecificatieContext a = m.attribuutSpecificatie();
-            uit.add(new Gevonden(Benoembaar.attribuut(type, src(a.lowerNaam())), extensie, a));
+            sink.add(new Found(Benoembaar.attribuut(type, src(a.lowerNaam())), extension, a));
         } else if (m.kenmerkSpecificatie() instanceof BijvoeglijkKenmerkContext k) {
-            uit.add(new Gevonden(Benoembaar.kenmerk(type, src(k.lowerNaam())), extensie, k));
+            sink.add(new Found(Benoembaar.kenmerk(type, src(k.lowerNaam())), extension, k));
         } else if (m.kenmerkSpecificatie() instanceof NaamwoordKenmerkContext k) {
-            uit.add(new Gevonden(Benoembaar.kenmerk(type, src(k.lowerNaam())), extensie, k));
+            sink.add(new Found(Benoembaar.kenmerk(type, src(k.lowerNaam())), extension, k));
         } else if (m.kenmerkSpecificatie() != null) {
             throw new IllegalStateException("een kenmerkdeclaratie van een onbekende vorm ("
                     + m.kenmerkSpecificatie().getClass().getSimpleName() + ") op regel " + m.getStart().getLine());
         }
     }
 
-    private static void regel(RegelContext r, List<Gevonden> uit) {
-        uit.add(new Gevonden(Benoembaar.vorm(src(r.regelNaam())), false, r));
+    private static void line(RegelContext r, List<Found> sink) {
+        sink.add(new Found(Benoembaar.vorm(src(r.regelNaam())), false, r));
     }
 
-    /** The declaration of {@code b} among its {@code kandidaten}, which are in document order. */
-    private static ParserRuleContext keuze(Benoembaar b, List<Gevonden> kandidaten) {
-        if (kandidaten.size() == 1) return kandidaten.get(0).ctx();
-        boolean lid = b.soort() == Benoembaar.Soort.ATTRIBUUT || b.soort() == Benoembaar.Soort.KENMERK;
-        List<Gevonden> inKop = kandidaten.stream().filter(g -> !g.inExtensie()).toList();
-        if (lid && inKop.size() == 1) return inKop.get(0).ctx();
-        if (lid && inKop.isEmpty()) return kandidaten.get(0).ctx();
-        throw new Onkoppelbaar(hoofd(beschrijving(b)) + " heeft declaraties op de regels "
-                + kandidaten.stream().map(g -> String.valueOf(g.ctx().getStart().getLine())).toList()
+    /** The declaration of {@code b} among its {@code candidates}, which are in document order. */
+    private static ParserRuleContext choice(Benoembaar b, List<Found> candidates) {
+        if (candidates.size() == 1) return candidates.get(0).ctx();
+        boolean member = b.soort() == Benoembaar.Soort.ATTRIBUUT || b.soort() == Benoembaar.Soort.KENMERK;
+        List<Found> inHead = candidates.stream().filter(g -> !g.inExtension()).toList();
+        if (member && inHead.size() == 1) return inHead.get(0).ctx();
+        if (member && inHead.isEmpty()) return candidates.get(0).ctx();
+        throw new Unlinkable(capitalise(description(b)) + " heeft declaraties op de regels "
+                + candidates.stream().map(g -> String.valueOf(g.ctx().getStart().getLine())).toList()
                 + ", en uchar geeft niet aan welke daarvan het model draagt");
     }
 
@@ -180,36 +180,36 @@ final class Declaraties {
      * above its own, up to the first line that is no comment line or is empty. A comment behind the token before
      * them (on that token's line) ends the run: its line is no comment line.
      */
-    static List<String> commentaar(ParserRuleContext ctx, CommonTokenStream tokens) {
+    static List<String> comment(ParserRuleContext ctx, CommonTokenStream tokens) {
         Token start = ctx.getStart();
         int index = start.getTokenIndex();
         if (index < 0 || index >= tokens.size() || tokens.get(index) != start)
             throw new IllegalStateException("de declaratie op regel " + start.getLine()
                     + " staat niet in de tokenstroom van haar parse");
-        List<Token> verborgen = tokens.getHiddenTokensToLeft(index);
-        if (verborgen == null) return List.of();
-        int eerste = verborgen.get(0).getTokenIndex();
-        int vorigeRegel = eerste == 0 ? 0 : eindregel(tokens.get(eerste - 1));
-        LinkedList<String> uit = new LinkedList<>();
-        int verwacht = start.getLine() - 1;
-        for (int i = verborgen.size() - 1; i >= 0; i--) {
-            Token t = verborgen.get(i);
-            if (t.getType() != RegelSpraakLexer.LINE_COMMENT || t.getLine() != verwacht || t.getLine() <= vorigeRegel)
+        List<Token> hidden = tokens.getHiddenTokensToLeft(index);
+        if (hidden == null) return List.of();
+        int first = hidden.get(0).getTokenIndex();
+        int previousLine = first == 0 ? 0 : endLine(tokens.get(first - 1));
+        LinkedList<String> sink = new LinkedList<>();
+        int expected = start.getLine() - 1;
+        for (int i = hidden.size() - 1; i >= 0; i--) {
+            Token t = hidden.get(i);
+            if (t.getType() != RegelSpraakLexer.LINE_COMMENT || t.getLine() != expected || t.getLine() <= previousLine)
                 break;
-            uit.addFirst(t.getText().substring(2).strip());
-            verwacht--;
+            sink.addFirst(t.getText().substring(2).strip());
+            expected--;
         }
-        return List.copyOf(uit);
+        return List.copyOf(sink);
     }
 
     /** The line of the last character of {@code t}. */
-    private static int eindregel(Token t) {
-        String tekst = t.getText();
-        return t.getLine() + (tekst == null ? 0 : (int) tekst.chars().filter(c -> c == '\n').count());
+    private static int endLine(Token t) {
+        String text = t.getText();
+        return t.getLine() + (text == null ? 0 : (int) text.chars().filter(c -> c == '\n').count());
     }
 
     /** uchar's name identity of two elements: the kind, and owner and name case-insensitively. */
-    private static boolean zelfde(Benoembaar a, Benoembaar b) {
+    private static boolean same(Benoembaar a, Benoembaar b) {
         return a.soort() == b.soort() && a.naam().equalsIgnoreCase(b.naam())
                 && (a.eigenaar() == null ? b.eigenaar() == null
                     : b.eigenaar() != null && a.eigenaar().equalsIgnoreCase(b.eigenaar()));
@@ -225,7 +225,7 @@ final class Declaraties {
         return t.replaceAll("\\s+", " ").trim();
     }
 
-    private static String beschrijving(Benoembaar b) {
+    private static String description(Benoembaar b) {
         return switch (b.soort()) {
             case OBJECTTYPE -> "het objecttype '" + b.naam() + "'";
             case ATTRIBUUT -> "het attribuut '" + b.naam() + "' van '" + b.eigenaar() + "'";
@@ -239,5 +239,5 @@ final class Declaraties {
         };
     }
 
-    private static String hoofd(String s) { return Character.toUpperCase(s.charAt(0)) + s.substring(1); }
+    private static String capitalise(String s) { return Character.toUpperCase(s.charAt(0)) + s.substring(1); }
 }

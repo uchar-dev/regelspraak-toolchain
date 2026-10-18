@@ -9,7 +9,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Herkomstvorm;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -45,7 +45,7 @@ import java.util.regex.Pattern;
  * en de samengestelde alle/geen-kwantoren) en meldt een niet-gestructureerde vorm als zodanig, in plaats van te
  * gokken.
  *
- * <p><b>Vocabulaire.</b> Met een {@link Naamgeving} noemt het verhaal de gedeclareerde namen — objecttypen,
+ * <p><b>Vocabulaire.</b> Met een {@link Naming} noemt het verhaal de gedeclareerde namen — objecttypen,
  * attributen, kenmerken, rollen, parameters en enumeratiewaarden — in het gekozen vocabulaire; de brontekst van een
  * operand is regeltekst en blijft zoals hij geschreven is. De uitzondering is een regel die uchar zelf schreef, de
  * regel {@code afwijking opgave X} van de opgave-markering (uchars DIVERGENCES §7): zijn tekst is uchars canonieke
@@ -68,33 +68,33 @@ import java.util.regex.Pattern;
  * gerouteerd — dus de annotatie is er vandaag NIET. De verbalisator is daar eerlijk over: hij drukt een
  * bronverwijzing af zodra {@link ResolvedRegel} er een draagt en laat de regel anders weg (geen verzonnen bron).
  */
-public final class Verbalisator {
+public final class Verbaliser {
 
     private final RegelSpraakModel model;
     /** De opgeloste globals die operanden kunnen lezen: parameters (op hun canonieke naam) + "rekendatum". */
     private final Map<String, Object> globals;
     /** De namen waarin het verhaal de declaraties noemt. */
-    private final Naamgeving naamgeving;
+    private final Naming naming;
 
-    public Verbalisator(RegelSpraakModel model, Map<String, Object> globals) {
-        this(model, globals, Naamgeving.canoniek(model));
+    public Verbaliser(RegelSpraakModel model, Map<String, Object> globals) {
+        this(model, globals, Naming.canonical(model));
     }
 
-    public Verbalisator(RegelSpraakModel model, Map<String, Object> globals, Naamgeving naamgeving) {
+    public Verbaliser(RegelSpraakModel model, Map<String, Object> globals, Naming naming) {
         this.model = model;
         this.globals = globals == null ? Map.of() : globals;
-        this.naamgeving = naamgeving;
+        this.naming = naming;
     }
 
     /**
-     * Bouw de uitleg voor een gedraaide wereld. {@code instanties} mapt een LABEL (het scenario-label of het
+     * Bouw de uitleg voor een gedraaide wereld. {@code instances} mapt een LABEL (het scenario-label of het
      * dienst-verzoek-id) op de bijbehorende, reeds gevuurde bean; {@code typePerLabel} het objecttype per label.
      * Het resultaat is één regel per uitlegzin, in een stabiele volgorde (per label, in modeldeclaratie-volgorde
      * van de regels). Een lege lijst betekent: geen kenmerktoekenning raakte een van deze instanties.
      */
-    public List<String> verbaliseer(Map<String, Object> instanties, Map<String, Objecttype> typePerLabel) {
-        List<String> uit = new ArrayList<>();
-        for (Map.Entry<String, Object> e : instanties.entrySet()) {
+    public List<String> verbalise(Map<String, Object> instances, Map<String, Objecttype> typePerLabel) {
+        List<String> sink = new ArrayList<>();
+        for (Map.Entry<String, Object> e : instances.entrySet()) {
             String label = e.getKey();
             Object bean = e.getValue();
             Objecttype ot = typePerLabel.get(label);
@@ -107,44 +107,44 @@ public final class Verbalisator {
                 // supertype kent het kenmerk óók toe aan een subtype-instantie. Op naamgelijkheid vergelijken
                 // laat precies die toekenningen onverklaard: het kenmerk staat AAN en het verhaal zwijgt.
                 if (!ot.isEen(ref.objecttype())) continue;
-                String zin = verbaliseerToekenning(label, bean, ref, r);
-                if (zin != null) uit.add(zin);
+                String sentence = verbaliseAssignment(label, bean, ref, r);
+                if (sentence != null) sink.add(sentence);
             }
         }
-        return uit;
+        return sink;
     }
 
     /** Één kenmerktoekenningsregel voor één instantie: is het kenmerk toegekend → "waarom (voorwaarden)"; is het
      *  met een voorwaarde NIET toegekend → "niet, want <eerste falende conjunct>"; onvoorwaardelijk-afwezig → geen
      *  zin (er valt niets te verantwoorden). */
-    private String verbaliseerToekenning(String label, Object bean, Expr.AttribuutRef ref, ResolvedRegel r) {
-        String kenmerk = ref.attribuut();
-        boolean aanwezig = leesBoolean(bean, kenmerk);
+    private String verbaliseAssignment(String label, Object bean, Expr.AttribuutRef ref, ResolvedRegel r) {
+        String characteristic = ref.attribuut();
+        boolean present = readBoolean(bean, characteristic);
         Conditie v = r.voorwaarde();
-        Objecttype onderwerp = ref.objecttype();
-        if (!aanwezig && v == null) return null;   // onvoorwaardelijk maar afwezig: niets te verantwoorden
+        Objecttype subject = ref.objecttype();
+        if (!present && v == null) return null;   // onvoorwaardelijk maar afwezig: niets te verantwoorden
         // de conclusie van de regel ("Een … heeft de uitkeringsduur verstreken") draagt het lidwoord
-        Gezegde gezegde = gezegde(onderwerp, kenmerk, aanwezig, ref.bron() == null ? null : ref.bron().snippet());
-        if (gezegde == null)
-            throw new IllegalStateException("de kenmerktoekenning '" + r.naam() + "' kent '" + kenmerk + "' toe, en "
-                    + onderwerp.naam + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
-        boolean uchartekst = doorUcharGeschreven(r);
-        StringBuilder b = new StringBuilder(label).append(' ').append(gezegde.hoofdzin());
-        if (aanwezig) {
-            if (v != null) b.append(", omdat ").append(verbaliseerVoorwaarde(v, bean, onderwerp, uchartekst));
+        Predicate predicate = predicate(subject, characteristic, present, ref.bron() == null ? null : ref.bron().snippet());
+        if (predicate == null)
+            throw new IllegalStateException("de kenmerktoekenning '" + r.naam() + "' kent '" + characteristic + "' toe, en "
+                    + subject.naam + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
+        boolean ucharText = writtenByUchar(r);
+        StringBuilder b = new StringBuilder(label).append(' ').append(predicate.mainClause());
+        if (present) {
+            if (v != null) b.append(", omdat ").append(verbaliseCondition(v, bean, subject, ucharText));
             else b.append(" (onvoorwaardelijk toegekend)");
         } else {
-            b.append(", want ").append(eersteFalendeConjunct(v, bean, onderwerp, uchartekst));
+            b.append(", want ").append(firstFailingConjunct(v, bean, subject, ucharText));
         }
-        String bron = bronVerwijzing(r);
-        if (bron != null) b.append(". Grondslag: ").append(bron);
+        String source = sourceReference(r);
+        if (source != null) b.append(". Grondslag: ").append(source);
         return b.toString();
     }
 
     /** Of uchar de tekst van regel {@code r} schreef: een regel van de opgave-familie, volgens uchars tabel van
      *  herkomst. Een beslistabelrij maakte uchar ook, maar uit de kolomkoppen en cellen van de auteur; die tekst is van
      *  de auteur. */
-    private boolean doorUcharGeschreven(ResolvedRegel r) {
+    private boolean writtenByUchar(ResolvedRegel r) {
         return model.gegenereerdUit(Benoembaar.vorm(RegelSpraakModel.vormnaam(r.naam())))
                 .map(g -> g.vorm() == Herkomstvorm.OPGAVE_BOVEN_BEREKENING).orElse(false);
     }
@@ -152,47 +152,47 @@ public final class Verbalisator {
     // ---------------- voorwaarde-verbalisatie ----------------
 
     /** Een voorwaarde in proza, met de geëvalueerde operandwaarden: WAAROM ze geldt (het toegekende geval); de
-     *  niet-toegekende tak gaat via {@link #eersteFalendeConjunct}. {@code onderwerp} is het objecttype van de regel,
-     *  vanwaar een kenmerk- of rolnaam in de voorwaarde gelezen wordt; {@code uchartekst} of uchar de regel schreef. */
-    private String verbaliseerVoorwaarde(Conditie c, Object bean, Objecttype onderwerp, boolean uchartekst) {
+     *  niet-toegekende tak gaat via {@link #firstFailingConjunct}. {@code subject} is het objecttype van de regel,
+     *  vanwaar een kenmerk- of rolnaam in de voorwaarde gelezen wordt; {@code ucharText} of uchar de regel schreef. */
+    private String verbaliseCondition(Conditie c, Object bean, Objecttype subject, boolean ucharText) {
         if (c instanceof Conditie.Samengesteld s) {
-            List<String> delen = new ArrayList<>();
-            for (Conditie d : s.onderdelen()) delen.add(verbaliseerVoorwaarde(d, bean, onderwerp, uchartekst));
-            String voegwoord = switch (s.kwantor()) {
+            List<String> parts = new ArrayList<>();
+            for (Conditie d : s.onderdelen()) parts.add(verbaliseCondition(d, bean, subject, ucharText));
+            String conjunction = switch (s.kwantor()) {
                 case ALLE -> " en ";
                 case GEEN -> " en niet ";
                 default -> " of ";
             };
-            return String.join(voegwoord, delen);
+            return String.join(conjunction, parts);
         }
-        return verbaliseerAtoom(c, bean, onderwerp, uchartekst);
+        return verbaliseAtom(c, bean, subject, ucharText);
     }
 
     /** Een enkele (niet-samengestelde) conditie als proza met geëvalueerde operanden. */
-    private String verbaliseerAtoom(Conditie c, Object bean, Objecttype onderwerp, boolean uchartekst) {
+    private String verbaliseAtom(Conditie c, Object bean, Objecttype subject, boolean ucharText) {
         if (c instanceof Conditie.Vergelijking vg) {
-            return operandProza(vg.links(), bean, uchartekst) + " " + operatorWoorden(vg.op()) + " "
-                    + operandProza(vg.rechts(), bean, uchartekst);
+            return operandProse(vg.links(), bean, ucharText) + " " + operatorWords(vg.op()) + " "
+                    + operandProse(vg.rechts(), bean, ucharText);
         }
         if (c instanceof Conditie.Kenmerk k) {
-            Objecttype houder = k.navigatie() == null ? onderwerp
-                    : model.rolDoeltypeNaarSubject(onderwerp, k.navigatie());
-            Gezegde gezegde = gezegde(houder, k.kenmerk(), !k.negatie(), samenvatting(c));
+            Objecttype houder = k.navigatie() == null ? subject
+                    : model.rolDoeltypeNaarSubject(subject, k.navigatie());
+            Predicate predicate = predicate(houder, k.kenmerk(), !k.negatie(), summary(c));
             // zonder soort geen werkwoord: dan de voorwaarde zoals de regel haar schrijft, zoals hieronder
-            if (gezegde == null) return "aan de voorwaarde \"" + samenvatting(c) + "\" is voldaan";
-            String wie = k.navigatie() == null ? "het onderwerp" : "de " + naamgeving.rolVanaf(onderwerp, k.navigatie());
-            return wie + " " + gezegde.bijzin();
+            if (predicate == null) return "aan de voorwaarde \"" + summary(c) + "\" is voldaan";
+            String who = k.navigatie() == null ? "het onderwerp" : "de " + naming.roleFrom(subject, k.navigatie());
+            return who + " " + predicate.clause();
         }
         if (c instanceof Conditie.Rollidmaatschap rl)
-            return "het onderwerp " + (rl.negatie() ? "geen " : "een ") + naamgeving.rolVervuld(onderwerp, rl.rol())
+            return "het onderwerp " + (rl.negatie() ? "geen " : "een ") + naming.roleFulfilled(subject, rl.rol())
                     + " is";
         if (c instanceof Conditie.Predicaat p) {
-            String kern = switch (p.soort()) {
+            String core = switch (p.soort()) {
                 case LEEG -> "leeg is";
                 case GEVULD -> "gevuld is";
                 default -> "voldoet aan " + p.soort().name().toLowerCase(Locale.ROOT);
             };
-            return operandProza(p.operand(), bean, uchartekst) + " " + kern;
+            return operandProse(p.operand(), bean, ucharText) + " " + core;
         }
         // een nog niet gestructureerde conditievorm: eerlijk de brontekst tonen, geen gok.
         return "aan de voorwaarde \"" + c.bron().snippet().trim() + "\" is voldaan";
@@ -202,23 +202,23 @@ public final class Verbalisator {
      *  operanden tegen de eindtoestand) niet houdt — de reden dat de toekenning uitbleef. Voor een niet-
      *  samengestelde voorwaarde is dat de voorwaarde zelf. Kan een conjunct niet worden geëvalueerd (een
      *  onopgeloste vorm, een niet-leesbaar operand), dan noemt hij die eerlijk als "niet vast te stellen". */
-    private String eersteFalendeConjunct(Conditie c, Object bean, Objecttype onderwerp, boolean uchartekst) {
+    private String firstFailingConjunct(Conditie c, Object bean, Objecttype subject, boolean ucharText) {
         if (c instanceof Conditie.Samengesteld s && s.kwantor() == Conditie.Kwantor.ALLE) {
             for (Conditie d : s.onderdelen()) {
-                Boolean houdt = evalueer(d, bean);
-                if (houdt == null) return "de voorwaarde \"" + samenvatting(d) + "\" niet is vast te stellen";
-                if (!houdt) return "niet geldt: " + verbaliseerAtoom(d, bean, onderwerp, uchartekst);
+                Boolean holds = evalueer(d, bean);
+                if (holds == null) return "de voorwaarde \"" + summary(d) + "\" niet is vast te stellen";
+                if (!holds) return "niet geldt: " + verbaliseAtom(d, bean, subject, ucharText);
             }
             // alle conjuncten houden maar het kenmerk staat toch niet aan: een producent buiten deze run.
             return "de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
         }
-        Boolean houdt = evalueer(c, bean);
-        if (Boolean.FALSE.equals(houdt)) return "niet geldt: " + verbaliseerAtoom(c, bean, onderwerp, uchartekst);
-        if (houdt == null) return "de voorwaarde \"" + samenvatting(c) + "\" niet is vast te stellen";
+        Boolean holds = evalueer(c, bean);
+        if (Boolean.FALSE.equals(holds)) return "niet geldt: " + verbaliseAtom(c, bean, subject, ucharText);
+        if (holds == null) return "de voorwaarde \"" + summary(c) + "\" niet is vast te stellen";
         return "de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
     }
 
-    private static String samenvatting(Conditie c) { return c.bron() == null ? "?" : c.bron().snippet().trim(); }
+    private static String summary(Conditie c) { return c.bron() == null ? "?" : c.bron().snippet().trim(); }
 
     // ---------------- read-only conditie-evaluatie ----------------
 
@@ -229,12 +229,12 @@ public final class Verbalisator {
             Object l = evalExpr(vg.links(), bean);
             Object r = evalExpr(vg.rechts(), bean);
             if (l == null || r == null) return null;
-            return vergelijk(vg.op(), l, r);
+            return compare(vg.op(), l, r);
         }
         if (c instanceof Conditie.Kenmerk k && k.navigatie() == null) {
-            Object v = leesRuw(bean, Namen.getter(k.kenmerk()));
-            boolean aan = Boolean.TRUE.equals(v);
-            return k.negatie() != aan;   // negatie XOR aanwezig
+            Object v = readRaw(bean, Namen.getter(k.kenmerk()));
+            boolean enabled = Boolean.TRUE.equals(v);
+            return k.negatie() != enabled;   // negatie XOR aanwezig
         }
         if (c instanceof Conditie.Predicaat p) {
             Object v = evalExpr(p.operand(), bean);
@@ -247,14 +247,14 @@ public final class Verbalisator {
         return null;
     }
 
-    private Boolean vergelijk(Conditie.Operator op, Object l, Object r) {
+    private Boolean compare(Conditie.Operator op, Object l, Object r) {
         int c;
         if (l instanceof BigDecimal a && r instanceof BigDecimal b) c = a.compareTo(b);
         else if (l instanceof LocalDate a && r instanceof LocalDate b) c = a.compareTo(b);
         else if (l instanceof LocalDateTime a && r instanceof LocalDateTime b) c = a.compareTo(b);
         else if (op == Conditie.Operator.GELIJK || op == Conditie.Operator.ONGELIJK) {
-            boolean gelijk = l.equals(r);
-            return op == Conditie.Operator.GELIJK ? gelijk : !gelijk;
+            boolean equal = l.equals(r);
+            return op == Conditie.Operator.GELIJK ? equal : !equal;
         } else return null;   // ongelijksoortige operanden voor een ordinale vergelijking
         return switch (op) {
             case KLEINER, EERDER -> c < 0;
@@ -273,28 +273,28 @@ public final class Verbalisator {
      *  reken-operatoren, afronding en begrenzing. */
     private Object evalExpr(Expr e, Object bean) {
         if (e == null) return null;
-        if (e instanceof Expr.Literal lit) return literalWaarde(lit);
+        if (e instanceof Expr.Literal lit) return literalValue(lit);
         if (e instanceof Expr.ParameterRef pr) return globals.get(Namen.ident(pr.parameter().naam(), false));
         if (e instanceof Expr.Constante ct) {
             if ("Rekendatum".equals(ct.naam())) return globals.get("rekendatum");
             return null;
         }
         if (e instanceof Expr.AttribuutRef ref && ref.navigatieRol() == null)
-            return leesRuw(bean, Namen.getter(ref.attribuut()));
+            return readRaw(bean, Namen.getter(ref.attribuut()));
         if (e instanceof Expr.Binair bin) {
             Object l = evalExpr(bin.links(), bean);
             Object r = evalExpr(bin.rechts(), bean);
-            if (l instanceof BigDecimal a && r instanceof BigDecimal b) return rekenen(bin.op(), a, b);
+            if (l instanceof BigDecimal a && r instanceof BigDecimal b) return compute(bin.op(), a, b);
             return null;
         }
-        if (e instanceof Expr.Afgerond af) {
-            Object basis = evalExpr(af.basis(), bean);
-            if (basis instanceof BigDecimal a) return a.setScale(af.decimalen(), afrondModus(af.modus()));
+        if (e instanceof Expr.Afgerond rounded) {
+            Object base = evalExpr(rounded.basis(), bean);
+            if (base instanceof BigDecimal a) return a.setScale(rounded.decimalen(), roundingMode(rounded.modus()));
             return null;
         }
         if (e instanceof Expr.Begrensd bg) {
-            Object basis = evalExpr(bg.basis(), bean);
-            if (!(basis instanceof BigDecimal a)) return null;
+            Object base = evalExpr(bg.basis(), bean);
+            if (!(base instanceof BigDecimal a)) return null;
             Object min = evalExpr(bg.minimum(), bean);
             Object max = evalExpr(bg.maximum(), bean);
             if (min instanceof BigDecimal lo && a.compareTo(lo) < 0) a = lo;
@@ -304,7 +304,7 @@ public final class Verbalisator {
         return null;   // navigatie-reads, aggregaties, teksreeksen: niet zonder verdere sessie te bepalen
     }
 
-    private static Object rekenen(Expr.BinOp op, BigDecimal a, BigDecimal b) {
+    private static Object compute(Expr.BinOp op, BigDecimal a, BigDecimal b) {
         return switch (op) {
             case PLUS -> a.add(b);
             case MIN, VERMINDERD_MET -> a.subtract(b);
@@ -316,7 +316,7 @@ public final class Verbalisator {
         };
     }
 
-    private static java.math.RoundingMode afrondModus(Expr.AfrondModus m) {
+    private static java.math.RoundingMode roundingMode(Expr.AfrondModus m) {
         return switch (m) {
             case NAAR_BENEDEN -> java.math.RoundingMode.FLOOR;
             case NAAR_BOVEN -> java.math.RoundingMode.CEILING;
@@ -326,25 +326,25 @@ public final class Verbalisator {
         };
     }
 
-    private static Object literalWaarde(Expr.Literal lit) {
+    private static Object literalValue(Expr.Literal lit) {
         Datatype t = lit.type();
         String w = lit.waarde();
         try {
-            if (t.isGetalachtig()) return parseGetal(w);
+            if (t.isGetalachtig()) return parseNumber(w);
             if (t instanceof Datatype.Booleaan) return "waar".equalsIgnoreCase(w) || Boolean.parseBoolean(w);
             if (t instanceof Datatype.DatumInDagen) return LocalDate.parse(w);
             if (t instanceof Datatype.DatumTijd) return LocalDateTime.parse(w);
-        } catch (RuntimeException onparsebaar) { /* val terug op de ruwe tekst */ }
+        } catch (RuntimeException unparsable) { /* val terug op de ruwe tekst */ }
         return w;
     }
 
     /** Parse een getal-literal naar {@link BigDecimal}. Een §13.4.17-getalliteral draagt zijn eenheid IN de
      *  waarde-tekst ("100 km", "2.450,00 EUR"): de eenheid staat na een spatie, dus we nemen het eerste token en
      *  vertalen de NL-notatie (punt = duizendtal, komma = decimaal). Gooit bij een niet-numeriek token. */
-    private static BigDecimal parseGetal(String w) {
+    private static BigDecimal parseNumber(String w) {
         String token = w.trim().split("\\s+", 2)[0];        // strip de eenheid-suffix ("100 km" -> "100")
-        String genormaliseerd = token.replace(".", "").replace(",", ".");   // NL -> BigDecimal-notatie
-        return new BigDecimal(genormaliseerd);
+        String normalised = token.replace(".", "").replace(",", ".");   // NL -> BigDecimal-notatie
+        return new BigDecimal(normalised);
     }
 
     // ---------------- rendering ----------------
@@ -353,53 +353,53 @@ public final class Verbalisator {
     private String renderOperand(Expr e, Object bean) {
         Object v = evalExpr(e, bean);
         if (v == null) return "onbekend";
-        Datatype.Enumeratie en = enumeratieVan(e);
-        return en != null ? render(v, en) : renderWaarde(v, e.type());
+        Datatype.Enumeratie enumArray = enumerationOf(e);
+        return enumArray != null ? render(v, enumArray) : renderValue(v, e.type());
     }
 
-    /** {@link #renderWaarde}, met een enumeratiewaarde in het gekozen vocabulaire: een waarde is een declaratie. */
+    /** {@link #renderValue}, met een enumeratiewaarde in het gekozen vocabulaire: een waarde is een declaratie. */
     private String render(Object v, Datatype type) {
-        if (v instanceof String s && type instanceof Datatype.Enumeratie e) return enumeratiewaarde(e, s);
-        return renderWaarde(v, type);
+        if (v instanceof String s && type instanceof Datatype.Enumeratie e) return enumerationValue(e, s);
+        return renderValue(v, type);
     }
 
     /** Een enumeratiewaarde in het gekozen vocabulaire. Wijkt haar benaming daar af van de gedeclareerde waarde,
      *  zoals een code ("01"), dan volgt die waarde erachter: de code alleen zegt de lezer niet waar ze voor staat.
      *  Gelijk zoals uchar gedeclareerde namen vergelijkt ({@link Namen#norm}), of zonder benaming: de naam alleen. */
-    private String enumeratiewaarde(Datatype.Enumeratie e, String waarde) {
-        String genoemd = naamgeving.waarde(e, waarde);
+    private String enumerationValue(Datatype.Enumeratie e, String value) {
+        String named = naming.value(e, value);
         for (String w : e.waarden())
-            if (Namen.norm(w).equals(Namen.norm(waarde)) && !Namen.norm(genoemd).equals(Namen.norm(w)))
-                return genoemd + " · " + w;
-        return genoemd;
+            if (Namen.norm(w).equals(Namen.norm(value)) && !Namen.norm(named).equals(Namen.norm(w)))
+                return named + " · " + w;
+        return named;
     }
 
     /** Het enumeratietype van een operand: dat van de expressie, of voor een attribuut- of parameterread dat van de
      *  declaratie (een read uit uchars lader draagt zelf geen type); null voor elk ander operand. */
-    private static Datatype.Enumeratie enumeratieVan(Expr e) {
-        if (e.type() instanceof Datatype.Enumeratie en) return en;
+    private static Datatype.Enumeratie enumerationOf(Expr e) {
+        if (e.type() instanceof Datatype.Enumeratie enumArray) return enumArray;
         if (e instanceof Expr.AttribuutRef ref && ref.objecttype() != null
-                && ref.objecttype().attribuut(ref.attribuut()) instanceof Datatype.Enumeratie en) return en;
-        if (e instanceof Expr.ParameterRef pr && pr.parameter().datatype() instanceof Datatype.Enumeratie en) return en;
+                && ref.objecttype().attribuut(ref.attribuut()) instanceof Datatype.Enumeratie enumArray) return enumArray;
+        if (e instanceof Expr.ParameterRef pr && pr.parameter().datatype() instanceof Datatype.Enumeratie enumArray) return enumArray;
         return null;
     }
 
     /** Een operand als leesbaar deel van een vergelijking: een LITERAL toont zijn waarde één keer ("100 km") —
      *  géén verdubbeling van de brontekst; elk ander operand toont zijn omschrijving mét de geëvalueerde waarde
      *  tussen haakjes ("de maandloon nieuw van EOver (3.000,00 EUR)"), zodat de jurist de norm én het feit ziet. */
-    private String operandProza(Expr e, Object bean, boolean uchartekst) {
+    private String operandProse(Expr e, Object bean, boolean ucharText) {
         if (e instanceof Expr.Literal) return renderOperand(e, bean);
-        return omschrijf(e, uchartekst) + " (" + renderOperand(e, bean) + ")";
+        return describe(e, ucharText) + " (" + renderOperand(e, bean) + ")";
     }
 
     /** Een Java-waarde in helder Nederlands: getallen met punt-duizend/komma-decimaal en de eenheid uit het type;
      *  datums als dd-mm-jjjj; booleans als ja/nee. */
-    static String renderWaarde(Object v, Datatype type) {
+    static String renderValue(Object v, Datatype type) {
         if (v == null) return "leeg";
         if (v instanceof BigDecimal b) {
-            String getal = nlGetal(b, type);
-            String eenheid = eenheidWoord(type);
-            return eenheid == null ? getal : getal + " " + eenheid;
+            String number = nlNumber(b, type);
+            String unit = unitWord(type);
+            return unit == null ? number : number + " " + unit;
         }
         if (v instanceof LocalDate d)
             return String.format(Locale.ROOT, "%02d-%02d-%04d", d.getDayOfMonth(), d.getMonthValue(), d.getYear());
@@ -412,29 +412,29 @@ public final class Verbalisator {
 
     /** Getal in NL-notatie: punt als duizendtal-scheider, komma als decimaalteken. Percentages en getallen met
      *  vaste decimalen behouden hun schaal; anders wordt de natuurlijke schaal van de waarde getoond. */
-    private static String nlGetal(BigDecimal b, Datatype type) {
+    private static String nlNumber(BigDecimal b, Datatype type) {
         BigDecimal w = b;
-        int decimalen = -1;
-        if (type instanceof Datatype.Numeriek n && !n.geheel()) decimalen = n.decimalen();
-        else if (type instanceof Datatype.Percentage p && !p.geheel()) decimalen = p.decimalen();
-        else if (type instanceof Datatype.Numeriek n && n.geheel()) decimalen = 0;
-        if (decimalen >= 0) w = w.setScale(decimalen, java.math.RoundingMode.HALF_UP);
+        int decimals = -1;
+        if (type instanceof Datatype.Numeriek n && !n.geheel()) decimals = n.decimalen();
+        else if (type instanceof Datatype.Percentage p && !p.geheel()) decimals = p.decimalen();
+        else if (type instanceof Datatype.Numeriek n && n.geheel()) decimals = 0;
+        if (decimals >= 0) w = w.setScale(decimals, java.math.RoundingMode.HALF_UP);
         String plain = w.abs().toPlainString();
-        String heel = plain, fractie = "";
-        int punt = plain.indexOf('.');
-        if (punt >= 0) { heel = plain.substring(0, punt); fractie = plain.substring(punt + 1); }
-        StringBuilder gegroepeerd = new StringBuilder();
-        int n = heel.length();
+        String whole = plain, fraction = "";
+        int point = plain.indexOf('.');
+        if (point >= 0) { whole = plain.substring(0, point); fraction = plain.substring(point + 1); }
+        StringBuilder grouped = new StringBuilder();
+        int n = whole.length();
         for (int i = 0; i < n; i++) {
-            if (i > 0 && (n - i) % 3 == 0) gegroepeerd.append('.');
-            gegroepeerd.append(heel.charAt(i));
+            if (i > 0 && (n - i) % 3 == 0) grouped.append('.');
+            grouped.append(whole.charAt(i));
         }
-        String teken = b.signum() < 0 ? "-" : "";
-        return teken + gegroepeerd + (fractie.isEmpty() ? "" : "," + fractie);
+        String sign = b.signum() < 0 ? "-" : "";
+        return sign + grouped + (fraction.isEmpty() ? "" : "," + fraction);
     }
 
     /** Het eenheid-woord voor een type (EUR, jr, %, …), of null wanneer het type er geen draagt. */
-    private static String eenheidWoord(Datatype type) {
+    private static String unitWord(Datatype type) {
         if (type instanceof Datatype.Percentage) return "%";
         Eenheid e = type == null ? null : type.eenheidOf();
         return e == null ? null : e.afkorting();
@@ -442,85 +442,85 @@ public final class Verbalisator {
 
     /** Een korte omschrijving van WAT een operand is, uit zijn brontekst (bv. "de maandloon nieuw van EOver"); die is
      *  regeltekst en blijft zoals hij geschreven is, behalve de naam van een gelezen attribuut in een regel die uchar
-     *  schreef ({@code uchartekst}). Zonder brontekst noemt hij de declaratie. */
-    private String omschrijf(Expr e, boolean uchartekst) {
+     *  schreef ({@code ucharText}). Zonder brontekst noemt hij de declaratie. */
+    private String describe(Expr e, boolean ucharText) {
         if (e == null) return "de waarde";
-        String bron = e.bron().snippet();
-        if (bron != null && !bron.isBlank()) {
-            if (uchartekst && e instanceof Expr.AttribuutRef ref) return inVocabulaire(bron.trim(), ref);
-            return bron.trim();
+        String source = e.bron().snippet();
+        if (source != null && !source.isBlank()) {
+            if (ucharText && e instanceof Expr.AttribuutRef ref) return inVocabulary(source.trim(), ref);
+            return source.trim();
         }
-        if (e instanceof Expr.AttribuutRef ref) return "de " + naamgeving.attribuut(ref.objecttype(), ref.attribuut());
-        if (e instanceof Expr.ParameterRef pr) return "de " + naamgeving.parameter(pr.parameter().naam());
+        if (e instanceof Expr.AttribuutRef ref) return "de " + naming.attribute(ref.objecttype(), ref.attribuut());
+        if (e instanceof Expr.ParameterRef pr) return "de " + naming.parameter(pr.parameter().naam());
         return "de waarde";
     }
 
     /** {@code tekst}, uchars spelling van lezing {@code ref} ("zijn opgegeven beëindigingsdatum"), met de naam van het
-     *  gelezen attribuut via {@link Naamgeving}: "zijn opgegeven Datum einde recht op uitkering". De lezing die uchars
+     *  gelezen attribuut via {@link Naming}: "zijn opgegeven Datum einde recht op uitkering". De lezing die uchars
      *  IR-lader leest draagt het onderwerpwoord niet, dus blijft de tekst de bron en verandert alleen de naam erin: het
      *  laatste voorkomen, want uchar schrijft de lezing als "zijn &lt;naam&gt;". */
-    private String inVocabulaire(String tekst, Expr.AttribuutRef ref) {
-        Matcher m = Pattern.compile("(?iu)" + naamPatroon(ref.attribuut())).matcher(tekst);
-        int begin = -1, eind = -1;
-        while (m.find()) { begin = m.start(); eind = m.end(); }
+    private String inVocabulary(String text, Expr.AttribuutRef ref) {
+        Matcher m = Pattern.compile("(?iu)" + namePattern(ref.attribuut())).matcher(text);
+        int begin = -1, end = -1;
+        while (m.find()) { begin = m.start(); end = m.end(); }
         if (begin < 0)
-            throw new IllegalStateException("uchar schreef de lezing van '" + ref.attribuut() + "' als '" + tekst
+            throw new IllegalStateException("uchar schreef de lezing van '" + ref.attribuut() + "' als '" + text
                     + "', zonder die naam: de uitleg kan haar niet in het vocabulaire noemen");
-        return tekst.substring(0, begin) + naamgeving.attribuut(ref.objecttype(), ref.attribuut())
-                + tekst.substring(eind);
+        return text.substring(0, begin) + naming.attribute(ref.objecttype(), ref.attribuut())
+                + text.substring(end);
     }
 
     /** Een kenmerk als gezegde: het werkwoord en wat erbij hoort, in de volgorde van een hoofdzin ("heeft de
      *  uitkeringsduur verstreken") of een bijzin ("de uitkeringsduur verstreken heeft"). */
-    private record Gezegde(String werkwoord, String naamdeel) {
-        String hoofdzin() { return werkwoord + " " + naamdeel; }
-        String bijzin() { return naamdeel + " " + werkwoord; }
+    private record Predicate(String verb, String namePart) {
+        String mainClause() { return verb + " " + namePart; }
+        String clause() { return namePart + " " + verb; }
     }
 
-    /** Kenmerk {@code kenmerk} van {@code houder} als gezegde, met het werkwoord dat §3.5 zijn soort geeft en de
+    /** Kenmerk {@code characteristic} van {@code houder} als gezegde, met het werkwoord dat §3.5 zijn soort geeft en de
      *  ontkenning die Tabel 16 erbij schrijft: bijvoeglijk "is (niet) X", bezittelijk "heeft &lt;lidwoord&gt; X" of
      *  "heeft geen X", zelfstandig "is een X" of "is geen X". De soort is die van de declaratie, ook in een ander
-     *  vocabulaire; de naam is die van {@link Naamgeving}. Het model draagt het lidwoord van een declaratie niet, dus
-     *  komt het bij een aanwezig bezittelijk kenmerk uit {@code regeltekst}, de tekst van de regel die het kenmerk
-     *  noemt. Null wanneer {@code houder} geen kenmerk {@code kenmerk} kent. */
-    private Gezegde gezegde(Objecttype houder, String kenmerk, boolean aanwezig, String regeltekst) {
-        Objecttype.KenmerkSoort soort = houder == null ? null : houder.kenmerkSoort(kenmerk);
-        if (soort == null) return null;
-        String naam = naamgeving.kenmerk(houder, kenmerk);
-        return switch (soort) {
-            case BIJVOEGLIJK -> new Gezegde("is", aanwezig ? naam : "niet " + naam);
-            case ZELFSTANDIG -> new Gezegde("is", (aanwezig ? "een " : "geen ") + naam);
+     *  vocabulaire; de naam is die van {@link Naming}. Het model draagt het lidwoord van een declaratie niet, dus
+     *  komt het bij een aanwezig bezittelijk kenmerk uit {@code ruleText}, de tekst van de regel die het kenmerk
+     *  noemt. Null wanneer {@code houder} geen kenmerk {@code characteristic} kent. */
+    private Predicate predicate(Objecttype houder, String characteristic, boolean present, String ruleText) {
+        Objecttype.KenmerkSoort kind = houder == null ? null : houder.kenmerkSoort(characteristic);
+        if (kind == null) return null;
+        String name = naming.characteristic(houder, characteristic);
+        return switch (kind) {
+            case BIJVOEGLIJK -> new Predicate("is", present ? name : "niet " + name);
+            case ZELFSTANDIG -> new Predicate("is", (present ? "een " : "geen ") + name);
             case BEZITTELIJK -> {
-                String lidwoord = aanwezig ? lidwoordVoor(regeltekst, kenmerk) : "geen";
-                yield new Gezegde("heeft", lidwoord == null ? naam : lidwoord + " " + naam);
+                String article = present ? articleBefore(ruleText, characteristic) : "geen";
+                yield new Predicate("heeft", article == null ? name : article + " " + name);
             }
         };
     }
 
-    /** Het lidwoord ("de", "het" of "een") dat {@code regeltekst} direct vóór het laatste voorkomen van de
+    /** Het lidwoord ("de", "het" of "een") dat {@code ruleText} direct vóór het laatste voorkomen van de
      *  kenmerknaam schrijft. Het laatste, omdat het gezegde achter het onderwerp staat en het onderwerp dezelfde
      *  woorden kan bevatten ("Een Recht op uitkering WW heeft recht op uitkering"). Null wanneer de tekst daar geen
      *  lidwoord schrijft of de naam niet bevat. */
-    private static String lidwoordVoor(String regeltekst, String kenmerk) {
-        if (regeltekst == null || kenmerk == null || kenmerk.isBlank()) return null;
-        Matcher m = Pattern.compile("(?iu)(?:(?<!" + GRENS + ")(de|het|een)\\s+)?" + naamPatroon(kenmerk))
-                .matcher(regeltekst);
-        String lidwoord = null;
-        while (m.find()) lidwoord = m.group(1);
-        return lidwoord == null ? null : lidwoord.toLowerCase(Locale.ROOT);
+    private static String articleBefore(String ruleText, String characteristic) {
+        if (ruleText == null || characteristic == null || characteristic.isBlank()) return null;
+        Matcher m = Pattern.compile("(?iu)(?:(?<!" + BOUNDARY + ")(de|het|een)\\s+)?" + namePattern(characteristic))
+                .matcher(ruleText);
+        String article = null;
+        while (m.find()) article = m.group(1);
+        return article == null ? null : article.toLowerCase(Locale.ROOT);
     }
 
     /** Een teken dat een woord voortzet: een naam in een tekst staat niet direct naast zo'n teken. */
-    private static final String GRENS = "[\\p{L}\\p{N}-]";
+    private static final String BOUNDARY = "[\\p{L}\\p{N}-]";
 
     /** De gedeclareerde naam {@code naam} als patroon in een tekst: zijn woorden met witruimte ertussen, als hele
      *  woorden. */
-    private static String naamPatroon(String naam) {
-        String woorden = String.join("\\s+", Arrays.stream(naam.trim().split("\\s+")).map(Pattern::quote).toList());
-        return "(?<!" + GRENS + ")" + woorden + "(?!" + GRENS + ")";
+    private static String namePattern(String name) {
+        String words = String.join("\\s+", Arrays.stream(name.trim().split("\\s+")).map(Pattern::quote).toList());
+        return "(?<!" + BOUNDARY + ")" + words + "(?!" + BOUNDARY + ")";
     }
 
-    private static String operatorWoorden(Conditie.Operator op) {
+    private static String operatorWords(Conditie.Operator op) {
         return switch (op) {
             case KLEINER -> "is kleiner dan";
             case KLEINER_OF_GELIJK -> "is kleiner dan of gelijk aan";
@@ -537,12 +537,12 @@ public final class Verbalisator {
 
     // ---------------- bean-reads ----------------
 
-    private static boolean leesBoolean(Object bean, String kenmerk) {
-        return Boolean.TRUE.equals(leesRuw(bean, Namen.getter(kenmerk)));
+    private static boolean readBoolean(Object bean, String characteristic) {
+        return Boolean.TRUE.equals(readRaw(bean, Namen.getter(characteristic)));
     }
 
     /** Een getter-read op een bean; probeert getX en isX (kenmerken lezen soms als isX). null bij afwezigheid. */
-    private static Object leesRuw(Object bean, String getter) {
+    private static Object readRaw(Object bean, String getter) {
         for (String m : new String[]{ getter, "is" + getter.substring(3) }) {
             try { return bean.getClass().getMethod(m).invoke(bean); }
             catch (NoSuchMethodException ignore) { /* probeer de andere vorm */ }
@@ -555,25 +555,25 @@ public final class Verbalisator {
      *  (de grammatica gooit {@code // Bron:}-commentaren vandaag weg — zie de klasse-javadoc). Het model draagt de
      *  annotatie nog niet, dus dit levert vandaag altijd null; de haak zit klaar zodra de annotatie mee de IR in
      *  komt. */
-    private String bronVerwijzing(ResolvedRegel r) {
+    private String sourceReference(ResolvedRegel r) {
         return null;
     }
 
     /** Toon de opgeloste globals in modeldeclaratie-volgorde als bijlage-context (parameters + rekendatum),
      *  handig onder een uitleg zodat de gebruiker de gehanteerde normwaarden ziet. Leeg wanneer er geen zijn. */
     public List<String> globalContext() {
-        List<String> uit = new ArrayList<>();
+        List<String> sink = new ArrayList<>();
         Map<String, RegelSpraakModel.Parameter> perGlobal = new LinkedHashMap<>();
         for (RegelSpraakModel.Parameter p : model.parameters.values())
             perGlobal.put(Namen.ident(p.naam(), false), p);
         for (Map.Entry<String, Object> g : globals.entrySet()) {
             if ("rekendatum".equals(g.getKey())) {
-                uit.add("rekendatum: " + renderWaarde(g.getValue(), new Datatype.DatumInDagen()));
+                sink.add("rekendatum: " + renderValue(g.getValue(), new Datatype.DatumInDagen()));
                 continue;
             }
             RegelSpraakModel.Parameter p = perGlobal.get(g.getKey());
-            if (p != null) uit.add("de " + naamgeving.parameter(p.naam()) + ": " + render(g.getValue(), p.datatype()));
+            if (p != null) sink.add("de " + naming.parameter(p.naam()) + ": " + render(g.getValue(), p.datatype()));
         }
-        return uit;
+        return sink;
     }
 }

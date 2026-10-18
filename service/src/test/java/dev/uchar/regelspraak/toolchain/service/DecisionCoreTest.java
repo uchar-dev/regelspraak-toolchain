@@ -13,181 +13,181 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The core end-to-end: build the TOKA {@link BeslisserKern} over the real sources + descriptor via the DRL
+ * The core end-to-end: build the TOKA {@link DecisionCore} over the real sources + descriptor via the DRL
  * back-end (the ScenarioRunner recipe), then round-trip a few golden scenarios' situaties by hand (the FULL
  * 29-scenario oracle is fase 5). The fact beans live on the CHILD bean classloader (BeanCompiler), so the
  * strict (fail-fast) posture already succeeds — every golden scope LOWERS under DRL. The loader argument is the
  * parent of the bean classloader, not the fact source.
  */
-class BeslisserKernTest {
+class DecisionCoreTest {
 
-    private static BeslisserKern KERN;
+    private static DecisionCore CORE;
 
     @BeforeAll
-    static void bouw() {
+    static void assemble() {
         // uchar carries every golden scope, so strict startup succeeds and no marker is exposed.
-        KERN = BeslisserKern.bouw(TokaBron.descriptorJson(), TokaBron.bronPerBestand(),
-                KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
+        CORE = DecisionCore.assemble(TokaSource.descriptorJson(), TokaSource.sourcePerFile(),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
     }
 
     @Test
-    void alle_golden_entrypoints_zijn_gebouwd() {
+    void all_golden_entrypoints_are_built() {
         // 29 descriptor entrypoints = ALL 29 exit-0 golden scenariotoetsen (30 until besluit 16Y dropped toka-45
-        // — see TokaBron), INCLUDING toka-29 (see its round trip below); every one runs.
-        assertEquals(29, KERN.entrypoints().size());
-        assertEquals(29, KERN.entrypoints().values().stream().filter(BeslisserKern.Entrypoint::uitvoerbaar).count());
+        // — see TokaSource), INCLUDING toka-29 (see its round trip below); every one runs.
+        assertEquals(29, CORE.entrypoints().size());
+        assertEquals(29, CORE.entrypoints().values().stream().filter(DecisionCore.Entrypoint::executable).count());
     }
 
     @Test
     void toka17_bepaal_leeftijd_round_trip() {
         // Situatie basis-17: Vlucht V1 vluchtdatum 15-06-2024; Persoon P1 geboortedatum 15-06-1990, reis V1.
-        String verzoek = """
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
                 { "type": "Natuurlijk persoon", "id": "P1",
                   "attributen": { "geboortedatum": "1990-06-15" },
                   "rollen": { "reis": "V1" } } ] }""";
-        ObjectNode antwoord = KERN.verwerk("bepaal-leeftijd", parse(verzoek));
-        JsonNode leeftijd = vind(antwoord, "P1", "attributen", "leeftijd");
-        assertNotNull(leeftijd, "antwoord: " + antwoord);
-        assertEquals(0, new BigDecimal("34").compareTo(leeftijd.decimalValue()), "leeftijd: " + antwoord);
+        ObjectNode answer = CORE.process("bepaal-leeftijd", parse(request));
+        JsonNode leeftijd = find(answer, "P1", "attributen", "leeftijd");
+        assertNotNull(leeftijd, "antwoord: " + answer);
+        assertEquals(0, new BigDecimal("34").compareTo(leeftijd.decimalValue()), "leeftijd: " + answer);
     }
 
     @Test
-    void toka20_totaal_te_betalen_round_trip() {
+    void toka20_total_to_betalen_round_trip() {
         // Situatie basis-20: V1; P1 reis V1, te betalen belasting 30,00; P2 reis V1, 20,00 -> totaal 50,00.
-        String verzoek = """
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Natuurlijk persoon", "id": "P1",
                   "attributen": { "te betalen belasting": 30.00 }, "rollen": { "reis": "V1" } },
                 { "type": "Natuurlijk persoon", "id": "P2",
                   "attributen": { "te betalen belasting": 20.00 }, "rollen": { "reis": "V1" } } ] }""";
-        ObjectNode antwoord = KERN.verwerk("totaal-te-betalen-belasting", parse(verzoek));
-        JsonNode totaal = vind(antwoord, "V1", "attributen", "totaal te betalen belasting");
-        assertNotNull(totaal, "antwoord: " + antwoord);
-        assertEquals(0, new BigDecimal("50.00").compareTo(totaal.decimalValue()), "totaal: " + antwoord);
+        ObjectNode answer = CORE.process("totaal-te-betalen-belasting", parse(request));
+        JsonNode total = find(answer, "V1", "attributen", "totaal te betalen belasting");
+        assertNotNull(total, "antwoord: " + answer);
+        assertEquals(0, new BigDecimal("50.00").compareTo(total.decimalValue()), "totaal: " + answer);
     }
 
     @Test
-    void bigdecimal_wordt_exact_gerenderd_geen_double() {
-        String verzoek = """
+    void bigdecimal_is_rendered_exactly_not_double() {
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Natuurlijk persoon", "id": "P1",
                   "attributen": { "te betalen belasting": 30.00 }, "rollen": { "reis": "V1" } } ] }""";
-        ObjectNode antwoord = KERN.verwerk("totaal-te-betalen-belasting", parse(verzoek));
-        JsonNode totaal = vind(antwoord, "V1", "attributen", "totaal te betalen belasting");
-        assertNotNull(totaal);
-        assertTrue(totaal.isBigDecimal() || totaal.isNumber(), "moet een JSON-getal zijn: " + totaal);
-        assertFalse(totaal.isDouble(), "mag NOOIT een double zijn: " + totaal);
+        ObjectNode answer = CORE.process("totaal-te-betalen-belasting", parse(request));
+        JsonNode total = find(answer, "V1", "attributen", "totaal te betalen belasting");
+        assertNotNull(total);
+        assertTrue(total.isBigDecimal() || total.isNumber(), "moet een JSON-getal zijn: " + total);
+        assertFalse(total.isDouble(), "mag NOOIT een double zijn: " + total);
     }
 
     @Test
-    void inconsistenties_worden_gerapporteerd_leeg_bij_consistent() {
+    void inconsistencies_are_reported_empty_when_consistent() {
         // toka-17 has no consistency check -> inconsistenties is an empty array (a present, empty field).
-        String verzoek = """
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } },
                 { "type": "Natuurlijk persoon", "id": "P1",
                   "attributen": { "geboortedatum": "1990-06-15" }, "rollen": { "reis": "V1" } } ] }""";
-        ObjectNode antwoord = KERN.verwerk("bepaal-leeftijd", parse(verzoek));
-        assertTrue(antwoord.get("inconsistenties").isArray());
-        assertTrue(antwoord.get("inconsistenties").isEmpty());
+        ObjectNode answer = CORE.process("bepaal-leeftijd", parse(request));
+        assertTrue(answer.get("inconsistenties").isArray());
+        assertTrue(answer.get("inconsistenties").isEmpty());
     }
 
     @Test
-    void onbekend_pad_gooit_OnbekendPad() {
-        org.junit.jupiter.api.Assertions.assertThrows(BeslisserKern.OnbekendPad.class,
-                () -> KERN.verwerk("dit-pad-bestaat-niet", parse("{ \"instanties\": [] }")));
+    void unknown_path_throws_UnknownPath() {
+        org.junit.jupiter.api.Assertions.assertThrows(DecisionCore.UnknownPath.class,
+                () -> CORE.process("dit-pad-bestaat-niet", parse("{ \"instanties\": [] }")));
     }
 
     @Test
-    void paaskorting_lowert_onder_drl_geen_marker() {
+    void paaskorting_lowers_under_drl_no_marker() {
         // Paaskorting is a MARKER under the exec-model back-end but LOWERS under DRL (the pivot's point) — so
         // its entrypoint exists and carries NO marker under the strict-started DRL core.
-        BeslisserKern.Entrypoint ep = KERN.entrypoint("paaskorting");
+        DecisionCore.Entrypoint ep = CORE.entrypoint("paaskorting");
         assertNotNull(ep);
         assertTrue(ep.markers().isEmpty(), "Paaskorting hoort te lowered onder de DRL-motor: " + ep.markers());
     }
 
     @Test
-    void toka22_datum_tijd_voor_belasting_round_trip() {
+    void toka22_date_time_for_belasting_round_trip() {
         // toka-22: the exec-model back-end CANNOT compile this (hyphenated datum-tijd getter mismatch); under DRL
         // it lowers. eerste-van(verwacht 10:00, daadwerkelijk 09:30) -> 09:30.
-        String verzoek = """
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1", "attributen": {
                     "verwachte datum-tijd van vertrek": "2024-06-15T10:00:00",
                     "daadwerkelijke datum-tijd van vertrek": "2024-06-15T09:30:00" } } ] }""";
-        ObjectNode antwoord = KERN.verwerk(
-                "datum-tijd-voor-het-berekenen-van-de-belasting-op-basis-van-afstand", parse(verzoek));
-        JsonNode dt = vind(antwoord, "V1", "attributen",
+        ObjectNode answer = CORE.process(
+                "datum-tijd-voor-het-berekenen-van-de-belasting-op-basis-van-afstand", parse(request));
+        JsonNode dt = find(answer, "V1", "attributen",
                 "datum-tijd voor het berekenen van de belasting op basis van afstand");
-        assertNotNull(dt, "antwoord: " + antwoord);
-        assertEquals("2024-06-15T09:30", dt.asText(), "antwoord: " + antwoord);
+        assertNotNull(dt, "antwoord: " + answer);
+        assertEquals("2024-06-15T09:30", dt.asText(), "antwoord: " + answer);
     }
 
     @Test
-    void toka25_verwachte_aankomst_round_trip() {
+    void toka25_expected_aankomst_round_trip() {
         // toka-25 (also exec-uncompilable, DRL-lowered): vertrek 10:00 + duur 90 minuut -> aankomst 11:30.
-        String verzoek = """
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1", "attributen": {
                     "verwachte datum-tijd van vertrek": "2024-06-15T10:00:00",
                     "verwachte duur": { "waarde": 90, "eenheid": "minuut" } } } ] }""";
-        ObjectNode antwoord = KERN.verwerk("verwachte-datum-tijd-van-aankomst-van-een-vlucht", parse(verzoek));
-        JsonNode dt = vind(antwoord, "V1", "attributen", "verwachte datum-tijd van aankomst");
-        assertNotNull(dt, "antwoord: " + antwoord);
-        assertEquals("2024-06-15T11:30", dt.asText(), "antwoord: " + antwoord);
+        ObjectNode answer = CORE.process("verwachte-datum-tijd-van-aankomst-van-een-vlucht", parse(request));
+        JsonNode dt = find(answer, "V1", "attributen", "verwachte datum-tijd van aankomst");
+        assertNotNull(dt, "antwoord: " + answer);
+        assertEquals("2024-06-15T11:30", dt.asText(), "antwoord: " + answer);
     }
 
     @Test
-    void toka29_passagier_met_recht_op_treinmiles_round_trip() {
+    void toka29_passagier_with_recht_to_treinmiles_round_trip() {
         // toka-29 is a §13.4.7 FEITCREATIE. The entry point's document carries the form uchar's frontend made of it
         // in the full model, and the exec-model branch lowers it: one LOWERED feitcreatie verdict. Until the scope
         // was taken per form, the entry point re-resolved the foundation plus the toka-29 file alone, where the
         // frontend makes no form of it (a warning: the reference field of the intermediate step is not derivable);
         // the build then held no rule at all and a request was answered as if the rule had run.
-        BeslisserKern.Entrypoint ep = KERN.entrypoint("passagier-met-recht-op-treinmiles");
+        DecisionCore.Entrypoint ep = CORE.entrypoint("passagier-met-recht-op-treinmiles");
         assertNotNull(ep, "de feitcreatie-entrypoint hoort gebouwd te zijn");
-        assertTrue(ep.uitvoerbaar() && ep.markers().isEmpty(), ep.toString());
-        assertEquals(1, ep.dekking().size(), ep.dekking().toString());
-        assertEquals("feitcreatie", ep.dekking().get(0).soort(), ep.dekking().toString());
-        assertTrue(ep.dekking().get(0).lowered(), ep.dekking().toString());
+        assertTrue(ep.executable() && ep.markers().isEmpty(), ep.toString());
+        assertEquals(1, ep.coverage().size(), ep.coverage().toString());
+        assertEquals("feitcreatie", ep.coverage().get(0).soort(), ep.coverage().toString());
+        assertTrue(ep.coverage().get(0).lowered(), ep.coverage().toString());
 
-        String verzoek = """
+        String request = """
             { "instanties": [
                 { "type": "Vlucht", "id": "V1" },
                 { "type": "Contingent treinmiles", "id": "C1" },
                 { "type": "Natuurlijk persoon", "id": "P1", "rollen": { "reis": "V1" } } ] }""";
-        ObjectNode antwoord = KERN.verwerk("passagier-met-recht-op-treinmiles", parse(verzoek));
-        assertTrue(antwoord.get("inconsistenties").isArray(), "antwoord: " + antwoord);
-        assertTrue(antwoord.get("inconsistenties").isEmpty(), "antwoord: " + antwoord);
+        ObjectNode answer = CORE.process("passagier-met-recht-op-treinmiles", parse(request));
+        assertTrue(answer.get("inconsistenties").isArray(), "antwoord: " + answer);
+        assertTrue(answer.get("inconsistenties").isEmpty(), "antwoord: " + answer);
     }
 
     @Test
-    void dekking_is_de_manifest_van_het_document_van_de_scope() {
+    void coverage_is_the_manifest_of_the_document_of_the_scope() {
         // the document carries only the scoped forms, so the exec-model manifest is the scope's: one LOWERED verdict
         // for the one rule toka-17 scopes
-        BeslisserKern.Entrypoint ep = KERN.entrypoint("bepaal-leeftijd");
-        assertEquals(1, ep.dekking().size(), ep.dekking().toString());
-        assertTrue(ep.dekking().get(0).lowered(), ep.dekking().toString());
+        DecisionCore.Entrypoint ep = CORE.entrypoint("bepaal-leeftijd");
+        assertEquals(1, ep.coverage().size(), ep.coverage().toString());
+        assertTrue(ep.coverage().get(0).lowered(), ep.coverage().toString());
     }
 
     @Test
-    void descriptor_dekt_elke_exit0_golden_scope() throws Exception {
+    void descriptor_covers_every_exit0_golden_scope() throws Exception {
         // Pin descriptor completeness against the golden set FOREVER: parse the manifest + each exit-0 scenario's
         // "toetst de regel <naam>" line mechanically, and assert the 29-entrypoint TOKA descriptor scopes every
         // such name. This wires the descriptor to the golden manifest so a dropped/renamed scope fails here.
-        java.nio.file.Path manifest = TokaBron.REPO.resolve("examples/toka-scenarios/manifest");
+        java.nio.file.Path manifest = TokaSource.REPO.resolve("examples/toka-scenarios/manifest");
         java.util.List<String> golden = new java.util.ArrayList<>();       // exit-0 scoped rule names
-        for (String regel : java.nio.file.Files.readAllLines(manifest)) {
-            String t = regel.strip();
+        for (String line : java.nio.file.Files.readAllLines(manifest)) {
+            String t = line.strip();
             if (t.isEmpty() || t.startsWith("#")) continue;
-            String[] velden = t.split("\\s+");
-            if (!velden[0].equals("0")) continue;                          // only exit-0 golden
-            java.nio.file.Path scenario = TokaBron.REPO.resolve(velden[1]);
+            String[] fields = t.split("\\s+");
+            if (!fields[0].equals("0")) continue;                          // only exit-0 golden
+            java.nio.file.Path scenario = TokaSource.REPO.resolve(fields[1]);
             for (String sr : java.nio.file.Files.readAllLines(scenario)) {
                 String s = sr.strip();
                 if (s.startsWith("toetst de regel ")) golden.add(s.substring("toetst de regel ".length()).trim());
@@ -195,24 +195,24 @@ class BeslisserKernTest {
         }
         assertEquals(29, golden.size(), "verwacht 29 exit-0 golden scope-regels, kreeg " + golden);
 
-        DienstDescriptor d = DescriptorLoader.laad(TokaBron.descriptorJson(), TokaBron.model());
+        ServiceDescriptor d = DescriptorLoader.load(TokaSource.descriptorJson(), TokaSource.model());
         assertEquals(29, d.entrypoints().size(), "de TOKA-descriptor hoort 29 entrypoints te hebben");
-        java.util.Set<String> gescoopt = new java.util.LinkedHashSet<>();
-        for (DienstDescriptor.Entrypoint ep : d.entrypoints())
-            for (String n : ep.scope().regelnamenOfLeeg())
-                gescoopt.add(dev.uchar.regelspraak.emit.CaseEmitter.norm(n));
+        java.util.Set<String> scoped = new java.util.LinkedHashSet<>();
+        for (ServiceDescriptor.Entrypoint ep : d.entrypoints())
+            for (String n : ep.scope().ruleNamesOrEmpty())
+                scoped.add(dev.uchar.regelspraak.emit.CaseEmitter.norm(n));
 
-        for (String naam : golden)
-            assertTrue(gescoopt.contains(dev.uchar.regelspraak.emit.CaseEmitter.norm(naam)),
-                    "geen enkel descriptor-entrypoint scoopt de golden regel '" + naam + "' — gescoopt: " + gescoopt);
+        for (String name : golden)
+            assertTrue(scoped.contains(dev.uchar.regelspraak.emit.CaseEmitter.norm(name)),
+                    "geen enkel descriptor-entrypoint scoopt de golden regel '" + name + "' — gescoopt: " + scoped);
     }
 
     // ---- helpers ----
 
-    private static JsonNode vind(ObjectNode antwoord, String id, String groep, String lid) {
-        for (JsonNode inst : antwoord.get("instanties"))
+    private static JsonNode find(ObjectNode answer, String id, String group, String member) {
+        for (JsonNode inst : answer.get("instanties"))
             if (id.equals(inst.path("id").asText()))
-                return inst.path(groep).get(lid);
+                return inst.path(group).get(member);
         return null;
     }
 

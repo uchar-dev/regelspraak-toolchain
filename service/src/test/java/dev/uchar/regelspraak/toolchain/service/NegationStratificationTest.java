@@ -8,7 +8,7 @@ import dev.uchar.regelspraak.cases.Invoer;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
+import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 
 import org.junit.jupiter.api.Test;
 import org.kie.api.runtime.KieSession;
@@ -23,7 +23,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * DIFFERENTIAL: the HTTP dienst-pad ({@link BeslisserKern}) must reproduce the exec-model firing on a
+ * DIFFERENTIAL: the HTTP dienst-pad ({@link DecisionCore}) must reproduce the exec-model firing on a
  * kenmerk-NEGATION dependency EXACTLY (spec-honest identity of the two execution paths — the EVAL-RAPPORT
  * §4.2 klasse-II defect: for the scenario s08/s21 shape the dienst-pad returned the logically-impossible
  * {@code geblokkeerd door maandloon = true} AND {@code herleefbaar = true}, while the exec-model path
@@ -34,7 +34,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * only when the subject is <b>niet</b> {@code geblokkeerd}. When B fires (maandloon over the grens), A must
  * NOT fire — the negation-consumer must observe B's write, not the stale default {@code false}.
  */
-class NegatieStratificatieTest {
+class NegationStratificationTest {
 
     /** The objecttype foundation (a prelude file — declares NO rules). */
     static final String FUNDAMENT = """
@@ -45,7 +45,7 @@ class NegatieStratificatieTest {
             """;
 
     /** The PRODUCER file (mirrors hww-13): writes the kenmerk {@code geblokkeerd}. */
-    static final String PRODUCENT = """
+    static final String PRODUCER = """
             Regel Blokkade door maandloon
                 geldig altijd
                     Een Werknemer is geblokkeerd
@@ -53,7 +53,7 @@ class NegatieStratificatieTest {
             """;
 
     /** The CONSUMER file (mirrors hww-15): asserts {@code herleefbaar} only when NOT {@code geblokkeerd}. */
-    static final String CONSUMENT = """
+    static final String CONSUMER = """
             Regel Kenmerktoekenning herleefbaar
                 geldig altijd
                     Een Werknemer is herleefbaar
@@ -65,7 +65,7 @@ class NegatieStratificatieTest {
      *  and sets herleefbaar=true, which the monotonic kenmerktoekenning never un-sets. The salience lift makes the
      *  producer out-prioritise the consumer regardless of declaration/agenda order, so both back-ends and both
      *  paths reach the fixpoint verdict (herleefbaar=false). */
-    static final String SRC = FUNDAMENT + CONSUMENT + PRODUCENT;
+    static final String SRC = FUNDAMENT + CONSUMER + PRODUCER;
 
     /** The dienst descriptor: ONE entrypoint scoping BOTH rules (so the producer is in scope — the scope is
      *  complete). The consumer is listed FIRST in the scope (as the real domain descriptor lists
@@ -83,17 +83,17 @@ class NegatieStratificatieTest {
     /** The EXEC-model reference: build the FULL-model KieBase through uchar and fire the same fact through uchar's
      *  entry. This is the ORACLE — it must (and does) derive herleefbaar=false when geblokkeerd is set. */
     @Test
-    void exec_model_leidt_herleefbaar_false_af_wanneer_geblokkeerd() throws Exception {
+    void exec_model_derives_herleefbaar_false_when_blocked() throws Exception {
         RegelSpraakModel model = Resolver.resolve(SRC);
         assertTrue(model.errors().isEmpty(), () -> "bron moet schoon resolven: " + model.errors());
-        DroolsBackend.Build build = UcharBouw.bouw(model, DroolsBackend.Branch.EXEC_MODEL);
+        DroolsBackend.Build build = UcharBuild.assemble(model, DroolsBackend.Branch.EXEC_MODEL);
         ClassLoader cl = build.beanLoader();
 
         Class<?> wn = Class.forName(FactModelGenerator.PAKKET + ".Werknemer", true, cl);
         Object bean = wn.getConstructor().newInstance();
         wn.getMethod("setMaandloonNieuw", BigDecimal.class).invoke(bean, new BigDecimal("150"));
 
-        ClassLoader vorige = Thread.currentThread().getContextClassLoader();
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(cl);
         try {
             KieSession s = build.kieBase().newKieSession();
@@ -102,46 +102,46 @@ class NegatieStratificatieTest {
                 assertNull(DroolsBackend.vuur(build, s).geenFixpunt(), "de sessie bereikt haar fixpunt");
                 DroolsBackend.zetAfgeleideWaarden(build, s);
             } finally { s.dispose(); }
-        } finally { Thread.currentThread().setContextClassLoader(vorige); }
+        } finally { Thread.currentThread().setContextClassLoader(previous); }
 
-        boolean geblokkeerd = (Boolean) wn.getMethod("isGeblokkeerd").invoke(bean);
+        boolean blocked = (Boolean) wn.getMethod("isGeblokkeerd").invoke(bean);
         boolean herleefbaar = (Boolean) wn.getMethod("isHerleefbaar").invoke(bean);
-        assertTrue(geblokkeerd, "B moet vuren: maandloon 150 > 100");
+        assertTrue(blocked, "B moet vuren: maandloon 150 > 100");
         assertFalse(herleefbaar, "exec-model ORACLE: herleefbaar mag NIET waar zijn als geblokkeerd waar is");
     }
 
     /** The DIENST path over the SAME rules + SAME fact: must match the exec-model oracle (herleefbaar=false).
      *  RED before the fix (the dienst-pad returned herleefbaar=true — the negation read the stale default). */
     @Test
-    void dienst_pad_reproduceert_de_exec_model_negatie() {
+    void service_path_reproduces_the_exec_model_negation() {
         // Files in the ADVERSARIAL order: consumer before producer (as the descriptor scope also lists them).
         // Neither the file order nor the scope order may decide the verdict — the §9.2 salience must.
-        Map<String, String> bron = new LinkedHashMap<>();
-        bron.put("00-fundament.rgs", FUNDAMENT);
-        bron.put("15-consument.rgs", CONSUMENT);
-        bron.put("13-producent.rgs", PRODUCENT);
-        BeslisserKern kern = BeslisserKern.bouw(DESCRIPTOR, bron, KernConfig.strikt(),
+        Map<String, String> source = new LinkedHashMap<>();
+        source.put("00-fundament.rgs", FUNDAMENT);
+        source.put("15-consument.rgs", CONSUMER);
+        source.put("13-producent.rgs", PRODUCER);
+        DecisionCore core = DecisionCore.assemble(DESCRIPTOR, source, CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader());
 
-        String verzoek = """
+        String request = """
             { "instanties": [
                 { "type": "Werknemer", "id": "W1", "attributen": { "maandloon nieuw": 150 } } ] }""";
-        ObjectNode antwoord = kern.verwerk("herleefbaar", parse(verzoek));
+        ObjectNode answer = core.process("herleefbaar", parse(request));
 
-        JsonNode geblokkeerd = vind(antwoord, "W1", "kenmerken", "geblokkeerd");
-        JsonNode herleefbaar = vind(antwoord, "W1", "kenmerken", "herleefbaar");
-        assertTrue(geblokkeerd != null && geblokkeerd.asBoolean(), "B moet vuren: " + antwoord);
-        assertTrue(herleefbaar != null, "herleefbaar hoort in het antwoord te staan: " + antwoord);
+        JsonNode blocked = find(answer, "W1", "kenmerken", "geblokkeerd");
+        JsonNode herleefbaar = find(answer, "W1", "kenmerken", "herleefbaar");
+        assertTrue(blocked != null && blocked.asBoolean(), "B moet vuren: " + answer);
+        assertTrue(herleefbaar != null, "herleefbaar hoort in het antwoord te staan: " + answer);
         assertFalse(herleefbaar.asBoolean(),
-                "dienst-pad ≡ exec-model: herleefbaar mag NIET waar zijn als geblokkeerd waar is: " + antwoord);
+                "dienst-pad ≡ exec-model: herleefbaar mag NIET waar zijn als geblokkeerd waar is: " + answer);
     }
 
     // ---- helpers ----
 
-    private static JsonNode vind(ObjectNode antwoord, String id, String groep, String lid) {
-        for (JsonNode inst : antwoord.get("instanties"))
+    private static JsonNode find(ObjectNode answer, String id, String group, String member) {
+        for (JsonNode inst : answer.get("instanties"))
             if (id.equals(inst.path("id").asText()))
-                return inst.path(groep).get(lid);
+                return inst.path(group).get(member);
         return null;
     }
 

@@ -20,7 +20,7 @@ class PlaygroundTest {
 
     /** A clean mini-casus (model + two rules) — the DRL-ok shape. A boolean attribute is declared as a
      *  {@code kenmerk} (§13.3.2.1); the korting rule uses the {@code als … indien …} conditional-value form. */
-    private static final String SCHOON = """
+    private static final String CLEAN = """
         Objecttype de Persoon (mv: Personen)
             de leeftijd Numeriek (geheel getal);
             de korting Numeriek (geheel getal);
@@ -37,7 +37,7 @@ class PlaygroundTest {
 
     /** The mini-casus PLUS a Situatie + Scenario block (the scenariotoetsen extension surface) — the
      *  scenario-outcome shape. */
-    private static final String MET_SCENARIO = SCHOON + """
+    private static final String WITH_SCENARIO = CLEAN + """
 
         Situatie jonge-persoon:
         een Persoon P1
@@ -54,7 +54,7 @@ class PlaygroundTest {
     // ---------------- shape 1: parse error ----------------
 
     @Test
-    void parse_fout_geeft_positie_en_verwachte_tokens() {
+    void parse_error_gives_position_and_expected_tokens() {
         // A truncated objecttype header: the closing ')' / member list is missing, so the parser errors with a
         // position and a follow set.
         ObjectNode a = Playground.analyseer("Objecttype de Persoon (mv:");
@@ -73,16 +73,16 @@ class PlaygroundTest {
     // ---------------- shape 2: resolver error ----------------
 
     @Test
-    void resolve_fout_geeft_resolver_diagnostiek() {
+    void resolve_error_gives_resolver_diagnostics() {
         // Parses fine, but the rule assigns a Tekst literal to a Numeriek attribute -> a typeringen ERROR.
-        String bron = """
+        String source = """
             Objecttype de Persoon (mv: Personen)
                 de leeftijd Numeriek (geheel getal);
             Regel fout
             geldig altijd
             De leeftijd van een Persoon moet berekend worden als "twaalf".
             """;
-        ObjectNode a = Playground.analyseer(bron);
+        ObjectNode a = Playground.analyseer(source);
         assertTrue(a.get("parse").get("ok").asBoolean(), "syntactisch geldig: " + a);
         JsonNode resolver = a.get("resolver");
         assertFalse(resolver.get("ok").asBoolean(), "type-mismatch hoort een resolver-fout te zijn: " + a);
@@ -93,22 +93,22 @@ class PlaygroundTest {
     }
 
     @Test
-    void resolve_fout_in_een_scenariobron_geeft_alleen_de_diagnoses() {
+    void resolve_error_in_a_scenario_source_gives_only_the_diagnostics() {
         // the scenario's expectation names an attribute the model does not declare: a resolver error, so nothing
         // fires; until the playground ran on uchar, the scenario pane ran anyway and reported the refusal as its own
-        String bron = MET_SCENARIO.replace("- de korting van P1 is 25", "- de schoenmaat van P1 is 25");
-        ObjectNode a = Playground.analyseer(bron);
+        String source = WITH_SCENARIO.replace("- de korting van P1 is 25", "- de schoenmaat van P1 is 25");
+        ObjectNode a = Playground.analyseer(source);
         assertFalse(a.get("resolver").get("ok").asBoolean(), a.toString());
         assertTrue(a.get("resolver").get("fouten").size() >= 1, a.toString());
-        for (String veld : new String[]{"ir", "uitvoerbaar", "drl", "graaf", "graafJson", "scenario"})
-            assertFalse(a.has(veld), "bij een resolver-fout geen '" + veld + "': " + a);
+        for (String field : new String[]{"ir", "uitvoerbaar", "drl", "graaf", "graafJson", "scenario"})
+            assertFalse(a.has(field), "bij een resolver-fout geen '" + field + "': " + a);
     }
 
     // ---------------- shape 3: DRL ok ----------------
 
     @Test
-    void schoon_model_levert_drl_tekst() {
-        ObjectNode a = Playground.analyseer(SCHOON);
+    void clean_model_yields_drl_text() {
+        ObjectNode a = Playground.analyseer(CLEAN);
         assertTrue(a.get("parse").get("ok").asBoolean(), a.toString());
         assertTrue(a.get("resolver").get("ok").asBoolean(), a.toString());
         assertTrue(a.has("drl"), "een schoon model hoort DRL te leveren: " + a);
@@ -118,10 +118,10 @@ class PlaygroundTest {
         // the rule nodes (bepaal minderjarigheid writes the kenmerk, bepaal korting reads it and writes korting).
         assertTrue(a.has("graaf"), "een schoon model hoort een graaf te leveren: " + a);
         assertFalse(a.has("graafFout"), "geen graaf-fout verwacht bij een schoon model: " + a);
-        String graaf = a.get("graaf").asText();
-        assertTrue(graaf.startsWith("flowchart LR"), "de graaf is Mermaid-flowchart-bron: " + graaf);
-        assertTrue(graaf.contains("bepaal minderjarigheid"), "regel-knoop ontbreekt: " + graaf);
-        assertTrue(graaf.contains("bepaal korting"), "regel-knoop ontbreekt: " + graaf);
+        String graph = a.get("graaf").asText();
+        assertTrue(graph.startsWith("flowchart LR"), "de graaf is Mermaid-flowchart-bron: " + graph);
+        assertTrue(graph.contains("bepaal minderjarigheid"), "regel-knoop ontbreekt: " + graph);
+        assertTrue(graph.contains("bepaal korting"), "regel-knoop ontbreekt: " + graph);
         // no scenario block -> no scenario section
         assertFalse(a.has("scenario"), "zonder Scenario-blok geen scenario-sectie: " + a);
         // the IR document uchar's emitter writes, and the verdict of the branch that fires
@@ -132,20 +132,20 @@ class PlaygroundTest {
         // the graph as nodes and edges beside the Mermaid text: two rule nodes, edges between known ids
         JsonNode g = a.get("graafJson");
         java.util.Set<String> ids = new java.util.HashSet<>();
-        int regels = 0;
+        int lines = 0;
         for (JsonNode n : g.get("nodes")) {
             ids.add(n.get("id").asText());
-            if ("REGEL".equals(n.get("kind").asText())) regels++;
+            if ("REGEL".equals(n.get("kind").asText())) lines++;
             assertTrue(n.has("label") && n.has("eindOutput"), n.toString());
         }
-        assertEquals(2, regels, g.toString());
+        assertEquals(2, lines, g.toString());
         assertTrue(g.get("edges").size() >= 2, g.toString());
         for (JsonNode e : g.get("edges"))
             assertTrue(ids.contains(e.get("van").asText()) && ids.contains(e.get("naar").asText()), e.toString());
     }
 
     @Test
-    void een_schoon_model_dat_uchar_niet_draagt_krijgt_uchars_weigering() {
+    void a_clean_model_that_uchar_does_not_carry_gets_the_uchar_refusal() {
         // resolves cleanly; uchar's exec-model branch does not lower the rule, so the verdict is 'niet uitvoerbaar'
         // with uchar's sentence (the DRL view is a view, not the verdict)
         ObjectNode a = Playground.analyseer("""
@@ -165,8 +165,8 @@ class PlaygroundTest {
     // ---------------- shape 4: scenario outcome ----------------
 
     @Test
-    void scenario_blok_levert_uitkomst_per_verwachting() {
-        ObjectNode a = Playground.analyseer(MET_SCENARIO);
+    void scenario_block_yields_outcome_per_expectation() {
+        ObjectNode a = Playground.analyseer(WITH_SCENARIO);
         assertTrue(a.get("resolver").get("ok").asBoolean(), a.toString());
         JsonNode scenario = a.get("scenario");
         assertTrue(scenario != null && scenario.has("resultaten"), "scenario-sectie verwacht: " + a);
@@ -185,7 +185,7 @@ class PlaygroundTest {
         // the uitleg: the characteristic, justified with the value its condition read
         assertFalse(r.has("uitlegFout"), r.toString());
         assertEquals(1, r.get("uitleg").size(), r.toString());
-        String zin = r.get("uitleg").get(0).asText();
-        assertTrue(zin.startsWith("P1 is minderjarig, omdat") && zin.contains("12"), zin);
+        String sentence = r.get("uitleg").get(0).asText();
+        assertTrue(sentence.startsWith("P1 is minderjarig, omdat") && sentence.contains("12"), sentence);
     }
 }

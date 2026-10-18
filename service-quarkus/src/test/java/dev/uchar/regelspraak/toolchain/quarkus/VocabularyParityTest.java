@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
-import dev.uchar.regelspraak.toolchain.service.KernConfig;
-import dev.uchar.regelspraak.toolchain.service.TokaBron;
-import dev.uchar.regelspraak.toolchain.service.http.DienstHttp;
+import dev.uchar.regelspraak.toolchain.service.DecisionCore;
+import dev.uchar.regelspraak.toolchain.service.CoreConfig;
+import dev.uchar.regelspraak.toolchain.service.TokaSource;
+import dev.uchar.regelspraak.toolchain.service.http.ServiceHttp;
 
 import jakarta.ws.rs.core.Response;
 
@@ -26,13 +26,13 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The Quarkus adapter and {@code DienstHttp} over one kern with vocabularies — uchar's golden
+ * The Quarkus adapter and {@code ServiceHttp} over one kern with vocabularies — uchar's golden
  * {@code jutterswet-vocabulaires} (the submodule) — give the same {@code /info}, with its {@code vocabulaires} block
  * and an entry point's default vocabulary, the same answer in a chosen vocabulary, and the same 400 for an ambiguous
  * reading of an input vocabulary pinned elsewhere and for an unknown vocabulary; a plain JUnit test, as
- * {@link InfoParityTest} and {@link FoutParityTest}.
+ * {@link InfoParityTest} and {@link ErrorParityTest}.
  */
-class VocabulaireParityTest {
+class VocabularyParityTest {
 
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true);
@@ -44,65 +44,65 @@ class VocabulaireParityTest {
                 { "naam":"premie cgm","pad":"premie-cgm","scope": {"regelgroepen": ["premieberekening"]},
                   "invoer": ["Jutter"], "uitvoer": ["Jutter.vondstbedrag"], "vocabulaire": "cgm" } ],
               "parameters": {} }""";
-    private static final String VERZOEK = """
+    private static final String REQUEST = """
             { "instanties": [ { "type": "strandjutter", "id": "J1", "rollen": { "GEMELDE_VONDST": ["V1"] } },
                               { "type": "Vondst", "id": "V1", "attributen": { "soort": "amber", "gewicht": 2 } } ],
               "parameters": { "premietarief": 5 } }""";
 
-    private static BeslisserKern kern;
-    private static DienstHttp dienst;
+    private static DecisionCore core;
+    private static ServiceHttp service;
 
     @BeforeAll
-    static void bouw() throws Exception {
-        String bron = Files.readString(TokaBron.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs"));
-        kern = BeslisserKern.bouw(DESCRIPTOR, Map.of("bron.rgs", bron), KernConfig.strikt(),
+    static void assemble() throws Exception {
+        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs"));
+        core = DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", source), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader());
-        dienst = DienstHttp.bind(kern, "127.0.0.1", 0).start();
+        service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
     }
 
     @AfterAll
     static void stop() {
-        if (dienst != null) dienst.stop(0);
+        if (service != null) service.stop(0);
     }
 
     @Test
-    void info_met_vocabulaires_is_gelijk() throws Exception {
+    void info_with_vocabularies_is_equal() throws Exception {
         HttpResponse<String> r = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
-                URI.create("http://127.0.0.1:" + dienst.poort() + "/info")).GET().build(), HttpResponse.BodyHandlers.ofString());
+                URI.create("http://127.0.0.1:" + service.port() + "/info")).GET().build(), HttpResponse.BodyHandlers.ofString());
         JsonNode jdk = MAPPER.readTree(r.body());
-        assertEquals(jdk, InfoBouwer.bouw(kern));
+        assertEquals(jdk, InfoBuilder.assemble(core));
         assertEquals(2, jdk.get("vocabulaires").size(), r.body());
         assertEquals("cgm", jdk.at("/entrypoints/1/vocabulaire").asText(), r.body());
     }
 
     @Test
-    void een_antwoord_in_een_vocabulaire_is_gelijk() throws Exception {
-        JsonNode body = vergelijk("premie", "handboek", null, 200);
+    void an_answer_in_a_vocabulary_is_equal() throws Exception {
+        JsonNode body = compare("premie", "handboek", null, 200);
         assertEquals("amber", body.at("/instanties/1/attributen/soort vondst").asText(), body.toString());
-        vergelijk("premie-cgm", null, null, 200);
+        compare("premie-cgm", null, null, 200);
     }
 
     @Test
-    void de_weigeringen_van_vocabulaires_zijn_gelijk() throws Exception {
-        assertEquals("ONBEKEND_VOCABULAIRE", vergelijk("premie", "wetboek", null, 400).at("/schendingen/0/soort").asText());
-        JsonNode vast = vergelijk("premie", null, "cgm", 400);
-        assertTrue(vast.get("schendingen").toString().contains("(invoervocabulaire 'cgm')"), vast.toString());
+    void the_refusals_of_vocabularies_are_equal() throws Exception {
+        assertEquals("ONBEKEND_VOCABULAIRE", compare("premie", "wetboek", null, 400).at("/schendingen/0/soort").asText());
+        JsonNode fixed = compare("premie", null, "cgm", 400);
+        assertTrue(fixed.get("schendingen").toString().contains("(invoervocabulaire 'cgm')"), fixed.toString());
     }
 
     /** The same POST to both adapters: the same status ({@code verwacht}) and body, which it returns. */
-    private static JsonNode vergelijk(String pad, String vocabulaire, String invoervocabulaire, int verwacht)
+    private static JsonNode compare(String path, String vocabulary, String invoervocabulaire, int expected)
             throws Exception {
-        BeslisResource resource = new BeslisResource();
-        resource.kern = kern;
-        Response quarkus = resource.verwerk(pad, null, vocabulaire, invoervocabulaire, VERZOEK);
-        String query = (vocabulaire == null ? "" : "vocabulaire=" + vocabulaire)
-                + (invoervocabulaire == null ? "" : (vocabulaire == null ? "" : "&") + "invoervocabulaire=" + invoervocabulaire);
+        DecideResource resource = new DecideResource();
+        resource.core = core;
+        Response quarkus = resource.process(path, null, vocabulary, invoervocabulaire, REQUEST);
+        String query = (vocabulary == null ? "" : "vocabulaire=" + vocabulary)
+                + (invoervocabulaire == null ? "" : (vocabulary == null ? "" : "&") + "invoervocabulaire=" + invoervocabulaire);
         HttpResponse<String> jdk = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
-                        URI.create("http://127.0.0.1:" + dienst.poort() + "/" + pad + (query.isEmpty() ? "" : "?" + query)))
-                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(VERZOEK)).build(),
+                        URI.create("http://127.0.0.1:" + service.port() + "/" + path + (query.isEmpty() ? "" : "?" + query)))
+                .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(REQUEST)).build(),
                 HttpResponse.BodyHandlers.ofString());
-        assertEquals(verwacht, jdk.statusCode(), jdk.body());
-        assertEquals(verwacht, quarkus.getStatus(), String.valueOf(quarkus.getEntity()));
+        assertEquals(expected, jdk.statusCode(), jdk.body());
+        assertEquals(expected, quarkus.getStatus(), String.valueOf(quarkus.getEntity()));
         JsonNode body = MAPPER.readTree(jdk.body());
         assertEquals(body, MAPPER.readTree((String) quarkus.getEntity()));
         return body;

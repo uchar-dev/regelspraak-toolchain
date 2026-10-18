@@ -22,9 +22,9 @@ cd "$(dirname "$0")/../.." || exit 2
 ROOT="$(pwd)"
 TOOL="python3 tools/csv_naar_beslistabel.py"
 TD="tools/testdata"
-CPBESTAND="toolchain/target/runtime-classpath.txt"
-[ -f "$CPBESTAND" ] || { echo "FAIL: $CPBESTAND ontbreekt — draai eerst make classpath"; exit 2; }
-DRL="java -cp toolchain/target/classes:$(cat "$CPBESTAND") dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli --drl"
+CP_FILE="toolchain/target/runtime-classpath.txt"
+[ -f "$CP_FILE" ] || { echo "FAIL: $CP_FILE ontbreekt — draai eerst make classpath"; exit 2; }
+DRL="java -cp toolchain/target/classes:$(cat "$CP_FILE") dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli --drl"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 

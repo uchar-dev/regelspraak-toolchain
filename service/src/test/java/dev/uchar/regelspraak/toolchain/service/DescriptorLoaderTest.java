@@ -19,104 +19,104 @@ class DescriptorLoaderTest {
     private static RegelSpraakModel MODEL;
 
     @BeforeAll
-    static void resolveer() {
-        StringBuilder bron = new StringBuilder();
-        for (String tekst : TokaBron.bronPerBestand().values()) bron.append(tekst).append('\n');
-        MODEL = Resolver.resolve(bron.toString());
+    static void resolve() {
+        StringBuilder source = new StringBuilder();
+        for (String text : TokaSource.sourcePerFile().values()) source.append(text).append('\n');
+        MODEL = Resolver.resolve(source.toString());
         assertTrue(MODEL.errors().isEmpty(), "TOKA-bron hoort schoon te resolven: " + MODEL.errors());
     }
 
     @Test
-    void toka_descriptor_valideert_schoon() {
-        DienstDescriptor d = DescriptorLoader.laad(TokaBron.descriptorJson(), MODEL);
-        assertEquals("TOKA belastingdienst", d.dienst().naam());
+    void toka_descriptor_validates_clean() {
+        ServiceDescriptor d = DescriptorLoader.load(TokaSource.descriptorJson(), MODEL);
+        assertEquals("TOKA belastingdienst", d.service().name());
         assertEquals(29, d.entrypoints().size(), "de gepinde TOKA-descriptor hoort 29 entrypoints te hebben "
                 + "— precies de 29 exit-0 golden scenariotoetsen (30 tot besluit 16Y toka-45 liet vervallen, "
                 + "zie TokaBron), inclusief toka-29 'passagier met recht op "
                 + "treinmiles' (een §13.4.7 feitcreatie: nu benoembaar via de RAW model.regels, ook al levert "
                 + "hij geen resolved-collectie-regel op)");
         // no violations
-        assertTrue(DescriptorLoader.valideer(d, MODEL).isEmpty());
+        assertTrue(DescriptorLoader.validate(d, MODEL).isEmpty());
     }
 
     @Test
-    void onbekende_regel_wordt_genoemd() {
+    void unknown_rule_is_named() {
         String json = """
             { "dienst": {"naam":"t","versie":"1"},
               "entrypoints": [ { "naam":"x","pad":"x",
                 "scope": {"regelnamen": ["deze regel bestaat niet"]},
                 "invoer": [], "uitvoer": [] } ], "parameters": {} }""";
-        DienstFout f = assertThrows(DienstFout.class, () -> DescriptorLoader.laad(json, MODEL));
+        ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("deze regel bestaat niet"), f.getMessage());
-        assertEquals(Schending.Soort.ONBEKENDE_VERWIJZING, f.schendingen().get(0).soort());
-        assertTrue(f.schendingen().get(0).veld().contains("scope.regelnamen[0]"));
+        assertEquals(Violation.Kind.ONBEKENDE_VERWIJZING, f.violations().get(0).kind());
+        assertTrue(f.violations().get(0).field().contains("scope.regelnamen[0]"));
     }
 
     @Test
-    void onbekend_objecttype_in_invoer_wordt_genoemd() {
+    void unknown_object_type_in_input_is_named() {
         String json = """
             { "dienst": {"naam":"t","versie":"1"},
               "entrypoints": [ { "naam":"x","pad":"x",
                 "scope": {"regelnamen": ["bepaal leeftijd"]},
                 "invoer": ["Ruimteschip"], "uitvoer": [] } ], "parameters": {} }""";
-        DienstFout f = assertThrows(DienstFout.class, () -> DescriptorLoader.laad(json, MODEL));
+        ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("Ruimteschip"), f.getMessage());
-        assertTrue(f.schendingen().stream().anyMatch(s -> s.veld().equals("entrypoints[0].invoer[0]")));
+        assertTrue(f.violations().stream().anyMatch(s -> s.field().equals("entrypoints[0].invoer[0]")));
     }
 
     @Test
-    void onbekend_attribuut_in_uitvoer_wordt_genoemd() {
+    void unknown_attribute_in_output_is_named() {
         String json = """
             { "dienst": {"naam":"t","versie":"1"},
               "entrypoints": [ { "naam":"x","pad":"x",
                 "scope": {"regelnamen": ["bepaal leeftijd"]},
                 "invoer": [], "uitvoer": ["Natuurlijk persoon.schoenmaat"] } ], "parameters": {} }""";
-        DienstFout f = assertThrows(DienstFout.class, () -> DescriptorLoader.laad(json, MODEL));
+        ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("schoenmaat"), f.getMessage());
     }
 
     @Test
-    void onbekend_kenmerk_in_uitvoer_wordt_genoemd() {
+    void unknown_characteristic_in_output_is_named() {
         String json = """
             { "dienst": {"naam":"t","versie":"1"},
               "entrypoints": [ { "naam":"x","pad":"x",
                 "scope": {"regelnamen": ["bepaal leeftijd"]},
                 "invoer": [], "uitvoer": ["Natuurlijk persoon:onsterfelijk"] } ], "parameters": {} }""";
-        DienstFout f = assertThrows(DienstFout.class, () -> DescriptorLoader.laad(json, MODEL));
+        ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("onsterfelijk"), f.getMessage());
     }
 
     @Test
-    void onbekende_parameter_wordt_genoemd() {
+    void unknown_parameter_is_named() {
         String json = """
             { "dienst": {"naam":"t","versie":"1"},
               "entrypoints": [ { "naam":"x","pad":"x",
                 "scope": {"regelnamen": ["bepaal leeftijd"]},
                 "invoer": [], "uitvoer": [] } ],
               "parameters": { "belastingtarief van pluto": 5 } }""";
-        DienstFout f = assertThrows(DienstFout.class, () -> DescriptorLoader.laad(json, MODEL));
+        ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
         assertTrue(f.getMessage().contains("belastingtarief van pluto"), f.getMessage());
-        assertTrue(f.schendingen().stream().anyMatch(s -> s.veld().equals("parameters.belastingtarief van pluto")));
+        assertTrue(f.violations().stream().anyMatch(s -> s.field().equals("parameters.belastingtarief van pluto")));
     }
 
     @Test
-    void alle_schendingen_worden_verzameld_niet_een_voor_een() throws Exception {
+    void all_violations_are_collected_not_one_by_one() throws Exception {
         String json = """
             { "dienst": {"naam":"t","versie":"1"},
               "entrypoints": [ { "naam":"x","pad":"x",
                 "scope": {"regelnamen": ["nep regel"]},
                 "invoer": ["Nep type"], "uitvoer": ["Nep type.nep attribuut"] } ],
               "parameters": { "nep param": 1 } }""";
-        DienstDescriptor d = DescriptorLoader.MAPPER.readValue(json, DienstDescriptor.class);
-        List<Schending> s = DescriptorLoader.valideer(d, MODEL);
+        ServiceDescriptor d = DescriptorLoader.MAPPER.readValue(json, ServiceDescriptor.class);
+        List<Violation> s = DescriptorLoader.validate(d, MODEL);
         // 4 distinct unknown references collected together (regel, invoer-type, uitvoer-type, parameter)
         assertTrue(s.size() >= 4, "verwacht >= 4 verzamelde schendingen, kreeg " + s);
         assertFalse(s.isEmpty());
     }
 
     @Test
-    void malformed_json_geeft_MALFORMED_schending() {
-        DienstFout f = assertThrows(DienstFout.class, () -> DescriptorLoader.laad("{ niet echt json", MODEL));
-        assertEquals(Schending.Soort.MALFORMED, f.schendingen().get(0).soort());
+    void malformed_json_gives_MALFORMED_violation() {
+        ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load("{ niet echt json", MODEL));
+        assertEquals(Violation.Kind.MALFORMED, f.violations().get(0).kind());
     }
 }

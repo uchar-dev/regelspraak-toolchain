@@ -11,26 +11,26 @@ import java.util.List;
  * declares, or {@code canoniek} for the canonical names.
  *
  * <p>The detail flags ask to see the request's session beside the answer, which a core gives only when it was started
- * with them ({@link KernConfig#detail()}): {@code trace}, the firings per form with the ids of the request they bound;
+ * with them ({@link CoreConfig#detail()}): {@code trace}, the firings per form with the ids of the request they bound;
  * {@code dekking}, per form of the entry point whether it fired; {@code fixpunt}, what stands at the fixpoint.
  */
-public record VerzoekOpties(boolean uitleg, String vocabulaire, String invoervocabulaire, boolean trace,
-                            boolean dekking, boolean fixpunt) {
+public record RequestOptions(boolean uitleg, String vocabulary, String invoervocabulaire, boolean trace,
+                            boolean coverage, boolean fixpoint) {
 
     /** A request that asks nothing beside its body. */
-    public static final VerzoekOpties STANDAARD = new VerzoekOpties(false, null, null);
+    public static final RequestOptions DEFAULT = new RequestOptions(false, null, null);
 
     /** A request that asks no detail of its session. */
-    public VerzoekOpties(boolean uitleg, String vocabulaire, String invoervocabulaire) {
-        this(uitleg, vocabulaire, invoervocabulaire, false, false, false);
+    public RequestOptions(boolean uitleg, String vocabulary, String invoervocabulaire) {
+        this(uitleg, vocabulary, invoervocabulaire, false, false, false);
     }
 
     /** The detail flags this request sets, by the name of their query parameter, in the order of the answer. */
-    public List<String> detailvlaggen() {
-        List<String> uit = new ArrayList<>();
-        if (trace) uit.add("trace");
-        if (dekking) uit.add("dekking");
-        if (fixpunt) uit.add("fixpunt");
-        return uit;
+    public List<String> detailFlags() {
+        List<String> sink = new ArrayList<>();
+        if (trace) sink.add("trace");
+        if (coverage) sink.add("dekking");
+        if (fixpoint) sink.add("fixpunt");
+        return sink;
     }
 }

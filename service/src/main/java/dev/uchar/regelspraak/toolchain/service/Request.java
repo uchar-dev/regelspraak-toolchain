@@ -22,29 +22,29 @@ import com.fasterxml.jackson.databind.JsonNode;
  *   "relaties"?: [ { "feittype": "<naam>", "rollen": { "<rol>": "<id>", ... } } ]
  * }
  * }</pre>
- * Rol relations may be given inline per instance ({@code instanties[].rollen}, mirroring the situatie's
- * "de reis is V1" and a case file's {@code roles}) and/or via the top-level {@code relaties} list; both become the
- * {@code roles} of a case, which uchar's input step reads ({@link VerzoekMapper}).
+ * Rol relations may be given inline per instance ({@code instances[].rollen}, mirroring the situatie's
+ * "de reis is V1" and a case file's {@code roles}) and/or via the top-level {@code relations} list; both become the
+ * {@code roles} of a case, which uchar's input step reads ({@link RequestMapper}).
  */
-public record Verzoek(JsonNode boom) {
+public record Request(JsonNode tree) {
 
-    public Verzoek {
-        if (boom == null) throw new IllegalArgumentException("verzoek-boom is null");
+    public Request {
+        if (tree == null) throw new IllegalArgumentException("verzoek-boom is null");
     }
 
-    /** The {@code rekendatum} node, or null when absent. */
-    public JsonNode rekendatum() { return boom.get("rekendatum"); }
+    /** The {@code evaluationDate} node, or null when absent. */
+    public JsonNode evaluationDate() { return tree.get("rekendatum"); }
 
-    /** The {@code peildatum} node, or null when absent (fase 5). {@code peildatum} is the PREFERRED name for the
-     *  one date authority; {@code rekendatum} is the existing alias — {@link VerzoekMapper} unifies the two. */
-    public JsonNode peildatum() { return boom.get("peildatum"); }
+    /** The {@code asOfDate} node, or null when absent (fase 5). {@code asOfDate} is the PREFERRED name for the
+     *  one date authority; {@code evaluationDate} is the existing alias — {@link RequestMapper} unifies the two. */
+    public JsonNode asOfDate() { return tree.get("peildatum"); }
 
     /** The {@code parameters} object node, or null when absent. */
-    public JsonNode parameters() { return boom.get("parameters"); }
+    public JsonNode parameters() { return tree.get("parameters"); }
 
-    /** The {@code instanties} array node, or null when absent. */
-    public JsonNode instanties() { return boom.get("instanties"); }
+    /** The {@code instances} array node, or null when absent. */
+    public JsonNode instances() { return tree.get("instanties"); }
 
-    /** The {@code relaties} array node, or null when absent. */
-    public JsonNode relaties() { return boom.get("relaties"); }
+    /** The {@code relations} array node, or null when absent. */
+    public JsonNode relations() { return tree.get("relaties"); }
 }

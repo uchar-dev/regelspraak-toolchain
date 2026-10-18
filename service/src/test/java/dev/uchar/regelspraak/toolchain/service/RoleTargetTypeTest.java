@@ -4,7 +4,7 @@ import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
+import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -26,9 +26,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>Own material: a self-typed one-to-many feittype on Jutter, a one-to-many feittype between Jutter and
  * Strandvondst (which has the subtype Wrakstuk), and a Strandpaal no feittype relates.
  */
-class RolDoeltypeTest {
+class RoleTargetTypeTest {
 
-    private static final String BRON = """
+    private static final String SOURCE = """
         Objecttype de Jutter (mv: Jutters) (bezield)
             het leerlingaantal Numeriek (niet-negatief geheel getal);
 
@@ -56,22 +56,22 @@ class RolDoeltypeTest {
                 Het leerlingaantal van een Jutter moet berekend worden als het aantal leerlingen van de Jutter.
         """;
 
-    private static VerzoekMapper MAPPER;
+    private static RequestMapper MAPPER;
 
     @BeforeAll
-    static void bouw() {
-        RegelSpraakModel model = Resolver.resolve(BRON);
+    static void assemble() {
+        RegelSpraakModel model = Resolver.resolve(SOURCE);
         assertTrue(model.isOk(), model.errors().toString());
-        MAPPER = new VerzoekMapper(model, UcharBouw.bouw(model, DroolsBackend.Branch.EXEC_MODEL));
+        MAPPER = new RequestMapper(model, UcharBuild.assemble(model, DroolsBackend.Branch.EXEC_MODEL));
     }
 
-    private static VerzoekMapper.Resultaat map(String json) {
-        try { return MAPPER.map(new Verzoek(DescriptorLoader.MAPPER.readTree(json))); }
+    private static RequestMapper.Result map(String json) {
+        try { return MAPPER.map(new Request(DescriptorLoader.MAPPER.readTree(json))); }
         catch (Exception e) { throw new RuntimeException(e); }
     }
 
     @Test
-    void id_van_een_ander_objecttype_op_een_rol_is_verkeerd_type() {
+    void id_of_another_object_type_on_a_role_is_wrong_type() {
         // both rollen of the self-typed feittype, the to-many and the to-one, and no feittype relates a Jutter to a
         // Strandpaal: uchar's input step (CaseInvoer) found no field and refused the link as NIET_ONDERSTEUND
         var r = map("""
@@ -80,51 +80,51 @@ class RolDoeltypeTest {
                 { "type": "Jutter", "id": "J2", "rollen": { "leermeester": "P1" } },
                 { "type": "Strandpaal", "id": "P1" } ] }""");
         assertEquals(List.of(
-                Schending.van(Schending.Soort.VERKEERD_TYPE, "instanties[0].rollen.leerling",
+                Violation.van(Violation.Kind.VERKEERD_TYPE, "instanties[0].rollen.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'P1' is van"
                                 + " objecttype 'Strandpaal'"),
-                Schending.van(Schending.Soort.VERKEERD_TYPE, "instanties[1].rollen.leermeester",
+                Violation.van(Violation.Kind.VERKEERD_TYPE, "instanties[1].rollen.leermeester",
                         "rol 'leermeester' verwacht een instantie van objecttype 'Jutter', maar id 'P1' is van"
                                 + " objecttype 'Strandpaal'")),
-                r.schendingen());
+                r.violations());
     }
 
     @Test
-    void id_van_een_ander_objecttype_komt_niet_via_het_typepaar_in_een_andere_rol() {
+    void id_of_another_object_type_does_not_come_via_the_type_pair_in_another_role() {
         // Jutter and Strandvondst are related by vinderschap: CaseInvoer's by-pair fallback took that relation
         // and made J1 the vinder of S1, a link the request does not name
         var r = map("""
             { "instanties": [
                 { "type": "Jutter", "id": "J1", "rollen": { "leerling": ["S1"] } },
                 { "type": "Strandvondst", "id": "S1" } ] }""");
-        assertEquals(List.of(Schending.van(Schending.Soort.VERKEERD_TYPE, "instanties[0].rollen.leerling",
+        assertEquals(List.of(Violation.van(Violation.Kind.VERKEERD_TYPE, "instanties[0].rollen.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'S1' is van"
                                 + " objecttype 'Strandvondst'")),
-                r.schendingen());
-        assertNull(RegelSpraakRuntime.get(r.wereld().beans().get("S1"), "vinder"), "S1 kreeg een vinder");
+                r.violations());
+        assertNull(RegelSpraakRuntime.get(r.world().beans().get("S1"), "vinder"), "S1 kreeg een vinder");
     }
 
     @Test
-    void id_van_een_ander_objecttype_op_een_rol_van_een_relatie_is_verkeerd_type() {
+    void id_of_another_object_type_on_a_role_of_a_relation_is_wrong_type() {
         // the by-pair fallback made J1 the vinder of S1 and then found no field for the other direction
         var r = map("""
             { "instanties": [ { "type": "Jutter", "id": "J1" }, { "type": "Strandvondst", "id": "S1" } ],
               "relaties": [ { "feittype": "leerlingschap",
                               "rollen": { "leermeester": "J1", "leerling": "S1" } } ] }""");
-        assertEquals(List.of(Schending.van(Schending.Soort.VERKEERD_TYPE, "relaties[0].rollen.leerling",
+        assertEquals(List.of(Violation.van(Violation.Kind.VERKEERD_TYPE, "relaties[0].rollen.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'S1' is van"
                                 + " objecttype 'Strandvondst'")),
-                r.schendingen());
-        assertNull(RegelSpraakRuntime.get(r.wereld().beans().get("S1"), "vinder"), "S1 kreeg een vinder");
+                r.violations());
+        assertNull(RegelSpraakRuntime.get(r.world().beans().get("S1"), "vinder"), "S1 kreeg een vinder");
     }
 
     @Test
-    void id_van_een_subtype_vult_de_rol() {
+    void id_of_a_subtype_fills_the_role() {
         var r = map("""
             { "instanties": [
                 { "type": "Jutter", "id": "J1", "rollen": { "vondst": ["W1"] } },
                 { "type": "Wrakstuk", "id": "W1" } ] }""");
-        assertTrue(r.schendingen().isEmpty(), r.schendingen().toString());
-        assertSame(r.wereld().beans().get("J1"), RegelSpraakRuntime.get(r.wereld().beans().get("W1"), "vinder"));
+        assertTrue(r.violations().isEmpty(), r.violations().toString());
+        assertSame(r.world().beans().get("J1"), RegelSpraakRuntime.get(r.world().beans().get("W1"), "vinder"));
     }
 }

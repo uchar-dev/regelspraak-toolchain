@@ -19,26 +19,26 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * navigation from the unset end reads a spurious leegwaarde), and a §13.3.9.2 WEDERKERIG (reflexive) feittype
  * (one role, two ids).
  */
-class RelatiesTest {
+class RelationsTest {
 
     private static RegelSpraakModel MODEL;
-    private static VerzoekMapper MAPPER;
+    private static RequestMapper MAPPER;
 
     @BeforeAll
-    static void bouw() {
-        StringBuilder bron = new StringBuilder();
-        for (String tekst : TokaBron.bronPerBestand().values()) bron.append(tekst).append('\n');
-        MODEL = Resolver.resolve(bron.toString());
-        MAPPER = new VerzoekMapper(MODEL, TokaBron.build());
+    static void assemble() {
+        StringBuilder source = new StringBuilder();
+        for (String text : TokaSource.sourcePerFile().values()) source.append(text).append('\n');
+        MODEL = Resolver.resolve(source.toString());
+        MAPPER = new RequestMapper(MODEL, TokaSource.build());
     }
 
-    private static VerzoekMapper.Resultaat map(String json) {
-        try { return MAPPER.map(new Verzoek(DescriptorLoader.MAPPER.readTree(json))); }
+    private static RequestMapper.Result map(String json) {
+        try { return MAPPER.map(new Request(DescriptorLoader.MAPPER.readTree(json))); }
         catch (Exception e) { throw new RuntimeException(e); }
     }
 
     @Test
-    void een_op_veel_relatie_zet_veld_op_de_veel_kant() {
+    void one_to_many_relation_sets_field_on_the_many_side() {
         // "Vlucht van natuurlijke personen": reis (one) / passagier (many) -> field on persoon.reis
         var r = map("""
             { "instanties": [
@@ -46,14 +46,14 @@ class RelatiesTest {
                 { "type": "Natuurlijk persoon", "id": "P1" } ],
               "relaties": [ { "feittype": "Vlucht van natuurlijke personen",
                               "rollen": { "reis": "V1", "passagier": "P1" } } ] }""");
-        assertTrue(r.schendingen().isEmpty(), r.schendingen().toString());
-        Object p1 = r.wereld().beans().get("P1");
-        Object v1 = r.wereld().beans().get("V1");
+        assertTrue(r.violations().isEmpty(), r.violations().toString());
+        Object p1 = r.world().beans().get("P1");
+        Object v1 = r.world().beans().get("V1");
         assertSame(v1, RegelSpraakRuntime.get(p1, "reis"), "persoon.reis moet naar V1 wijzen");
     }
 
     @Test
-    void een_op_een_relatie_zet_BEIDE_referentievelden() {
+    void one_to_one_relation_sets_both_reference_fields() {
         // "reis met contingent treinmiles": both to-one -> reference field on BOTH beans.
         var r = map("""
             { "instanties": [
@@ -62,9 +62,9 @@ class RelatiesTest {
               "relaties": [ { "feittype": "reis met contingent treinmiles",
                               "rollen": { "reis met treinmiles": "V1",
                                           "vastgestelde contingent treinmiles": "C1" } } ] }""");
-        assertTrue(r.schendingen().isEmpty(), r.schendingen().toString());
-        Object v1 = r.wereld().beans().get("V1");
-        Object c1 = r.wereld().beans().get("C1");
+        assertTrue(r.violations().isEmpty(), r.violations().toString());
+        Object v1 = r.world().beans().get("V1");
+        Object c1 = r.world().beans().get("C1");
         // Vlucht -> Contingent AND Contingent -> Vlucht must both be set (the 1:1 both-directions fix)
         assertSame(c1, RegelSpraakRuntime.get(v1, "vastgesteldeContingentTreinmiles"),
                 "Vlucht.vastgesteldeContingentTreinmiles moet naar C1 wijzen");
@@ -73,7 +73,7 @@ class RelatiesTest {
     }
 
     @Test
-    void wederkerige_relatie_met_een_rol_en_twee_ids_wordt_ontleed() {
+    void reciprocal_relation_with_a_role_and_two_ids_is_parsed() {
         // "Partnerrelatie" is wederkerig (one role "partner", two ids). Until the move to uchar the fact model
         // materialised no 'partner' field and the mapper reported NIET_ONDERSTEUND; uchar's generator carries the
         // §13.3.9.2 reciprocal self-relation as a self-typed reference field, so the mapper writes both ends.
@@ -84,30 +84,30 @@ class RelatiesTest {
               "relaties": [ { "feittype": "Partnerrelatie",
                               "rollen": { "partner": ["A", "B"] } } ] }""");
         // ONE role name carrying two ids, parsed into two endpoints, each written onto the other
-        assertTrue(r.schendingen().isEmpty(), r.schendingen().toString());
-        Object a = r.wereld().beans().get("A");
-        Object b = r.wereld().beans().get("B");
+        assertTrue(r.violations().isEmpty(), r.violations().toString());
+        Object a = r.world().beans().get("A");
+        Object b = r.world().beans().get("B");
         assertSame(b, RegelSpraakRuntime.get(a, "partner"), "A.partner moet naar B wijzen");
         assertSame(a, RegelSpraakRuntime.get(b, "partner"), "B.partner moet naar A wijzen");
     }
 
     @Test
-    void relatie_naar_onbekend_id_wordt_gemeld() {
+    void relation_to_unknown_id_is_reported() {
         var r = map("""
             { "instanties": [ { "type": "Vlucht", "id": "V1" } ],
               "relaties": [ { "feittype": "Vlucht van natuurlijke personen",
                               "rollen": { "reis": "V1", "passagier": "PX" } } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.ONBEKEND_VELD && s.bericht().contains("PX")), r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.ONBEKEND_VELD && s.message().contains("PX")), r.violations().toString());
     }
 
     @Test
-    void onbekend_feittype_wordt_gemeld() {
+    void unknown_fact_type_is_reported() {
         var r = map("""
             { "instanties": [ { "type": "Vlucht", "id": "V1" } ],
               "relaties": [ { "feittype": "sprookjesrelatie", "rollen": {} } ] }""");
-        assertTrue(r.schendingen().stream().anyMatch(s ->
-                s.soort() == Schending.Soort.ONBEKEND_VELD && s.bericht().contains("sprookjesrelatie")),
-                r.schendingen().toString());
+        assertTrue(r.violations().stream().anyMatch(s ->
+                s.kind() == Violation.Kind.ONBEKEND_VELD && s.message().contains("sprookjesrelatie")),
+                r.violations().toString());
     }
 }

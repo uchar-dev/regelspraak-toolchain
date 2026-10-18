@@ -14,18 +14,18 @@ import static org.junit.jupiter.api.Assertions.*;
  * to uchar the runner accepted parameter sets beside the document and chose a vintage per scenario from its
  * peildatum; that route no longer exists, and a scenario that relied on it is refused by the resolver.
  * <ul>
- *   <li>{@code s1} — a parameter the situation does not give is a {@link ScenarioRunner.ResolveFout} naming the
+ *   <li>{@code s1} — a parameter the situation does not give is a {@link ScenarioRunner.ResolveError} naming the
  *       parameter and the scenario;</li>
  *   <li>{@code s4} — the situation gives the parameter, the scenario carries a peildatum: PASS on that value;</li>
  *   <li>{@code s6} — the situation gives the parameter, no peildatum: PASS.</li>
  * </ul>
  */
-class ParametersetScenarioTest {
+class ParameterSetScenarioTest {
 
     // ---------------- s1 : een parameter buiten de situatie ----------------
 
-    @Test void s1_parameter_buiten_de_situatie_is_een_resolvefout() {
-        String bron = """
+    @Test void s1_parameter_outside_the_situation_is_a_resolve_error() {
+        String source = """
             Objecttype de Persoon (mv: Personen)
                 de grens Numeriek (geheel getal);
             Parameter de volwassenleeftijd : Numeriek (geheel getal);
@@ -41,17 +41,17 @@ class ParametersetScenarioTest {
             Met als verwacht resultaat:
             - de grens van P1 is 18
             """;
-        var fout = assertThrows(ScenarioRunner.ResolveFout.class, () -> ScenarioRunner.run(bron));
-        String bericht = String.join("\n", fout.diagnostiek());
-        assertTrue(bericht.contains("volwassenleeftijd"), () -> "noemt de parameter: " + bericht);
-        assertTrue(bericht.contains("twee-duizend-vijfentwintig"), () -> "noemt het scenario: " + bericht);
+        var error = assertThrows(ScenarioRunner.ResolveError.class, () -> ScenarioRunner.run(source));
+        String message = String.join("\n", error.diagnostics());
+        assertTrue(message.contains("volwassenleeftijd"), () -> "noemt de parameter: " + message);
+        assertTrue(message.contains("twee-duizend-vijfentwintig"), () -> "noemt het scenario: " + message);
     }
 
     // ---------------- s4 : de situatie levert de parameter, met peildatum ----------------
 
-    @Test void s4_situatiewaarde_met_peildatum() {
+    @Test void s4_situation_value_with_as_of_date() {
         // Het scenario zet de parameter in de situatie op 40: dat is de waarde die de regel leest.
-        String bron = """
+        String source = """
             Objecttype de Persoon (mv: Personen)
                 de grens Numeriek (geheel getal);
             Parameter de volwassenleeftijd : Numeriek (geheel getal);
@@ -68,7 +68,7 @@ class ParametersetScenarioTest {
             Met als verwacht resultaat:
             - de grens van P1 is 40
             """;
-        List<ScenarioResultaat> r = ScenarioRunner.run(bron);
+        List<ScenarioResultaat> r = ScenarioRunner.run(source);
         assertEquals(1, r.size());
         assertEquals(Status.PASS, r.get(0).status(),
                 () -> "verwacht PASS (situatie 40): "
@@ -77,9 +77,9 @@ class ParametersetScenarioTest {
 
     // ---------------- s6 : bestaand pad zonder sets ----------------
 
-    @Test void s6_situatiewaarde_zonder_peildatum() {
+    @Test void s6_situation_value_without_as_of_date() {
         // De parameter staat in de situatie — het gewone run(bron)-pad.
-        String bron = """
+        String source = """
             Objecttype de Persoon (mv: Personen)
                 de grens Numeriek (geheel getal);
             Parameter de volwassenleeftijd : Numeriek (geheel getal);
@@ -95,7 +95,7 @@ class ParametersetScenarioTest {
             Met als verwacht resultaat:
             - de grens van P1 is 18
             """;
-        List<ScenarioResultaat> r = ScenarioRunner.run(bron);
+        List<ScenarioResultaat> r = ScenarioRunner.run(source);
         assertEquals(1, r.size());
         assertEquals(Status.PASS, r.get(0).status(),
                 () -> "verwacht PASS (situatie-waarde 18, geen sets): "

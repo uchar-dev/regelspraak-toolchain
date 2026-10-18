@@ -17,11 +17,11 @@ import static org.hamcrest.Matchers.is;
  * </ul>
  *
  * <p><b>Readiness-DOWN-on-marker (nice-to-have, described not faked).</b> A marker rule in scope under strict
- * ({@code ALLOW_MARKERS=false}) makes {@link KernProducer#beslisserKern()} throw {@code DienstFout}; CDI
+ * ({@code ALLOW_MARKERS=false}) makes {@link CoreProducer#decisionCore()} throw {@code ServiceError}; CDI
  * construction fails and the app never finishes starting, so {@code /q/health/ready} would be DOWN (or the app
  * would refuse to boot). Arranging that inside a {@code @QuarkusTest} needs a SECOND app configuration (a
  * marker-scoping descriptor) — a distinct boot, not expressible in this single healthy boot — so it is documented
- * here and left to the CLI's exit-3 discipline ({@code DienstMainTest} / {@code MarkerFailFastTest}) rather than
+ * here and left to the CLI's exit-3 discipline ({@code ServiceMainTest} / {@code MarkerFailFastTest}) rather than
  * faked green.
  */
 @QuarkusTest

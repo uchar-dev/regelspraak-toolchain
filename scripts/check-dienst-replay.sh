@@ -137,12 +137,12 @@ REPLAY_UITGESLOTEN=(
 uitgesloten() { local e; for e in "${REPLAY_UITGESLOTEN[@]}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1; }
 
 # Elke regel een golden en een reden, en geen golden twee keer.
-gezien=""
+seen=""
 for e in "${REPLAY_UITGESLOTEN[@]}"; do
   g="${e%%|*}"; r="${e#*|}"
   [ -n "$r" ] && [ "$r" != "$e" ] || fail "uitsluiting zonder reden: '$e'"
-  case " $gezien " in *" $g "*) fail "'$g' staat twee keer in REPLAY_UITGESLOTEN" ;; esac
-  gezien="$gezien $g"
+  case " $seen " in *" $g "*) fail "'$g' staat twee keer in REPLAY_UITGESLOTEN" ;; esac
+  seen="$seen $g"
 done
 
 # --- de set van gate 12 -------------------------------------------------------------------------------------
@@ -150,12 +150,12 @@ DROOLS=uchar/scripts/check-drools.sh
 [ -f "$DROOLS" ] || fail "$DROOLS ontbreekt (is de submodule geïnitialiseerd?)"
 uchar_played=$(sed -n 's/^EXPECTED_PLAYED=\([0-9][0-9]*\).*/\1/p' "$DROOLS")
 [ -n "$uchar_played" ] || fail "geen EXPECTED_PLAYED in $DROOLS"
-niet_gespeeld=$(awk '/^EXPECTED_CHANNEL=\(/{f=1;next} f&&/^\)/{f=0} f' "$DROOLS" | sed -n 's/^ *"\([^|]*\)|.*/\1/p' | sort)
-[ -n "$niet_gespeeld" ] || fail "geen EXPECTED_CHANNEL-regels gelezen uit $DROOLS"
+not_played=$(awk '/^EXPECTED_CHANNEL=\(/{f=1;next} f&&/^\)/{f=0} f' "$DROOLS" | sed -n 's/^ *"\([^|]*\)|.*/\1/p' | sort)
+[ -n "$not_played" ] || fail "geen EXPECTED_CHANNEL-regels gelezen uit $DROOLS"
 set_goldens=()
 while IFS= read -r ir; do
   d=$(dirname "$ir"); g=${d#uchar/corpus/golden/}
-  printf '%s\n' "$niet_gespeeld" | grep -qxF "$g" && continue
+  printf '%s\n' "$not_played" | grep -qxF "$g" && continue
   ls "$d"/case*.json >/dev/null 2>&1 || continue
   set_goldens+=("$g")
 done < <(find uchar/corpus/golden -name ir.json | sort)
@@ -170,40 +170,40 @@ mvn -B -o -q -DskipTests package -pl service -am >"$log" 2>&1 \
   || { tail -20 "$log" >&2; fail "de dienst bouwt niet"; }
 
 begin=$(date +%s)
-uitvoer=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden \
+output=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden \
     --werkers "${REPLAY_WERKERS:-4}" "${set_goldens[@]}") || fail "de replay-driver faalde"
-duur=$(( $(date +%s) - begin ))
+duration=$(( $(date +%s) - begin ))
 
 played=0; excl=0; cases=0
-afwijkingen=(); ongenoemd=(); verouderd=()
+deviations=(); unnamed=(); outdated=()
 while IFS=$'\t' read -r g status detail; do
   [ -n "$g" ] || continue
   case "$status" in
     PLAYED)
-      uitgesloten "$g" && verouderd+=("$g speelt door de dienst maar staat in REPLAY_UITGESLOTEN")
+      uitgesloten "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_UITGESLOTEN")
       played=$((played + 1)); cases=$((cases + detail)) ;;
     EXCLUDE)
-      uitgesloten "$g" || ongenoemd+=("$g :: $detail")
+      uitgesloten "$g" || unnamed+=("$g :: $detail")
       excl=$((excl + 1)) ;;
-    *) afwijkingen+=("$g :: $status $detail") ;;
+    *) deviations+=("$g :: $status $detail") ;;
   esac
-done <<< "$uitvoer"
+done <<< "$output"
 for e in "${REPLAY_UITGESLOTEN[@]}"; do
   g="${e%%|*}"
-  printf '%s\n' "${set_goldens[@]}" | grep -qxF "$g" || verouderd+=("$g staat in REPLAY_UITGESLOTEN maar niet in de set van gate 12")
+  printf '%s\n' "${set_goldens[@]}" | grep -qxF "$g" || outdated+=("$g staat in REPLAY_UITGESLOTEN maar niet in de set van gate 12")
 done
 
-if [ ${#afwijkingen[@]} -gt 0 ]; then
-  echo "check-dienst-replay: FAIL — ${#afwijkingen[@]} golden(s) wijken af of spelen niet:" >&2
-  printf '    %s\n' "${afwijkingen[@]}" >&2; exit 1
+if [ ${#deviations[@]} -gt 0 ]; then
+  echo "check-dienst-replay: FAIL — ${#deviations[@]} golden(s) wijken af of spelen niet:" >&2
+  printf '    %s\n' "${deviations[@]}" >&2; exit 1
 fi
-if [ ${#ongenoemd[@]} -gt 0 ]; then
-  echo "check-dienst-replay: FAIL — ${#ongenoemd[@]} golden(s) spelen niet en staan niet in REPLAY_UITGESLOTEN:" >&2
-  printf '    %s\n' "${ongenoemd[@]}" >&2; exit 1
+if [ ${#unnamed[@]} -gt 0 ]; then
+  echo "check-dienst-replay: FAIL — ${#unnamed[@]} golden(s) spelen niet en staan niet in REPLAY_UITGESLOTEN:" >&2
+  printf '    %s\n' "${unnamed[@]}" >&2; exit 1
 fi
-if [ ${#verouderd[@]} -gt 0 ]; then
+if [ ${#outdated[@]} -gt 0 ]; then
   echo "check-dienst-replay: FAIL — REPLAY_UITGESLOTEN is verouderd:" >&2
-  printf '    %s\n' "${verouderd[@]}" >&2; exit 1
+  printf '    %s\n' "${outdated[@]}" >&2; exit 1
 fi
 [ "$played" -gt 0 ] || fail "geen golden speelde door de dienst (een lege set is een faal)"
 [ "$played" -eq "$EXPECTED_REPLAY_PLAYED" ] \
@@ -213,4 +213,4 @@ echo "check-dienst-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
 echo "  uitgesloten: $excl, bij naam met reden"
-echo "  duur: ${duur}s met ${REPLAY_WERKERS:-4} diensten tegelijk"
+echo "  duur: ${duration}s met ${REPLAY_WERKERS:-4} diensten tegelijk"

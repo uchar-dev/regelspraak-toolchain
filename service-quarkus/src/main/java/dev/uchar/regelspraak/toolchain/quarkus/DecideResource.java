@@ -18,38 +18,38 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
-import dev.uchar.regelspraak.toolchain.service.AntwoordBouwer;
-import dev.uchar.regelspraak.toolchain.service.BeslisserKern;
-import dev.uchar.regelspraak.toolchain.service.DienstFout;
-import dev.uchar.regelspraak.toolchain.service.Evaluatiefout;
-import dev.uchar.regelspraak.toolchain.service.GeenFixpunt;
-import dev.uchar.regelspraak.toolchain.service.Schending;
-import dev.uchar.regelspraak.toolchain.service.VerzoekOpties;
+import dev.uchar.regelspraak.toolchain.service.AnswerBuilder;
+import dev.uchar.regelspraak.toolchain.service.DecisionCore;
+import dev.uchar.regelspraak.toolchain.service.ServiceError;
+import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
+import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
+import dev.uchar.regelspraak.toolchain.service.Violation;
+import dev.uchar.regelspraak.toolchain.service.RequestOptions;
 
 /**
- * The Quarkus JAX-RS adapter over {@link BeslisserKern}, MIRRORING {@code DienstHttp}'s HTTP contract exactly:
+ * The Quarkus JAX-RS adapter over {@link DecisionCore}, MIRRORING {@code ServiceHttp}'s HTTP contract exactly:
  * <ul>
- *   <li>{@code POST /<pad>} → {@link BeslisserKern#verwerk} → {@code 200} JSON; {@link DienstFout} → {@code 400}
- *       {@code {"fout":…,"schendingen":[{"veld":…,"fout":…}]}}; {@link BeslisserKern.OnbekendPad} → {@code 404};
- *       {@link BeslisserKern.NietUitvoerbaar} → {@code 503} with the MARKER answer; {@link Evaluatiefout} and
- *       {@link GeenFixpunt} → {@code 422} with the answer {@link AntwoordBouwer#evaluatiefout} or
- *       {@link AntwoordBouwer#geenFixpunt} builds, as {@code DienstHttp} sends it.</li>
- *   <li>{@code GET /info} → the SAME manifest {@code DienstHttp} serves (via {@link InfoBouwer}).</li>
+ *   <li>{@code POST /<pad>} → {@link DecisionCore#process} → {@code 200} JSON; {@link ServiceError} → {@code 400}
+ *       {@code {"fout":…,"schendingen":[{"veld":…,"fout":…}]}}; {@link DecisionCore.UnknownPath} → {@code 404};
+ *       {@link DecisionCore.NonExecutable} → {@code 503} with the MARKER answer; {@link EvaluationFault} and
+ *       {@link NoFixpoint} → {@code 422} with the answer {@link AnswerBuilder#evaluationFault} or
+ *       {@link AnswerBuilder#noFixpoint} builds, as {@code ServiceHttp} sends it.</li>
+ *   <li>{@code GET /info} → the SAME manifest {@code ServiceHttp} serves (via {@link InfoBuilder}).</li>
  * </ul>
- * The query parameters are {@code DienstHttp}'s: {@code uitleg}, {@code vocabulaire} (the vocabulary of the answer),
+ * The query parameters are {@code ServiceHttp}'s: {@code uitleg}, {@code vocabulaire} (the vocabulary of the answer),
  * {@code invoervocabulaire} (the one the request's names are read in), and the detail flags {@code trace},
  * {@code dekking} and {@code fixpunt}, which the core answers when {@code DETAIL} started it with detail
- * ({@link KernProducer}) and refuses with a 400 otherwise.
+ * ({@link CoreProducer}) and refuses with a 400 otherwise.
  *
  * <p>The request body is read as a raw {@link String} and parsed with a private {@link ObjectMapper} configured
- * {@code USE_BIG_DECIMAL_FOR_FLOATS} (mirror of {@code DienstHttp.MAPPER}), so no request number is ever a
+ * {@code USE_BIG_DECIMAL_FOR_FLOATS} (mirror of {@code ServiceHttp.MAPPER}), so no request number is ever a
  * {@code double} — regardless of the ambient Quarkus Jackson config. The response {@link ObjectNode} is written
  * back through the SAME mapper for exact-render symmetry.
  */
 @Path("/")
-public class BeslisResource {
+public class DecideResource {
 
-    /** BigDecimal-for-floats: a request/response number is never a double (mirror of {@code DienstHttp.MAPPER}). */
+    /** BigDecimal-for-floats: a request/response number is never a double (mirror of {@code ServiceHttp.MAPPER}). */
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
@@ -57,7 +57,7 @@ public class BeslisResource {
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);
 
     @Inject
-    BeslisserKern kern;
+    DecisionCore core;
 
     // ---------------- POST /<pad> ----------------
 
@@ -65,57 +65,57 @@ public class BeslisResource {
     @Path("{pad}")
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
-    public Response verwerk(@PathParam("pad") String pad, @QueryParam("uitleg") String uitleg,
-                            @QueryParam("vocabulaire") String vocabulaire,
+    public Response process(@PathParam("pad") String path, @QueryParam("uitleg") String uitleg,
+                            @QueryParam("vocabulaire") String vocabulary,
                             @QueryParam("invoervocabulaire") String invoervocabulaire,
-                            @QueryParam("trace") String trace, @QueryParam("dekking") String dekking,
-                            @QueryParam("fixpunt") String fixpunt, String body) {
-        JsonNode boom;
+                            @QueryParam("trace") String trace, @QueryParam("dekking") String coverage,
+                            @QueryParam("fixpunt") String fixpoint, String body) {
+        JsonNode tree;
         if (body == null || body.isEmpty())
-            return response(400, foutBody("leeg verzoek-body: verwacht JSON met een 'instanties'-array", "body"));
+            return response(400, errorBody("leeg verzoek-body: verwacht JSON met een 'instanties'-array", "body"));
         try {
-            boom = MAPPER.readTree(body);
+            tree = MAPPER.readTree(body);
         } catch (JsonProcessingException malformed) {
-            return response(400, foutBody("verzoek-body is geen geldige JSON: " + malformed.getOriginalMessage(),
+            return response(400, errorBody("verzoek-body is geen geldige JSON: " + malformed.getOriginalMessage(),
                     "body"));
         }
-        if (boom == null || boom.isNull())
-            return response(400, foutBody("verzoek-body is geen geldige JSON (null)", "body"));
+        if (tree == null || tree.isNull())
+            return response(400, errorBody("verzoek-body is geen geldige JSON (null)", "body"));
 
         try {
             // ?uitleg=true (or a bare ?uitleg) opts into the Verbalisator verhaal, and the detail flags read the same
-            // way; any other value = no (mirror of DienstHttp.vraagt)
-            ObjectNode antwoord = kern.verwerk(pad, boom, new VerzoekOpties(vraagt(uitleg), vocabulaire,
-                    invoervocabulaire, vraagt(trace), vraagt(dekking), vraagt(fixpunt)));
-            return response(200, antwoord);
-        } catch (BeslisserKern.OnbekendPad onbekend) {
-            // DienstHttp answers an unknown path from its catch-all route, which names the request path, slash
+            // way; any other value = no (mirror of ServiceHttp.isRequested)
+            ObjectNode answer = core.process(path, tree, new RequestOptions(isRequested(uitleg), vocabulary,
+                    invoervocabulaire, isRequested(trace), isRequested(coverage), isRequested(fixpoint)));
+            return response(200, answer);
+        } catch (DecisionCore.UnknownPath unknown) {
+            // ServiceHttp answers an unknown path from its catch-all route, which names the request path, slash
             // included; the kern's own message names the pad without it
-            return response(404, foutBody("onbekend pad: '/" + pad + "'", null));
-        } catch (BeslisserKern.NietUitvoerbaar niet) {
-            return response(503, markerBody(niet));
-        } catch (DienstFout dienstFout) {
-            return response(400, verzoekFoutBody(dienstFout));
-        } catch (Evaluatiefout evaluatiefout) {
-            return response(422, AntwoordBouwer.evaluatiefout(evaluatiefout));
-        } catch (GeenFixpunt geen) {
-            return response(422, AntwoordBouwer.geenFixpunt(geen));
+            return response(404, errorBody("onbekend pad: '/" + path + "'", null));
+        } catch (DecisionCore.NonExecutable rejected) {
+            return response(503, markerBody(rejected));
+        } catch (ServiceError serviceError) {
+            return response(400, requestErrorBody(serviceError));
+        } catch (EvaluationFault evaluationFault) {
+            return response(422, AnswerBuilder.evaluationFault(evaluationFault));
+        } catch (NoFixpoint none) {
+            return response(422, AnswerBuilder.noFixpoint(none));
         }
     }
 
     /** A request that asks no detail of its session: the resource method without the detail flags. */
-    public Response verwerk(String pad, String uitleg, String vocabulaire, String invoervocabulaire, String body) {
-        return verwerk(pad, uitleg, vocabulaire, invoervocabulaire, null, null, null, body);
+    public Response process(String path, String uitleg, String vocabulary, String invoervocabulaire, String body) {
+        return process(path, uitleg, vocabulary, invoervocabulaire, null, null, null, body);
     }
 
-    /** A request that names no vocabulary: {@link #verwerk(String, String, String, String, String)} without them. */
-    public Response verwerk(String pad, String uitleg, String body) {
-        return verwerk(pad, uitleg, null, null, body);
+    /** A request that names no vocabulary: {@link #process(String, String, String, String, String)} without them. */
+    public Response process(String path, String uitleg, String body) {
+        return process(path, uitleg, null, null, body);
     }
 
-    /** A query flag as {@code DienstHttp.vraagt} reads it: {@code true} (case-insensitive) or bare. */
-    private static boolean vraagt(String waarde) {
-        return "true".equalsIgnoreCase(waarde) || (waarde != null && waarde.isEmpty());
+    /** A query flag as {@code ServiceHttp.isRequested} reads it: {@code true} (case-insensitive) or bare. */
+    private static boolean isRequested(String value) {
+        return "true".equalsIgnoreCase(value) || (value != null && value.isEmpty());
     }
 
     // ---------------- GET /info ----------------
@@ -124,38 +124,38 @@ public class BeslisResource {
     @Path("info")
     @Produces(MediaType.APPLICATION_JSON)
     public Response info() {
-        return response(200, InfoBouwer.bouw(kern));
+        return response(200, InfoBuilder.assemble(core));
     }
 
-    // ---------------- error bodies (mirror DienstHttp) ----------------
+    // ---------------- error bodies (mirror ServiceHttp) ----------------
 
-    private static ObjectNode foutBody(String boodschap, String veld) {
+    private static ObjectNode errorBody(String notice, String field) {
         ObjectNode n = NF.objectNode();
-        n.put("fout", boodschap);
-        if (veld != null) n.put("veld", veld);
+        n.put("fout", notice);
+        if (field != null) n.put("veld", field);
         return n;
     }
 
-    /** Mirror of {@code DienstHttp.markerBody}. */
-    private static ObjectNode markerBody(BeslisserKern.NietUitvoerbaar niet) {
+    /** Mirror of {@code ServiceHttp.markerBody}. */
+    private static ObjectNode markerBody(DecisionCore.NonExecutable rejected) {
         ObjectNode n = NF.objectNode();
         n.put("status", "MARKER");
-        n.put("fout", niet.getMessage());
-        n.put("reden", niet.reden());
+        n.put("fout", rejected.getMessage());
+        n.put("reden", rejected.reason());
         var markers = n.putArray("markers");
-        for (String m : niet.markers()) markers.add(m);
+        for (String m : rejected.markers()) markers.add(m);
         return n;
     }
 
-    private static ObjectNode verzoekFoutBody(DienstFout fout) {
+    private static ObjectNode requestErrorBody(ServiceError error) {
         ObjectNode n = NF.objectNode();
         n.put("fout", "verzoek valideert niet");
-        var schendingen = n.putArray("schendingen");
-        for (Schending s : fout.schendingen()) {
-            ObjectNode sn = schendingen.addObject();
-            sn.put("veld", s.veld());
-            sn.put("soort", s.soort().name());
-            sn.put("fout", s.bericht());
+        var violations = n.putArray("schendingen");
+        for (Violation s : error.violations()) {
+            ObjectNode sn = violations.addObject();
+            sn.put("veld", s.field());
+            sn.put("soort", s.kind().name());
+            sn.put("fout", s.message());
         }
         return n;
     }

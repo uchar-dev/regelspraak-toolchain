@@ -276,4 +276,4 @@ The RegelSpraak v2.3.0 specification itself is not in this repository; `NOTICE` 
 
 Work enters as a card in `backlog/` (`new/` → `doing/` → `done/`, the result recorded in the card). A question
 about what RegelSpraak means — a construct, a verdict, a refusal — is a card in uchar, not a change here. The
-naming convention: infrastructure in English, the domain vocabulary in Dutch (`BeslisserKern`, `Verbalisator`).
+naming convention: infrastructure in English, the domain vocabulary in Dutch (`DecisionCore`, `Verbaliser`).

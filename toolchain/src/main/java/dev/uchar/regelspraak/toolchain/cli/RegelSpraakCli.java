@@ -7,7 +7,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
+import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 
 /**
  * The distribution's CLI over uchar's frontend and backend. {@code --ir} is uchar's own emitter mode
@@ -19,26 +19,26 @@ public final class RegelSpraakCli {
 
     /** Source files read as one model: each file's text followed by a newline, in the order given, as uchar's --ir
      *  mode reads a chain. With more than one file a diagnostic's line is a line of the concatenation, which no file
-     *  has, so {@link #melding} names the file and the line in that file instead. */
-    record Keten(String bron, java.util.List<String> bestanden, java.util.List<Integer> eersteRegels) {
-        static Keten lees(java.util.List<String> paden) throws java.io.IOException {
-            StringBuilder bron = new StringBuilder();
-            var eersteRegels = new java.util.ArrayList<Integer>();
-            int regel = 1;
-            for (String pad : paden) {
-                String tekst = java.nio.file.Files.readString(java.nio.file.Path.of(pad)) + '\n';
-                eersteRegels.add(regel);
-                bron.append(tekst);
-                regel += (int) tekst.chars().filter(c -> c == '\n').count();
+     *  has, so {@link #message} names the file and the line in that file instead. */
+    record Chain(String source, java.util.List<String> files, java.util.List<Integer> firstLines) {
+        static Chain read(java.util.List<String> paths) throws java.io.IOException {
+            StringBuilder source = new StringBuilder();
+            var firstLines = new java.util.ArrayList<Integer>();
+            int line = 1;
+            for (String path : paths) {
+                String text = java.nio.file.Files.readString(java.nio.file.Path.of(path)) + '\n';
+                firstLines.add(line);
+                source.append(text);
+                line += (int) text.chars().filter(c -> c == '\n').count();
             }
-            return new Keten(bron.toString(), java.util.List.copyOf(paden), java.util.List.copyOf(eersteRegels));
+            return new Chain(source.toString(), java.util.List.copyOf(paths), java.util.List.copyOf(firstLines));
         }
 
-        String melding(Diagnostic d) {
-            if (bestanden.size() == 1 || d.line() <= 0) return d.toString();
-            int i = eersteRegels.size() - 1;
-            while (i > 0 && eersteRegels.get(i) > d.line()) i--;
-            return d.severity() + " (" + bestanden.get(i) + ":" + (d.line() - eersteRegels.get(i) + 1) + "): "
+        String message(Diagnostic d) {
+            if (files.size() == 1 || d.line() <= 0) return d.toString();
+            int i = firstLines.size() - 1;
+            while (i > 0 && firstLines.get(i) > d.line()) i--;
+            return d.severity() + " (" + files.get(i) + ":" + (d.line() - firstLines.get(i) + 1) + "): "
                     + d.message();
         }
     }
@@ -49,34 +49,34 @@ public final class RegelSpraakCli {
      *  reads the resolved model, so a model with errors would emit a bean set derived from a broken model. By
      *  contract this method touches disk ONLY when invoked, so main's error path (which never calls it) writes
      *  nothing. */
-    public static int factsNaarDisk(RegelSpraakModel m, java.nio.file.Path outdir) throws java.io.IOException {
-        var bronnen = FactModelGenerator.genereer(m);
+    public static int factsToDisk(RegelSpraakModel m, java.nio.file.Path outdir) throws java.io.IOException {
+        var sources = FactModelGenerator.genereer(m);
         java.nio.file.Path pkgDir = outdir.resolve(FactModelGenerator.PAKKET.replace('.', '/'));
         java.nio.file.Files.createDirectories(pkgDir);
-        for (var e : bronnen.entrySet())
+        for (var e : sources.entrySet())
             java.nio.file.Files.writeString(pkgDir.resolve(e.getKey() + ".java"), e.getValue(),
                     java.nio.charset.StandardCharsets.UTF_8);
-        return bronnen.size();
+        return sources.size();
     }
 
     /** The --facts mode body: {@code rest} = [outdir, file.rgs...] after flag removal. Returns the process
      *  exit code (0 = beans geschreven, 1 = resolver-fouten, 2 = usage) instead of exiting, so the error
      *  discipline — an unresolvable model writes NOTHING under outdir — is testable as the REAL CLI path. */
-    public static int factsModus(java.util.List<String> rest) throws java.io.IOException {
+    public static int factsMode(java.util.List<String> rest) throws java.io.IOException {
         // --facts <outdir> <file.rgs...>: after --facts is consumed, the FIRST remaining arg is the outdir,
         // the rest the source files of the model chain.
         if (rest.size() < 2) { System.err.println("usage: RegelSpraakCli --facts <outdir> <file.rgs...>"); return 2; }
         java.nio.file.Path outdir = java.nio.file.Path.of(rest.get(0));
-        Keten keten = Keten.lees(rest.subList(1, rest.size()));
+        Chain chain = Chain.read(rest.subList(1, rest.size()));
         // one file threads its name into the model, as uchar's --ir mode does; a chain has no one name
-        RegelSpraakModel mf = rest.size() == 2 ? Resolver.resolve(keten.bron(), rest.get(1))
-                : Resolver.resolve(keten.bron());
+        RegelSpraakModel mf = rest.size() == 2 ? Resolver.resolve(chain.source(), rest.get(1))
+                : Resolver.resolve(chain.source());
         // Check errors BEFORE touching disk: an unresolvable model writes NOTHING under outdir.
         if (!mf.isOk()) {
-            mf.diagnostics.forEach(d -> System.out.println("  " + keten.melding(d)));
+            mf.diagnostics.forEach(d -> System.out.println("  " + chain.message(d)));
             return 1;
         }
-        int n = factsNaarDisk(mf, outdir);
+        int n = factsToDisk(mf, outdir);
         System.out.printf("facts: %d klasse(n) geschreven naar %s/%s%n",
                 n, outdir, FactModelGenerator.PAKKET.replace('.', '/'));
         return 0;
@@ -90,28 +90,28 @@ public final class RegelSpraakCli {
      *  model-level, so it builds no KieBase and applies no exit-3 marker discipline. A resolver's model carries its
      *  defaults groups itself, and a navigated characteristic check reaches the type of the role it names
      *  ({@link ProducentConsument#bronNavigatie}). */
-    public static int graafModus(java.util.List<String> rest, boolean html) throws java.io.IOException {
+    public static int graphMode(java.util.List<String> rest, boolean html) throws java.io.IOException {
         if (rest.size() < 2) {
             System.err.println("usage: RegelSpraakCli " + (html ? "--graaf" : "--graaf-mmd") + " <out> <file.rgs...>");
             return 2;
         }
         java.nio.file.Path out = java.nio.file.Path.of(rest.get(0));
-        Keten keten = Keten.lees(rest.subList(1, rest.size()));
-        RegelSpraakModel m = Resolver.resolve(keten.bron());
+        Chain chain = Chain.read(rest.subList(1, rest.size()));
+        RegelSpraakModel m = Resolver.resolve(chain.source());
         // Check errors BEFORE touching disk: an unresolvable model writes NOTHING (a graph over a broken model
         // would show half-bound edges).
         if (!m.isOk()) {
-            m.diagnostics.forEach(d -> System.out.println("  " + keten.melding(d)));
+            m.diagnostics.forEach(d -> System.out.println("  " + chain.message(d)));
             return 1;
         }
-        var graaf = RegelGraaf.bouw(m, m.prioritizedDefaults, ProducentConsument.bronNavigatie(m));
-        java.nio.file.Files.writeString(out, html ? graaf.html() : graaf.mermaid(),
+        var graph = RegelGraaf.bouw(m, m.prioritizedDefaults, ProducentConsument.bronNavigatie(m));
+        java.nio.file.Files.writeString(out, html ? graph.html() : graph.mermaid(),
                 java.nio.charset.StandardCharsets.UTF_8);
-        long invoer = graaf.nodes().stream()
+        long input = graph.nodes().stream()
                 .filter(n -> n.kind() == RegelGraaf.NodeKind.INVOER).count();
-        long eind = graaf.nodes().stream().filter(RegelGraaf.Node::eindOutput).count();
+        long end = graph.nodes().stream().filter(RegelGraaf.Node::eindOutput).count();
         System.out.printf("graaf: %d knopen, %d kanten (%d invoer-bronnen, %d eind-outputs) geschreven naar %s%n",
-                graaf.nodes().size(), graaf.edges().size(), invoer, eind, out);
+                graph.nodes().size(), graph.edges().size(), input, end, out);
         return 0;
     }
 
@@ -139,23 +139,23 @@ public final class RegelSpraakCli {
             System.exit(2);
         }
         boolean facts = rest.remove("--facts");
-        boolean graaf = rest.remove("--graaf");
-        boolean graafMmd = rest.remove("--graaf-mmd");
+        boolean graph = rest.remove("--graaf");
+        boolean graphMmd = rest.remove("--graaf-mmd");
         boolean ir = rest.remove("--ir");
-        int uitvoerModi = (drl ? 1 : 0) + (facts ? 1 : 0) + (graaf || graafMmd ? 1 : 0) + (ir ? 1 : 0);
-        if (uitvoerModi > 1) { System.err.println("usage: --drl, --facts, --graaf[-mmd] en --ir sluiten elkaar uit"); System.exit(2); }
+        int outputModes = (drl ? 1 : 0) + (facts ? 1 : 0) + (graph || graphMmd ? 1 : 0) + (ir ? 1 : 0);
+        if (outputModes > 1) { System.err.println("usage: --drl, --facts, --graaf[-mmd] en --ir sluiten elkaar uit"); System.exit(2); }
         if (ir) System.exit(Resolver.irModus(rest));   // the emitter path is uchar's own
-        if (graaf || graafMmd) System.exit(graafModus(rest, graaf));
-        if (facts) System.exit(factsModus(rest));
+        if (graph || graphMmd) System.exit(graphMode(rest, graph));
+        if (facts) System.exit(factsMode(rest));
         if (rest.isEmpty()) { System.err.println("usage: RegelSpraakCli [--drl | --facts <outdir> | --graaf <out.html> | --graaf-mmd <out.mmd> | --ir <out.json>] <file.rgs...>"); System.exit(2); }
-        Keten keten = Keten.lees(rest);
-        RegelSpraakModel m = Resolver.resolve(keten.bron());
+        Chain chain = Chain.read(rest);
+        RegelSpraakModel m = Resolver.resolve(chain.source());
         if (drl) {
-            m.diagnostics.forEach(d -> System.err.println("  " + keten.melding(d)));
+            m.diagnostics.forEach(d -> System.err.println("  " + chain.message(d)));
             if (!m.isOk()) System.exit(1);
             try {
-                System.out.print(UcharBouw.bouw(m, DroolsBackend.Branch.DRL_TEXT).drl());
-            } catch (UcharBouw.NietGedragen e) {
+                System.out.print(UcharBuild.assemble(m, DroolsBackend.Branch.DRL_TEXT).drl());
+            } catch (UcharBuild.NotCarried e) {
                 System.err.println("  niet uitvoerbaar in uchar (exit 3): " + e.getMessage());
                 System.exit(3);
             } catch (IllegalStateException e) {
@@ -174,12 +174,12 @@ public final class RegelSpraakCli {
                     r.waarde().type() == null ? "(geen type)" : r.waarde().type().naam());
             if (r.voorwaarde() != null) System.out.println("      indien " + r.voorwaarde().bron());
         });
-        m.diagnostics.forEach(d -> System.out.println("  " + keten.melding(d)));
+        m.diagnostics.forEach(d -> System.out.println("  " + chain.message(d)));
         if (!m.isOk()) System.exit(1);
         // "does my model resolve AND run?" — the build on the exec-model branch the engine and the service fire
         try {
-            UcharBouw.bouw(m, DroolsBackend.Branch.EXEC_MODEL);
-        } catch (UcharBouw.NietGedragen e) {
+            UcharBuild.assemble(m, DroolsBackend.Branch.EXEC_MODEL);
+        } catch (UcharBuild.NotCarried e) {
             System.out.println("  niet uitvoerbaar in uchar (exit 3): " + e.getMessage());
             System.exit(3);
         }

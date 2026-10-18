@@ -65,7 +65,7 @@ cd "$(dirname "$0")/.."
 # De reden zegt WAAROM de afwezigheid legitiem is, niet wat de test doet. De
 # datum is de dag waarop de pin is gezet. Voeg hier alleen BEWUST iets toe.
 # ---------------------------------------------------------------------------
-TOEGESTANE_SKIPS=(
+ALLOWED_SKIPS=(
 )
 
 # ---------------------------------------------------------------------------
@@ -80,7 +80,7 @@ TOEGESTANE_SKIPS=(
 # poort IS de volledige run. Wie één klasse wil draaien, draait surefire zonder
 # de poort — het make-doel en de pom-binding zijn de poort, niet de losse mvn.
 # ---------------------------------------------------------------------------
-VLOEREN=(
+FLOORS=(
 "toolchain|120|de toolchain-kern: engine-facade, scenariorunner met uitleg, verbalisator, parameterset-lader en CLI (de vroegere poorten engine en toolchain-kern in één module), met de naamgeving per vocabulaire; gemeten na de kaart dienst-vocabulaires|2026-09-27"
 "service|235|de beslisdienst (JDK-adapter): vormscope, MARKER-antwoord, IR-document als bron, rolinvoer zoals uchars replay, playground, de liberale lezer en het antwoord, /info en de OpenAPI per vocabulaire, de scopetoets over regels en defaultsgroepen, een subtypegroep met haar basis, de default die leest; gemeten na de kaart dienst-scope-defaultsgroepen|2026-10-01"
 "service-quarkus|43|de Quarkus-adapter met de pariteit van de vocabulaires; gemeten na de kaart dienst-vocabulaires|2026-09-27"
@@ -96,19 +96,19 @@ if [ "${1:-}" = "--sentinel" ]; then
 fi
 
 [ $# -ge 3 ] || { echo "skip-pin: gebruik <poort> <ijkpunt> <rapportmap>..."; exit 2; }
-POORT=$1; IJKPUNT=$2; shift 2
+POORT=$1; CALIBRATION_POINT=$2; shift 2
 
-[ -f "$IJKPUNT" ] \
-  || { echo "skip-pin: ijkpunt '$IJKPUNT' ontbreekt — de stap die het vlak voor de testrun zet, draaide niet"; exit 2; }
+[ -f "$CALIBRATION_POINT" ] \
+  || { echo "skip-pin: ijkpunt '$CALIBRATION_POINT' ontbreekt — de stap die het vlak voor de testrun zet, draaide niet"; exit 2; }
 
 # De vloer van deze poort. Een onbekende poortsleutel is een vergissing in de
 # aanroep, geen reden om zonder ondergrens door te draaien.
-VLOER=""
-for regel in ${VLOEREN[@]+"${VLOEREN[@]}"}; do
-  IFS='|' read -r p n _reden _datum <<<"$regel"
-  [ "$p" = "$POORT" ] && VLOER=$n
+FLOOR=""
+for line in ${FLOORS[@]+"${FLOORS[@]}"}; do
+  IFS='|' read -r p n _reden _datum <<<"$line"
+  [ "$p" = "$POORT" ] && FLOOR=$n
 done
-[ -n "$VLOER" ] \
+[ -n "$FLOOR" ] \
   || { echo "skip-pin: poort '$POORT' heeft geen vloer in VLOEREN (tools/check-skips.sh) — voeg hem toe met reden en meetdatum"; exit 2; }
 
 echo ""
@@ -120,23 +120,23 @@ if stat -f %m . >/dev/null 2>&1; then mtime() { stat -f %m "$1"; }; else mtime()
 # Vers = NIET OUDER dan het ijkpunt. Bewust >= en niet bash's -nt: dat vergelijkt
 # op hele seconden, dus een rapport dat in dezelfde seconde als het ijkpunt wordt
 # weggeschreven zou als "verouderd" wegvallen en de poort spookrood maken.
-IJK_T=$(mtime "$IJKPUNT")
-vers=0; verouderd=0; VERSE_RAPPORTEN=()
+IJK_T=$(mtime "$CALIBRATION_POINT")
+fresh=0; outdated=0; FRESH_REPORTS=()
 for map in "$@"; do
   [ -d "$map" ] || { echo "skip-pin: rapportmap '$map' bestaat niet — deze poort schreef geen testrapport"; exit 2; }
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    if [ "$(mtime "$f")" -ge "$IJK_T" ]; then VERSE_RAPPORTEN+=("$f"); vers=$((vers + 1)); else verouderd=$((verouderd + 1)); fi
+    if [ "$(mtime "$f")" -ge "$IJK_T" ]; then FRESH_REPORTS+=("$f"); fresh=$((fresh + 1)); else outdated=$((outdated + 1)); fi
   done < <(find "$map" -name 'TEST-*.xml' -type f | sort)
 done
 
-[ "$vers" -gt 0 ] \
-  || { echo "skip-pin: geen enkel rapport is jonger dan het ijkpunt ($verouderd ouder) — deze poort draaide geen tests, of deze controle liep vóór de testrun"; exit 2; }
+[ "$fresh" -gt 0 ] \
+  || { echo "skip-pin: geen enkel rapport is jonger dan het ijkpunt ($outdated ouder) — deze poort draaide geen tests, of deze controle liep vóór de testrun"; exit 2; }
 
 # De legacy-XML uitlezen. Twee soorten regels op stdout:
 #   CASE\t<klasse>\t<methode>\t<SKIP|OK>\t<melding>
 #   SUITE\t<bestand>\t<suitenaam>\t<tests-attribuut>\t<getelde testcases>
-uitlees=$(awk '
+read_out=$(awk '
   # Attribuut lezen met een verplichte scheiding ervoor, zodat name="" niet
   # binnen classname="" wordt gevonden wanneer classname als eerste staat.
   function attr(regel, naam,   s) {
@@ -184,32 +184,32 @@ uitlees=$(awk '
   open && /<\/testcase>/ { schrijf(); open = 0; next }
 
   END { leeg_af() }
-' "${VERSE_RAPPORTEN[@]}")
+' "${FRESH_REPORTS[@]}")
 
-alle_regels=$(printf '%s\n' "$uitlees" | awk -F'\t' '$1 == "CASE" { print $2 "\t" $3 "\t" $4 "\t" $5 }' || true)
-suites=$(printf '%s\n' "$uitlees" | awk -F'\t' '$1 == "SUITE"' || true)
+all_lines=$(printf '%s\n' "$read_out" | awk -F'\t' '$1 == "CASE" { print $2 "\t" $3 "\t" $4 "\t" $5 }' || true)
+suites=$(printf '%s\n' "$read_out" | awk -F'\t' '$1 == "SUITE"' || true)
 
-totaal=$(printf '%s\n' "$alle_regels" | grep -c $'\t' || true)
-overgeslagen=$(printf '%s\n' "$alle_regels" | awk -F'\t' '$3 == "SKIP"' || true)
-aantal_skips=$([ -n "$overgeslagen" ] && printf '%s\n' "$overgeslagen" | wc -l | tr -d ' ' || echo 0)
+total=$(printf '%s\n' "$all_lines" | grep -c $'\t' || true)
+skipped=$(printf '%s\n' "$all_lines" | awk -F'\t' '$3 == "SKIP"' || true)
+count_skips=$([ -n "$skipped" ] && printf '%s\n' "$skipped" | wc -l | tr -d ' ' || echo 0)
 
-echo "rapporten    : $vers vers, $verouderd verouderd (genegeerd: uit een eerdere run)"
-echo "testgevallen : $totaal (vloer $VLOER), waarvan overgeslagen/afgebroken: $aantal_skips"
+echo "rapporten    : $fresh vers, $outdated verouderd (genegeerd: uit een eerdere run)"
+echo "testgevallen : $total (vloer $FLOOR), waarvan overgeslagen/afgebroken: $count_skips"
 
 # (e) Heeft de parser elk rapport volledig gelezen? En (c): is er een klasse die
 # als container afbrak? Een klasserapport (suitenaam = een Java-klassenaam) hoort
 # altijd testgevallen te dragen; een engine-rapport van de console (suitenaam met
 # spatie, "JUnit Vintage") mag legitiem leeg zijn.
-leeg_klasserapport=(); ongelezen=()
-while IFS=$'\t' read -r _merk bestand suite tests geteld; do
-  [ -n "${bestand:-}" ] || continue
+empty_class_report=(); unread=()
+while IFS=$'\t' read -r _merk file suite tests geteld; do
+  [ -n "${file:-}" ] || continue
   if [ "$tests" -ge 0 ] && [ "$tests" -ne "$geteld" ]; then
-    ongelezen+=("$suite ($bestand): tests=\"$tests\" maar $geteld testgeval(len) gelezen")
+    unread+=("$suite ($file): tests=\"$tests\" maar $geteld testgeval(len) gelezen")
     continue
   fi
   case "$suite" in
     *\ *) : ;;                                                            # "JUnit Vintage": een engine-rapport van de console, leeg is normaal
-    *.*)  [ "$geteld" -eq 0 ] && leeg_klasserapport+=("$suite ($bestand)") ;;
+    *.*)  [ "$geteld" -eq 0 ] && empty_class_report+=("$suite ($file)") ;;
   esac
 done <<<"$(printf '%s\n' "$suites" | grep $'\t' || true)"
 
@@ -217,36 +217,36 @@ done <<<"$(printf '%s\n' "$suites" | grep $'\t' || true)"
 # array LEEG kan zijn: bash 3.2 (de system-bash op macOS) breekt onder `set -u`
 # op "${leeg[@]}", en een poort zonder enkele pin — engine, service,
 # service-quarkus — is de normale toestand.
-PIN_SLEUTELS=(); PIN_REDENEN=(); PIN_DATA=()
-for regel in ${TOEGESTANE_SKIPS[@]+"${TOEGESTANE_SKIPS[@]}"}; do
-  IFS='|' read -r p sleutel reden datum <<<"$regel"
+PIN_KEYS=(); PIN_REASONS=(); PIN_DATA=()
+for line in ${ALLOWED_SKIPS[@]+"${ALLOWED_SKIPS[@]}"}; do
+  IFS='|' read -r p key reason date <<<"$line"
   [ "$p" = "$POORT" ] || continue
-  PIN_SLEUTELS+=("$sleutel"); PIN_REDENEN+=("$reden"); PIN_DATA+=("$datum")
+  PIN_KEYS+=("$key"); PIN_REASONS+=("$reason"); PIN_DATA+=("$date")
 done
 
 pin_index() {
   local i
-  for i in "${!PIN_SLEUTELS[@]}"; do [ "${PIN_SLEUTELS[$i]}" = "$1" ] && { echo "$i"; return 0; }; done
+  for i in "${!PIN_KEYS[@]}"; do [ "${PIN_KEYS[$i]}" = "$1" ] && { echo "$i"; return 0; }; done
   return 1
 }
 
-ongepind=(); gepind_opgetreden=()
-if [ "$aantal_skips" -gt 0 ]; then
+unpinned=(); pinned_occurred=()
+if [ "$count_skips" -gt 0 ]; then
   echo ""
   echo "overgeslagen/afgebroken, bij naam:"
-  while IFS=$'\t' read -r klasse naam soort msg; do
-    [ "$soort" = "SKIP" ] || continue
-    sleutel="$klasse#$naam"
-    echo "  $sleutel"
-    echo "      melding : ${msg:-(geen)}"
-    if i=$(pin_index "$sleutel"); then
-      echo "      gepind  : ${PIN_REDENEN[$i]} (${PIN_DATA[$i]})"
-      gepind_opgetreden+=("$sleutel")
+  while IFS=$'\t' read -r clazz item kind msg; do
+    [ "$kind" = "SKIP" ] || continue
+    key="$clazz#$item"
+    echo "  $key"
+    echo "      melding : ${msg:-(none)}"
+    if i=$(pin_index "$key"); then
+      echo "      gepind  : ${PIN_REASONS[$i]} (${PIN_DATA[$i]})"
+      pinned_occurred+=("$key")
     else
       echo "      gepind  : NEE — deze skip staat in geen enkele pin"
-      ongepind+=("$sleutel")
+      unpinned+=("$key")
     fi
-  done <<<"$overgeslagen"
+  done <<<"$skipped"
 fi
 
 # Verouderde pin, met de nuance die een GERICHTE run nodig maakt: alleen falen
@@ -256,86 +256,86 @@ fi
 # pin maar een partiële run; die wordt gemeld zonder faal. De richting die
 # hierdoor openvalt — een hele klasse die VERDWIJNT — wordt gedekt door de
 # vloer hierboven: de telling zakt dan.
-verouderde_pins=(); pins_buiten_de_run=()
-klassen_in_run=$( { printf '%s\n' "$alle_regels" | awk -F'\t' 'NF { print $1 }'; printf '%s\n' "$suites" | awk -F'\t' 'NF { print $3 }'; } | sort -u)
-for i in "${!PIN_SLEUTELS[@]}"; do
-  sleutel=${PIN_SLEUTELS[$i]}
-  klasse=${sleutel%%#*}; naam=${sleutel##*#}
-  if printf '%s\n' "$alle_regels" | awk -F'\t' -v k="$klasse" -v n="$naam" '$1 == k && $2 == n { g = 1 } END { exit g ? 0 : 1 }'; then
+outdated_pins=(); pins_outside_run=()
+classes_in_run=$( { printf '%s\n' "$all_lines" | awk -F'\t' 'NF { print $1 }'; printf '%s\n' "$suites" | awk -F'\t' 'NF { print $3 }'; } | sort -u)
+for i in "${!PIN_KEYS[@]}"; do
+  key=${PIN_KEYS[$i]}
+  clazz=${key%%#*}; item=${key##*#}
+  if printf '%s\n' "$all_lines" | awk -F'\t' -v k="$clazz" -v n="$item" '$1 == k && $2 == n { g = 1 } END { exit g ? 0 : 1 }'; then
     continue
-  elif printf '%s\n' "$klassen_in_run" | grep -qx "$klasse"; then
-    verouderde_pins+=("$sleutel")
+  elif printf '%s\n' "$classes_in_run" | grep -qx "$clazz"; then
+    outdated_pins+=("$key")
   else
-    pins_buiten_de_run+=("$sleutel")
+    pins_outside_run+=("$key")
   fi
 done
 
 # Gepind maar niet opgetreden: toegestaan, niet verplicht — de voorziening is er en de test draaide.
-niet_opgetreden=()
-for sleutel in ${PIN_SLEUTELS[@]+"${PIN_SLEUTELS[@]}"}; do
-  gevonden=0
-  for s in ${gepind_opgetreden[@]+"${gepind_opgetreden[@]}"}; do [ "$s" = "$sleutel" ] && gevonden=1; done
-  for s in ${verouderde_pins[@]+"${verouderde_pins[@]}"}; do [ "$s" = "$sleutel" ] && gevonden=1; done
-  for s in ${pins_buiten_de_run[@]+"${pins_buiten_de_run[@]}"}; do [ "$s" = "$sleutel" ] && gevonden=1; done
-  [ "$gevonden" -eq 0 ] && niet_opgetreden+=("$sleutel")
+not_occurred=()
+for key in ${PIN_KEYS[@]+"${PIN_KEYS[@]}"}; do
+  found=0
+  for s in ${pinned_occurred[@]+"${pinned_occurred[@]}"}; do [ "$s" = "$key" ] && found=1; done
+  for s in ${outdated_pins[@]+"${outdated_pins[@]}"}; do [ "$s" = "$key" ] && found=1; done
+  for s in ${pins_outside_run[@]+"${pins_outside_run[@]}"}; do [ "$s" = "$key" ] && found=1; done
+  [ "$found" -eq 0 ] && not_occurred+=("$key")
 done
-if [ ${#niet_opgetreden[@]} -gt 0 ]; then
+if [ ${#not_occurred[@]} -gt 0 ]; then
   echo ""
   echo "gepind maar NIET overgeslagen (toegestaan, niet verplicht — de test draaide):"
-  for sleutel in "${niet_opgetreden[@]}"; do echo "  $sleutel"; done
+  for key in "${not_occurred[@]}"; do echo "  $key"; done
 fi
-if [ ${#pins_buiten_de_run[@]} -gt 0 ]; then
+if [ ${#pins_outside_run[@]} -gt 0 ]; then
   echo ""
   echo "gepinde klasse niet in deze run (partiële run — geen faal, de vloer bewaakt de telling):"
-  for sleutel in "${pins_buiten_de_run[@]}"; do echo "  $sleutel"; done
+  for key in "${pins_outside_run[@]}"; do echo "  $key"; done
 fi
 
 status=0
-if [ ${#ongelezen[@]} -gt 0 ]; then
+if [ ${#unread[@]} -gt 0 ]; then
   echo ""
-  echo "FAIL: ${#ongelezen[@]} rapport(en) niet volledig gelezen — de telling hieronder is niet te vertrouwen:"
-  for r in "${ongelezen[@]}"; do echo "  $r"; done
+  echo "FAIL: ${#unread[@]} rapport(en) niet volledig gelezen — de telling hieronder is niet te vertrouwen:"
+  for r in "${unread[@]}"; do echo "  $r"; done
   echo "  Repareer de parser in tools/check-skips.sh; een te kleine telling mag niet voor waar doorgaan."
   status=1
 fi
-if [ ${#leeg_klasserapport[@]} -gt 0 ]; then
+if [ ${#empty_class_report[@]} -gt 0 ]; then
   echo ""
-  echo "FAIL: ${#leeg_klasserapport[@]} testklasse(n) leverden GEEN ENKEL testgeval — de hele klasse viel weg:"
-  for r in "${leeg_klasserapport[@]}"; do echo "  $r"; done
+  echo "FAIL: ${#empty_class_report[@]} testklasse(n) leverden GEEN ENKEL testgeval — de hele klasse viel weg:"
+  for r in "${empty_class_report[@]}"; do echo "  $r"; done
   echo "  Dit is de container-abort: een @BeforeAll/@BeforeEach-assumptie of een fout in de klasse-opzet."
   echo "  Een lege testklasse bestaat hier niet, dus dit is nooit de bedoeling."
   status=1
 fi
-if [ "$totaal" -lt "$VLOER" ]; then
+if [ "$total" -lt "$FLOOR" ]; then
   echo ""
-  echo "FAIL: $totaal testgevallen gemeten, vloer is $VLOER voor poort '$POORT' — de suite is gekrompen."
+  echo "FAIL: $total testgevallen gemeten, vloer is $FLOOR voor poort '$POORT' — de suite is gekrompen."
   echo "  Een gerichte run (-Dtest=…) zakt hier altijd doorheen; de poort is de VOLLEDIGE run."
   echo "  Is de krimp bedoeld, verlaag de vloer in dezelfde commit (VLOEREN in tools/check-skips.sh)."
   status=1
 fi
-if [ ${#ongepind[@]} -gt 0 ]; then
+if [ ${#unpinned[@]} -gt 0 ]; then
   echo ""
-  echo "FAIL: ${#ongepind[@]} ongepinde skip/abort in poort '$POORT':"
-  for sleutel in "${ongepind[@]}"; do echo "  $sleutel"; done
+  echo "FAIL: ${#unpinned[@]} ongepinde skip/abort in poort '$POORT':"
+  for key in "${unpinned[@]}"; do echo "  $key"; done
   echo "  Neem de oorzaak weg, of pin hem BEWUST in tools/check-skips.sh (TOEGESTANE_SKIPS: poort, test, reden, datum)."
   status=1
 fi
-if [ ${#verouderde_pins[@]} -gt 0 ]; then
+if [ ${#outdated_pins[@]} -gt 0 ]; then
   echo ""
-  echo "FAIL: ${#verouderde_pins[@]} verouderde pin in poort '$POORT' — de klasse draaide, de gepinde methode bestaat niet meer:"
-  for sleutel in "${verouderde_pins[@]}"; do
-    i=$(pin_index "$sleutel")
-    echo "  $sleutel  (gepind: ${PIN_REDENEN[$i]}, ${PIN_DATA[$i]})"
+  echo "FAIL: ${#outdated_pins[@]} verouderde pin in poort '$POORT' — de klasse draaide, de gepinde methode bestaat niet meer:"
+  for key in "${outdated_pins[@]}"; do
+    i=$(pin_index "$key")
+    echo "  $key  (gepind: ${PIN_REASONS[$i]}, ${PIN_DATA[$i]})"
   done
   echo "  Haal de regel uit TOEGESTANE_SKIPS in tools/check-skips.sh; een pin mag zijn reden niet overleven."
   status=1
 fi
 
 if [ "$status" -eq 0 ]; then
-  if [ "$aantal_skips" -eq 0 ]; then
-    echo "PASS: geen enkele skip of abort in $totaal testgevallen (vloer $VLOER)"
+  if [ "$count_skips" -eq 0 ]; then
+    echo "PASS: geen enkele skip of abort in $total testgevallen (vloer $FLOOR)"
   else
-    echo "PASS: $aantal_skips overgeslagen, alle gepind; geen ongepinde skip of abort ($totaal testgevallen, vloer $VLOER)"
+    echo "PASS: $count_skips overgeslagen, alle gepind; geen ongepinde skip of abort ($total testgevallen, vloer $FLOOR)"
   fi
 fi
 echo "================================================================================"

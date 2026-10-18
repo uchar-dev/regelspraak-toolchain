@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Advisory pre-install check for the peildatum-contract (card 20260706-07:23).
 #
-# Reads a parameterset sidecar (<naam>.parameters.json, the ParametersetLader shape) and WARNs — never fails —
+# Reads a parameterset sidecar (<naam>.parameters.json, the ParameterSetLoader shape) and WARNs — never fails —
 # when it carries MORE THAN ONE vintage for any parameter while the operator declared multiVintage=false. That is
 # a declared/actual MISMATCH: the deploy ships multi-vintage data without the operator acknowledging that every
 # request must carry `peildatum`. The RUNTIME remains the enforcement authority (it 400s a missing peildatum);

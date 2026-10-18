@@ -17,13 +17,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * (WF-044). A descriptor scoping it must refuse startup naming the rule when markers are disallowed, and start +
  * expose it when allowed.
  *
- * <p>The source is self-contained (its own Objecttype), so {@link BeslisserKern} compiles its beans in memory
+ * <p>The source is self-contained (its own Objecttype), so {@link DecisionCore} compiles its beans in memory
  * and needs no external fact classes.
  */
 class MarkerFailFastTest {
 
     /** A self-contained model whose one rule uchar's exec-model branch refuses by name. */
-    private static final String MARKER_BRON = """
+    private static final String MARKER_SOURCE = """
         Objecttype de Vlucht (mv: Vluchten)
             de heffing Numeriek (niet-negatief geheel getal);
             is belast kenmerk (bijvoeglijk) voor elke dag;
@@ -39,27 +39,27 @@ class MarkerFailFastTest {
             "invoer": ["Vlucht"], "uitvoer": ["Vlucht.heffing"] } ],
           "parameters": {} }""";
 
-    private static Map<String, String> bron() {
+    private static Map<String, String> source() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put("marker.rgs", MARKER_BRON);
+        m.put("marker.rgs", MARKER_SOURCE);
         return m;
     }
 
     @Test
-    void strikt_weigert_start_en_noemt_de_marker_regel() {
-        DienstFout f = assertThrows(DienstFout.class, () -> BeslisserKern.bouw(
-                MARKER_DESCRIPTOR, bron(), KernConfig.strikt(),
+    void strictly_refuses_start_and_names_the_marker_rule() {
+        ServiceError f = assertThrows(ServiceError.class, () -> DecisionCore.assemble(
+                MARKER_DESCRIPTOR, source(), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader()));
         assertTrue(f.getMessage().contains("heffing markert"), f.getMessage());
-        assertTrue(f.schendingen().stream().anyMatch(s -> s.soort() == Schending.Soort.MARKER), f.getMessage());
+        assertTrue(f.violations().stream().anyMatch(s -> s.kind() == Violation.Kind.MARKER), f.getMessage());
     }
 
     @Test
-    void met_markers_start_en_stelt_de_marker_bloot() {
-        BeslisserKern kern = BeslisserKern.bouw(
-                MARKER_DESCRIPTOR, bron(), KernConfig.metMarkers(),
+    void with_markers_starts_and_exposes_the_marker() {
+        DecisionCore core = DecisionCore.assemble(
+                MARKER_DESCRIPTOR, source(), CoreConfig.withMarkers(),
                 Thread.currentThread().getContextClassLoader());
-        BeslisserKern.Entrypoint ep = kern.entrypoint("heffing-markert");
+        DecisionCore.Entrypoint ep = core.entrypoint("heffing-markert");
         assertFalse(ep.markers().isEmpty());
         assertTrue(ep.markers().contains("heffing markert"), ep.markers().toString());
     }
@@ -67,7 +67,7 @@ class MarkerFailFastTest {
     /** A refusal of uchar's backend that names no construct: a reciprocal self-relation whose role shares its
      *  name with a declared attribute, which the bean model cannot hold. Until uchar carried the build this was a
      *  startup error even with markers allowed; it is uchar not carrying the entry point, like a marker. */
-    private static final String NAAMDELING_BRON = """
+    private static final String NAME_SHARING_SOURCE = """
         Objecttype de Jutter (mv: Jutters) (bezield)
             het strandtegoed Numeriek (geheel getal);
             de strandmaat Numeriek (geheel getal);
@@ -82,7 +82,7 @@ class MarkerFailFastTest {
                 De maatdeling van een Jutter moet berekend worden als het strandtegoed van de Jutter plus 1.
         """;
 
-    private static final String NAAMDELING_DESCRIPTOR = """
+    private static final String NAME_SHARING_DESCRIPTOR = """
         { "dienst": {"naam":"naamdeling","versie":"1"},
           "entrypoints": [ { "naam":"maatdeling","pad":"maatdeling",
             "scope": {"regelnamen": ["maatdeling van een jutter"]},
@@ -90,23 +90,23 @@ class MarkerFailFastTest {
           "parameters": {} }""";
 
     @Test
-    void een_weigering_zonder_constructnaam_is_ook_een_marker() {
-        Map<String, String> bron = Map.of("naamdeling.rgs", NAAMDELING_BRON);
-        DienstFout f = assertThrows(DienstFout.class, () -> BeslisserKern.bouw(NAAMDELING_DESCRIPTOR, bron,
-                KernConfig.strikt(), Thread.currentThread().getContextClassLoader()));
-        assertTrue(f.schendingen().stream().allMatch(s -> s.soort() == Schending.Soort.MARKER), f.getMessage());
+    void a_refusal_without_construct_name_is_also_a_marker() {
+        Map<String, String> source = Map.of("naamdeling.rgs", NAME_SHARING_SOURCE);
+        ServiceError f = assertThrows(ServiceError.class, () -> DecisionCore.assemble(NAME_SHARING_DESCRIPTOR, source,
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader()));
+        assertTrue(f.violations().stream().allMatch(s -> s.kind() == Violation.Kind.MARKER), f.getMessage());
         assertTrue(f.getMessage().contains("name-sharing bean limit"), "uchars zin: " + f.getMessage());
 
-        BeslisserKern kern = BeslisserKern.bouw(NAAMDELING_DESCRIPTOR, bron, KernConfig.metMarkers(),
+        DecisionCore core = DecisionCore.assemble(NAME_SHARING_DESCRIPTOR, source, CoreConfig.withMarkers(),
                 Thread.currentThread().getContextClassLoader());
-        BeslisserKern.Entrypoint ep = kern.entrypoint("maatdeling");
-        assertFalse(ep.uitvoerbaar());
+        DecisionCore.Entrypoint ep = core.entrypoint("maatdeling");
+        assertFalse(ep.executable());
         assertTrue(ep.markers().isEmpty(), "uchars weigering noemt geen construct: " + ep.markers());
-        assertTrue(ep.weigering().contains("name-sharing bean limit"), ep.weigering());
+        assertTrue(ep.refusal().contains("name-sharing bean limit"), ep.refusal());
     }
 
     @Test
-    void een_gelowerde_regel_start_ook_strikt() {
+    void a_lowered_rule_also_starts_strictly() {
         // 'bepaal leeftijd' lowers cleanly under DRL -> no marker -> strict start succeeds.
         String descriptor = """
             { "dienst": {"naam":"ok","versie":"1"},
@@ -114,8 +114,8 @@ class MarkerFailFastTest {
                 "scope": {"regelnamen": ["bepaal leeftijd"]},
                 "invoer": ["Vlucht","Natuurlijk persoon"], "uitvoer": ["Natuurlijk persoon.leeftijd"] } ],
               "parameters": {} }""";
-        BeslisserKern kern = BeslisserKern.bouw(descriptor, TokaBron.bronPerBestand(),
-                KernConfig.strikt(), Thread.currentThread().getContextClassLoader());
-        assertTrue(kern.entrypoint("bepaal-leeftijd").markers().isEmpty());
+        DecisionCore core = DecisionCore.assemble(descriptor, TokaSource.sourcePerFile(),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        assertTrue(core.entrypoint("bepaal-leeftijd").markers().isEmpty());
     }
 }

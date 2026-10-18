@@ -98,7 +98,7 @@ bronnen() {
 CLI=dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli
 RESOLVER=dev.uchar.regelspraak.resolver.Resolver
 SCENARIO=dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli
-DIENST=dev.uchar.regelspraak.toolchain.service.http.DienstMain
+DIENST=dev.uchar.regelspraak.toolchain.service.http.ServiceMain
 
 [ $# -gt 0 ] || { gebruik >&2; exit 2; }
 opdracht=$1; shift

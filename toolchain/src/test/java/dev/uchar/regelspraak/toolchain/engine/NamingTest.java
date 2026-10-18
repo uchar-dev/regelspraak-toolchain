@@ -12,14 +12,14 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The names of a model's declarations in a chosen vocabulary ({@link Naamgeving}), over own material: a designation
+ * The names of a model's declarations in a chosen vocabulary ({@link Naming}), over own material: a designation
  * where the vocabulary has one, the name as given where it has none or where the name is no declaration, and the
  * canonical choice that changes nothing. An inherited attribute is named by the designation on the type that declares
  * it, a form keeps its version suffix, and an enumeration value is found as uchar compares declared names.
  */
-class NaamgevingTest {
+class NamingTest {
 
-    static final String BRON = """
+    static final String SOURCE = """
             Vocabulaire handboek (taal: nl)
             Vocabulaire cgm
 
@@ -41,75 +41,75 @@ class NaamgevingTest {
             """;
 
     private static RegelSpraakModel model() {
-        RegelSpraakModel m = Resolver.resolve(BRON);
+        RegelSpraakModel m = Resolver.resolve(SOURCE);
         assertTrue(m.isOk(), () -> "de eigen bron resolvet niet: " + m.errors());
         return m;
     }
 
     @Test
-    void een_vocabulaire_noemt_de_benaming_en_valt_terug_op_de_naam() {
+    void a_vocabulary_names_the_designation_and_falls_back_on_the_name() {
         RegelSpraakModel m = model();
-        Naamgeving handboek = Naamgeving.van(m, "Handboek");
-        assertEquals("handboek", handboek.keuze(), "de gedeclareerde spelling van het vocabulaire");
-        assertEquals("aangespoeld voorwerp", handboek.objecttype("Strandvondst"));
-        assertEquals("wrak", handboek.objecttype("Wrakstuk"));
+        Naming handboek = Naming.van(m, "Handboek");
+        assertEquals("handboek", handboek.choice(), "de gedeclareerde spelling van het vocabulaire");
+        assertEquals("aangespoeld voorwerp", handboek.objectType("Strandvondst"));
+        assertEquals("wrak", handboek.objectType("Wrakstuk"));
         // the subtype's inherited attribute carries the designation written on its declaring supertype
         RegelSpraakModel.Objecttype wrakstuk = m.objecttypeOpNaam("Wrakstuk");
-        assertEquals("gewicht in kilogram", handboek.attribuut(wrakstuk, "gewicht"));
-        assertEquals("diepte", handboek.attribuut(wrakstuk, "diepte"), "zonder benaming: de naam zoals gegeven");
-        assertEquals("waardevol", handboek.kenmerk(wrakstuk, "waardevol"));
-        assertEquals("onbekend", handboek.attribuut(wrakstuk, "onbekend"), "geen declaratie: de naam zoals gegeven");
+        assertEquals("gewicht in kilogram", handboek.attribute(wrakstuk, "gewicht"));
+        assertEquals("diepte", handboek.attribute(wrakstuk, "diepte"), "zonder benaming: de naam zoals gegeven");
+        assertEquals("waardevol", handboek.characteristic(wrakstuk, "waardevol"));
+        assertEquals("onbekend", handboek.attribute(wrakstuk, "onbekend"), "geen declaratie: de naam zoals gegeven");
     }
 
     @Test
-    void een_vorm_houdt_zijn_versieachtervoegsel_en_een_waarde_wordt_genormaliseerd_gevonden() {
+    void a_form_keeps_its_version_suffix_and_a_value_is_found_normalised() {
         RegelSpraakModel m = model();
-        Naamgeving cgm = Naamgeving.van(m, "cgm");
-        assertEquals("R_WAARDEVOL", cgm.vorm("waardevolle vondst"));
-        assertEquals("R_WAARDEVOL #2", cgm.vorm("waardevolle vondst #2"));
-        assertEquals("een regel van de backend", cgm.vorm("een regel van de backend"));
-        Datatype.Enumeratie soort = (Datatype.Enumeratie) m.domeinen.get("Vondstsoort");
-        assertEquals("BARNSTEEN", cgm.waarde(soort, "Barnsteen"));
-        assertEquals("amber", Naamgeving.van(m, "handboek").waarde(soort, "barnsteen"));
-        assertEquals("wrakhout", cgm.waarde(soort, "wrakhout"), "zonder benaming: de waarde zoals gegeven");
+        Naming cgm = Naming.van(m, "cgm");
+        assertEquals("R_WAARDEVOL", cgm.form("waardevolle vondst"));
+        assertEquals("R_WAARDEVOL #2", cgm.form("waardevolle vondst #2"));
+        assertEquals("een regel van de backend", cgm.form("een regel van de backend"));
+        Datatype.Enumeratie kind = (Datatype.Enumeratie) m.domeinen.get("Vondstsoort");
+        assertEquals("BARNSTEEN", cgm.value(kind, "Barnsteen"));
+        assertEquals("amber", Naming.van(m, "handboek").value(kind, "barnsteen"));
+        assertEquals("wrakhout", cgm.value(kind, "wrakhout"), "zonder benaming: de waarde zoals gegeven");
     }
 
     @Test
-    void canoniek_laat_elke_naam_zoals_hij_gegeven_is() {
+    void canonical_lets_every_name_be_as_given() {
         RegelSpraakModel m = model();
-        Naamgeving canoniek = Naamgeving.van(m, "canoniek");
-        assertTrue(canoniek.isCanoniek());
-        assertEquals("canoniek", canoniek.keuze());
-        assertEquals("strandvondst", canoniek.objecttype("strandvondst"));
-        assertEquals("waardevolle vondst #2", canoniek.vorm("waardevolle vondst #2"));
-        assertTrue(Naamgeving.van(m, null).isCanoniek());
-        assertFalse(Naamgeving.van(m, "cgm").isCanoniek());
+        Naming canonical = Naming.van(m, "canoniek");
+        assertTrue(canonical.isCanonical());
+        assertEquals("canoniek", canonical.choice());
+        assertEquals("strandvondst", canonical.objectType("strandvondst"));
+        assertEquals("waardevolle vondst #2", canonical.form("waardevolle vondst #2"));
+        assertTrue(Naming.van(m, null).isCanonical());
+        assertFalse(Naming.van(m, "cgm").isCanonical());
     }
 
     @Test
-    void een_onbekend_vocabulaire_noemt_de_gedeclareerde() {
-        Naamgeving.Vocabulairefout f = assertThrows(Naamgeving.Vocabulairefout.class,
-                () -> Naamgeving.van(model(), "wetboek"));
+    void an_unknown_vocabulary_names_the_declared_one() {
+        Naming.VocabularyError f = assertThrows(Naming.VocabularyError.class,
+                () -> Naming.van(model(), "wetboek"));
         assertEquals("het vocabulaire 'wetboek' is niet gedeclareerd; het model declareert 'handboek' en 'cgm', en"
                 + " 'canoniek' kiest de canonieke namen", f.getMessage());
-        Naamgeving.Vocabulairefout zonder = assertThrows(Naamgeving.Vocabulairefout.class,
-                () -> Naamgeving.van(Resolver.resolve("Objecttype de Jutter (mv: Jutters)\n    de naam Tekst;\n"), "cgm"));
+        Naming.VocabularyError without = assertThrows(Naming.VocabularyError.class,
+                () -> Naming.van(Resolver.resolve("Objecttype de Jutter (mv: Jutters)\n    de naam Tekst;\n"), "cgm"));
         assertEquals("het vocabulaire 'cgm' is niet gedeclareerd; het model declareert geen vocabulaire, en"
-                + " 'canoniek' kiest de canonieke namen", zonder.getMessage());
+                + " 'canoniek' kiest de canonieke namen", without.getMessage());
     }
 
     @Test
-    void een_vocabulaire_met_de_naam_canoniek_kan_niet_gekozen_worden() {
+    void a_vocabulary_with_the_name_canonical_cannot_be_chosen() {
         RegelSpraakModel m = Resolver.resolve("""
                 Vocabulaire Canoniek
                 Objecttype de Jutter (mv: Jutters) (Canoniek: strandjutter)
                     de naam Tekst;
                 """);
         assertTrue(m.isOk(), () -> m.errors().toString());
-        Naamgeving.Vocabulairefout f = assertThrows(Naamgeving.Vocabulairefout.class,
-                () -> Naamgeving.van(m, "canoniek"));
+        Naming.VocabularyError f = assertThrows(Naming.VocabularyError.class,
+                () -> Naming.van(m, "canoniek"));
         assertEquals("het model declareert een vocabulaire 'Canoniek', en 'canoniek' kiest de canonieke namen;"
                 + " geef het vocabulaire een andere naam", f.getMessage());
-        assertEquals(f.getMessage(), Naamgeving.gereserveerd(m));
+        assertEquals(f.getMessage(), Naming.reserved(m));
     }
 }

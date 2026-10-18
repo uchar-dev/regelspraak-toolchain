@@ -16,7 +16,7 @@ map; `docs/ENGINE.md` describes the engine and the service.
 - **Own code in `dev.uchar.regelspraak.toolchain.*` only**, reading uchar's public API. Never a class in a uchar
   package, and never one in uchar's generated namespaces (`dev.uchar.regelspraak.facts`, `…generated`).
 - **One way to a KieBase:** `DroolsBackend.build(document, branch)` over a `uchar-ir-v1` document — the one
-  uchar's emitter writes, or one the service is given as its source — always through `UcharBouw`. The transpilers
+  uchar's emitter writes, or one the service is given as its source — always through `UcharBuild`. The transpilers
   take the loader's side tables beside the model, and only that build passes all of them; a transpiler call of our
   own could drop one and still produce a KieBase.
 - **Fail fast.** A refusal of uchar is reported with uchar's sentence; nothing is skipped, caught and dropped, or
@@ -59,4 +59,4 @@ Beslistabel converter). `make image` and `make kind-smoke` need Docker and run o
 
 - Work enters as a card in `backlog/`: `new/` → `doing/` → `done/`, with the result recorded in the card.
 - Commit messages in Dutch: short, the why, wrapped at 72 columns.
-- Infrastructure names in English, the domain vocabulary in Dutch (`BeslisserKern`, `Verbalisator`).
+- Infrastructure names in English, the domain vocabulary in Dutch (`DecisionCore`, `Verbaliser`).

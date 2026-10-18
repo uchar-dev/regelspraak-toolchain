@@ -16,7 +16,7 @@ import java.util.Map;
  * members, plus two rules that compute on inherited members of a subtype instance.
  *
  * <p>It exists BESIDE the TOKA set and shares nothing with it: its own source file, its own descriptor, its own
- * entry points. The TOKA descriptor, {@link TokaBron} and the baked container image are untouched by it. The
+ * entry points. The TOKA descriptor, {@link TokaSource} and the baked container image are untouched by it. The
  * source lives under {@code src/test/resources/keten/} rather than {@code examples/}, because
  * {@code CorpusVuurTest} partitions {@code examples/**.rgs} with exact bucket counts (the same reason the
  * overerving-port carried its wrakrecht source inline).
@@ -24,16 +24,16 @@ import java.util.Map;
  * <p>Both artifacts are read off the CLASSPATH, so this fixture needs no repo-root path juggling and works
  * identically from the module dir and from the root.
  */
-public final class KetenBron {
+public final class ChainSource {
 
-    private KetenBron() {}
+    private ChainSource() {}
 
-    static final String BRON = "keten/jutterswet-strandvondsten.rgs";
-    static final String DESCRIPTOR = "keten/jutterswet.dienst.json";
+    static final String SOURCE = "chain/jutterswet-strandvondsten.rgs";
+    static final String DESCRIPTOR = "chain/jutterswet.dienst.json";
 
-    static String lees(String bron) {
-        try (InputStream in = KetenBron.class.getClassLoader().getResourceAsStream(bron)) {
-            if (in == null) throw new IllegalStateException("fixture ontbreekt op het klassenpad: " + bron);
+    static String read(String source) {
+        try (InputStream in = ChainSource.class.getClassLoader().getResourceAsStream(source)) {
+            if (in == null) throw new IllegalStateException("fixture ontbreekt op het klassenpad: " + source);
             return new String(in.readAllBytes(), StandardCharsets.UTF_8);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
@@ -41,14 +41,14 @@ public final class KetenBron {
     }
 
     /** file-id → source text (one file). */
-    static Map<String, String> bronPerBestand() {
+    static Map<String, String> sourcePerFile() {
         Map<String, String> m = new LinkedHashMap<>();
-        m.put(BRON, lees(BRON));
+        m.put(SOURCE, read(SOURCE));
         return m;
     }
 
-    static String descriptorJson() { return lees(DESCRIPTOR); }
+    static String descriptorJson() { return read(DESCRIPTOR); }
 
     /** The resolved model over the fixture source. */
-    static RegelSpraakModel model() { return Resolver.resolve(lees(BRON)); }
+    static RegelSpraakModel model() { return Resolver.resolve(read(SOURCE)); }
 }

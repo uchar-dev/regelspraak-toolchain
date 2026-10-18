@@ -16,8 +16,8 @@ import dev.uchar.regelspraak.model.Eenheid;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
-import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -28,30 +28,30 @@ import java.util.LinkedHashMap;
 import java.util.List;
 
 /**
- * Emits the BUILD-time OpenAPI 3.0.3 contract for a {@link DienstDescriptor} + resolved
+ * Emits the BUILD-time OpenAPI 3.0.3 contract for a {@link ServiceDescriptor} + resolved
  * {@link RegelSpraakModel} — the gate-G1 artifact. The document describes EXACTLY the request shape
- * {@link VerzoekMapper} accepts and the response shape {@link AntwoordBouwer} emits (nothing speculative):
+ * {@link RequestMapper} accepts and the response shape {@link AnswerBuilder} emits (nothing speculative):
  * one component schema per objecttype, a generic request/response schema referenced from every path, one
  * {@code POST /<pad>} per descriptor entrypoint, and a {@code GET /info} path.
  *
  * <p><b>Determinism is a requirement</b> (the golden byte-pin). Every collection is iterated in its declared
  * order ({@link LinkedHashMap} / list order as the resolver/descriptor built it), and the document is
- * serialised through a FIXED canonical serializer ({@link #schrijf}/{@link #naarBytes}): 2-space indent,
+ * serialised through a FIXED canonical serializer ({@link #write}/{@link #toBytes}): 2-space indent,
  * {@code \n} line endings, UTF-8, a single trailing newline. The same descriptor+model therefore yields the
  * same bytes forever.
  *
- * <p>The datatype→schema mapping follows the service's own typing surface (the {@link WaardeCoder} rules):
+ * <p>The datatype→schema mapping follows the service's own typing surface (the {@link ValueCoder} rules):
  * Numeriek geheel → integer, Numeriek/Percentage niet-geheel → number, Tekst → string, Booleaan → boolean,
  * DatumInDagen → {string, date}, DatumTijd → {string, date-time}, Enumeratie → {string, enum:[all waarden]}.
  * An eenheid-bearing attribuut documents its unit as {@code x-eenheid} PLUS a mention in the property
  * description. Kenmerken are boolean properties on the same schema (the description says which are kenmerken).
- * Dimensie- and tijdlijn-valued members are REJECTED by the service ({@link VerzoekMapper} NIET_ONDERSTEUND),
+ * Dimensie- and tijdlijn-valued members are REJECTED by the service ({@link RequestMapper} NIET_ONDERSTEUND),
  * so no property is emitted for them — the schema description says so.
  *
- * <p><b>Per vocabulary.</b> {@link #emit(DienstDescriptor, RegelSpraakModel, String)} writes the document of one
+ * <p><b>Per vocabulary.</b> {@link #emit(ServiceDescriptor, RegelSpraakModel, String)} writes the document of one
  * vocabulary the model declares, or of the canonical names: the object types, properties, enumeration values and
- * selectors go by their names in it ({@link Naamgeving}). The service reads every other spelling too
- * ({@link NaamLezer}), so for a model with vocabularies each object type, property and entry point lists its other
+ * selectors go by their names in it ({@link Naming}). The service reads every other spelling too
+ * ({@link NameReader}), so for a model with vocabularies each object type, property and entry point lists its other
  * spellings — the canonical one and those of the other vocabularies — in {@code x-spellingen}, each enumeration its
  * values' in {@code x-waardespellingen}, and says in its description that the service accepts them; the operations
  * document the query parameters {@code vocabulaire} and {@code invoervocabulaire}, and the info block names the
@@ -60,11 +60,11 @@ import java.util.List;
  *
  * <p><b>What a request asks beside its body.</b> Every operation documents the flag {@code uitleg} and the detail flags
  * {@code trace}, {@code dekking} and {@code fixpunt}, which a service gives only when it was started with detail
- * ({@link KernConfig#detail()}) and otherwise refuses with a 400; the fields they add stand in {@code Antwoord} and, for
- * the detail, in {@code Evaluatiefout}, with the components {@code Trace}, {@code Dekking} and {@code Fixpunt}.
+ * ({@link CoreConfig#detail()}) and otherwise refuses with a 400; the fields they add stand in {@code Answer} and, for
+ * the detail, in {@code EvaluationFault}, with the components {@code Trace}, {@code Dekking} and {@code Fixpunt}.
  *
- * <p><b>The 422.</b> A request on which the rules give no answer gets one of two bodies: {@code Evaluatiefout}, the faults
- * that stand at the fixpoint, or {@code GeenFixpunt}, a session that reached no fixpoint, with uchar's sentence.
+ * <p><b>The 422.</b> A request on which the rules give no answer gets one of two bodies: {@code EvaluationFault}, the faults
+ * that stand at the fixpoint, or {@code NoFixpoint}, a session that reached no fixpoint, with uchar's sentence.
  */
 public final class OpenApiEmitter {
 
@@ -75,45 +75,45 @@ public final class OpenApiEmitter {
     // ------------------------------------------------------------------ emit
 
     /** Build the OpenAPI 3.0.3 document for {@code descriptor} over {@code model}, in the canonical names. */
-    public static ObjectNode emit(DienstDescriptor descriptor, RegelSpraakModel model) {
+    public static ObjectNode emit(ServiceDescriptor descriptor, RegelSpraakModel model) {
         return emit(descriptor, model, null);
     }
 
-    /** Build the document in {@code vocabulaire}: one the model declares, or null or {@link Naamgeving#CANONIEK} for the
-     *  canonical names. Another vocabulary is a {@link Naamgeving.Vocabulairefout}. */
-    public static ObjectNode emit(DienstDescriptor descriptor, RegelSpraakModel model, String vocabulaire) {
-        Spellingen sp = new Spellingen(model, Naamgeving.van(model, vocabulaire));
+    /** Build the document in {@code vocabulaire}: one the model declares, or null or {@link Naming#CANONICAL} for the
+     *  canonical names. Another vocabulary is a {@link Naming.VocabularyError}. */
+    public static ObjectNode emit(ServiceDescriptor descriptor, RegelSpraakModel model, String vocabulary) {
+        Spellings sp = new Spellings(model, Naming.van(model, vocabulary));
         ObjectNode doc = NF.objectNode();
         doc.put("openapi", "3.0.3");
 
         ObjectNode info = doc.putObject("info");
-        info.put("title", descriptor.dienst() == null ? "" : nvl(descriptor.dienst().naam()));
-        info.put("version", descriptor.dienst() == null ? "" : nvl(descriptor.dienst().versie()));
-        if (sp.aan()) {
-            info.put("description", sp.documentBeschrijving());
-            info.put("x-vocabulaire", sp.in.keuze());
+        info.put("title", descriptor.service() == null ? "" : nvl(descriptor.service().name()));
+        info.put("version", descriptor.service() == null ? "" : nvl(descriptor.service().version()));
+        if (sp.enabled()) {
+            info.put("description", sp.documentDescription());
+            info.put("x-vocabulaire", sp.in.choice());
         }
 
         // paths — one POST per entrypoint (declared order), then GET /info
         ObjectNode paths = doc.putObject("paths");
-        for (DienstDescriptor.Entrypoint ep : eps(descriptor))
-            paths.set("/" + nvl(ep.pad()), padItem(ep, model, sp));
-        paths.set("/info", infoPad());
+        for (ServiceDescriptor.Entrypoint ep : eps(descriptor))
+            paths.set("/" + nvl(ep.path()), pathItem(ep, model, sp));
+        paths.set("/info", infoPath());
 
         // components.schemas — one per objecttype (declared order), then the generic request/response/fout
         ObjectNode components = doc.putObject("components");
         ObjectNode schemas = components.putObject("schemas");
         for (Objecttype ot : model.objecttypen.values())
-            schemas.set(componentNaam(ot, sp.in), objecttypeSchema(ot, sp));
-        schemas.set("Verzoek", verzoekSchema());
-        schemas.set("Antwoord", antwoordSchema());
-        schemas.set("Fout", foutSchema());
-        schemas.set("Evaluatiefout", evaluatiefoutSchema());
+            schemas.set(componentName(ot, sp.in), objectTypeSchema(ot, sp));
+        schemas.set("Verzoek", requestSchema());
+        schemas.set("Antwoord", answerSchema());
+        schemas.set("Fout", errorSchema());
+        schemas.set("Evaluatiefout", evaluationFaultSchema());
         schemas.set("Info", infoSchema(sp));
         schemas.set("Trace", traceSchema());
-        schemas.set("Dekking", dekkingSchema());
-        schemas.set("Fixpunt", fixpuntSchema());
-        schemas.set("GeenFixpunt", geenFixpuntSchema());
+        schemas.set("Dekking", coverageSchema());
+        schemas.set("Fixpunt", fixpointSchema());
+        schemas.set("GeenFixpunt", noFixpointSchema());
 
         return doc;
     }
@@ -123,124 +123,124 @@ public final class OpenApiEmitter {
     /** The names of the document ({@code in}) and, for a model with vocabularies, the other spellings of each
      *  declaration: its canonical name and its effective name in every other vocabulary, the names the service reads
      *  as well. */
-    private static final class Spellingen {
+    private static final class Spellings {
         private final RegelSpraakModel model;
-        private final Naamgeving in;
-        private final List<Naamgeving> andere = new ArrayList<>();
+        private final Naming in;
+        private final List<Naming> other = new ArrayList<>();
 
-        Spellingen(RegelSpraakModel model, Naamgeving in) {
+        Spellings(RegelSpraakModel model, Naming in) {
             this.model = model;
             this.in = in;
             if (model.vocabulaires.isEmpty()) return;
-            if (!in.isCanoniek()) andere.add(Naamgeving.canoniek(model));
+            if (!in.isCanonical()) other.add(Naming.canonical(model));
             for (RegelSpraakModel.Vocabulaire v : model.vocabulaires)
-                if (!v.naam().equals(in.keuze())) andere.add(Naamgeving.van(model, v.naam()));
+                if (!v.naam().equals(in.choice())) other.add(Naming.van(model, v.naam()));
         }
 
         /** Whether the document lists other spellings: the model declares vocabularies. */
-        boolean aan() { return !model.vocabulaires.isEmpty(); }
+        boolean enabled() { return !model.vocabulaires.isEmpty(); }
 
         /** {@code {<keuze>: <naam>}} of declaration {@code b} in the other spellings. */
         ObjectNode van(Benoembaar b) {
-            ObjectNode uit = NF.objectNode();
-            for (Naamgeving n : andere) uit.put(n.keuze(), n.naam(b));
-            return uit;
+            ObjectNode sink = NF.objectNode();
+            for (Naming n : other) sink.put(n.choice(), n.name(b));
+            return sink;
         }
 
         /** The sentence a description ends with: the other spellings, which the service accepts as well. */
-        static String zin(ObjectNode spellingen) {
-            List<String> delen = new ArrayList<>();
-            spellingen.fields().forEachRemaining(e -> delen.add("'" + e.getValue().asText() + "' (" + e.getKey() + ")"));
-            return "De dienst neemt ook " + opsomming(delen) + " aan.";
+        static String sentence(ObjectNode spellings) {
+            List<String> parts = new ArrayList<>();
+            spellings.fields().forEachRemaining(e -> parts.add("'" + e.getValue().asText() + "' (" + e.getKey() + ")"));
+            return "De dienst neemt ook " + enumeration(parts) + " aan.";
         }
 
         /** The info block's description: whose names the document carries, and what else the service reads. */
-        String documentBeschrijving() {
-            List<String> vocabulaires = model.vocabulaires.stream().map(v -> "'" + v.naam() + "'").toList();
-            return (in.isCanoniek() ? "De namen in dit document zijn de canonieke namen."
-                    : "De namen in dit document zijn die van het vocabulaire '" + in.keuze() + "'.")
+        String documentDescription() {
+            List<String> vocabularies = model.vocabulaires.stream().map(v -> "'" + v.naam() + "'").toList();
+            return (in.isCanonical() ? "De namen in dit document zijn de canonieke namen."
+                    : "De namen in dit document zijn die van het vocabulaire '" + in.choice() + "'.")
                     + " De dienst neemt in een verzoek elke naam aan: canoniek of als benaming in "
-                    + (vocabulaires.size() == 1 ? "het vocabulaire " : "de vocabulaires ") + opsomming(vocabulaires)
+                    + (vocabularies.size() == 1 ? "het vocabulaire " : "de vocabulaires ") + enumeration(vocabularies)
                     + ", ook gemengd; x-spellingen en x-waardespellingen noemen ze."
                     + " Een naam die zo twee declaraties noemt is een 400 (DUBBELZINNIGE_NAAM), tenzij de queryparameter"
                     + " invoervocabulaire het vocabulaire vastzet; de queryparameter vocabulaire kiest de namen van het"
                     + " antwoord. Een gewijzigde benaming is een wijziging van dit contract.";
         }
 
-        private static String opsomming(List<String> delen) {
-            if (delen.size() == 1) return delen.get(0);
-            return String.join(", ", delen.subList(0, delen.size() - 1)) + " en " + delen.get(delen.size() - 1);
+        private static String enumeration(List<String> parts) {
+            if (parts.size() == 1) return parts.get(0);
+            return String.join(", ", parts.subList(0, parts.size() - 1)) + " en " + parts.get(parts.size() - 1);
         }
 
         /** The choices of the query parameters: the canonical names and every vocabulary. */
-        List<String> keuzes() {
-            List<String> uit = new ArrayList<>();
-            uit.add(Naamgeving.CANONIEK);
-            for (RegelSpraakModel.Vocabulaire v : model.vocabulaires) uit.add(v.naam());
-            return uit;
+        List<String> choices() {
+            List<String> sink = new ArrayList<>();
+            sink.add(Naming.CANONICAL);
+            for (RegelSpraakModel.Vocabulaire v : model.vocabulaires) sink.add(v.naam());
+            return sink;
         }
     }
 
     // ------------------------------------------------------------------ paths
 
-    private static ObjectNode padItem(DienstDescriptor.Entrypoint ep, RegelSpraakModel model, Spellingen sp) {
+    private static ObjectNode pathItem(ServiceDescriptor.Entrypoint ep, RegelSpraakModel model, Spellings sp) {
         ObjectNode item = NF.objectNode();
         ObjectNode post = item.putObject("post");
-        post.put("operationId", Namen.ident(nvl(ep.naam()), false));
-        post.put("summary", nvl(ep.naam()));
-        post.put("description", operatieBeschrijving(ep, model, sp));
+        post.put("operationId", Namen.ident(nvl(ep.name()), false));
+        post.put("summary", nvl(ep.name()));
+        post.put("description", operationDescription(ep, model, sp));
         ArrayNode parameters = NF.arrayNode();
-        if (sp.aan()) {
-            ObjectNode spellingen = post.putObject("x-spellingen");
-            for (Naamgeving n : sp.andere) {
-                ObjectNode s = spellingen.putObject(n.keuze());
-                ArrayNode invoer = s.putArray("invoer");
-                for (String i : invoer(ep, model, n)) invoer.add(i);
-                ArrayNode uitvoer = s.putArray("uitvoer");
-                for (String u : uitvoer(ep, model, n)) uitvoer.add(u);
+        if (sp.enabled()) {
+            ObjectNode spellings = post.putObject("x-spellingen");
+            for (Naming n : sp.other) {
+                ObjectNode s = spellings.putObject(n.choice());
+                ArrayNode input = s.putArray("invoer");
+                for (String i : input(ep, model, n)) input.add(i);
+                ArrayNode output = s.putArray("uitvoer");
+                for (String u : output(ep, model, n)) output.add(u);
             }
             parameters.add(queryParameter("vocabulaire", "Het vocabulaire waarin het antwoord de declaraties noemt;"
-                    + " zonder: " + (ep.vocabulaire() == null ? "de canonieke namen"
-                    : "'" + ep.vocabulaire() + "', de standaard van dit entrypoint") + ". Een declaratie zonder"
+                    + " zonder: " + (ep.vocabulary() == null ? "de canonieke namen"
+                    : "'" + ep.vocabulary() + "', de standaard van dit entrypoint") + ". Een declaratie zonder"
                     + " benaming in het gekozen vocabulaire draagt haar canonieke naam; GET /info noemt die declaraties"
-                    + " per vocabulaire. Een onbekend vocabulaire is een 400 (ONBEKEND_VOCABULAIRE).", sp.keuzes()));
+                    + " per vocabulaire. Een onbekend vocabulaire is een 400 (ONBEKEND_VOCABULAIRE).", sp.choices()));
             parameters.add(queryParameter("invoervocabulaire", "Zet het vocabulaire vast waarin de namen van het"
                     + " verzoek gelezen worden; zonder wordt elke naam gelezen als canonieke naam of als benaming in"
-                    + " elk vocabulaire.", sp.keuzes()));
+                    + " elk vocabulaire.", sp.choices()));
         }
-        parameters.add(vlagParameter("uitleg", "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden"
+        parameters.add(flagParameter("uitleg", "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden"
                 + " kenmerk van een instantie van het verzoek, met de waarden waarop hij rust."));
-        parameters.add(vlagParameter("trace", "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de"
+        parameters.add(flagParameter("trace", "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de"
                 + " ids van het verzoek die haar regels bonden en hoe vaak ze vuurden." + DETAIL));
-        parameters.add(vlagParameter("dekking", "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit"
+        parameters.add(flagParameter("dekking", "true: het antwoord krijgt dekking (schema Dekking): per vorm van dit"
                 + " entrypoint of een regel ervan vuurde." + DETAIL));
-        parameters.add(vlagParameter("fixpunt", "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het"
+        parameters.add(flagParameter("fixpunt", "true: het antwoord krijgt fixpunt (schema Fixpunt): wat aan het"
                 + " fixpunt staat, met de instanties van het verzoek als invoer." + DETAIL));
         post.set("parameters", parameters);
 
         ObjectNode requestBody = post.putObject("requestBody");
         requestBody.put("required", true);
-        jsonInhoud(requestBody.putObject("content"), "#/components/schemas/Verzoek");
+        jsonContent(requestBody.putObject("content"), "#/components/schemas/Verzoek");
 
         ObjectNode responses = post.putObject("responses");
-        antwoord(responses, "200", "beslissing berekend", "#/components/schemas/Antwoord");
-        antwoord(responses, "400", "verzoek valideert niet — het antwoord noemt het foutieve veld",
+        answer(responses, "200", "beslissing berekend", "#/components/schemas/Antwoord");
+        answer(responses, "400", "verzoek valideert niet — het antwoord noemt het foutieve veld",
                 "#/components/schemas/Fout");
-        antwoord(responses, "404", "onbekend pad", "#/components/schemas/Fout");
-        ObjectNode onbeantwoord = responses.putObject("422");
-        onbeantwoord.put("description", "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout"
+        answer(responses, "404", "onbekend pad", "#/components/schemas/Fout");
+        ObjectNode unanswered = responses.putObject("422");
+        unanswered.put("description", "de regels geven op deze invoer een evaluatiefout: status EVALUATIEFOUT, per fout"
                 + " de soort en uchars zin; of de sessie bereikt geen fixpunt: status GEEN_FIXPUNT, met uchars zin");
-        ArrayNode eenVan = onbeantwoord.putObject("content").putObject("application/json").putObject("schema")
+        ArrayNode oneOf = unanswered.putObject("content").putObject("application/json").putObject("schema")
                 .putArray("oneOf");
-        eenVan.addObject().put("$ref", "#/components/schemas/Evaluatiefout");
-        eenVan.addObject().put("$ref", "#/components/schemas/GeenFixpunt");
-        antwoord(responses, "503", "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+        oneOf.addObject().put("$ref", "#/components/schemas/Evaluatiefout");
+        oneOf.addObject().put("$ref", "#/components/schemas/GeenFixpunt");
+        answer(responses, "503", "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
                 "#/components/schemas/Fout");
-        antwoord(responses, "500", "interne fout (geen stacktrace gelekt)", "#/components/schemas/Fout");
+        answer(responses, "500", "interne fout (geen stacktrace gelekt)", "#/components/schemas/Fout");
         return item;
     }
 
-    private static ObjectNode infoPad() {
+    private static ObjectNode infoPath() {
         ObjectNode item = NF.objectNode();
         ObjectNode get = item.putObject("get");
         get.put("operationId", "info");
@@ -249,43 +249,43 @@ public final class OpenApiEmitter {
                 "De dienst-identiteit, de per-regel Dekking-verdicten, de overgeslagen (marker) regels en de "
                         + "parameter-defaults.");
         ObjectNode responses = get.putObject("responses");
-        antwoord(responses, "200", "dienst-info", "#/components/schemas/Info");
+        answer(responses, "200", "dienst-info", "#/components/schemas/Info");
         return item;
     }
 
     /** The per-entrypoint invoer/uitvoer documentation: which objecttypen it accepts and which
-     *  objecttype.attribuut / objecttype:kenmerk selectors it returns, in the document's names. */
-    private static String operatieBeschrijving(DienstDescriptor.Entrypoint ep, RegelSpraakModel model, Spellingen sp) {
+     *  objectType.attribute / objecttype:kenmerk selectors it returns, in the document's names. */
+    private static String operationDescription(ServiceDescriptor.Entrypoint ep, RegelSpraakModel model, Spellings sp) {
         StringBuilder b = new StringBuilder();
-        b.append("Entrypoint '").append(nvl(ep.naam())).append("'. ");
-        List<String> invoer = invoer(ep, model, sp.in);
-        b.append("Invoer-objecttypen: ").append(invoer.isEmpty() ? "(geen)" : String.join(", ", invoer)).append(". ");
-        List<String> uitvoer = uitvoer(ep, model, sp.in);
-        b.append("Uitvoer-selectoren: ").append(uitvoer.isEmpty() ? "(geen)" : String.join(", ", uitvoer)).append(".");
-        if (sp.aan()) b.append(" De dienst neemt ook de spellingen van x-spellingen aan.");
+        b.append("Entrypoint '").append(nvl(ep.name())).append("'. ");
+        List<String> input = input(ep, model, sp.in);
+        b.append("Invoer-objecttypen: ").append(input.isEmpty() ? "(geen)" : String.join(", ", input)).append(". ");
+        List<String> output = output(ep, model, sp.in);
+        b.append("Uitvoer-selectoren: ").append(output.isEmpty() ? "(geen)" : String.join(", ", output)).append(".");
+        if (sp.enabled()) b.append(" De dienst neemt ook de spellingen van x-spellingen aan.");
         return b.toString();
     }
 
     /** The invoer object types of {@code ep} in the names of {@code n}; canonically as the descriptor writes them. */
-    private static List<String> invoer(DienstDescriptor.Entrypoint ep, RegelSpraakModel model, Naamgeving n) {
-        List<String> uit = new ArrayList<>();
-        for (String inv : ep.invoer() == null ? List.<String>of() : ep.invoer()) {
-            Objecttype ot = DescriptorLoader.objecttype(model, inv);
-            uit.add(n.isCanoniek() || ot == null ? inv : n.objecttype(ot.naam));
+    private static List<String> input(ServiceDescriptor.Entrypoint ep, RegelSpraakModel model, Naming n) {
+        List<String> sink = new ArrayList<>();
+        for (String inv : ep.input() == null ? List.<String>of() : ep.input()) {
+            Objecttype ot = DescriptorLoader.objectType(model, inv);
+            sink.add(n.isCanonical() || ot == null ? inv : n.objectType(ot.naam));
         }
-        return uit;
+        return sink;
     }
 
     /** The uitvoer selectors of {@code ep} in the names of {@code n}; canonically as the descriptor writes them. */
-    private static List<String> uitvoer(DienstDescriptor.Entrypoint ep, RegelSpraakModel model, Naamgeving n) {
-        List<String> uit = new ArrayList<>();
-        for (String sel : ep.uitvoer() == null ? List.<String>of() : ep.uitvoer()) {
-            Uitvoerselector u = Uitvoerselector.ontleed(sel);
-            Objecttype ot = u == null ? null : DescriptorLoader.objecttype(model, u.objecttype());
-            if (n.isCanoniek() || ot == null) { uit.add(sel); continue; }
-            uit.add(n.objecttype(ot.naam) + (u.kenmerk() ? ":" + n.kenmerk(ot, u.lid()) : "." + n.attribuut(ot, u.lid())));
+    private static List<String> output(ServiceDescriptor.Entrypoint ep, RegelSpraakModel model, Naming n) {
+        List<String> sink = new ArrayList<>();
+        for (String sel : ep.output() == null ? List.<String>of() : ep.output()) {
+            OutputSelector u = OutputSelector.parse(sel);
+            Objecttype ot = u == null ? null : DescriptorLoader.objectType(model, u.objectType());
+            if (n.isCanonical() || ot == null) { sink.add(sel); continue; }
+            sink.add(n.objectType(ot.naam) + (u.characteristic() ? ":" + n.characteristic(ot, u.member()) : "." + n.attribute(ot, u.member())));
         }
-        return uit;
+        return sink;
     }
 
     /** What every detail flag says: the service gives it only when started with detail, and a 422 gets it too. */
@@ -293,36 +293,36 @@ public final class OpenApiEmitter {
             + " vlag een 400 (NIET_ONDERSTEUND, met de naam van de vlag als veld). Een 422 krijgt het veld ook.";
 
     /** A query flag: {@code true} (case-insensitive) or the bare name sets it, any other value leaves it off. */
-    private static ObjectNode vlagParameter(String naam, String beschrijving) {
+    private static ObjectNode flagParameter(String name, String description) {
         ObjectNode p = NF.objectNode();
-        p.put("name", naam);
+        p.put("name", name);
         p.put("in", "query");
         p.put("required", false);
-        p.put("description", beschrijving);
+        p.put("description", description);
         p.putObject("schema").put("type", "boolean");
         return p;
     }
 
-    private static ObjectNode queryParameter(String naam, String beschrijving, List<String> keuzes) {
+    private static ObjectNode queryParameter(String name, String description, List<String> choices) {
         ObjectNode p = NF.objectNode();
-        p.put("name", naam);
+        p.put("name", name);
         p.put("in", "query");
         p.put("required", false);
-        p.put("description", beschrijving);
+        p.put("description", description);
         ObjectNode schema = p.putObject("schema");
         schema.put("type", "string");
-        ArrayNode en = schema.putArray("enum");
-        for (String k : keuzes) en.add(k);
+        ArrayNode enumArray = schema.putArray("enum");
+        for (String k : choices) enumArray.add(k);
         return p;
     }
 
-    private static void antwoord(ObjectNode responses, String code, String beschrijving, String ref) {
+    private static void answer(ObjectNode responses, String code, String description, String ref) {
         ObjectNode r = responses.putObject(code);
-        r.put("description", beschrijving);
-        jsonInhoud(r.putObject("content"), ref);
+        r.put("description", description);
+        jsonContent(r.putObject("content"), ref);
     }
 
-    private static void jsonInhoud(ObjectNode content, String ref) {
+    private static void jsonContent(ObjectNode content, String ref) {
         ObjectNode json = content.putObject("application/json");
         json.putObject("schema").put("$ref", ref);
     }
@@ -335,84 +335,84 @@ public final class OpenApiEmitter {
      *  kenmerken, and any rejected (dimensie/tijdlijn) member.
      *
      *  <p><b>IR-SPEC ch. 2.2: the member set is CHAIN-CLOSED</b> ({@link Objecttype#attribuutLeden} /
-     *  {@link DescriptorLoader#kenmerkLeden}), nearest declaration first. A request instance of a subtype
-     *  carries its inherited members exactly like its own ones — {@link VerzoekMapper} accepts them and
-     *  {@link AntwoordBouwer} reads them off the same bean — so a document built from the OWN maps would
+     *  {@link DescriptorLoader#characteristicMembers}), nearest declaration first. A request instance of a subtype
+     *  carries its inherited members exactly like its own ones — {@link RequestMapper} accepts them and
+     *  {@link AnswerBuilder} reads them off the same bean — so a document built from the OWN maps would
      *  describe a request shape the service does not have. The schema is FLAT rather than an OpenAPI
      *  {@code allOf} composition over the supertype's component: the document's contract is "exactly the
      *  request shape the mapper accepts", and the mapper has no composition either. This is the opposite
      *  choice from {@link dev.uchar.regelspraak.schema.FactModelGenerator}, which stays per
      *  declaring type BECAUSE the generated bean {@code extends} its supertype's and would hide the
      *  parent's field by redeclaring it; a JSON schema property set has no such mechanism. */
-    private static ObjectNode objecttypeSchema(Objecttype ot, Spellingen sp) {
+    private static ObjectNode objectTypeSchema(Objecttype ot, Spellings sp) {
         ObjectNode schema = NF.objectNode();
         schema.put("type", "object");
 
-        List<String> kenmerken = new ArrayList<>();
-        List<String> afgewezen = new ArrayList<>();
+        List<String> characteristics = new ArrayList<>();
+        List<String> rejected = new ArrayList<>();
         ObjectNode props = NF.objectNode();
 
         // attributen (own first, then inherited — declared order within each)
         for (var e : ot.attribuutLeden().entrySet()) {
-            String naam = sp.in.attribuut(ot, e.getKey());
-            if (!ot.dimensiesVan(e.getKey()).isEmpty()) { afgewezen.add(naam + " (dimensie)"); continue; }
-            if (temporeelAttribuut(ot, e.getKey()))      { afgewezen.add(naam + " (tijdlijn)"); continue; }
-            ObjectNode attribuut = attribuutSchema(e.getValue(), sp);
-            if (sp.aan()) spellingen(attribuut, sp.van(Naamgeving.attribuutVan(ot, e.getKey())));
-            props.set(naam, attribuut);
+            String name = sp.in.attribute(ot, e.getKey());
+            if (!ot.dimensiesVan(e.getKey()).isEmpty()) { rejected.add(name + " (dimensie)"); continue; }
+            if (temporalAttribute(ot, e.getKey()))      { rejected.add(name + " (tijdlijn)"); continue; }
+            ObjectNode attribute = attributeSchema(e.getValue(), sp);
+            if (sp.enabled()) spellings(attribute, sp.van(Naming.attributeOf(ot, e.getKey())));
+            props.set(name, attribute);
         }
         // kenmerken (own first, then inherited) — boolean properties
-        for (String k : DescriptorLoader.kenmerkLeden(ot)) {
-            String naam = sp.in.kenmerk(ot, k);
-            if (temporeelKenmerk(ot, k)) { afgewezen.add(naam + " (tijdlijn-kenmerk)"); continue; }
+        for (String k : DescriptorLoader.characteristicMembers(ot)) {
+            String name = sp.in.characteristic(ot, k);
+            if (temporalCharacteristic(ot, k)) { rejected.add(name + " (tijdlijn-kenmerk)"); continue; }
             ObjectNode kn = NF.objectNode();
             kn.put("type", "boolean");
             kn.put("description", "kenmerk");
-            if (sp.aan()) spellingen(kn, sp.van(Naamgeving.kenmerkVan(ot, k)));
-            props.set(naam, kn);
-            kenmerken.add(naam);
+            if (sp.enabled()) spellings(kn, sp.van(Naming.characteristicOf(ot, k)));
+            props.set(name, kn);
+            characteristics.add(name);
         }
         schema.set("properties", props);
-        schema.put("description", objecttypeBeschrijving(ot, sp.in, kenmerken, afgewezen));
-        if (sp.aan()) spellingen(schema, sp.van(Benoembaar.objecttype(ot.naam)));
+        schema.put("description", objectTypeDescription(ot, sp.in, characteristics, rejected));
+        if (sp.enabled()) spellings(schema, sp.van(Benoembaar.objecttype(ot.naam)));
         return schema;
     }
 
-    /** {@code node} lists {@code spellingen} in {@code x-spellingen}, and its description says the service accepts
+    /** {@code node} lists {@code spellings} in {@code x-spellingen}, and its description says the service accepts
      *  them (a description of its own is kept in front). */
-    private static void spellingen(ObjectNode node, ObjectNode spellingen) {
-        String zin = Spellingen.zin(spellingen);
-        String eigen = node.has("description") ? node.get("description").asText() : "";
-        node.put("description", eigen.isEmpty() ? zin : eigen + (eigen.endsWith(".") ? " " : ". ") + zin);
-        node.set("x-spellingen", spellingen);
+    private static void spellings(ObjectNode node, ObjectNode spellings) {
+        String sentence = Spellings.sentence(spellings);
+        String own = node.has("description") ? node.get("description").asText() : "";
+        node.put("description", own.isEmpty() ? sentence : own + (own.endsWith(".") ? " " : ". ") + sentence);
+        node.set("x-spellingen", spellings);
     }
 
-    private static String objecttypeBeschrijving(Objecttype ot, Naamgeving in, List<String> kenmerken,
-                                                 List<String> afgewezen) {
+    private static String objectTypeDescription(Objecttype ot, Naming in, List<String> characteristics,
+                                                 List<String> rejected) {
         StringBuilder b = new StringBuilder();
-        b.append("Objecttype '").append(in.objecttype(ot.naam)).append("'.");
-        if (!kenmerken.isEmpty())
-            b.append(" Kenmerken (boolean-eigenschappen): ").append(String.join(", ", kenmerken)).append(".");
-        if (!afgewezen.isEmpty())
+        b.append("Objecttype '").append(in.objectType(ot.naam)).append("'.");
+        if (!characteristics.isEmpty())
+            b.append(" Kenmerken (boolean-eigenschappen): ").append(String.join(", ", characteristics)).append(".");
+        if (!rejected.isEmpty())
             b.append(" Dimensie-/tijdlijn-gewaardeerde leden worden door de dienst-kern niet ondersteund en"
-                    + " zijn hier niet als eigenschap opgenomen: ").append(String.join(", ", afgewezen)).append(".");
+                    + " zijn hier niet als eigenschap opgenomen: ").append(String.join(", ", rejected)).append(".");
         return b.toString();
     }
 
     /** Map a scalar attribuut's datatype onto its JSON-schema fragment, documenting an eenheid via
      *  {@code x-eenheid} + a description mention; an enumeration's values in the document's names, and for a model
      *  with vocabularies their other spellings in {@code x-waardespellingen}. */
-    private static ObjectNode attribuutSchema(Datatype dt, Spellingen sp) {
+    private static ObjectNode attributeSchema(Datatype dt, Spellings sp) {
         ObjectNode s = NF.objectNode();
-        Eenheid eenheid = null;
+        Eenheid unit = null;
         switch (dt) {
             case Datatype.Numeriek n -> {
                 s.put("type", n.geheel() ? "integer" : "number");
-                eenheid = n.eenheid();
+                unit = n.eenheid();
             }
             case Datatype.Percentage p -> {
                 s.put("type", p.geheel() ? "integer" : "number");
-                eenheid = p.eenheid();
+                unit = p.eenheid();
             }
             case Datatype.Tekst t -> s.put("type", "string");
             case Datatype.Booleaan b -> s.put("type", "boolean");
@@ -420,44 +420,44 @@ public final class OpenApiEmitter {
             case Datatype.DatumTijd d -> { s.put("type", "string"); s.put("format", "date-time"); }
             case Datatype.Enumeratie e -> {
                 s.put("type", "string");
-                ArrayNode en = s.putArray("enum");
-                for (String w : e.waarden()) en.add(sp.in.waarde(e, w));
-                if (sp.aan()) {
-                    ObjectNode waarden = s.putObject("x-waardespellingen");
+                ArrayNode enumArray = s.putArray("enum");
+                for (String w : e.waarden()) enumArray.add(sp.in.value(e, w));
+                if (sp.enabled()) {
+                    ObjectNode values = s.putObject("x-waardespellingen");
                     for (String w : e.waarden())
-                        waarden.set(sp.in.waarde(e, w), sp.van(Benoembaar.enumeratiewaarde(e.domein(), w)));
+                        values.set(sp.in.value(e, w), sp.van(Benoembaar.enumeratiewaarde(e.domein(), w)));
                 }
             }
             case Datatype.Onbekend o -> s.put("type", "string");
         }
-        if (eenheid != null) {
-            String weergave = eenheid.weergave();
-            s.put("x-eenheid", weergave);
-            s.put("description", "eenheid: " + weergave
-                    + " (een getal in deze eenheid, of {\"waarde\": n, \"eenheid\": \"" + weergave + "\"})");
+        if (unit != null) {
+            String rendering = unit.weergave();
+            s.put("x-eenheid", rendering);
+            s.put("description", "eenheid: " + rendering
+                    + " (een getal in deze eenheid, of {\"waarde\": n, \"eenheid\": \"" + rendering + "\"})");
         }
         return s;
     }
 
-    private static String componentNaam(Objecttype ot, Naamgeving in) { return Namen.ident(in.objecttype(ot.naam), true); }
+    private static String componentName(Objecttype ot, Naming in) { return Namen.ident(in.objectType(ot.naam), true); }
 
     /** §13.3.6 whether attribuut {@code naam} rides a tijdlijn ANYWHERE on {@code ot}'s chain. Reading the own
      *  maps would call an INHERITED timeline scalar and emit a plain property for it — a contract the service
-     *  then refuses at request time ({@link VerzoekMapper} NIET_ONDERSTEUND). */
-    private static boolean temporeelAttribuut(Objecttype ot, String naam) {
-        return ot.granulariteitVan(naam) != null || ot.tijdlijnAantalVan(naam) != null;
+     *  then refuses at request time ({@link RequestMapper} NIET_ONDERSTEUND). */
+    private static boolean temporalAttribute(Objecttype ot, String name) {
+        return ot.granulariteitVan(name) != null || ot.tijdlijnAantalVan(name) != null;
     }
 
-    /** The kenmerk twin of {@link #temporeelAttribuut}, chain-closed for the same reason. */
-    private static boolean temporeelKenmerk(Objecttype ot, String naam) {
-        return ot.kenmerkGranulariteitVan(naam) != null || ot.kenmerkTijdlijnAantalVan(naam) != null;
+    /** The kenmerk twin of {@link #temporalAttribute}, chain-closed for the same reason. */
+    private static boolean temporalCharacteristic(Objecttype ot, String name) {
+        return ot.kenmerkGranulariteitVan(name) != null || ot.kenmerkTijdlijnAantalVan(name) != null;
     }
 
     // ------------------------------------------------------------------ generic request/response/fout schemas
 
-    /** The generic request schema, honest to {@link VerzoekMapper}: instanties[{type,id,attributen,kenmerken,
+    /** The generic request schema, honest to {@link RequestMapper}: instanties[{type,id,attributen,kenmerken,
      *  rollen}], relaties[{feittype,rollen}], parameters (free-form object), rekendatum (ISO date). */
-    private static ObjectNode verzoekSchema() {
+    private static ObjectNode requestSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "Een beslissingsverzoek: gelabelde object-instanties met attribuut-/kenmerk-waarden"
@@ -468,17 +468,17 @@ public final class OpenApiEmitter {
 
         // peildatum: the ONE date authority (fase 5). It IS the rekendatum — a rule reading Rekendatum and the
         // parameterset-vintage selection follow this same date; 'rekendatum' remains as an alias.
-        ObjectNode peildatum = props.putObject("peildatum");
-        peildatum.put("type", "string");
-        peildatum.put("format", "date");
-        peildatum.put("description", "ISO-datum (yyyy-MM-dd); optioneel. De ÉÉN datumautoriteit: dezelfde datum"
+        ObjectNode asOfDate = props.putObject("peildatum");
+        asOfDate.put("type", "string");
+        asOfDate.put("format", "date");
+        asOfDate.put("description", "ISO-datum (yyyy-MM-dd); optioneel. De ÉÉN datumautoriteit: dezelfde datum"
                 + " selecteert de parameterset-vintage EN is de rekendatum-global. Gelijk aan 'rekendatum'"
                 + " (alias); beide meegeven met verschillende waarden is een 400.");
 
-        ObjectNode rekendatum = props.putObject("rekendatum");
-        rekendatum.put("type", "string");
-        rekendatum.put("format", "date");
-        rekendatum.put("description", "ISO-datum (yyyy-MM-dd); optioneel. Alias van 'peildatum' (dezelfde"
+        ObjectNode evaluationDate = props.putObject("rekendatum");
+        evaluationDate.put("type", "string");
+        evaluationDate.put("format", "date");
+        evaluationDate.put("description", "ISO-datum (yyyy-MM-dd); optioneel. Alias van 'peildatum' (dezelfde"
                 + " datumautoriteit).");
 
         ObjectNode parameters = props.putObject("parameters");
@@ -487,53 +487,53 @@ public final class OpenApiEmitter {
         parameters.put("description", "parameternaam -> waarde; overschrijft de descriptor-defaults.");
 
         // instanties[]
-        ObjectNode instanties = props.putObject("instanties");
-        instanties.put("type", "array");
-        ObjectNode inst = instanties.putObject("items");
+        ObjectNode instances = props.putObject("instanties");
+        instances.put("type", "array");
+        ObjectNode inst = instances.putObject("items");
         inst.put("type", "object");
         ArrayNode instReq = inst.putArray("required");
         instReq.add("type"); instReq.add("id");
         ObjectNode instProps = inst.putObject("properties");
         instProps.putObject("type").put("type", "string");
         instProps.putObject("id").put("type", "string");
-        vrijObject(instProps.putObject("attributen"),
+        freeObject(instProps.putObject("attributen"),
                 "attribuutnaam -> waarde (per het objecttype-schema).");
-        vrijObject(instProps.putObject("kenmerken"),
+        freeObject(instProps.putObject("kenmerken"),
                 "kenmerknaam -> boolean.");
-        vrijObject(instProps.putObject("rollen"),
+        freeObject(instProps.putObject("rollen"),
                 "rolnaam -> doel-id of lijst van doel-ids.");
 
         // relaties[]
-        ObjectNode relaties = props.putObject("relaties");
-        relaties.put("type", "array");
-        ObjectNode rel = relaties.putObject("items");
+        ObjectNode relations = props.putObject("relaties");
+        relations.put("type", "array");
+        ObjectNode rel = relations.putObject("items");
         rel.put("type", "object");
         ArrayNode relReq = rel.putArray("required");
         relReq.add("feittype"); relReq.add("rollen");
         ObjectNode relProps = rel.putObject("properties");
         relProps.putObject("feittype").put("type", "string");
-        vrijObject(relProps.putObject("rollen"), "rolnaam -> id of lijst van ids.");
+        freeObject(relProps.putObject("rollen"), "rolnaam -> id of lijst van ids.");
         return s;
     }
 
-    /** The generic response schema, honest to {@link AntwoordBouwer}: instanties[{id,type,attributen,kenmerken}]
+    /** The generic response schema, honest to {@link AnswerBuilder}: instanties[{id,type,attributen,kenmerken}]
      *  + inconsistenties[string] + inconsistentieDetails[{regel,onderwerp}]. */
-    private static ObjectNode antwoordSchema() {
+    private static ObjectNode answerSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "Het beslissingsantwoord: per instantie de gevraagde uitvoer-attributen/-kenmerken,"
                 + " plus de namen van de regels waarvan een consistentietoets faalde.");
         ObjectNode props = s.putObject("properties");
 
-        ObjectNode instanties = props.putObject("instanties");
-        instanties.put("type", "array");
-        ObjectNode inst = instanties.putObject("items");
+        ObjectNode instances = props.putObject("instanties");
+        instances.put("type", "array");
+        ObjectNode inst = instances.putObject("items");
         inst.put("type", "object");
         ObjectNode instProps = inst.putObject("properties");
         instProps.putObject("id").put("type", "string");
         instProps.putObject("type").put("type", "string");
-        vrijObject(instProps.putObject("attributen"), "attribuutnaam -> waarde (of null bij leeg).");
-        vrijObject(instProps.putObject("kenmerken"), "kenmerknaam -> boolean.");
+        freeObject(instProps.putObject("attributen"), "attribuutnaam -> waarde (of null bij leeg).");
+        freeObject(instProps.putObject("kenmerken"), "kenmerknaam -> boolean.");
 
         ObjectNode inc = props.putObject("inconsistenties");
         inc.put("type", "array");
@@ -555,18 +555,18 @@ public final class OpenApiEmitter {
         uitleg.putObject("items").put("type", "string");
         uitleg.put("description", "met de vlag uitleg: een zin per toegekend of onthouden kenmerk van een instantie van"
                 + " het verzoek, met de waarden waarop hij rust.");
-        detailVelden(props);
+        detailFields(props);
         return s;
     }
 
     /** The fields the detail flags add to an answer and to a 422, in the order the service writes them. */
-    private static void detailVelden(ObjectNode props) {
+    private static void detailFields(ObjectNode props) {
         props.putObject("trace").put("$ref", "#/components/schemas/Trace");
         props.putObject("dekking").put("$ref", "#/components/schemas/Dekking");
         props.putObject("fixpunt").put("$ref", "#/components/schemas/Fixpunt");
-        ObjectNode fout = props.putObject("fixpuntFout");
-        fout.put("type", "string");
-        fout.put("description", "met de vlag fixpunt, in plaats van fixpunt: waarom een waarde van het fixpunt niet"
+        ObjectNode error = props.putObject("fixpuntFout");
+        error.put("type", "string");
+        error.put("description", "met de vlag fixpunt, in plaats van fixpunt: waarom een waarde van het fixpunt niet"
                 + " getoond kan worden.");
     }
 
@@ -589,7 +589,7 @@ public final class OpenApiEmitter {
     }
 
     /** Per form of the entry point whether a rule of it fired, with uchar's kinds. */
-    private static ObjectNode dekkingSchema() {
+    private static ObjectNode coverageSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "array");
         s.put("description", "met de vlag dekking: per vorm van het entrypoint, in de volgorde van zijn manifest, of"
@@ -598,15 +598,15 @@ public final class OpenApiEmitter {
         item.put("type", "object");
         ObjectNode props = item.putObject("properties");
         props.putObject("regel").put("type", "string");
-        ObjectNode soort = props.putObject("soort");
-        soort.put("type", "string");
-        ArrayNode soorten = soort.putArray("enum");
-        for (ScenarioResultaat.DekkingSoort k : ScenarioResultaat.DekkingSoort.values()) soorten.add(k.name());
+        ObjectNode kind = props.putObject("soort");
+        kind.put("type", "string");
+        ArrayNode kinds = kind.putArray("enum");
+        for (ScenarioResultaat.DekkingSoort k : ScenarioResultaat.DekkingSoort.values()) kinds.add(k.name());
         return s;
     }
 
-    /** What stands at the fixpoint of a request's session ({@link FixpuntGegevens}). */
-    private static ObjectNode fixpuntSchema() {
+    /** What stands at the fixpoint of a request's session ({@link FixpointGivens}). */
+    private static ObjectNode fixpointSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "met de vlag fixpunt: wat aan het fixpunt van de sessie staat. Een instantie van het"
@@ -615,38 +615,38 @@ public final class OpenApiEmitter {
                 + " een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg);"
                 + " een tijdlijn staat onder tijdlijn, een gedimensioneerde waarde onder dimensies.");
         ObjectNode props = s.putObject("properties");
-        ObjectNode objecten = lijst(props, "objecten", "elke instantie van het verzoek, in de volgorde van het"
+        ObjectNode objects = list(props, "objecten", "elke instantie van het verzoek, in de volgorde van het"
                 + " verzoek, dan elk gemaakt object, met zijn waarden en kenmerken in de declaratievolgorde van zijn"
                 + " type.");
-        ObjectNode objectProps = objecten.putObject("properties");
+        ObjectNode objectProps = objects.putObject("properties");
         objectProps.putObject("object").put("type", "string");
         objectProps.putObject("objecttype").put("type", "string");
-        ObjectNode waarden = lijst(objectProps, "waarden", "attribuut, waarde (of tijdlijn of dimensies), herkomst"
+        ObjectNode values = list(objectProps, "waarden", "attribuut, waarde (of tijdlijn of dimensies), herkomst"
                 + " (invoer, afgeleid of creatie), invoer (bij een afgeleide waarde de invoerwaarde die zij verving) en"
                 + " eenheid.");
-        waarden.put("additionalProperties", true);
-        ObjectNode kenmerken = lijst(objectProps, "kenmerken", "elk kenmerk dat geldt: kenmerk, herkomst (invoer of"
+        values.put("additionalProperties", true);
+        ObjectNode characteristics = list(objectProps, "kenmerken", "elk kenmerk dat geldt: kenmerk, herkomst (invoer of"
                 + " afgeleid), en invoer: true als ook de invoer het zette.");
-        kenmerken.put("additionalProperties", true);
-        ObjectNode gemaakt = lijst(props, "gemaakteObjecten", "de objecten die een objectcreatie maakte.");
-        ObjectNode gemaaktProps = gemaakt.putObject("properties");
+        characteristics.put("additionalProperties", true);
+        ObjectNode made = list(props, "gemaakteObjecten", "de objecten die een objectcreatie maakte.");
+        ObjectNode madeProps = made.putObject("properties");
         for (String v : new String[]{"object", "objecttype", "creatie", "onderwerp"})
-            gemaaktProps.putObject(v).put("type", "string");
-        ObjectNode koppelingen = lijst(props, "koppelingen", "de koppelingen die een creatie legde.");
-        ObjectNode koppelingProps = koppelingen.putObject("properties");
+            madeProps.putObject(v).put("type", "string");
+        ObjectNode links = list(props, "koppelingen", "de koppelingen die een creatie legde.");
+        ObjectNode linkProps = links.putObject("properties");
         for (String v : new String[]{"feittype", "eersteRol", "eerste", "tweedeRol", "tweede"})
-            koppelingProps.putObject(v).put("type", "string");
-        ObjectNode fouten = lijst(props, "fouten", "de evaluatiefouten die aan het fixpunt staan, elk met de vorm die"
+            linkProps.putObject(v).put("type", "string");
+        ObjectNode errors = list(props, "fouten", "de evaluatiefouten die aan het fixpunt staan, elk met de vorm die"
                 + " haar gaf, het object waarover zij gaat, haar soort en uchars zin.");
-        ObjectNode foutProps = fouten.putObject("properties");
-        foutProps.putObject("regel").put("type", "string");
-        foutProps.putObject("onderwerp").put("type", "string");
-        ObjectNode soort = foutProps.putObject("soort");
-        soort.put("type", "string");
-        ArrayNode soorten = soort.putArray("enum");
-        for (Evaluatiefout.Soort k : Evaluatiefout.Soort.values()) soorten.add(k.name());
-        foutProps.putObject("zin").put("type", "string");
-        ObjectNode inc = lijst(props, "inconsistenties", "de gefaalde consistentietoetsen met hun regel en onderwerp,"
+        ObjectNode faultProps = errors.putObject("properties");
+        faultProps.putObject("regel").put("type", "string");
+        faultProps.putObject("onderwerp").put("type", "string");
+        ObjectNode kind = faultProps.putObject("soort");
+        kind.put("type", "string");
+        ArrayNode kinds = kind.putArray("enum");
+        for (EvaluationFault.Kind k : EvaluationFault.Kind.values()) kinds.add(k.name());
+        faultProps.putObject("zin").put("type", "string");
+        ObjectNode inc = list(props, "inconsistenties", "de gefaalde consistentietoetsen met hun regel en onderwerp,"
                 + " elk null als er geen is.");
         ObjectNode incProps = inc.putObject("properties");
         incProps.putObject("regel").put("type", "string").put("nullable", true);
@@ -654,18 +654,18 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    /** An array property {@code naam} of {@code props} with {@code beschrijving}; returns its item schema, an object. */
-    private static ObjectNode lijst(ObjectNode props, String naam, String beschrijving) {
-        ObjectNode l = props.putObject(naam);
+    /** An array property {@code naam} of {@code props} with {@code description}; returns its item schema, an object. */
+    private static ObjectNode list(ObjectNode props, String name, String description) {
+        ObjectNode l = props.putObject(name);
         l.put("type", "array");
-        l.put("description", beschrijving);
+        l.put("description", description);
         ObjectNode item = l.putObject("items");
         item.put("type", "object");
         return item;
     }
 
     /** The error schema returned as a 4xx/5xx body: {fout, veld?, schendingen?}. */
-    private static ObjectNode foutSchema() {
+    private static ObjectNode errorSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "Een dienst-fout; noemt waar mogelijk het foutieve veld/pad.");
@@ -681,9 +681,9 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    /** The 422 body, honest to {@link AntwoordBouwer#evaluatiefout}: {status, fout, fouten[{soort, fout}]}, with the
-     *  kinds of {@link Evaluatiefout.Soort}. */
-    private static ObjectNode evaluatiefoutSchema() {
+    /** The 422 body, honest to {@link AnswerBuilder#evaluationFault}: {status, fout, fouten[{soort, fout}]}, with the
+     *  kinds of {@link EvaluationFault.Kind}. */
+    private static ObjectNode evaluationFaultSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer"
@@ -694,36 +694,36 @@ public final class OpenApiEmitter {
         ObjectNode status = props.putObject("status");
         status.put("type", "string");
         status.putArray("enum").add("EVALUATIEFOUT");
-        ObjectNode fout = props.putObject("fout");
-        fout.put("type", "string");
-        fout.put("description", "zegt dat de regels op deze invoer een evaluatiefout geven, of hoeveel.");
-        ObjectNode fouten = props.putObject("fouten");
-        fouten.put("type", "array");
-        fouten.put("description", "een element per fout, in uchars volgorde.");
-        ObjectNode item = fouten.putObject("items");
+        ObjectNode error = props.putObject("fout");
+        error.put("type", "string");
+        error.put("description", "zegt dat de regels op deze invoer een evaluatiefout geven, of hoeveel.");
+        ObjectNode errors = props.putObject("fouten");
+        errors.put("type", "array");
+        errors.put("description", "een element per fout, in uchars volgorde.");
+        ObjectNode item = errors.putObject("items");
         item.put("type", "object");
         ArrayNode itemReq = item.putArray("required");
         itemReq.add("soort"); itemReq.add("fout");
         ObjectNode itemProps = item.putObject("properties");
-        ObjectNode soort = itemProps.putObject("soort");
-        soort.put("type", "string");
-        ArrayNode soorten = soort.putArray("enum");
-        for (Evaluatiefout.Soort k : Evaluatiefout.Soort.values()) soorten.add(k.name());
-        soort.put("description", "DELING_DOOR_NUL: een deling door een numerieke nul; REKENFOUT: een fout van een"
+        ObjectNode kind = itemProps.putObject("soort");
+        kind.put("type", "string");
+        ArrayNode kinds = kind.putArray("enum");
+        for (EvaluationFault.Kind k : EvaluationFault.Kind.values()) kinds.add(k.name());
+        kind.put("description", "DELING_DOOR_NUL: een deling door een numerieke nul; REKENFOUT: een fout van een"
                 + " berekening of van de rekendatum; SCHRIJVERSCONFLICT: twee schrijvers van één attribuut die"
                 + " verschillen; INVOERVORMFOUT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt,"
                 + " want de dienst weigert een tijdlijn (400); ANDERE: een fout van een ander type die aan het fixpunt"
                 + " staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft.");
-        ObjectNode zin = itemProps.putObject("fout");
-        zin.put("type", "string");
-        zin.put("description", "uchars zin; een object van het verzoek heet daarin naar zijn id.");
-        detailVelden(props);
+        ObjectNode sentence = itemProps.putObject("fout");
+        sentence.put("type", "string");
+        sentence.put("description", "uchars zin; een object van het verzoek heet daarin naar zijn id.");
+        detailFields(props);
         return s;
     }
 
-    /** The 422 body of a session without a fixpoint, honest to {@link AntwoordBouwer#geenFixpunt}: {status, fout}, and
+    /** The 422 body of a session without a fixpoint, honest to {@link AnswerBuilder#noFixpoint}: {status, fout}, and
      *  the detail a request may ask, where the fixpoint gives way to the reason there is none. */
-    private static ObjectNode geenFixpuntSchema() {
+    private static ObjectNode noFixpointSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De regels geven op deze invoer geen antwoord: de sessie bereikte geen fixpunt, want uchars"
@@ -734,35 +734,35 @@ public final class OpenApiEmitter {
         ObjectNode status = props.putObject("status");
         status.put("type", "string");
         status.putArray("enum").add("GEEN_FIXPUNT");
-        ObjectNode fout = props.putObject("fout");
-        fout.put("type", "string");
-        fout.put("description", "uchars zin: welk plafond of budget bereikt is.");
+        ObjectNode error = props.putObject("fout");
+        error.put("type", "string");
+        error.put("description", "uchars zin: welk plafond of budget bereikt is.");
         props.putObject("trace").put("$ref", "#/components/schemas/Trace");
         props.putObject("dekking").put("$ref", "#/components/schemas/Dekking");
-        ObjectNode fixpuntFout = props.putObject("fixpuntFout");
-        fixpuntFout.put("type", "string");
-        fixpuntFout.put("description", "met de vlag fixpunt: uchars zin, want er is geen fixpunt om te tonen.");
+        ObjectNode fixpointError = props.putObject("fixpuntFout");
+        fixpointError.put("type", "string");
+        fixpointError.put("description", "met de vlag fixpunt: uchars zin, want er is geen fixpunt om te tonen.");
         return s;
     }
 
     /** The /info response schema (minimal, honest to fase-3 /info); with vocabularies, their completeness. */
-    private static ObjectNode infoSchema(Spellingen sp) {
+    private static ObjectNode infoSchema(Spellings sp) {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De dienst-info: identiteit, per-regel Dekking, overgeslagen markers, parameters.");
         ObjectNode props = s.putObject("properties");
         props.putObject("dienst").put("type", "object");
         props.putObject("dekking").put("type", "object");
-        ObjectNode overgeslagen = props.putObject("overgeslagen");
-        overgeslagen.put("type", "array");
-        overgeslagen.putObject("items").put("type", "string");
+        ObjectNode skipped = props.putObject("overgeslagen");
+        skipped.put("type", "array");
+        skipped.putObject("items").put("type", "string");
         props.putObject("parameters").put("type", "object");
         // fase 5: the loaded parametersets with their validity ranges, and the period-coverage WARNINGs.
         props.putObject("parametersets").put("type", "array");
         ObjectNode pw = props.putObject("periodeWaarschuwingen");
         pw.put("type", "array");
         pw.putObject("items").put("type", "string");
-        if (sp.aan()) {
+        if (sp.enabled()) {
             ObjectNode v = props.putObject("vocabulaires");
             v.put("type", "array");
             v.putObject("items").put("type", "object");
@@ -772,36 +772,36 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    private static void vrijObject(ObjectNode node, String beschrijving) {
+    private static void freeObject(ObjectNode node, String description) {
         node.put("type", "object");
         node.put("additionalProperties", true);
-        node.put("description", beschrijving);
+        node.put("description", description);
     }
 
     // ------------------------------------------------------------------ canonical serialization
 
     /** Serialise {@code doc} to canonical bytes: 2-space indent, {@code \n} newlines, UTF-8, ONE trailing
      *  newline. Deterministic for a given node tree (Jackson emits object fields in insertion order). */
-    public static byte[] naarBytes(ObjectNode doc) {
+    public static byte[] toBytes(ObjectNode doc) {
         JsonFactory factory = new JsonFactory();
         java.io.ByteArrayOutputStream out = new java.io.ByteArrayOutputStream();
         try (JsonGenerator gen = factory.createGenerator(out, com.fasterxml.jackson.core.JsonEncoding.UTF8)) {
-            gen.setPrettyPrinter(canonicalePrinter());
+            gen.setPrettyPrinter(canonicalPrinter());
             new ObjectMapper().writeTree(gen, doc);
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
         // Jackson's DefaultPrettyPrinter does not add a trailing newline — add exactly one.
         byte[] body = out.toByteArray();
-        byte[] met = new byte[body.length + 1];
-        System.arraycopy(body, 0, met, 0, body.length);
-        met[body.length] = '\n';
-        return met;
+        byte[] extended = new byte[body.length + 1];
+        System.arraycopy(body, 0, extended, 0, body.length);
+        extended[body.length] = '\n';
+        return extended;
     }
 
     /** A FIXED pretty printer: 2-space object/array indent, {@code \n} line separator, a single space after the
      *  {@code ":"} of an object entry — reproducible forever, independent of platform line endings. */
-    private static PrettyPrinter canonicalePrinter() {
+    private static PrettyPrinter canonicalPrinter() {
         // "key": value — a single space AFTER the ':' only (no leading space), and a "\n" newline everywhere.
         com.fasterxml.jackson.core.util.Separators seps =
                 com.fasterxml.jackson.core.util.Separators.createDefaultInstance()
@@ -815,38 +815,38 @@ public final class OpenApiEmitter {
 
     /** Emit the document for {@code descriptor}+{@code model} and write its canonical bytes to {@code doel}
      *  (creating parent directories). */
-    public static void schrijf(DienstDescriptor descriptor, RegelSpraakModel model, Path doel) {
-        schrijf(descriptor, model, null, doel);
+    public static void write(ServiceDescriptor descriptor, RegelSpraakModel model, Path target) {
+        write(descriptor, model, null, target);
     }
 
-    /** {@link #schrijf(DienstDescriptor, RegelSpraakModel, Path)} for the document in {@code vocabulaire}. */
-    public static void schrijf(DienstDescriptor descriptor, RegelSpraakModel model, String vocabulaire, Path doel) {
+    /** {@link #write(ServiceDescriptor, RegelSpraakModel, Path)} for the document in {@code vocabulaire}. */
+    public static void write(ServiceDescriptor descriptor, RegelSpraakModel model, String vocabulary, Path target) {
         try {
-            if (doel.getParent() != null) Files.createDirectories(doel.getParent());
-            Files.write(doel, naarBytes(emit(descriptor, model, vocabulaire)));
+            if (target.getParent() != null) Files.createDirectories(target.getParent());
+            Files.write(target, toBytes(emit(descriptor, model, vocabulary)));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }
     }
 
     /** The kebab-case file name a dienst's document lands under ({@code <kebab(naam)>.json}). */
-    public static String bestandsnaam(DienstDescriptor descriptor) {
-        return bestandsnaam(descriptor, null);
+    public static String fileName(ServiceDescriptor descriptor) {
+        return fileName(descriptor, null);
     }
 
     /** The file name of the document in {@code vocabulaire}: {@code <kebab(naam)>.<vocabulaire>.json}, or
-     *  {@link #bestandsnaam(DienstDescriptor)} for the canonical one (null or {@link Naamgeving#CANONIEK}). */
-    public static String bestandsnaam(DienstDescriptor descriptor, String vocabulaire) {
-        String naam = descriptor.dienst() == null ? "dienst" : nvl(descriptor.dienst().naam());
-        String kebab = naam.trim().toLowerCase()
+     *  {@link #fileName(ServiceDescriptor)} for the canonical one (null or {@link Naming#CANONICAL}). */
+    public static String fileName(ServiceDescriptor descriptor, String vocabulary) {
+        String name = descriptor.service() == null ? "dienst" : nvl(descriptor.service().name());
+        String kebab = name.trim().toLowerCase()
                 .replaceAll("[^a-z0-9]+", "-")
                 .replaceAll("(^-+)|(-+$)", "");
-        String vocab = vocabulaire == null || vocabulaire.equalsIgnoreCase(Naamgeving.CANONIEK) ? ""
-                : "." + vocabulaire.toLowerCase();
+        String vocab = vocabulary == null || vocabulary.equalsIgnoreCase(Naming.CANONICAL) ? ""
+                : "." + vocabulary.toLowerCase();
         return (kebab.isEmpty() ? "dienst" : kebab) + vocab + ".json";
     }
 
-    private static List<DienstDescriptor.Entrypoint> eps(DienstDescriptor d) {
+    private static List<ServiceDescriptor.Entrypoint> eps(ServiceDescriptor d) {
         return d.entrypoints() == null ? List.of() : d.entrypoints();
     }
 

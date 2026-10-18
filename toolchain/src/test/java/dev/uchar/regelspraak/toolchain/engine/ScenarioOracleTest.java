@@ -26,8 +26,8 @@ import static org.junit.jupiter.api.Assertions.*;
  *
  * <p>Per triple, TWO independent legs close the loop:
  * <ol>
- *   <li><b>Java-API ground truth</b> — {@link #wereld} resolves the SAME inline model and builds it through uchar
- *       on the exec-model branch ({@link UcharBouw}, the build the engine and the service fire), instantiates the
+ *   <li><b>Java-API ground truth</b> — {@link #world} resolves the SAME inline model and builds it through uchar
+ *       on the exec-model branch ({@link UcharBuild}, the build the engine and the service fire), instantiates the
  *       generated {@link FactModelGenerator} beans directly, sets globals, puts the beans in, fires and writes the
  *       derived values back through uchar's entry, and READS the target getter(s).
  *       This is the ground-truth value asserted with an exact comparator (BigDecimal.compareTo==0 / equals /
@@ -41,69 +41,69 @@ import static org.junit.jupiter.api.Assertions.*;
  * </ol>
  * Every triple is labelled with the surface facet it covers and the source method it was lifted from.
  */
-class ScenarioOrakelTest {
+class ScenarioOracleTest {
 
     // ---------------- Java-API ground-truth harness (generated beans, uchar's build) ----------------
 
     /** A session on uchar's build of a model, with the class loader of its generated beans. */
-    private record Wereld(DroolsBackend.Build build, KieSession sessie, ClassLoader cl) {
-        Object nieuw(String klasse) throws Exception {
-            return Class.forName(FactModelGenerator.PAKKET + "." + klasse, true, cl).getConstructor().newInstance();
+    private record World(DroolsBackend.Build build, KieSession session, ClassLoader cl) {
+        Object newInstance(String clazz) throws Exception {
+            return Class.forName(FactModelGenerator.PAKKET + "." + clazz, true, cl).getConstructor().newInstance();
         }
-        void zet(Object o, String setter, Object waarde, Class<?> type) throws Exception {
-            o.getClass().getMethod(setter, type).invoke(o, waarde);
+        void set(Object o, String setter, Object value, Class<?> type) throws Exception {
+            o.getClass().getMethod(setter, type).invoke(o, value);
         }
-        void getal(Object o, String setter, int waarde) throws Exception {
-            zet(o, setter, new BigDecimal(waarde), BigDecimal.class);
+        void number(Object o, String setter, int value) throws Exception {
+            set(o, setter, new BigDecimal(value), BigDecimal.class);
         }
-        void getal(Object o, String setter, String waarde) throws Exception {
-            zet(o, setter, new BigDecimal(waarde), BigDecimal.class);
+        void number(Object o, String setter, String value) throws Exception {
+            set(o, setter, new BigDecimal(value), BigDecimal.class);
         }
-        void kenmerk(Object o, String setter, boolean waarde) throws Exception {
-            zet(o, setter, waarde, boolean.class);
+        void characteristic(Object o, String setter, boolean value) throws Exception {
+            set(o, setter, value, boolean.class);
         }
-        void rol(Object o, String setter, Object doel) throws Exception {
-            o.getClass().getMethod(setter, doel.getClass()).invoke(o, doel);
+        void role(Object o, String setter, Object target) throws Exception {
+            o.getClass().getMethod(setter, target.getClass()).invoke(o, target);
         }
-        Object lees(Object o, String getter) throws Exception { return o.getClass().getMethod(getter).invoke(o); }
-        BigDecimal num(Object o, String getter) throws Exception { return (BigDecimal) lees(o, getter); }
+        Object read(Object o, String getter) throws Exception { return o.getClass().getMethod(getter).invoke(o); }
+        BigDecimal num(Object o, String getter) throws Exception { return (BigDecimal) read(o, getter); }
         boolean bool(Object o, String getter) throws Exception {
             // a kenmerk exposes isX; an attribuut Boolean exposes getX — try both.
-            try { return (Boolean) lees(o, getter); }
-            catch (NoSuchMethodException e) { return (Boolean) lees(o, "is" + getter.substring(3)); }
+            try { return (Boolean) read(o, getter); }
+            catch (NoSuchMethodException e) { return (Boolean) read(o, "is" + getter.substring(3)); }
         }
-        long inconsistenties() throws Exception {
+        long inconsistencies() throws Exception {
             Class<?> inc = Class.forName(FactModelGenerator.PAKKET + ".Inconsistentie", true, cl);
-            return sessie.getObjects(inc::isInstance).size();
+            return session.getObjects(inc::isInstance).size();
         }
     }
 
-    private Wereld wereld(String src) {
+    private World world(String src) {
         RegelSpraakModel m = Resolver.resolve(src);
         assertTrue(m.errors().isEmpty(), () -> "model hoort te resolven: " + m.errors());
-        DroolsBackend.Build b = UcharBouw.bouw(m, DroolsBackend.Branch.EXEC_MODEL);
-        return new Wereld(b, b.kieBase().newKieSession(), b.beanLoader());
+        DroolsBackend.Build b = UcharBuild.assemble(m, DroolsBackend.Branch.EXEC_MODEL);
+        return new World(b, b.kieBase().newKieSession(), b.beanLoader());
     }
 
     /** Put {@code facts} in, fire and write the derived values back through uchar's entry, with the bean class loader
      *  as the thread's context class loader, as uchar's replay fires. */
-    private void vuur(Wereld w, Object... facts) {
-        ClassLoader vorige = Thread.currentThread().getContextClassLoader();
+    private void fire(World w, Object... facts) {
+        ClassLoader previous = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(w.cl());
         try {
-            DroolsBackend.voegIn(w.build(), w.sessie(), new Invoer().beans(List.of(facts)));
-            DroolsBackend.Vuring vuring = DroolsBackend.vuur(w.build(), w.sessie());
-            assertNull(vuring.geenFixpunt(), "regel-loop bereikt geen fixpunt");
-            DroolsBackend.zetAfgeleideWaarden(w.build(), w.sessie());
+            DroolsBackend.voegIn(w.build(), w.session(), new Invoer().beans(List.of(facts)));
+            DroolsBackend.Vuring firing = DroolsBackend.vuur(w.build(), w.session());
+            assertNull(firing.geenFixpunt(), "regel-loop bereikt geen fixpunt");
+            DroolsBackend.zetAfgeleideWaarden(w.build(), w.session());
         } finally {
-            Thread.currentThread().setContextClassLoader(vorige);
+            Thread.currentThread().setContextClassLoader(previous);
         }
     }
 
     // ---------------- scenario-path harness ----------------
 
-    private ScenarioResultaat één(String bron) {
-        List<ScenarioResultaat> r = ScenarioRunner.run(bron);
+    private ScenarioResultaat één(String source) {
+        List<ScenarioResultaat> r = ScenarioRunner.run(source);
         assertEquals(1, r.size(), () -> "verwachtte precies één scenario, kreeg " + r.size());
         return r.get(0);
     }
@@ -114,14 +114,14 @@ class ScenarioOrakelTest {
     }
 
     /** The runner's rendered werkelijk for the expectation on line {@code lineFragment}'s bron (first matching). */
-    private String werkelijk(ScenarioResultaat r, String bronFragment) {
-        return r.verwachtingen().stream().filter(v -> v.bron().contains(bronFragment)).map(VerwachtingResultaat::werkelijk)
-                .findFirst().orElseThrow(() -> new AssertionError("geen verwachting met '" + bronFragment + "' in " + r.verwachtingen()));
+    private String actual(ScenarioResultaat r, String sourceFragment) {
+        return r.verwachtingen().stream().filter(v -> v.bron().contains(sourceFragment)).map(VerwachtingResultaat::werkelijk)
+                .findFirst().orElseThrow(() -> new AssertionError("geen verwachting met '" + sourceFragment + "' in " + r.verwachtingen()));
     }
 
-    private void assertGetal(String verwacht, BigDecimal werkelijk, String wat) {
-        assertNotNull(werkelijk, () -> wat + ": verwacht " + verwacht + ", kreeg leeg");
-        assertEquals(0, new BigDecimal(verwacht).compareTo(werkelijk), () -> wat + ": verwacht " + verwacht + ", kreeg " + werkelijk);
+    private void assertNumber(String expected, BigDecimal actual, String what) {
+        assertNotNull(actual, () -> what + ": verwacht " + expected + ", kreeg leeg");
+        assertEquals(0, new BigDecimal(expected).compareTo(actual), () -> what + ": verwacht " + expected + ", kreeg " + actual);
     }
 
     // =====================================================================================================
@@ -132,7 +132,7 @@ class ScenarioOrakelTest {
      *  DroolsExecutionTest.berekening_met_voorwaarde_vuurt_en_zet_attribuut (L154): 10 < 100 fires 10+100=110.
      *  The rule reads a basisprijs and writes the totaalprijs: a rule that reads its own target is a dependency cycle
      *  uchar's frontend refuses (WF-045). */
-    @Test void rekenkunde_parameter_voorwaarde_optellen() throws Exception {
+    @Test void arithmetic_parameter_condition_summing() throws Exception {
         String model = """
             Parameter de grens : Numeriek (geheel getal)
             Objecttype de Vlucht
@@ -143,12 +143,12 @@ class ScenarioOrakelTest {
                     De totaalprijs van een Vlucht moet gesteld worden op de basisprijs van een Vlucht plus de grens
                     indien de basisprijs van een Vlucht kleiner is dan de grens.
             """;
-        Wereld w = wereld(model);
-        w.sessie().setGlobal("grens", new BigDecimal("100"));
-        Object v = w.nieuw("Vlucht"); w.getal(v, "setBasisprijs", 10);
-        vuur(w, v);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("110", grond, "java-api totaalprijs");
+        World w = world(model);
+        w.session().setGlobal("grens", new BigDecimal("100"));
+        Object v = w.newInstance("Vlucht"); w.number(v, "setBasisprijs", 10);
+        fire(w, v);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("110", ground, "java-api totaalprijs");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -162,13 +162,13 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 110
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("110")), "scenario-verwachting == java-api");
-        assertEquals(grond.toPlainString(), werkelijk(r, "totaalprijs"), "runner render == java-api render");
+        assertEquals(0, ground.compareTo(new BigDecimal("110")), "scenario-verwachting == java-api");
+        assertEquals(ground.toPlainString(), actual(r, "totaalprijs"), "runner render == java-api render");
     }
 
     /** FACET rekenkunde+eenheden (rate unit €/jr ↔ €/mnd). Lifted from
      *  DroolsExecutionTest.samengestelde_eenheid_rekent_de_rate_om (L1873): 10 €/mnd = 120 €/jr. */
-    @Test void rekenkunde_rate_eenheid_omrekening() throws Exception {
+    @Test void arithmetic_rate_unit_conversion() throws Exception {
         String model = """
             Eenheidsysteem Geld
                 de euro EUR
@@ -182,11 +182,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De prijs van een Heffing moet gesteld worden op de basis van een Heffing.
             """;
-        Wereld w = wereld(model);
-        Object h = w.nieuw("Heffing"); w.getal(h, "setBasis", 10);
-        vuur(w, h);
-        BigDecimal grond = w.num(h, "getPrijs");
-        assertGetal("120", grond, "java-api prijs (10 EUR/mnd = 120 EUR/jr)");
+        World w = world(model);
+        Object h = w.newInstance("Heffing"); w.number(h, "setBasis", 10);
+        fire(w, h);
+        BigDecimal ground = w.num(h, "getPrijs");
+        assertNumber("120", ground, "java-api prijs (10 EUR/mnd = 120 EUR/jr)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -199,14 +199,14 @@ class ScenarioOrakelTest {
             - de prijs van H1 is 120 EUR/jr
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("120")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("120")), "scenario == java-api");
     }
 
     /** FACET rekenkunde+eenheden (cross-unit optelling). Lifted from
      *  DroolsExecutionTest.cross_unit_optelling_wordt_omgerekend_niet_rauw_geteld (L3359): 2 jr + 3 mnd = 27 mnd.
      *  The rule reads a beginduur and writes the duur: a rule that reads its own target is a dependency cycle uchar's
      *  frontend refuses (WF-045). */
-    @Test void rekenkunde_cross_unit_optelling() throws Exception {
+    @Test void arithmetic_cross_unit_addition() throws Exception {
         String model = """
             Eenheidsysteem Tijd
                 de maand    mnd
@@ -219,11 +219,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De duur van een Periode moet gesteld worden op de beginduur van een Periode plus de looptijd van een Periode.
             """;
-        Wereld w = wereld(model);
-        Object p = w.nieuw("Periode"); w.getal(p, "setLooptijd", 2); w.getal(p, "setBeginduur", 3);
-        vuur(w, p);
-        BigDecimal grond = w.num(p, "getDuur");
-        assertGetal("27", grond, "java-api duur (2 jr + 3 mnd)");
+        World w = world(model);
+        Object p = w.newInstance("Periode"); w.number(p, "setLooptijd", 2); w.number(p, "setBeginduur", 3);
+        fire(w, p);
+        BigDecimal ground = w.num(p, "getDuur");
+        assertNumber("27", ground, "java-api duur (2 jr + 3 mnd)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -237,12 +237,12 @@ class ScenarioOrakelTest {
             - de duur van P1 is 27 mnd
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("27")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("27")), "scenario == java-api");
     }
 
     /** FACET rekenkunde+eenheden (begrenzing/maximum met eenheidsomrekening). Lifted from
      *  DroolsExecutionTest.begrenzing_grens_wordt_omgerekend_naar_de_eenheid_van_de_waarde (L1690): min(20 mnd, 1 jr). */
-    @Test void rekenkunde_begrenzing_maximum() throws Exception {
+    @Test void arithmetic_clamp_maximum() throws Exception {
         String model = """
             Eenheidsysteem Tijd
                 de maand    mnd
@@ -255,11 +255,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De netto van een Periode moet gesteld worden op de duur van een Periode, met een maximum van de looptijd van een Periode.
             """;
-        Wereld w = wereld(model);
-        Object p = w.nieuw("Periode"); w.getal(p, "setDuur", 20); w.getal(p, "setLooptijd", 1);
-        vuur(w, p);
-        BigDecimal grond = w.num(p, "getNetto");
-        assertGetal("12", grond, "java-api netto (min(20 mnd, 12 mnd))");
+        World w = world(model);
+        Object p = w.newInstance("Periode"); w.number(p, "setDuur", 20); w.number(p, "setLooptijd", 1);
+        fire(w, p);
+        BigDecimal ground = w.num(p, "getNetto");
+        assertNumber("12", ground, "java-api netto (min(20 mnd, 12 mnd))");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -273,12 +273,12 @@ class ScenarioOrakelTest {
             - de netto van P1 is 12 mnd
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("12")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("12")), "scenario == java-api");
     }
 
     /** FACET rekenkunde+eenheden (macht met verplichte afronding). Lifted from
      *  DroolsExecutionTest.macht_afronding_rondt_de_macht_af_en_compileert_als_bigdecimal (L1974): 5^2 = 25. */
-    @Test void rekenkunde_macht() throws Exception {
+    @Test void arithmetic_power() throws Exception {
         String model = """
             Objecttype de Heffing
                 de basis Numeriek (geheel getal);
@@ -287,11 +287,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De netto van een Heffing moet gesteld worden op de basis van een Heffing tot de macht 2 naar beneden afgerond op 0 decimalen.
             """;
-        Wereld w = wereld(model);
-        Object h = w.nieuw("Heffing"); w.getal(h, "setBasis", 5);
-        vuur(w, h);
-        BigDecimal grond = w.num(h, "getNetto");
-        assertGetal("25", grond, "java-api netto (5^2)");
+        World w = world(model);
+        Object h = w.newInstance("Heffing"); w.number(h, "setBasis", 5);
+        fire(w, h);
+        BigDecimal ground = w.num(h, "getNetto");
+        assertNumber("25", ground, "java-api netto (5^2)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -304,12 +304,12 @@ class ScenarioOrakelTest {
             - de netto van H1 is 25
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("25")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("25")), "scenario == java-api");
     }
 
     /** FACET rekenkunde+eenheden (wortel met verplichte afronding). Lifted from
      *  DroolsExecutionTest.wortel_rondt_de_root_af_via_zijn_verplichte_afronding (L1997): sqrt(20) floor 2dec = 4.47. */
-    @Test void rekenkunde_wortel() throws Exception {
+    @Test void arithmetic_square_root() throws Exception {
         String model = """
             Objecttype de Heffing
                 de basis Numeriek (geheel getal);
@@ -318,11 +318,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De netto van een Heffing moet gesteld worden op de wortel van de basis van een Heffing naar beneden afgerond op 2 decimalen.
             """;
-        Wereld w = wereld(model);
-        Object h = w.nieuw("Heffing"); w.getal(h, "setBasis", 20);
-        vuur(w, h);
-        BigDecimal grond = w.num(h, "getNetto");
-        assertGetal("4.47", grond, "java-api netto (sqrt 20 floor 2dec)");
+        World w = world(model);
+        Object h = w.newInstance("Heffing"); w.number(h, "setBasis", 20);
+        fire(w, h);
+        BigDecimal ground = w.num(h, "getNetto");
+        assertNumber("4.47", ground, "java-api netto (sqrt 20 floor 2dec)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -335,12 +335,12 @@ class ScenarioOrakelTest {
             - de netto van H1 is 4,47
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("4.47")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("4.47")), "scenario == java-api");
     }
 
     /** FACET rekenkunde+eenheden (division ABS, 5-dec toward zero). Lifted from
      *  DroolsExecutionTest.gedeeld_door_abs_rondt_af_op_vijf_decimalen_richting_nul (L2065): 5 / |3| = 1.66666. */
-    @Test void rekenkunde_gedeeld_door_abs() throws Exception {
+    @Test void arithmetic_divided_by_abs() throws Exception {
         String model = """
             Objecttype de Kandidaat
                 de a Numeriek (getal met 5 decimalen);
@@ -350,11 +350,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De c van een Kandidaat moet gesteld worden op de a van een Kandidaat gedeeld door (ABS) de b van een Kandidaat.
             """;
-        Wereld w = wereld(model);
-        Object k = w.nieuw("Kandidaat"); w.getal(k, "setA", 5); w.getal(k, "setB", 3);
-        vuur(w, k);
-        BigDecimal grond = w.num(k, "getC");
-        assertGetal("1.66666", grond, "java-api c (5/|3|)");
+        World w = world(model);
+        Object k = w.newInstance("Kandidaat"); w.number(k, "setA", 5); w.number(k, "setB", 3);
+        fire(w, k);
+        BigDecimal ground = w.num(k, "getC");
+        assertNumber("1.66666", ground, "java-api c (5/|3|)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -368,12 +368,12 @@ class ScenarioOrakelTest {
             - de c van K1 is 1,66666
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("1.66666")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("1.66666")), "scenario == java-api");
     }
 
     /** FACET rekenkunde+eenheden (macht met grote exponent, exact BigInteger). Lifted from
      *  DroolsExecutionTest.macht_met_gehele_exponent_is_exact_boven_de_double_grens (L2042): 7^19. */
-    @Test void rekenkunde_macht_groot_exact() throws Exception {
+    @Test void arithmetic_power_large_exact() throws Exception {
         String model = """
             Objecttype de Heffing
                 de basis Numeriek (geheel getal);
@@ -382,11 +382,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De netto van een Heffing moet gesteld worden op de basis van een Heffing tot de macht 19 naar beneden afgerond op 0 decimalen.
             """;
-        Wereld w = wereld(model);
-        Object h = w.nieuw("Heffing"); w.getal(h, "setBasis", 7);
-        vuur(w, h);
-        BigDecimal grond = w.num(h, "getNetto");
-        assertGetal("11398895185373143", grond, "java-api netto (7^19)");
+        World w = world(model);
+        Object h = w.newInstance("Heffing"); w.number(h, "setBasis", 7);
+        fire(w, h);
+        BigDecimal ground = w.num(h, "getNetto");
+        assertNumber("11398895185373143", ground, "java-api netto (7^19)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -399,12 +399,12 @@ class ScenarioOrakelTest {
             - de netto van H1 is 11398895185373143
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("11398895185373143")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("11398895185373143")), "scenario == java-api");
     }
 
     /** FACET percentage (§6.8 "% van"). Lifted from ExecModelDifferentialTest Phase-H percentage fixture (L5889):
      *  basistarief 50 % van bodem 200 = 100. */
-    @Test void percentage_van() throws Exception {
+    @Test void percentage_of() throws Exception {
         String model = """
             Objecttype de Passagier
                 de prijs Numeriek (geheel getal);
@@ -414,11 +414,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De prijs van een passagier moet gesteld worden op zijn basistarief % van zijn bodem.
             """;
-        Wereld w = wereld(model);
-        Object p = w.nieuw("Passagier"); w.getal(p, "setBasistarief", 50); w.getal(p, "setBodem", 200);
-        vuur(w, p);
-        BigDecimal grond = w.num(p, "getPrijs");
-        assertGetal("100", grond, "java-api prijs (50% van 200)");
+        World w = world(model);
+        Object p = w.newInstance("Passagier"); w.number(p, "setBasistarief", 50); w.number(p, "setBodem", 200);
+        fire(w, p);
+        BigDecimal ground = w.num(p, "getPrijs");
+        assertNumber("100", ground, "java-api prijs (50% van 200)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -432,12 +432,12 @@ class ScenarioOrakelTest {
             - de prijs van P1 is 100
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("100")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("100")), "scenario == java-api");
     }
 
     /** FACET rekenkunde+eenheden (begrenzing na afronding, floor at minimum 0). Lifted from
      *  DroolsExecutionTest.afronding_na_begrenzing_rondt_het_geheel_af_niet_de_grens (L1813): 7/2 min0 floor = 3. */
-    @Test void rekenkunde_begrenzing_minimum_afronding() throws Exception {
+    @Test void arithmetic_clamp_minimum_rounding() throws Exception {
         String model = """
             Objecttype de Heffing
                 de basis Numeriek (geheel getal);
@@ -446,11 +446,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De netto van een Heffing moet berekend worden als de basis van een Heffing gedeeld door 2, met een minimum van 0 naar beneden afgerond op 0 decimalen.
             """;
-        Wereld w = wereld(model);
-        Object h = w.nieuw("Heffing"); w.getal(h, "setBasis", 7);
-        vuur(w, h);
-        BigDecimal grond = w.num(h, "getNetto");
-        assertGetal("3", grond, "java-api netto (7/2 floor)");
+        World w = world(model);
+        Object h = w.newInstance("Heffing"); w.number(h, "setBasis", 7);
+        fire(w, h);
+        BigDecimal ground = w.num(h, "getNetto");
+        assertNumber("3", ground, "java-api netto (7/2 floor)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -463,12 +463,12 @@ class ScenarioOrakelTest {
             - de netto van H1 is 3
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("3")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("3")), "scenario == java-api");
     }
 
     /** FACET rekenkunde+eenheden (arith in condition drives a kenmerk). Lifted from
      *  DroolsExecutionTest.rekenkundige_voorwaarde_gate_vuurt_in_echte_drools (L2566): somMet*2 == somZonder. */
-    @Test void rekenkunde_voorwaarde_gate_kenmerk() throws Exception {
+    @Test void arithmetic_condition_gate_characteristic() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de somMet Numeriek (geheel getal);
@@ -478,11 +478,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     Een Vlucht is vol indien de somMet van een Vlucht maal 2 gelijk is aan de somZonder van een Vlucht.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht"); w.getal(v, "setSomMet", 5); w.getal(v, "setSomZonder", 10);
-        vuur(w, v);
-        boolean grond = w.bool(v, "isVol");
-        assertTrue(grond, "java-api vol (5*2 == 10)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht"); w.number(v, "setSomMet", 5); w.number(v, "setSomZonder", 10);
+        fire(w, v);
+        boolean ground = w.bool(v, "isVol");
+        assertTrue(ground, "java-api vol (5*2 == 10)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -496,7 +496,7 @@ class ScenarioOrakelTest {
             - V1 is vol
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     // =====================================================================================================
@@ -505,7 +505,7 @@ class ScenarioOrakelTest {
 
     /** FACET parameter-gedreven (drempel-parameter met eenheid). Lifted from
      *  DroolsExecutionTest.parameter_numeriek_zonder_getalspecificatie_vuurt_als_drempel (L231): 70 > 67 → gepensioneerd. */
-    @Test void parameter_drempel_kenmerk() throws Exception {
+    @Test void parameter_threshold_characteristic() throws Exception {
         String model = """
             Eenheidsysteem Tijd
                 het jaar           jr
@@ -518,12 +518,12 @@ class ScenarioOrakelTest {
                     Een Persoon is gepensioneerd
                     indien zijn leeftijd groter is dan de grens.
             """;
-        Wereld w = wereld(model);
-        w.sessie().setGlobal("grens", new BigDecimal("67"));
-        Object p = w.nieuw("Persoon"); w.getal(p, "setLeeftijd", 70);
-        vuur(w, p);
-        boolean grond = w.bool(p, "isGepensioneerd");
-        assertTrue(grond, "java-api gepensioneerd (70 > 67)");
+        World w = world(model);
+        w.session().setGlobal("grens", new BigDecimal("67"));
+        Object p = w.newInstance("Persoon"); w.number(p, "setLeeftijd", 70);
+        fire(w, p);
+        boolean ground = w.bool(p, "isGepensioneerd");
+        assertTrue(ground, "java-api gepensioneerd (70 > 67)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -537,12 +537,12 @@ class ScenarioOrakelTest {
             - P1 is gepensioneerd
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET parameter-gedreven (decimaal-parameter naar onbeperkt getal). Lifted from
      *  DroolsExecutionTest.onbeperkt_getal_doel_neemt_een_decimaalwaarde_aan_en_vuurt (L263): basis 12,34. */
-    @Test void parameter_decimaal() throws Exception {
+    @Test void parameter_decimal() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de totaalprijs Numeriek (getal);
@@ -551,12 +551,12 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De totaalprijs van een Vlucht moet gesteld worden op de basis.
             """;
-        Wereld w = wereld(model);
-        w.sessie().setGlobal("basis", new BigDecimal("12.34"));
-        Object v = w.nieuw("Vlucht");
-        vuur(w, v);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("12.34", grond, "java-api totaalprijs");
+        World w = world(model);
+        w.session().setGlobal("basis", new BigDecimal("12.34"));
+        Object v = w.newInstance("Vlucht");
+        fire(w, v);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("12.34", ground, "java-api totaalprijs");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -569,7 +569,7 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 12,34
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("12.34")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("12.34")), "scenario == java-api");
     }
 
     /** FACET parameter-gedreven (parameter override via een latere waarde). Lifted from the runner's own
@@ -583,12 +583,12 @@ class ScenarioOrakelTest {
             geldig altijd
             De heffing van een Vlucht moet berekend worden als het basistarief.
             """;
-        Wereld w = wereld(model);
-        w.sessie().setGlobal("basistarief", new BigDecimal("25.00"));   // the winning (later) value
-        Object v = w.nieuw("Vlucht"); w.zet(v, "setHeffing", new BigDecimal("0.00"), BigDecimal.class);
-        vuur(w, v);
-        BigDecimal grond = w.num(v, "getHeffing");
-        assertGetal("25.00", grond, "java-api heffing (winnende parameter)");
+        World w = world(model);
+        w.session().setGlobal("basistarief", new BigDecimal("25.00"));   // the winning (later) value
+        Object v = w.newInstance("Vlucht"); w.set(v, "setHeffing", new BigDecimal("0.00"), BigDecimal.class);
+        fire(w, v);
+        BigDecimal ground = w.num(v, "getHeffing");
+        assertNumber("25.00", ground, "java-api heffing (winnende parameter)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -604,7 +604,7 @@ class ScenarioOrakelTest {
             - de heffing van V1 is 25,00 EUR
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("25.00")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("25.00")), "scenario == java-api");
     }
 
     // =====================================================================================================
@@ -613,7 +613,7 @@ class ScenarioOrakelTest {
 
     /** FACET aggregatie (som over de rol). Lifted from
      *  DroolsExecutionTest.aggregatie_accumuleert_over_de_join (L1577): 30 + 70 = 100. */
-    @Test void aggregatie_som_over_rol() throws Exception {
+    @Test void aggregation_sum_over_role() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de totaalprijs Numeriek (geheel getal);
@@ -627,13 +627,13 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        Object a = w.nieuw("Passagier"); w.getal(a, "setPrijs", 30); w.rol(a, "setReis", v);
-        Object b = w.nieuw("Passagier"); w.getal(b, "setPrijs", 70); w.rol(b, "setReis", v);
-        vuur(w, v, a, b);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("100", grond, "java-api totaalprijs (30+70)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        Object a = w.newInstance("Passagier"); w.number(a, "setPrijs", 30); w.role(a, "setReis", v);
+        Object b = w.newInstance("Passagier"); w.number(b, "setPrijs", 70); w.role(b, "setReis", v);
+        fire(w, v, a, b);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("100", ground, "java-api totaalprijs (30+70)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -652,12 +652,12 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 100
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("100")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("100")), "scenario == java-api");
     }
 
     /** FACET aggregatie (som met subselectie-filter). Lifted from
      *  DroolsExecutionTest.vergelijking_subselectie_som_vuurt_met_filter (L592): 30 + 40 (70 excluded) = 70. */
-    @Test void aggregatie_som_subselectie() throws Exception {
+    @Test void aggregation_sum_subselection() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de totaalprijs Numeriek (geheel getal);
@@ -671,14 +671,14 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die kleiner zijn dan 50.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        Object a = w.nieuw("Passagier"); w.getal(a, "setPrijs", 30); w.rol(a, "setReis", v);
-        Object b = w.nieuw("Passagier"); w.getal(b, "setPrijs", 70); w.rol(b, "setReis", v);
-        Object c = w.nieuw("Passagier"); w.getal(c, "setPrijs", 40); w.rol(c, "setReis", v);
-        vuur(w, v, a, b, c);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("70", grond, "java-api totaalprijs (30+40)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        Object a = w.newInstance("Passagier"); w.number(a, "setPrijs", 30); w.role(a, "setReis", v);
+        Object b = w.newInstance("Passagier"); w.number(b, "setPrijs", 70); w.role(b, "setReis", v);
+        Object c = w.newInstance("Passagier"); w.number(c, "setPrijs", 40); w.role(c, "setReis", v);
+        fire(w, v, a, b, c);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("70", ground, "java-api totaalprijs (30+40)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -700,12 +700,12 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 70
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("70")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("70")), "scenario == java-api");
     }
 
     /** FACET aggregatie (aantal via de rol, niet alle facts). Lifted from
      *  DroolsExecutionTest.aantal_telt_via_de_rol_niet_alle_facts (L1611): 2 bestemmingen van de reiziger. */
-    @Test void aggregatie_aantal_via_rol() throws Exception {
+    @Test void aggregation_count_via_role() throws Exception {
         String model = """
             Objecttype de Reiziger
                 het aantal bestemmingen Numeriek (geheel getal);
@@ -719,13 +719,13 @@ class ScenarioOrakelTest {
                 geldig altijd
                     Het aantal bestemmingen van een Reiziger moet gesteld worden op het aantal bestemming van de reiziger.
             """;
-        Wereld w = wereld(model);
-        Object r0 = w.nieuw("Reiziger");
-        Object l1 = w.nieuw("Luchthaven"); w.rol(l1, "setReiziger", r0);
-        Object l2 = w.nieuw("Luchthaven"); w.rol(l2, "setReiziger", r0);
-        vuur(w, r0, l1, l2);
-        BigDecimal grond = w.num(r0, "getAantalBestemmingen");
-        assertGetal("2", grond, "java-api aantal bestemmingen");
+        World w = world(model);
+        Object r0 = w.newInstance("Reiziger");
+        Object l1 = w.newInstance("Luchthaven"); w.role(l1, "setReiziger", r0);
+        Object l2 = w.newInstance("Luchthaven"); w.role(l2, "setReiziger", r0);
+        fire(w, r0, l1, l2);
+        BigDecimal ground = w.num(r0, "getAantalBestemmingen");
+        assertNumber("2", ground, "java-api aantal bestemmingen");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -742,12 +742,12 @@ class ScenarioOrakelTest {
             - het aantal bestemmingen van R1 is 2
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("2")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("2")), "scenario == java-api");
     }
 
     /** FACET aggregatie (lege totaal-van is nul, niet leeg). Lifted from
      *  DroolsExecutionTest.lege_totaal_van_is_nul_niet_leegwaarde (L4436): geen passagiers → totaal 0. */
-    @Test void aggregatie_lege_totaal_is_nul() throws Exception {
+    @Test void aggregation_empty_total_is_zero() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de totaalprijs Numeriek (geheel getal);
@@ -761,11 +761,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De totaalprijs van een reis moet berekend worden als het totaal van de prijs van alle passagiers van de reis.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        vuur(w, v);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("0", grond, "java-api totaal (geen passagiers)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        fire(w, v);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("0", ground, "java-api totaal (geen passagiers)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -777,12 +777,12 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 0
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(BigDecimal.ZERO), "scenario == java-api");
+        assertEquals(0, ground.compareTo(BigDecimal.ZERO), "scenario == java-api");
     }
 
     /** FACET aggregatie (lege sommatie → leegwaarde). Lifted from
      *  DroolsExecutionTest.lege_sommatie_geeft_leegwaarde_of_de_opgegeven_fallback (L4394): som zonder fallback → leeg. */
-    @Test void aggregatie_lege_som_is_leeg() throws Exception {
+    @Test void aggregation_empty_sum_is_empty() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de somZonder Numeriek (geheel getal);
@@ -796,11 +796,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De somZonder van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        vuur(w, v);
-        Object grond = w.lees(v, "getSomZonder");
-        assertNull(grond, "java-api somZonder leeg (geen passagiers, geen fallback)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        fire(w, v);
+        Object ground = w.read(v, "getSomZonder");
+        assertNull(ground, "java-api somZonder leeg (geen passagiers, geen fallback)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -812,12 +812,12 @@ class ScenarioOrakelTest {
             - de somZonder van V1 is leeg
             """);
         pass(r);
-        assertNull(grond, "scenario == java-api (beide leeg)");
+        assertNull(ground, "scenario == java-api (beide leeg)");
     }
 
     /** FACET aggregatie (som over geschreven meervoud attribuut). Lifted from
      *  DroolsExecutionTest.geschreven_meervoud_vuurt_de_som_over_het_gedeclareerde_attribuut (L6631): 30+12=42. */
-    @Test void aggregatie_som_geschreven_meervoud() throws Exception {
+    @Test void aggregation_sum_written_plural() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de totaalprijs Numeriek (geheel getal);
@@ -831,13 +831,13 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De totaalprijs van een reis moet berekend worden als de som van de leeftijden van alle passagiers van de reis.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        Object p1 = w.nieuw("Passagier"); w.getal(p1, "setLeeftijd", 30); w.rol(p1, "setReis", v);
-        Object p2 = w.nieuw("Passagier"); w.getal(p2, "setLeeftijd", 12); w.rol(p2, "setReis", v);
-        vuur(w, v, p1, p2);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("42", grond, "java-api totaalprijs (30+12)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        Object p1 = w.newInstance("Passagier"); w.number(p1, "setLeeftijd", 30); w.role(p1, "setReis", v);
+        Object p2 = w.newInstance("Passagier"); w.number(p2, "setLeeftijd", 12); w.role(p2, "setReis", v);
+        fire(w, v, p1, p2);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("42", ground, "java-api totaalprijs (30+12)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -856,12 +856,12 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 42
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("42")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("42")), "scenario == java-api");
     }
 
     /** FACET aggregatie (aantal met kenmerk-filter "die een kind zijn"). Lifted from
      *  DroolsExecutionTest.getelde_die_kenmerk_filter_telt_alleen_de_gefilterde_elementen (L5424): 2 kinderen. */
-    @Test void aggregatie_aantal_kenmerk_filter() throws Exception {
+    @Test void aggregation_count_characteristic_filter() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de totaalprijs Numeriek (geheel getal);
@@ -875,14 +875,14 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die een kind zijn.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        Object a = w.nieuw("Passagier"); w.kenmerk(a, "setKind", true); w.rol(a, "setReis", v);
-        Object b = w.nieuw("Passagier"); w.kenmerk(b, "setKind", true); w.rol(b, "setReis", v);
-        Object c = w.nieuw("Passagier"); w.kenmerk(c, "setKind", false); w.rol(c, "setReis", v);
-        vuur(w, v, a, b, c);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("2", grond, "java-api aantal kinderen");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        Object a = w.newInstance("Passagier"); w.characteristic(a, "setKind", true); w.role(a, "setReis", v);
+        Object b = w.newInstance("Passagier"); w.characteristic(b, "setKind", true); w.role(b, "setReis", v);
+        Object c = w.newInstance("Passagier"); w.characteristic(c, "setKind", false); w.role(c, "setReis", v);
+        fire(w, v, a, b, c);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("2", ground, "java-api aantal kinderen");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -903,12 +903,12 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 2
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("2")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("2")), "scenario == java-api");
     }
 
     /** FACET aggregatie (som met kenmerk-filter). Lifted from
      *  DroolsExecutionTest.som_met_die_kenmerk_filter_telt_alleen_de_gefilterde_elementen (L5481): 30+70=100. */
-    @Test void aggregatie_som_kenmerk_filter() throws Exception {
+    @Test void aggregation_sum_characteristic_filter() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de totaalprijs Numeriek (geheel getal);
@@ -923,14 +923,14 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De totaalprijs van een reis moet berekend worden als de som van de prijs van alle passagiers van de reis die een kind zijn.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        Object a = w.nieuw("Passagier"); w.getal(a, "setPrijs", 30); w.kenmerk(a, "setKind", true); w.rol(a, "setReis", v);
-        Object b = w.nieuw("Passagier"); w.getal(b, "setPrijs", 70); w.kenmerk(b, "setKind", true); w.rol(b, "setReis", v);
-        Object c = w.nieuw("Passagier"); w.getal(c, "setPrijs", 999); w.kenmerk(c, "setKind", false); w.rol(c, "setReis", v);
-        vuur(w, v, a, b, c);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("100", grond, "java-api som kinderen (30+70)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        Object a = w.newInstance("Passagier"); w.number(a, "setPrijs", 30); w.characteristic(a, "setKind", true); w.role(a, "setReis", v);
+        Object b = w.newInstance("Passagier"); w.number(b, "setPrijs", 70); w.characteristic(b, "setKind", true); w.role(b, "setReis", v);
+        Object c = w.newInstance("Passagier"); w.number(c, "setPrijs", 999); w.characteristic(c, "setKind", false); w.role(c, "setReis", v);
+        fire(w, v, a, b, c);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("100", ground, "java-api som kinderen (30+70)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -954,12 +954,12 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 100
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("100")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("100")), "scenario == java-api");
     }
 
     /** FACET aggregatie (telling × parameter buiten de telling). Lifted from
      *  DroolsExecutionTest.telling_maal_parameter_bindt_de_maal_buiten_de_telling (L2751): 2 × 10 = 20. */
-    @Test void aggregatie_telling_maal_parameter() throws Exception {
+    @Test void aggregation_count_times_parameter() throws Exception {
         String model = """
             Parameter de factor : Numeriek (geheel getal)
             Objecttype de Vlucht
@@ -974,14 +974,14 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis maal de factor.
             """;
-        Wereld w = wereld(model);
-        w.sessie().setGlobal("factor", new BigDecimal("10"));
-        Object v = w.nieuw("Vlucht");
-        Object a = w.nieuw("Passagier"); w.rol(a, "setReis", v);
-        Object b = w.nieuw("Passagier"); w.rol(b, "setReis", v);
-        vuur(w, v, a, b);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("20", grond, "java-api totaalprijs (2 × 10)");
+        World w = world(model);
+        w.session().setGlobal("factor", new BigDecimal("10"));
+        Object v = w.newInstance("Vlucht");
+        Object a = w.newInstance("Passagier"); w.role(a, "setReis", v);
+        Object b = w.newInstance("Passagier"); w.role(b, "setReis", v);
+        fire(w, v, a, b);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("20", ground, "java-api totaalprijs (2 × 10)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -999,12 +999,12 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 20
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("20")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("20")), "scenario == java-api");
     }
 
     /** FACET aggregatie (union van twee gefilterde sets). Lifted from
      *  DroolsExecutionTest.union_telling_telt_de_vereniging_van_de_gefilterde_sets (L5518): kind ∪ student = 3. */
-    @Test void aggregatie_union_filter() throws Exception {
+    @Test void aggregation_union_filter() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de totaalprijs Numeriek (geheel getal);
@@ -1019,15 +1019,15 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De totaalprijs van een reis moet berekend worden als het aantal passagiers van de reis die een kind zijn en passagiers van de reis die een student zijn.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        Object a = w.nieuw("Passagier"); w.kenmerk(a, "setKind", true); w.kenmerk(a, "setStudent", false); w.rol(a, "setReis", v);
-        Object b = w.nieuw("Passagier"); w.kenmerk(b, "setKind", false); w.kenmerk(b, "setStudent", true); w.rol(b, "setReis", v);
-        Object c = w.nieuw("Passagier"); w.kenmerk(c, "setKind", true); w.kenmerk(c, "setStudent", true); w.rol(c, "setReis", v);
-        Object d = w.nieuw("Passagier"); w.kenmerk(d, "setKind", false); w.kenmerk(d, "setStudent", false); w.rol(d, "setReis", v);
-        vuur(w, v, a, b, c, d);
-        BigDecimal grond = w.num(v, "getTotaalprijs");
-        assertGetal("3", grond, "java-api union (kind ∪ student)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        Object a = w.newInstance("Passagier"); w.characteristic(a, "setKind", true); w.characteristic(a, "setStudent", false); w.role(a, "setReis", v);
+        Object b = w.newInstance("Passagier"); w.characteristic(b, "setKind", false); w.characteristic(b, "setStudent", true); w.role(b, "setReis", v);
+        Object c = w.newInstance("Passagier"); w.characteristic(c, "setKind", true); w.characteristic(c, "setStudent", true); w.role(c, "setReis", v);
+        Object d = w.newInstance("Passagier"); w.characteristic(d, "setKind", false); w.characteristic(d, "setStudent", false); w.role(d, "setReis", v);
+        fire(w, v, a, b, c, d);
+        BigDecimal ground = w.num(v, "getTotaalprijs");
+        assertNumber("3", ground, "java-api union (kind ∪ student)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1052,7 +1052,7 @@ class ScenarioOrakelTest {
             - de totaalprijs van V1 is 3
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("3")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("3")), "scenario == java-api");
     }
 
     // =====================================================================================================
@@ -1063,7 +1063,7 @@ class ScenarioOrakelTest {
      *  DroolsExecutionTest navigated-read family: prijs = basistarief van de reis (77). A reflexive/wederkerig
      *  partner-role read is NOT liftable — FactModelGenerator does not materialize a self-referential role as a
      *  bean field, so the generated-bean pipeline (which the runner shares) cannot navigate it. */
-    @Test void navigatie_numeriek_via_reis() throws Exception {
+    @Test void navigation_numeric_via_reis() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de basistarief Numeriek (geheel getal);
@@ -1077,12 +1077,12 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De prijs van een Passagier moet gesteld worden op de basistarief van de reis.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht"); w.getal(v, "setBasistarief", 77);
-        Object p = w.nieuw("Passagier"); w.rol(p, "setReis", v);
-        vuur(w, v, p);
-        BigDecimal grond = w.num(p, "getPrijs");
-        assertGetal("77", grond, "java-api prijs (basistarief van de reis)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht"); w.number(v, "setBasistarief", 77);
+        Object p = w.newInstance("Passagier"); w.role(p, "setReis", v);
+        fire(w, v, p);
+        BigDecimal ground = w.num(p, "getPrijs");
+        assertNumber("77", ground, "java-api prijs (basistarief van de reis)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1097,12 +1097,12 @@ class ScenarioOrakelTest {
             - de prijs van P1 is 77
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("77")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("77")), "scenario == java-api");
     }
 
     /** FACET navigatie-via-rol (navigated kenmerk-negatie via {@code reis}). Lifted from the navigated
      *  kenmerk family: prijs = 1 indien de reis geen paaskorting is. */
-    @Test void navigatie_kenmerk_negatie_via_reis() throws Exception {
+    @Test void navigation_characteristic_negation_via_reis() throws Exception {
         String model = """
             Objecttype de Vlucht
                 is reis met paaskorting kenmerk;
@@ -1117,12 +1117,12 @@ class ScenarioOrakelTest {
                     De prijs van een Passagier moet gesteld worden op 1
                     indien de reis van een Passagier geen reis met paaskorting is.
             """;
-        Wereld w = wereld(model);
-        Object gewoon = w.nieuw("Vlucht");   // geen paaskorting
-        Object p = w.nieuw("Passagier"); w.rol(p, "setReis", gewoon);
-        vuur(w, gewoon, p);
-        BigDecimal grond = w.num(p, "getPrijs");
-        assertGetal("1", grond, "java-api prijs (reis is geen paaskorting)");
+        World w = world(model);
+        Object ordinary = w.newInstance("Vlucht");   // geen paaskorting
+        Object p = w.newInstance("Passagier"); w.role(p, "setReis", ordinary);
+        fire(w, ordinary, p);
+        BigDecimal ground = w.num(p, "getPrijs");
+        assertNumber("1", ground, "java-api prijs (reis is geen paaskorting)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1136,13 +1136,13 @@ class ScenarioOrakelTest {
             - de prijs van P1 is 1
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(BigDecimal.ONE), "scenario == java-api");
+        assertEquals(0, ground.compareTo(BigDecimal.ONE), "scenario == java-api");
     }
 
     /** FACET navigatie-via-rol (botsende rolnaam: bind de GESCHREVEN rol, niet een andere die toevallig verbindt).
      *  Lifted from DroolsExecutionTest.botsende_naam_bindt_de_geschreven_rol_niet_een_andere_die_toevallig_verbindt
      *  (L3822): Reiziger reads de afstand van de bestemming (Luchthaven=250), NIET van de plek (Bestemming=999). */
-    @Test void navigatie_botsende_rolnaam() throws Exception {
+    @Test void navigation_colliding_role_name() throws Exception {
         String model = """
             Objecttype de Reiziger
                 de afstand tot doel Numeriek (geheel getal) met eenheid km;
@@ -1162,13 +1162,13 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De afstand tot doel van een Reiziger moet gesteld worden op de afstand van de bestemming.
             """;
-        Wereld w = wereld(model);
-        Object doel = w.nieuw("Luchthaven"); w.getal(doel, "setAfstand", 250);
-        Object plek = w.nieuw("Bestemming"); w.getal(plek, "setAfstand", 999);
-        Object rz = w.nieuw("Reiziger"); w.rol(rz, "setBestemming", doel); w.rol(rz, "setPlek", plek);
-        vuur(w, doel, plek, rz);
-        BigDecimal grond = w.num(rz, "getAfstandTotDoel");
-        assertGetal("250", grond, "java-api afstand tot doel (via de bestemming, niet de plek)");
+        World w = world(model);
+        Object target = w.newInstance("Luchthaven"); w.number(target, "setAfstand", 250);
+        Object site = w.newInstance("Bestemming"); w.number(site, "setAfstand", 999);
+        Object rz = w.newInstance("Reiziger"); w.role(rz, "setBestemming", target); w.role(rz, "setPlek", site);
+        fire(w, target, site, rz);
+        BigDecimal ground = w.num(rz, "getAfstandTotDoel");
+        assertNumber("250", ground, "java-api afstand tot doel (via de bestemming, niet de plek)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1186,12 +1186,12 @@ class ScenarioOrakelTest {
             - de afstand tot doel van R1 is 250 km
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("250")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("250")), "scenario == java-api");
     }
 
     /** FACET navigatie-via-rol (attribuut overnemen via rol, hoofdletterongevoelig). Lifted from
      *  DroolsExecutionTest.attribuutverwijzing_bindt_hoofdletterongevoelig (L3507): afstand 250 van de bestemming. */
-    @Test void navigatie_attribuut_overnemen() throws Exception {
+    @Test void navigation_attribute_overnemen() throws Exception {
         String model = """
             Objecttype de Reiziger
                 de afstand tot doel Numeriek (geheel getal) met eenheid km;
@@ -1205,12 +1205,12 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De afstand tot doel van een Reiziger moet gesteld worden op de Afstand van de bestemming.
             """;
-        Wereld w = wereld(model);
-        Object doel = w.nieuw("Luchthaven"); w.getal(doel, "setAfstand", 250);
-        Object rz = w.nieuw("Reiziger"); w.rol(rz, "setBestemming", doel);
-        vuur(w, doel, rz);
-        BigDecimal grond = w.num(rz, "getAfstandTotDoel");
-        assertGetal("250", grond, "java-api afstand tot doel");
+        World w = world(model);
+        Object target = w.newInstance("Luchthaven"); w.number(target, "setAfstand", 250);
+        Object rz = w.newInstance("Reiziger"); w.role(rz, "setBestemming", target);
+        fire(w, target, rz);
+        BigDecimal ground = w.num(rz, "getAfstandTotDoel");
+        assertNumber("250", ground, "java-api afstand tot doel");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1225,12 +1225,12 @@ class ScenarioOrakelTest {
             - de afstand tot doel van R1 is 250 km
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("250")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("250")), "scenario == java-api");
     }
 
     /** FACET navigatie-via-rol (zelfstandig kenmerk van de reis via to-one). Lifted from
      *  DroolsExecutionTest.navigatie_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk (L5974). */
-    @Test void navigatie_zelfstandig_kenmerk_reis() throws Exception {
+    @Test void navigation_independent_characteristic_reis() throws Exception {
         String model = """
             Objecttype de Vlucht
                 is reis met paaskorting kenmerk;
@@ -1245,12 +1245,12 @@ class ScenarioOrakelTest {
                     De prijs van een Passagier moet gesteld worden op 1
                     indien de reis van een Passagier een reis met paaskorting is.
             """;
-        Wereld w = wereld(model);
-        Object paas = w.nieuw("Vlucht"); w.kenmerk(paas, "setReisMetPaaskorting", true);
-        Object a = w.nieuw("Passagier"); w.rol(a, "setReis", paas);
-        vuur(w, paas, a);
-        BigDecimal grond = w.num(a, "getPrijs");
-        assertGetal("1", grond, "java-api prijs (reis is paaskorting)");
+        World w = world(model);
+        Object paas = w.newInstance("Vlucht"); w.characteristic(paas, "setReisMetPaaskorting", true);
+        Object a = w.newInstance("Passagier"); w.role(a, "setReis", paas);
+        fire(w, paas, a);
+        BigDecimal ground = w.num(a, "getPrijs");
+        assertNumber("1", ground, "java-api prijs (reis is paaskorting)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1265,13 +1265,13 @@ class ScenarioOrakelTest {
             - de prijs van A is 1
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(BigDecimal.ONE), "scenario == java-api");
+        assertEquals(0, ground.compareTo(BigDecimal.ONE), "scenario == java-api");
     }
 
     /** FACET navigatie-via-rol (self-subject reference: {@code de leeftijd van de persoon} on a lidmaatschap where
      *  the subject Persoon plays the {@code deelnemer} rol — the read must bind the SUBJECT, not a navigation).
      *  Lifted from DroolsExecutionTest.botsende_naam_kaapt_geen_eigen_subjectreferentie (L3750): gekopieerd = 30. */
-    @Test void navigatie_self_subject_referentie() throws Exception {
+    @Test void navigation_self_subject_reference() throws Exception {
         String model = """
             Objecttype de Persoon
                 de leeftijd Numeriek (geheel getal);
@@ -1286,11 +1286,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De gekopieerd van een Persoon moet gesteld worden op de leeftijd van de persoon.
             """;
-        Wereld w = wereld(model);
-        Object p = w.nieuw("Persoon"); w.getal(p, "setLeeftijd", 30);
-        vuur(w, p);
-        BigDecimal grond = w.num(p, "getGekopieerd");
-        assertGetal("30", grond, "java-api gekopieerd (= eigen leeftijd)");
+        World w = world(model);
+        Object p = w.newInstance("Persoon"); w.number(p, "setLeeftijd", 30);
+        fire(w, p);
+        BigDecimal ground = w.num(p, "getGekopieerd");
+        assertNumber("30", ground, "java-api gekopieerd (= eigen leeftijd)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1303,7 +1303,7 @@ class ScenarioOrakelTest {
             - de gekopieerd van P1 is 30
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("30")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("30")), "scenario == java-api");
     }
 
     // =====================================================================================================
@@ -1312,7 +1312,7 @@ class ScenarioOrakelTest {
 
     /** FACET voorwaarden (ten minste N van de criteria). Lifted from
      *  DroolsExecutionTest.ten_minste_n_van_de_criteria_telt_de_vervulde_voorwaarden (L4468): 2 of 3 → gekozen. */
-    @Test void voorwaarde_ten_minste_n() throws Exception {
+    @Test void condition_at_least_n() throws Exception {
         String model = """
             Objecttype de Kandidaat
                 de a Numeriek (geheel getal);
@@ -1327,11 +1327,11 @@ class ScenarioOrakelTest {
                     - de b van een Kandidaat is groter dan 0
                     - de c van een Kandidaat is groter dan 0.
             """;
-        Wereld w = wereld(model);
-        Object k = w.nieuw("Kandidaat"); w.getal(k, "setA", 5); w.getal(k, "setB", 5); w.getal(k, "setC", 0);
-        vuur(w, k);
-        boolean grond = w.bool(k, "isGekozen");
-        assertTrue(grond, "java-api gekozen (2 van 3)");
+        World w = world(model);
+        Object k = w.newInstance("Kandidaat"); w.number(k, "setA", 5); w.number(k, "setB", 5); w.number(k, "setC", 0);
+        fire(w, k);
+        boolean ground = w.bool(k, "isGekozen");
+        assertTrue(ground, "java-api gekozen (2 van 3)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1346,12 +1346,12 @@ class ScenarioOrakelTest {
             - K1 is gekozen
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET voorwaarden (kenmerk-check gate). Lifted from
      *  DroolsExecutionTest.kenmerk_check_in_voorwaarde_gateert_de_regel (L5179): oud → bonus. */
-    @Test void voorwaarde_kenmerk_gate() throws Exception {
+    @Test void condition_characteristic_gate() throws Exception {
         String model = """
             Objecttype de Meting
                 is oud kenmerk (bijvoeglijk);
@@ -1361,11 +1361,11 @@ class ScenarioOrakelTest {
                     Een Meting is bonus
                     indien de Meting oud is.
             """;
-        Wereld w = wereld(model);
-        Object o = w.nieuw("Meting"); w.kenmerk(o, "setOud", true);
-        vuur(w, o);
-        boolean grond = w.bool(o, "isBonus");
-        assertTrue(grond, "java-api bonus (oud)");
+        World w = world(model);
+        Object o = w.newInstance("Meting"); w.characteristic(o, "setOud", true);
+        fire(w, o);
+        boolean ground = w.bool(o, "isBonus");
+        assertTrue(ground, "java-api bonus (oud)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1378,12 +1378,12 @@ class ScenarioOrakelTest {
             - M1 is bonus
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET voorwaarden (meerwoordig kenmerk in definiete vorm). Lifted from
      *  DroolsExecutionTest.meerwoordig_kenmerk_check_in_definiete_vorm_vuurt (L5324): bereikbaar per trein → bonus. */
-    @Test void voorwaarde_meerwoordig_kenmerk() throws Exception {
+    @Test void condition_multi_word_characteristic() throws Exception {
         String model = """
             Objecttype de Meting
                 is bereikbaar per trein kenmerk (bijvoeglijk);
@@ -1393,11 +1393,11 @@ class ScenarioOrakelTest {
                     Een Meting is bonus
                     indien de Meting bereikbaar per trein is.
             """;
-        Wereld w = wereld(model);
-        Object wel = w.nieuw("Meting"); w.kenmerk(wel, "setBereikbaarPerTrein", true);
-        vuur(w, wel);
-        boolean grond = w.bool(wel, "isBonus");
-        assertTrue(grond, "java-api bonus (bereikbaar per trein)");
+        World w = world(model);
+        Object reachable = w.newInstance("Meting"); w.characteristic(reachable, "setBereikbaarPerTrein", true);
+        fire(w, reachable);
+        boolean ground = w.bool(reachable, "isBonus");
+        assertTrue(ground, "java-api bonus (bereikbaar per trein)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1410,12 +1410,12 @@ class ScenarioOrakelTest {
             - M1 is bonus
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET voorwaarden + eenheden (cross-unit vergelijking). Lifted from
      *  DroolsExecutionTest.cross_unit_vergelijking_wordt_omgerekend_niet_rauw_vergeleken (L3389): 25 mnd > 2 jr → oud. */
-    @Test void voorwaarde_cross_unit_vergelijking() throws Exception {
+    @Test void condition_cross_unit_comparison() throws Exception {
         String model = """
             Eenheidsysteem Tijd
                 de maand    mnd
@@ -1429,11 +1429,11 @@ class ScenarioOrakelTest {
                     Een Meting is oud
                     indien de duurmnd van een Meting groter is dan de grensjr van een Meting.
             """;
-        Wereld w = wereld(model);
-        Object boven = w.nieuw("Meting"); w.getal(boven, "setDuurmnd", 25); w.getal(boven, "setGrensjr", 2);
-        vuur(w, boven);
-        boolean grond = w.bool(boven, "isOud");
-        assertTrue(grond, "java-api oud (25 mnd > 24 mnd)");
+        World w = world(model);
+        Object above = w.newInstance("Meting"); w.number(above, "setDuurmnd", 25); w.number(above, "setGrensjr", 2);
+        fire(w, above);
+        boolean ground = w.bool(above, "isOud");
+        assertTrue(ground, "java-api oud (25 mnd > 24 mnd)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1447,12 +1447,12 @@ class ScenarioOrakelTest {
             - M1 is oud
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET voorwaarden + rekenkunde (begrenzing in een voorwaarde). Lifted from
      *  DroolsExecutionTest.begrenzing_in_een_voorwaarde_klemt_via_rsBegrens_en_vuurt (L2594): clamp naar bodem 60 > 50 → duur. */
-    @Test void voorwaarde_begrenzing() throws Exception {
+    @Test void condition_clamp() throws Exception {
         String model = """
             Objecttype de Passagier
                 de basistarief Numeriek (geheel getal);
@@ -1463,11 +1463,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     Een Passagier is duur indien de basistarief van een Passagier, met een minimum van de bodem van een Passagier en een maximum van de plafond van een Passagier groter is dan 50.
             """;
-        Wereld w = wereld(model);
-        Object lift = w.nieuw("Passagier"); w.getal(lift, "setBasistarief", 10); w.getal(lift, "setBodem", 60); w.getal(lift, "setPlafond", 100);
-        vuur(w, lift);
-        boolean grond = w.bool(lift, "isDuur");
-        assertTrue(grond, "java-api duur (clamp naar 60 > 50)");
+        World w = world(model);
+        Object lift = w.newInstance("Passagier"); w.number(lift, "setBasistarief", 10); w.number(lift, "setBodem", 60); w.number(lift, "setPlafond", 100);
+        fire(w, lift);
+        boolean ground = w.bool(lift, "isDuur");
+        assertTrue(ground, "java-api duur (clamp naar 60 > 50)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1482,12 +1482,12 @@ class ScenarioOrakelTest {
             - P1 is duur
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET voorwaarden (membership: rolvervulling). Lifted from
      *  DroolsExecutionTest.membership_rolcheck_gate_de_regel_op_rolvervulling (L4740): p met reis → minderjarig. */
-    @Test void voorwaarde_membership_rol() throws Exception {
+    @Test void condition_membership_role() throws Exception {
         String model = """
             Objecttype de Passagier
                 de leeftijd Numeriek (geheel getal);
@@ -1501,12 +1501,12 @@ class ScenarioOrakelTest {
                 geldig altijd
                     Een passagier is minderjarig indien hij een passagier is.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        Object p1 = w.nieuw("Passagier"); w.rol(p1, "setReis", v);
-        vuur(w, v, p1);
-        boolean grond = w.bool(p1, "isMinderjarig");
-        assertTrue(grond, "java-api minderjarig (vervult de passagier-rol)");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        Object p1 = w.newInstance("Passagier"); w.role(p1, "setReis", v);
+        fire(w, v, p1);
+        boolean ground = w.bool(p1, "isMinderjarig");
+        assertTrue(ground, "java-api minderjarig (vervult de passagier-rol)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1520,12 +1520,12 @@ class ScenarioOrakelTest {
             - P1 is minderjarig
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET voorwaarden/navigatie (far-side "heeft een passagier" → exists join). Lifted from
      *  DroolsExecutionTest.membership_far_side_heeft_een_rol_lowert_naar_een_exists_join (L4822): bezet → vol. */
-    @Test void voorwaarde_far_side_exists() throws Exception {
+    @Test void condition_far_side_exists() throws Exception {
         String model = """
             Objecttype de Passagier
             Objecttype de Vlucht
@@ -1538,12 +1538,12 @@ class ScenarioOrakelTest {
                 geldig altijd
                     Een Vlucht is vol indien hij een passagier heeft.
             """;
-        Wereld w = wereld(model);
-        Object bezet = w.nieuw("Vlucht");
-        Object p = w.nieuw("Passagier"); w.rol(p, "setReis", bezet);
-        vuur(w, bezet, p);
-        boolean grond = w.bool(bezet, "isVol");
-        assertTrue(grond, "java-api vol (heeft een passagier)");
+        World w = world(model);
+        Object occupied = w.newInstance("Vlucht");
+        Object p = w.newInstance("Passagier"); w.role(p, "setReis", occupied);
+        fire(w, occupied, p);
+        boolean ground = w.bool(occupied, "isVol");
+        assertTrue(ground, "java-api vol (heeft een passagier)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1557,7 +1557,7 @@ class ScenarioOrakelTest {
             - BEZET is vol
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     // =====================================================================================================
@@ -1566,7 +1566,7 @@ class ScenarioOrakelTest {
 
     /** FACET kenmerktoekenning (bezittelijk kenmerk drijft een berekening). Lifted from
      *  DroolsExecutionTest.eenvorm_heeft_een_bezittelijk_kenmerk_vuurt_de_voorwaarde (L1456): heeft recht → 5. */
-    @Test void kenmerk_bezittelijk_drijft_berekening() throws Exception {
+    @Test void characteristic_possessive_drives_calculation() throws Exception {
         String model = """
             Objecttype de Persoon (mv: Personen) (bezield)
                 het recht op duurzaamheidskorting kenmerk (bezittelijk);
@@ -1575,11 +1575,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De uitkomst van een Persoon moet gesteld worden op 5 indien hij een recht op duurzaamheidskorting heeft.
             """;
-        Wereld w = wereld(model);
-        Object heeft = w.nieuw("Persoon"); w.kenmerk(heeft, "setRechtOpDuurzaamheidskorting", true);
-        vuur(w, heeft);
-        BigDecimal grond = w.num(heeft, "getUitkomst");
-        assertGetal("5", grond, "java-api uitkomst (heeft recht)");
+        World w = world(model);
+        Object has = w.newInstance("Persoon"); w.characteristic(has, "setRechtOpDuurzaamheidskorting", true);
+        fire(w, has);
+        BigDecimal ground = w.num(has, "getUitkomst");
+        assertNumber("5", ground, "java-api uitkomst (heeft recht)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1592,7 +1592,7 @@ class ScenarioOrakelTest {
             - de uitkomst van P1 is 5
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("5")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("5")), "scenario == java-api");
     }
 
     /** FACET kenmerktoekenning (zelfstandig kenmerk uit een ander zelfstandig kenmerk). Lifted from
@@ -1602,8 +1602,8 @@ class ScenarioOrakelTest {
      *  rule bijvoeglijk, which the test asserted. The truth-maintenance branch lowers its unresolved condition to a
      *  rule whose evaluation faults (WF-044), and the last leg asserts that fault on the whole model, in the Java-API
      *  leg and in uchar's replay of the same input. */
-    @Test void kenmerk_zelfstandig_uit_kenmerk() throws Exception {
-        String declaraties = """
+    @Test void characteristic_nominal_from_characteristic() throws Exception {
+        String declarations = """
             Objecttype de Passagier
                 is student kenmerk;
                 is minderjarig kenmerk (bijvoeglijk);
@@ -1612,16 +1612,16 @@ class ScenarioOrakelTest {
                 geldig altijd
                     Een passagier is kind indien hij een student is.
             """;
-        String model = declaraties + """
+        String model = declarations + """
             Regel bijvoeglijk
                 geldig altijd
                     Een passagier is kind indien hij een minderjarig is.
             """;
-        Wereld w = wereld(declaraties);
-        Object student = w.nieuw("Passagier"); w.kenmerk(student, "setStudent", true); w.kenmerk(student, "setMinderjarig", false);
-        vuur(w, student);
-        boolean grond = w.bool(student, "isKind");
-        assertTrue(grond, "java-api kind (is student)");
+        World w = world(declarations);
+        Object student = w.newInstance("Passagier"); w.characteristic(student, "setStudent", true); w.characteristic(student, "setMinderjarig", false);
+        fire(w, student);
+        boolean ground = w.bool(student, "isKind");
+        assertTrue(ground, "java-api kind (is student)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1634,17 +1634,17 @@ class ScenarioOrakelTest {
             - P1 is kind
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
 
         // rule bijvoeglijk, the een-form over the bijvoeglijk kenmerk: the written name binds no characteristic and no
         // role of the subject, so the resolver leaves the condition unresolved, with a warning, and the truth-maintenance
         // branch lowers it to a rule whose evaluation faults (WF-044) where the old branch refused the rule. The whole
         // model builds, and the Java-API leg gives the fault uchar's replay gives on the same input.
-        Wereld volledig = wereld(model);
-        Object minderjarige = volledig.nieuw("Passagier");
-        volledig.kenmerk(minderjarige, "setStudent", false); volledig.kenmerk(minderjarige, "setMinderjarig", true);
-        Rekenfout fout = assertThrows(Rekenfout.class, () -> vuur(volledig, minderjarige));
-        assertEquals("fout in de regel \"bijvoeglijk\": Unresolved condition reached in evaluation", fout.getMessage());
+        World complete = world(model);
+        Object minderjarige = complete.newInstance("Passagier");
+        complete.characteristic(minderjarige, "setStudent", false); complete.characteristic(minderjarige, "setMinderjarig", true);
+        Rekenfout error = assertThrows(Rekenfout.class, () -> fire(complete, minderjarige));
+        assertEquals("fout in de regel \"bijvoeglijk\": Unresolved condition reached in evaluation", error.getMessage());
 
         ScenarioResultaat rb = één(model + """
             Situatie bijvoeglijk:
@@ -1657,12 +1657,12 @@ class ScenarioOrakelTest {
             - P2 is kind
             """);
         assertEquals(Status.FAIL, rb.status(), () -> "verwacht FAIL: " + rb.diagnose());
-        assertTrue(rb.diagnose().contains("Rekenfout: " + fout.getMessage()), () -> "uchars replay: " + rb.diagnose());
+        assertTrue(rb.diagnose().contains("Rekenfout: " + error.getMessage()), () -> "uchars replay: " + rb.diagnose());
     }
 
     /** FACET kenmerktoekenning (bezittelijk positief met lidwoord, subjectvorm). Lifted from
      *  DroolsExecutionTest.bezittelijk_positief_meerwoordig_met_lidwoord_vuurt_voor_de_personen_met_het_recht (L6079). */
-    @Test void kenmerk_bezittelijk_subject_lidwoord() throws Exception {
+    @Test void characteristic_possessive_subject_article() throws Exception {
         String model = """
             Objecttype de Persoon
                 de uitkomst Numeriek (geheel getal);
@@ -1672,11 +1672,11 @@ class ScenarioOrakelTest {
                     De uitkomst van een Persoon moet gesteld worden op 1
                     indien de Persoon het recht op duurzaamheidskorting heeft.
             """;
-        Wereld w = wereld(model);
-        Object met = w.nieuw("Persoon"); w.kenmerk(met, "setRechtOpDuurzaamheidskorting", true);
-        vuur(w, met);
-        BigDecimal grond = w.num(met, "getUitkomst");
-        assertGetal("1", grond, "java-api uitkomst (heeft het recht)");
+        World w = world(model);
+        Object extended = w.newInstance("Persoon"); w.characteristic(extended, "setRechtOpDuurzaamheidskorting", true);
+        fire(w, extended);
+        BigDecimal ground = w.num(extended, "getUitkomst");
+        assertNumber("1", ground, "java-api uitkomst (heeft het recht)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1689,7 +1689,7 @@ class ScenarioOrakelTest {
             - de uitkomst van P1 is 1
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(BigDecimal.ONE), "scenario == java-api");
+        assertEquals(0, ground.compareTo(BigDecimal.ONE), "scenario == java-api");
     }
 
     // =====================================================================================================
@@ -1698,7 +1698,7 @@ class ScenarioOrakelTest {
 
     /** FACET kenmerk-negatie (is niet een <zelfstandig kenmerk>, compound alle). Lifted from
      *  DroolsExecutionTest.is_niet_een_zelfstandig_kenmerk_negatie_vuurt (L123): ¬student ∧ ¬minderjarig → kind. */
-    @Test void kenmerk_negatie_compound() throws Exception {
+    @Test void characteristic_negation_compound() throws Exception {
         String model = """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 de student kenmerk;
@@ -1710,11 +1710,11 @@ class ScenarioOrakelTest {
                     - hij is niet een student
                     - hij is niet minderjarig.
             """;
-        Wereld w = wereld(model);
-        Object geen = w.nieuw("Passagier"); w.kenmerk(geen, "setStudent", false); w.kenmerk(geen, "setMinderjarig", false);
-        vuur(w, geen);
-        boolean grond = w.bool(geen, "isKind");
-        assertTrue(grond, "java-api kind (geen student, niet minderjarig)");
+        World w = world(model);
+        Object none = w.newInstance("Passagier"); w.characteristic(none, "setStudent", false); w.characteristic(none, "setMinderjarig", false);
+        fire(w, none);
+        boolean ground = w.bool(none, "isKind");
+        assertTrue(ground, "java-api kind (geen student, niet minderjarig)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1726,12 +1726,12 @@ class ScenarioOrakelTest {
             - P1 is kind
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET kenmerk-negatie (indien niet <kenmerk>). Lifted from
      *  DroolsExecutionTest.negatie_kenmerk_voorwaarde_vuurt_voor_de_niet_instanties (L6014): niet oud → 1. */
-    @Test void kenmerk_negatie_niet() throws Exception {
+    @Test void characteristic_negation_not() throws Exception {
         String model = """
             Objecttype de Meting
                 de uitkomst Numeriek (geheel getal);
@@ -1740,11 +1740,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De uitkomst van een Meting moet gesteld worden op 1 indien de Meting niet oud is.
             """;
-        Wereld w = wereld(model);
-        Object jong = w.nieuw("Meting"); w.kenmerk(jong, "setOud", false);
-        vuur(w, jong);
-        BigDecimal grond = w.num(jong, "getUitkomst");
-        assertGetal("1", grond, "java-api uitkomst (niet oud)");
+        World w = world(model);
+        Object jong = w.newInstance("Meting"); w.characteristic(jong, "setOud", false);
+        fire(w, jong);
+        BigDecimal ground = w.num(jong, "getUitkomst");
+        assertNumber("1", ground, "java-api uitkomst (niet oud)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1757,13 +1757,13 @@ class ScenarioOrakelTest {
             - M1 is geen oud
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(BigDecimal.ONE), "scenario == java-api");
+        assertEquals(0, ground.compareTo(BigDecimal.ONE), "scenario == java-api");
         assertFalse(w.bool(jong, "isOud"), "M1 is geen oud (kenmerk-afwezig)");
     }
 
     /** FACET kenmerk-negatie (geen bezittelijk kenmerk, subjectvorm). Lifted from
      *  DroolsExecutionTest.bezittelijk_geen_negatie_vuurt_voor_de_personen_zonder_het_recht (L6048). */
-    @Test void kenmerk_negatie_geen_bezittelijk() throws Exception {
+    @Test void characteristic_negation_no_possessive() throws Exception {
         String model = """
             Objecttype de Persoon
                 de uitkomst Numeriek (geheel getal);
@@ -1773,11 +1773,11 @@ class ScenarioOrakelTest {
                     De uitkomst van een Persoon moet gesteld worden op 1
                     indien de Persoon geen recht op duurzaamheidskorting heeft.
             """;
-        Wereld w = wereld(model);
-        Object zonder = w.nieuw("Persoon");
-        vuur(w, zonder);
-        BigDecimal grond = w.num(zonder, "getUitkomst");
-        assertGetal("1", grond, "java-api uitkomst (geen recht)");
+        World w = world(model);
+        Object without = w.newInstance("Persoon");
+        fire(w, without);
+        BigDecimal ground = w.num(without, "getUitkomst");
+        assertNumber("1", ground, "java-api uitkomst (geen recht)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1790,12 +1790,12 @@ class ScenarioOrakelTest {
             - P1 heeft geen recht op duurzaamheidskorting
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(BigDecimal.ONE), "scenario == java-api");
+        assertEquals(0, ground.compareTo(BigDecimal.ONE), "scenario == java-api");
     }
 
     /** FACET kenmerk-negatie (geen zelfstandig kenmerk, rol-woord). Lifted from
      *  DroolsExecutionTest.noch_noch_is_geen_kenmerk_negatie_gate_op_de_afwezige_kenmerken (L6148): geen reiziger → 1. */
-    @Test void kenmerk_negatie_geen_zelfstandig() throws Exception {
+    @Test void characteristic_negation_no_nominal() throws Exception {
         String model = """
             Objecttype de Persoon
                 de uitkomst Numeriek (geheel getal);
@@ -1805,11 +1805,11 @@ class ScenarioOrakelTest {
                     De uitkomst van een Persoon moet gesteld worden op 1
                     indien de Persoon geen reiziger is.
             """;
-        Wereld w = wereld(model);
-        Object ander = w.nieuw("Persoon"); w.kenmerk(ander, "setReiziger", false);
-        vuur(w, ander);
-        BigDecimal grond = w.num(ander, "getUitkomst");
-        assertGetal("1", grond, "java-api uitkomst (geen reiziger)");
+        World w = world(model);
+        Object other = w.newInstance("Persoon"); w.characteristic(other, "setReiziger", false);
+        fire(w, other);
+        BigDecimal ground = w.num(other, "getUitkomst");
+        assertNumber("1", ground, "java-api uitkomst (geen reiziger)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1822,7 +1822,7 @@ class ScenarioOrakelTest {
             - P1 is geen reiziger
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(BigDecimal.ONE), "scenario == java-api");
+        assertEquals(0, ground.compareTo(BigDecimal.ONE), "scenario == java-api");
     }
 
     // =====================================================================================================
@@ -1831,7 +1831,7 @@ class ScenarioOrakelTest {
 
     /** FACET consistentie/inconsistentie (moet ongelijk — rondvlucht). Lifted from
      *  DroolsExecutionTest.consistentieregel_markeert_alleen_de_schendende_instantie (L3865). */
-    @Test void consistentie_ongelijk_inconsistent() throws Exception {
+    @Test void consistency_not_equal_inconsistent() throws Exception {
         String model = """
             Objecttype de Route
                 de vertrek Tekst;
@@ -1840,11 +1840,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De vertrek van een Route moet ongelijk zijn aan de bestemming van een Route.
             """;
-        Wereld w = wereld(model);
-        Object rond = w.nieuw("Route"); w.zet(rond, "setVertrek", "AMS", String.class); w.zet(rond, "setBestemming", "AMS", String.class);
-        vuur(w, rond);
-        boolean grond = w.inconsistenties() > 0;
-        assertTrue(grond, "java-api inconsistent (AMS == AMS)");
+        World w = world(model);
+        Object roundTrip = w.newInstance("Route"); w.set(roundTrip, "setVertrek", "AMS", String.class); w.set(roundTrip, "setBestemming", "AMS", String.class);
+        fire(w, roundTrip);
+        boolean ground = w.inconsistencies() > 0;
+        assertTrue(ground, "java-api inconsistent (AMS == AMS)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1858,11 +1858,11 @@ class ScenarioOrakelTest {
             - de gegevens zijn inconsistent
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api (beide inconsistent)");
+        assertTrue(ground, "scenario == java-api (beide inconsistent)");
     }
 
     /** FACET consistentie/inconsistentie (moet ongelijk — consistent tak). Same rule, verschillende endpoints. */
-    @Test void consistentie_ongelijk_consistent() throws Exception {
+    @Test void consistency_not_equal_consistent() throws Exception {
         String model = """
             Objecttype de Route
                 de vertrek Tekst;
@@ -1871,11 +1871,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De vertrek van een Route moet ongelijk zijn aan de bestemming van een Route.
             """;
-        Wereld w = wereld(model);
-        Object enkel = w.nieuw("Route"); w.zet(enkel, "setVertrek", "AMS", String.class); w.zet(enkel, "setBestemming", "JFK", String.class);
-        vuur(w, enkel);
-        boolean grond = w.inconsistenties() > 0;
-        assertFalse(grond, "java-api consistent (AMS != JFK)");
+        World w = world(model);
+        Object single = w.newInstance("Route"); w.set(single, "setVertrek", "AMS", String.class); w.set(single, "setBestemming", "JFK", String.class);
+        fire(w, single);
+        boolean ground = w.inconsistencies() > 0;
+        assertFalse(ground, "java-api consistent (AMS != JFK)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1889,12 +1889,12 @@ class ScenarioOrakelTest {
             - de gegevens zijn consistent
             """);
         pass(r);
-        assertFalse(grond, "scenario == java-api (beide consistent)");
+        assertFalse(ground, "scenario == java-api (beide consistent)");
     }
 
     /** FACET consistentie/inconsistentie + leeg-operand (ordening met leeg). Lifted from
      *  DroolsExecutionTest.consistentieregel_ordening_markeert_ook_de_lege_operand (L4327): leeg limiet-operand → schending. */
-    @Test void consistentie_ordening_leeg_operand() throws Exception {
+    @Test void consistency_ordering_empty_operand() throws Exception {
         String model = """
             Objecttype de Konto
                 de saldo Numeriek (geheel getal);
@@ -1903,11 +1903,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De saldo van een Konto moet kleiner zijn dan de limiet van een Konto.
             """;
-        Wereld w = wereld(model);
-        Object leeg = w.nieuw("Konto"); w.getal(leeg, "setLimiet", 50);   // saldo leeg → schending
-        vuur(w, leeg);
-        boolean grond = w.inconsistenties() > 0;
-        assertTrue(grond, "java-api inconsistent (lege saldo-operand)");
+        World w = world(model);
+        Object empty = w.newInstance("Konto"); w.number(empty, "setLimiet", 50);   // saldo leeg → schending
+        fire(w, empty);
+        boolean ground = w.inconsistencies() > 0;
+        assertTrue(ground, "java-api inconsistent (lege saldo-operand)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1920,12 +1920,12 @@ class ScenarioOrakelTest {
             - de gegevens zijn inconsistent
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET consistentie/inconsistentie (samengestelde alle-criteria). Lifted from
      *  DroolsExecutionTest.samengestelde_consistentie_alle_criteria_markeert_elke_schending (L4358): binnen → consistent. */
-    @Test void consistentie_samengesteld_consistent() throws Exception {
+    @Test void consistency_compound_consistent() throws Exception {
         String model = """
             Objecttype de Konto
                 de saldo Numeriek (geheel getal);
@@ -1937,11 +1937,11 @@ class ScenarioOrakelTest {
                         - het saldo van een Konto is kleiner dan de limiet van een Konto.
                         - het saldo van een Konto is groter dan het minimum van een Konto.
             """;
-        Wereld w = wereld(model);
-        Object binnen = w.nieuw("Konto"); w.getal(binnen, "setSaldo", 50); w.getal(binnen, "setLimiet", 100); w.getal(binnen, "setMinimum", 0);
-        vuur(w, binnen);
-        boolean grond = w.inconsistenties() > 0;
-        assertFalse(grond, "java-api consistent (0 < 50 < 100)");
+        World w = world(model);
+        Object within = w.newInstance("Konto"); w.number(within, "setSaldo", 50); w.number(within, "setLimiet", 100); w.number(within, "setMinimum", 0);
+        fire(w, within);
+        boolean ground = w.inconsistencies() > 0;
+        assertFalse(ground, "java-api consistent (0 < 50 < 100)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1956,12 +1956,12 @@ class ScenarioOrakelTest {
             - de gegevens zijn consistent
             """);
         pass(r);
-        assertFalse(grond, "scenario == java-api");
+        assertFalse(ground, "scenario == java-api");
     }
 
     /** FACET deling-door-leeg-inconsistentie (§4.8: V / leeg meldt een Inconsistentie). Lifted from
      *  DroolsExecutionTest.gedeeld_door_leeg_meldt_een_inconsistentie_maar_leeg_door_iets_niet (L2398). */
-    @Test void deling_door_leeg_inconsistentie() throws Exception {
+    @Test void division_by_empty_inconsistency() throws Exception {
         String model = """
             Objecttype de Rekensom
                 de grondslag Numeriek (geheel getal);
@@ -1971,11 +1971,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom.
             """;
-        Wereld w = wereld(model);
-        Object waardeLeeg = w.nieuw("Rekensom"); w.getal(waardeLeeg, "setGrondslag", 12);   // 12 / leeg → Inconsistentie
-        vuur(w, waardeLeeg);
-        boolean grond = w.inconsistenties() > 0;
-        assertTrue(grond, "java-api inconsistent (12 / leeg)");
+        World w = world(model);
+        Object valueEmpty = w.newInstance("Rekensom"); w.number(valueEmpty, "setGrondslag", 12);   // 12 / leeg → Inconsistentie
+        fire(w, valueEmpty);
+        boolean ground = w.inconsistencies() > 0;
+        assertTrue(ground, "java-api inconsistent (12 / leeg)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -1988,11 +1988,11 @@ class ScenarioOrakelTest {
             - de gegevens zijn inconsistent
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET deling-door-leeg (leeg / iets is GEEN inconsistentie, geeft 0). Same rule, leeg grondslag / 4 = 0. */
-    @Test void deling_leeg_door_waarde_consistent() throws Exception {
+    @Test void division_empty_by_value_consistent() throws Exception {
         String model = """
             Objecttype de Rekensom
                 de grondslag Numeriek (geheel getal);
@@ -2002,13 +2002,13 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom.
             """;
-        Wereld w = wereld(model);
-        Object leegRecht = w.nieuw("Rekensom"); w.getal(leegRecht, "setAftrek", 4);   // leeg / 4 = 0, geen Inconsistentie
-        vuur(w, leegRecht);
-        boolean grondInc = w.inconsistenties() > 0;
-        assertFalse(grondInc, "java-api consistent (leeg / 4)");
-        BigDecimal grondWaarde = w.num(leegRecht, "getDeelResultaat");
-        assertGetal("0", grondWaarde, "java-api deelResultaat (leeg / 4 = 0)");
+        World w = world(model);
+        Object emptyRecht = w.newInstance("Rekensom"); w.number(emptyRecht, "setAftrek", 4);   // leeg / 4 = 0, geen Inconsistentie
+        fire(w, emptyRecht);
+        boolean groundInconsistent = w.inconsistencies() > 0;
+        assertFalse(groundInconsistent, "java-api consistent (leeg / 4)");
+        BigDecimal groundValue = w.num(emptyRecht, "getDeelResultaat");
+        assertNumber("0", groundValue, "java-api deelResultaat (leeg / 4 = 0)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2022,8 +2022,8 @@ class ScenarioOrakelTest {
             - de gegevens zijn consistent
             """);
         pass(r);
-        assertFalse(grondInc, "scenario == java-api (consistent)");
-        assertEquals(0, grondWaarde.compareTo(BigDecimal.ZERO), "scenario == java-api (0)");
+        assertFalse(groundInconsistent, "scenario == java-api (consistent)");
+        assertEquals(0, groundValue.compareTo(BigDecimal.ZERO), "scenario == java-api (0)");
     }
 
     // =====================================================================================================
@@ -2032,7 +2032,7 @@ class ScenarioOrakelTest {
 
     /** FACET initialisatie/leeg-guard (§9.6: berekening wint van initialisatie; guard mist → init). Lifted from
      *  DroolsExecutionTest.initialisatie_vult_alleen_leeg_en_de_berekening_wint_ongeacht_declaratievolgorde (L2658). */
-    @Test void initialisatie_leeg_guard() throws Exception {
+    @Test void initialisation_empty_guard() throws Exception {
         String model = """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 het basistarief Numeriek (geheel getal);
@@ -2045,11 +2045,11 @@ class ScenarioOrakelTest {
                     De prijs van een Passagier moet berekend worden als zijn basistarief plus 5
                     indien zijn basistarief groter is dan 50.
             """;
-        Wereld w = wereld(model);
-        Object laag = w.nieuw("Passagier"); w.getal(laag, "setBasistarief", 40);   // guard mist → init 10
-        vuur(w, laag);
-        BigDecimal grond = w.num(laag, "getPrijs");
-        assertGetal("10", grond, "java-api prijs (guard mist → init 10)");
+        World w = world(model);
+        Object low = w.newInstance("Passagier"); w.number(low, "setBasistarief", 40);   // guard mist → init 10
+        fire(w, low);
+        BigDecimal ground = w.num(low, "getPrijs");
+        assertNumber("10", ground, "java-api prijs (guard mist → init 10)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2062,11 +2062,11 @@ class ScenarioOrakelTest {
             - de prijs van P1 is 10
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("10")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("10")), "scenario == java-api");
     }
 
     /** FACET initialisatie/leeg-guard (berekening wint als de guard raakt). Same rules, basistarief 100 → 105. */
-    @Test void initialisatie_berekening_wint() throws Exception {
+    @Test void initialisation_calculation_wins() throws Exception {
         String model = """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 het basistarief Numeriek (geheel getal);
@@ -2079,11 +2079,11 @@ class ScenarioOrakelTest {
                     De prijs van een Passagier moet berekend worden als zijn basistarief plus 5
                     indien zijn basistarief groter is dan 50.
             """;
-        Wereld w = wereld(model);
-        Object hoog = w.nieuw("Passagier"); w.getal(hoog, "setBasistarief", 100);   // guard raakt → 100 + 5
-        vuur(w, hoog);
-        BigDecimal grond = w.num(hoog, "getPrijs");
-        assertGetal("105", grond, "java-api prijs (berekening wint: 100+5)");
+        World w = world(model);
+        Object high = w.newInstance("Passagier"); w.number(high, "setBasistarief", 100);   // guard raakt → 100 + 5
+        fire(w, high);
+        BigDecimal ground = w.num(high, "getPrijs");
+        assertNumber("105", ground, "java-api prijs (berekening wint: 100+5)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2096,12 +2096,12 @@ class ScenarioOrakelTest {
             - de prijs van P1 is 105
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("105")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("105")), "scenario == java-api");
     }
 
     /** FACET initialisatie/leeg-guard (leegwaarde: wortel/macht van leeg blijven leeg). Lifted from
      *  DroolsExecutionTest.wortel_en_macht_van_leeg_zijn_leeg_door_de_null_veilige_afronding (L2625). */
-    @Test void leegwaarde_wortel_macht_leeg() throws Exception {
+    @Test void empty_fallback_square_root_power_empty() throws Exception {
         String model = """
             Objecttype de Heffing
                 de basis Numeriek (geheel getal);
@@ -2114,13 +2114,13 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De machtr van een Heffing moet gesteld worden op de basis van een Heffing tot de macht 2 naar beneden afgerond op 0 decimalen.
             """;
-        Wereld w = wereld(model);
-        Object leeg = w.nieuw("Heffing");   // basis leeg → beide leeg
-        vuur(w, leeg);
-        Object gWortel = w.lees(leeg, "getWortelr");
-        Object gMacht = w.lees(leeg, "getMachtr");
-        assertNull(gWortel, "java-api wortelr leeg");
-        assertNull(gMacht, "java-api machtr leeg");
+        World w = world(model);
+        Object empty = w.newInstance("Heffing");   // basis leeg → beide leeg
+        fire(w, empty);
+        Object gSquareRoot = w.read(empty, "getWortelr");
+        Object gPower = w.read(empty, "getMachtr");
+        assertNull(gSquareRoot, "java-api wortelr leeg");
+        assertNull(gPower, "java-api machtr leeg");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2133,13 +2133,13 @@ class ScenarioOrakelTest {
             - de machtr van H1 is leeg
             """);
         pass(r);
-        assertNull(gWortel, "scenario == java-api (wortelr leeg)");
-        assertNull(gMacht, "scenario == java-api (machtr leeg)");
+        assertNull(gSquareRoot, "scenario == java-api (wortelr leeg)");
+        assertNull(gPower, "scenario == java-api (machtr leeg)");
     }
 
     /** FACET initialisatie/leeg-guard (leegwaarde-rekenkunde: leeg telt als 0 voor min/plus/maal). Lifted from
      *  DroolsExecutionTest.leegwaarde_verminderd_met_verschilt_van_min_en_plus_maal_tellen_leeg_als_nul (L2319). */
-    @Test void leegwaarde_rekenkunde() throws Exception {
+    @Test void empty_fallback_arithmetic() throws Exception {
         String model = """
             Objecttype de Rekensom
                 de grondslag Numeriek (geheel getal);
@@ -2161,17 +2161,17 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De maalResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom maal de aftrek van een Rekensom.
             """;
-        Wereld w = wereld(model);
-        Object gevuld = w.nieuw("Rekensom"); w.getal(gevuld, "setGrondslag", 10); w.getal(gevuld, "setAftrek", 4);
-        vuur(w, gevuld);
-        BigDecimal gVerminderd = w.num(gevuld, "getVerminderdResultaat");
-        BigDecimal gMin = w.num(gevuld, "getMinResultaat");
-        BigDecimal gPlus = w.num(gevuld, "getPlusResultaat");
-        BigDecimal gMaal = w.num(gevuld, "getMaalResultaat");
-        assertGetal("6", gVerminderd, "java-api verminderd (10-4)");
-        assertGetal("6", gMin, "java-api min (10-4)");
-        assertGetal("14", gPlus, "java-api plus (10+4)");
-        assertGetal("40", gMaal, "java-api maal (10*4)");
+        World w = world(model);
+        Object filled = w.newInstance("Rekensom"); w.number(filled, "setGrondslag", 10); w.number(filled, "setAftrek", 4);
+        fire(w, filled);
+        BigDecimal gReduced = w.num(filled, "getVerminderdResultaat");
+        BigDecimal gMin = w.num(filled, "getMinResultaat");
+        BigDecimal gPlus = w.num(filled, "getPlusResultaat");
+        BigDecimal gTimes = w.num(filled, "getMaalResultaat");
+        assertNumber("6", gReduced, "java-api verminderd (10-4)");
+        assertNumber("6", gMin, "java-api min (10-4)");
+        assertNumber("14", gPlus, "java-api plus (10+4)");
+        assertNumber("40", gTimes, "java-api maal (10*4)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2188,8 +2188,8 @@ class ScenarioOrakelTest {
             - de maalResultaat van R1 is 40
             """);
         pass(r);
-        assertEquals(0, gVerminderd.compareTo(new BigDecimal("6")), "scenario == java-api verminderd");
-        assertEquals(0, gMaal.compareTo(new BigDecimal("40")), "scenario == java-api maal");
+        assertEquals(0, gReduced.compareTo(new BigDecimal("6")), "scenario == java-api verminderd");
+        assertEquals(0, gTimes.compareTo(new BigDecimal("40")), "scenario == java-api maal");
     }
 
     // =====================================================================================================
@@ -2198,7 +2198,7 @@ class ScenarioOrakelTest {
 
     /** FACET datum/tijd (dd.-literal met tijd behoudt DatumTijd; en datum in dagen). Lifted from
      *  DroolsExecutionTest.dedato_literal_met_tijd_behoudt_het_tijdstip_als_datumtijd (L1545). */
-    @Test void datum_literal_met_tijd() throws Exception {
+    @Test void date_literal_with_time() throws Exception {
         String model = """
             Objecttype de Gebeurtenis (mv: Gebeurtenissen)
                 het tijdstip Datum en tijd in millisecondes;
@@ -2210,13 +2210,13 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De geldigheid van een Gebeurtenis moet gesteld worden op dd. 12-3-2023.
             """;
-        Wereld w = wereld(model);
-        Object g = w.nieuw("Gebeurtenis");
-        vuur(w, g);
-        Object gTijdstip = w.lees(g, "getTijdstip");
-        Object gGeldig = w.lees(g, "getGeldigheid");
+        World w = world(model);
+        Object g = w.newInstance("Gebeurtenis");
+        fire(w, g);
+        Object gTijdstip = w.read(g, "getTijdstip");
+        Object gValid = w.read(g, "getGeldigheid");
         assertEquals(LocalDateTime.of(2023, 3, 12, 11, 34, 42, 679_000_000), gTijdstip, "java-api tijdstip");
-        assertEquals(LocalDate.of(2023, 3, 12), gGeldig, "java-api geldigheid");
+        assertEquals(LocalDate.of(2023, 3, 12), gValid, "java-api geldigheid");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2230,12 +2230,12 @@ class ScenarioOrakelTest {
             """);
         pass(r);
         assertEquals(LocalDateTime.of(2023, 3, 12, 11, 34, 42, 679_000_000), gTijdstip, "scenario == java-api tijdstip");
-        assertEquals(LocalDate.of(2023, 3, 12), gGeldig, "scenario == java-api geldigheid");
+        assertEquals(LocalDate.of(2023, 3, 12), gValid, "scenario == java-api geldigheid");
     }
 
     /** FACET datum/tijd (eerste van twee datums = de vroegste). Lifted from
      *  DroolsExecutionTest.eerste_van_concatenatie_kiest_de_vroegste_datum (L1750): min(10 mrt, 5 mrt) = 5 mrt. */
-    @Test void datum_eerste_van() throws Exception {
+    @Test void date_first_of() throws Exception {
         String model = """
             Objecttype de Vlucht
                 de verwacht vertrek Datum in dagen;
@@ -2245,13 +2245,13 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De vroegste vertrek van een Vlucht moet gesteld worden op de eerste van de verwacht vertrek van een Vlucht en de daadwerkelijk vertrek van een Vlucht.
             """;
-        Wereld w = wereld(model);
-        Object v = w.nieuw("Vlucht");
-        w.zet(v, "setVerwachtVertrek", LocalDate.of(2025, 3, 10), LocalDate.class);
-        w.zet(v, "setDaadwerkelijkVertrek", LocalDate.of(2025, 3, 5), LocalDate.class);
-        vuur(w, v);
-        Object grond = w.lees(v, "getVroegsteVertrek");
-        assertEquals(LocalDate.of(2025, 3, 5), grond, "java-api vroegste vertrek");
+        World w = world(model);
+        Object v = w.newInstance("Vlucht");
+        w.set(v, "setVerwachtVertrek", LocalDate.of(2025, 3, 10), LocalDate.class);
+        w.set(v, "setDaadwerkelijkVertrek", LocalDate.of(2025, 3, 5), LocalDate.class);
+        fire(w, v);
+        Object ground = w.read(v, "getVroegsteVertrek");
+        assertEquals(LocalDate.of(2025, 3, 5), ground, "java-api vroegste vertrek");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2265,12 +2265,12 @@ class ScenarioOrakelTest {
             - de vroegste vertrek van V1 is 05-03-2025
             """);
         pass(r);
-        assertEquals(LocalDate.of(2025, 3, 5), grond, "scenario == java-api");
+        assertEquals(LocalDate.of(2025, 3, 5), ground, "scenario == java-api");
     }
 
     /** FACET datum/tijd (eerste paasdag via de computus). Lifted from
      *  DroolsExecutionTest.eerste_paasdag_berekent_paaszondag_via_de_computus (L2263): 2024 → 31-03-2024. */
-    @Test void datum_eerste_paasdag() throws Exception {
+    @Test void date_first_easter_sunday() throws Exception {
         String model = """
             Objecttype de Klok
                 de jaartal Numeriek (geheel getal);
@@ -2279,11 +2279,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De gemaakt van een Klok moet gesteld worden op de eerste paasdag van de jaartal van een Klok.
             """;
-        Wereld w = wereld(model);
-        Object k = w.nieuw("Klok"); w.getal(k, "setJaartal", 2024);
-        vuur(w, k);
-        Object grond = w.lees(k, "getGemaakt");
-        assertEquals(LocalDate.of(2024, 3, 31), grond, "java-api eerste paasdag 2024");
+        World w = world(model);
+        Object k = w.newInstance("Klok"); w.number(k, "setJaartal", 2024);
+        fire(w, k);
+        Object ground = w.read(k, "getGemaakt");
+        assertEquals(LocalDate.of(2024, 3, 31), ground, "java-api eerste paasdag 2024");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2296,12 +2296,12 @@ class ScenarioOrakelTest {
             - de gemaakt van K1 is 31-03-2024
             """);
         pass(r);
-        assertEquals(LocalDate.of(2024, 3, 31), grond, "scenario == java-api");
+        assertEquals(LocalDate.of(2024, 3, 31), ground, "scenario == java-api");
     }
 
     /** FACET datum/tijd (datumdelen: jaar/maand uit; datum met; uur uit). Lifted from
      *  DroolsExecutionTest.scalaire_builtins_absolute_waarde_datumdelen_en_datum_met (L2093). */
-    @Test void datum_delen_en_datum_met() throws Exception {
+    @Test void date_parts_and_date_with() throws Exception {
         String model = """
             Objecttype de Klok
                 de saldo Numeriek (geheel getal);
@@ -2324,20 +2324,20 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De gemaakt van een Klok moet gesteld worden op de datum met jaar: de bouwjaar van een Klok, maand: 3 en dag: 15.
             """;
-        Wereld w = wereld(model);
-        Object k = w.nieuw("Klok");
-        w.getal(k, "setSaldo", -7);
-        w.zet(k, "setReisdatum", LocalDate.of(2021, 6, 15), LocalDate.class);
-        w.getal(k, "setBouwjaar", 2000);
-        vuur(w, k);
+        World w = world(model);
+        Object k = w.newInstance("Klok");
+        w.number(k, "setSaldo", -7);
+        w.set(k, "setReisdatum", LocalDate.of(2021, 6, 15), LocalDate.class);
+        w.number(k, "setBouwjaar", 2000);
+        fire(w, k);
         BigDecimal gAbs = w.num(k, "getAbsval");
-        BigDecimal gJaar = w.num(k, "getJaartal");
-        BigDecimal gMaand = w.num(k, "getMaandnr");
-        Object gGemaakt = w.lees(k, "getGemaakt");
-        assertGetal("7", gAbs, "java-api absval");
-        assertGetal("2021", gJaar, "java-api jaartal");
-        assertGetal("6", gMaand, "java-api maandnr");
-        assertEquals(LocalDate.of(2000, 3, 15), gGemaakt, "java-api gemaakt");
+        BigDecimal gYear = w.num(k, "getJaartal");
+        BigDecimal gMonth = w.num(k, "getMaandnr");
+        Object gMade = w.read(k, "getGemaakt");
+        assertNumber("7", gAbs, "java-api absval");
+        assertNumber("2021", gYear, "java-api jaartal");
+        assertNumber("6", gMonth, "java-api maandnr");
+        assertEquals(LocalDate.of(2000, 3, 15), gMade, "java-api gemaakt");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2356,12 +2356,12 @@ class ScenarioOrakelTest {
             """);
         pass(r);
         assertEquals(0, gAbs.compareTo(new BigDecimal("7")), "scenario == java-api absval");
-        assertEquals(LocalDate.of(2000, 3, 15), gGemaakt, "scenario == java-api gemaakt");
+        assertEquals(LocalDate.of(2000, 3, 15), gMade, "scenario == java-api gemaakt");
     }
 
     /** FACET datum/tijd + voorwaarde (datumliteral gelijkheid gate). Lifted from
      *  DroolsExecutionTest.datumliteral_met_voorloopnul_bouwt_en_vuurt_decimaal (L6371): geboortedatum == 08-09-2024 → duur. */
-    @Test void datum_gelijkheid_gate() throws Exception {
+    @Test void date_equality_gate() throws Exception {
         String model = """
             Objecttype de Passagier (mv: Passagiers) (bezield)
                 de geboortedatum Datum in dagen;
@@ -2370,11 +2370,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     Een Passagier is duur indien zijn geboortedatum gelijk is aan 08-09-2024.
             """;
-        Wereld w = wereld(model);
-        Object raak = w.nieuw("Passagier"); w.zet(raak, "setGeboortedatum", LocalDate.of(2024, 9, 8), LocalDate.class);
-        vuur(w, raak);
-        boolean grond = w.bool(raak, "isDuur");
-        assertTrue(grond, "java-api duur (geboortedatum == 08-09-2024)");
+        World w = world(model);
+        Object touch = w.newInstance("Passagier"); w.set(touch, "setGeboortedatum", LocalDate.of(2024, 9, 8), LocalDate.class);
+        fire(w, touch);
+        boolean ground = w.bool(touch, "isDuur");
+        assertTrue(ground, "java-api duur (geboortedatum == 08-09-2024)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2387,7 +2387,7 @@ class ScenarioOrakelTest {
             - P1 is duur
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     // =====================================================================================================
@@ -2396,7 +2396,7 @@ class ScenarioOrakelTest {
 
     /** FACET tekst/enum (tekst-gelijkheid gate). Lifted from
      *  DroolsExecutionTest.voorwaarde_niet_numerieke_gelijkheid_beide_leeg_vuurt_niet (L1906): "A" == "A" → gemarkeerd. */
-    @Test void tekst_gelijkheid_gate() throws Exception {
+    @Test void text_equality_gate() throws Exception {
         String model = """
             Objecttype de Route
                 de vertrek Tekst;
@@ -2407,11 +2407,11 @@ class ScenarioOrakelTest {
                     Een Route is gemarkeerd
                     indien de vertrek van een Route gelijk is aan de bestemming van een Route.
             """;
-        Wereld w = wereld(model);
-        Object gelijk = w.nieuw("Route"); w.zet(gelijk, "setVertrek", "A", String.class); w.zet(gelijk, "setBestemming", "A", String.class);
-        vuur(w, gelijk);
-        boolean grond = w.bool(gelijk, "isGemarkeerd");
-        assertTrue(grond, "java-api gemarkeerd (A == A)");
+        World w = world(model);
+        Object equal = w.newInstance("Route"); w.set(equal, "setVertrek", "A", String.class); w.set(equal, "setBestemming", "A", String.class);
+        fire(w, equal);
+        boolean ground = w.bool(equal, "isGemarkeerd");
+        assertTrue(ground, "java-api gemarkeerd (A == A)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2425,14 +2425,14 @@ class ScenarioOrakelTest {
             - R1 is gemarkeerd
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     /** FACET tekst/enum (tekstreeks-concatenatie met «...» interpolatie). Lifted from
      *  DroolsExecutionTest.tekstreeks_vuurt_een_geconcateneerde_tekstwaarde (L6391), with a text part where the source
      *  interpolated a number ("nr 528 jaar"): since uchar b536bbc9 the exec-model branch refuses a number in a text
      *  composition, whose text RUNTIME-SEMANTICS ch. 1.2 does not decide. */
-    @Test void tekst_concatenatie() throws Exception {
+    @Test void text_concatenation() throws Exception {
         String model = """
             Objecttype de Persoon (mv: Personen) (bezield)
                 de voornaam Tekst;
@@ -2441,11 +2441,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     De roepnaam van een Persoon moet gesteld worden op "nr «de voornaam van een Persoon» jaar".
             """;
-        Wereld w = wereld(model);
-        Object p = w.nieuw("Persoon"); w.zet(p, "setVoornaam", "Ada", String.class);
-        vuur(w, p);
-        Object grond = w.lees(p, "getRoepnaam");
-        assertEquals("nr Ada jaar", grond, "java-api roepnaam");
+        World w = world(model);
+        Object p = w.newInstance("Persoon"); w.set(p, "setVoornaam", "Ada", String.class);
+        fire(w, p);
+        Object ground = w.read(p, "getRoepnaam");
+        assertEquals("nr Ada jaar", ground, "java-api roepnaam");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2458,12 +2458,12 @@ class ScenarioOrakelTest {
             - de roepnaam van P1 is "nr Ada jaar"
             """);
         pass(r);
-        assertEquals("nr Ada jaar", grond, "scenario == java-api");
+        assertEquals("nr Ada jaar", ground, "scenario == java-api");
     }
 
     /** FACET tekst/enum (tekst-predicaat "numeriek met exact 9 cijfers"). Lifted from
      *  DroolsExecutionTest.numeriek_met_exact_predicaat_vuurt_voor_negen_cijfers (L5292). */
-    @Test void tekst_predicaat_negen_cijfers() throws Exception {
+    @Test void text_predicate_nine_digits() throws Exception {
         String model = """
             Objecttype de Natuurlijk persoon (mv: Natuurlijke personen) (bezield)
                 de bsn tekst Tekst;
@@ -2472,11 +2472,11 @@ class ScenarioOrakelTest {
                 geldig altijd
                     Een Natuurlijk persoon is geldig indien zijn bsn tekst numeriek is met exact 9 cijfers.
             """;
-        Wereld w = wereld(model);
-        Object negen = w.nieuw("NatuurlijkPersoon"); w.zet(negen, "setBsnTekst", "123456789", String.class);
-        vuur(w, negen);
-        boolean grond = w.bool(negen, "isGeldig");
-        assertTrue(grond, "java-api geldig (9 cijfers)");
+        World w = world(model);
+        Object nine = w.newInstance("NatuurlijkPersoon"); w.set(nine, "setBsnTekst", "123456789", String.class);
+        fire(w, nine);
+        boolean ground = w.bool(nine, "isGeldig");
+        assertTrue(ground, "java-api geldig (9 cijfers)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2489,7 +2489,7 @@ class ScenarioOrakelTest {
             - NP1 is geldig
             """);
         pass(r);
-        assertTrue(grond, "scenario == java-api");
+        assertTrue(ground, "scenario == java-api");
     }
 
     // =====================================================================================================
@@ -2498,7 +2498,7 @@ class ScenarioOrakelTest {
 
     /** FACET peildatum/geldigheid (§4.2: de versie in wier venster de peildatum valt vuurt). Lifted from
      *  DroolsExecutionTest.rule_versie_vuurt_alleen_binnen_zijn_geldigheidsvenster (L4504): peildatum 2024 → versie #1 (100). */
-    @Test void peildatum_geldigheidsvenster() throws Exception {
+    @Test void as_of_date_validity_window() throws Exception {
         String model = """
             Objecttype de Heffing
                 de prijs Numeriek (geheel getal);
@@ -2508,12 +2508,12 @@ class ScenarioOrakelTest {
                 geldig vanaf 2025
                     De prijs van een Heffing moet gesteld worden op 200.
             """;
-        Wereld w = wereld(model);
-        w.sessie().setGlobal("rekendatum", LocalDate.of(2024, 6, 1));
-        Object h = w.nieuw("Heffing");
-        vuur(w, h);
-        BigDecimal grond = w.num(h, "getPrijs");
-        assertGetal("100", grond, "java-api prijs (2024 → versie #1)");
+        World w = world(model);
+        w.session().setGlobal("rekendatum", LocalDate.of(2024, 6, 1));
+        Object h = w.newInstance("Heffing");
+        fire(w, h);
+        BigDecimal ground = w.num(h, "getPrijs");
+        assertNumber("100", ground, "java-api prijs (2024 → versie #1)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2526,11 +2526,11 @@ class ScenarioOrakelTest {
             - de prijs van H1 is 100
             """);
         pass(r);
-        assertEquals(0, grond.compareTo(new BigDecimal("100")), "scenario == java-api");
+        assertEquals(0, ground.compareTo(new BigDecimal("100")), "scenario == java-api");
     }
 
     /** FACET peildatum/geldigheid (buiten alle vensters → geen versie vuurt → leeg). Same rule, peildatum 2023. */
-    @Test void peildatum_buiten_venster_leeg() throws Exception {
+    @Test void as_of_date_outside_window_empty() throws Exception {
         String model = """
             Objecttype de Heffing
                 de prijs Numeriek (geheel getal);
@@ -2540,12 +2540,12 @@ class ScenarioOrakelTest {
                 geldig vanaf 2025
                     De prijs van een Heffing moet gesteld worden op 200.
             """;
-        Wereld w = wereld(model);
-        w.sessie().setGlobal("rekendatum", LocalDate.of(2023, 6, 1));
-        Object h = w.nieuw("Heffing");
-        vuur(w, h);
-        Object grond = w.lees(h, "getPrijs");
-        assertNull(grond, "java-api prijs leeg (2023 buiten alle vensters)");
+        World w = world(model);
+        w.session().setGlobal("rekendatum", LocalDate.of(2023, 6, 1));
+        Object h = w.newInstance("Heffing");
+        fire(w, h);
+        Object ground = w.read(h, "getPrijs");
+        assertNull(ground, "java-api prijs leeg (2023 buiten alle vensters)");
 
         ScenarioResultaat r = één(model + """
             Situatie basis:
@@ -2558,6 +2558,6 @@ class ScenarioOrakelTest {
             - de prijs van H1 is leeg
             """);
         pass(r);
-        assertNull(grond, "scenario == java-api (leeg)");
+        assertNull(ground, "scenario == java-api (leeg)");
     }
 }

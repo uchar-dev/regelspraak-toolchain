@@ -16,7 +16,7 @@
 # getal bewust bij. Een lege set faalt.
 #
 # De vocabulairetweeling: jutterswet-vocabulaires (twee vocabulaires, een benaming op elke declaratie) via
-# scripts/vocabulaire_replay.py met scripts/tweelingen/jutterswet-vocabulaires.dienst.json. Elke case gaat in de
+# scripts/vocabulaire_replay.py met scripts/tweelingen/jutterswet-vocabularies.service.json. Elke case gaat in de
 # canonieke spelling, in die van elk vocabulaire en gemengd, en vraagt zijn antwoord canoniek en in elk vocabulaire;
 # daarbij het vastgezette invoervocabulaire, de weigering van een andere spelling daaronder, het standaardvocabulaire
 # van een entrypoint en /info. De vertaaltafel is het ir.json van de golden. Gepind: het aantal cases (een gelijkheid,
@@ -38,7 +38,7 @@ TWEELINGEN=(
 )
 EXPECTED_CASES=18   # 2026-09-26: 10 + 4 + 4, de som van de pins hierboven
 
-VOCABULAIRE_TWEELING="jutterswet-vocabulaires|2"
+VOCABULARY_TWIN="jutterswet-vocabulaires|2"
 # 2026-09-27, uchar 43caed71: 2 cases × (4 spellingen × 3 uitvoervocabulaires + 3 vastgezet + 1 standaard + 1 weigering)
 EXPECTED_MIN_VOCABULAIRE_VERZOEKEN=34
 # 2026-09-27: dubbelzinnig, vastgezet in twee uitvoervocabulaires, onbekend vocabulaire
@@ -58,43 +58,43 @@ for t in "${TWEELINGEN[@]}"; do
   goldens+=("$g"); descriptors+=(--descriptor "$g=scripts/tweelingen/$g.dienst.json")
 done
 
-uitvoer=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden --werkers 3 \
+output=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden --werkers 3 \
     "${descriptors[@]}" "${goldens[@]}") || fail "de replay-driver faalde"
-echo "$uitvoer" | sed 's/^/  /'
+echo "$output" | sed 's/^/  /'
 
-totaal=0
+total=0
 for t in "${TWEELINGEN[@]}"; do
   g="${t%%|*}"; pin="${t#*|}"
-  regel=$(printf '%s\n' "$uitvoer" | awk -F'\t' -v g="$g" '$1 == g')
-  [ -n "$regel" ] || fail "'$g' kreeg geen uitkomst"
-  status=$(printf '%s' "$regel" | cut -f2); detail=$(printf '%s' "$regel" | cut -f3)
+  line=$(printf '%s\n' "$output" | awk -F'\t' -v g="$g" '$1 == g')
+  [ -n "$line" ] || fail "'$g' kreeg geen uitkomst"
+  status=$(printf '%s' "$line" | cut -f2); detail=$(printf '%s' "$line" | cut -f3)
   [ "$status" = PLAYED ] || fail "'$g' speelt niet door de dienst: $status $detail"
   [ "$detail" -eq "$pin" ] || fail "'$g' speelde $detail cases, gepind zijn er $pin"
-  totaal=$((totaal + detail))
+  total=$((total + detail))
 done
-[ "$totaal" -eq "$EXPECTED_CASES" ] || fail "$totaal cases gespeeld, EXPECTED_CASES pint $EXPECTED_CASES"
+[ "$total" -eq "$EXPECTED_CASES" ] || fail "$total cases gespeeld, EXPECTED_CASES pint $EXPECTED_CASES"
 
-vg="${VOCABULAIRE_TWEELING%%|*}"; vpin="${VOCABULAIRE_TWEELING#*|}"
+vg="${VOCABULARY_TWIN%%|*}"; vpin="${VOCABULARY_TWIN#*|}"
 [ -f "uchar/corpus/golden/$vg/bron.rgs" ] || fail "vocabulairetweeling '$vg' heeft geen bron.rgs in uchars corpus"
-getuige=scripts/tweelingen/vocabulaire-dubbelzinnig
-uitvoer=$(python3 scripts/vocabulaire_replay.py --corpus uchar/corpus/golden \
+witness=scripts/tweelingen/vocabulary-ambiguous
+output=$(python3 scripts/vocabulaire_replay.py --corpus uchar/corpus/golden \
     --golden "$vg=scripts/tweelingen/$vg.dienst.json" \
-    --getuige "vocabulaire-dubbelzinnig=$getuige.rgs,$getuige.dienst.json,$getuige.getuige.json") \
+    --witness "vocabulaire-dubbelzinnig=$witness.rgs,$witness.dienst.json,$witness.getuige.json") \
   || fail "de vocabulaire-driver faalde"
-echo "$uitvoer" | sed 's/^/  /'
-regel=$(printf '%s\n' "$uitvoer" | awk -F'\t' -v g="$vg" '$1 == g')
-[ -n "$regel" ] || fail "'$vg' kreeg geen uitkomst"
-[ "$(printf '%s' "$regel" | cut -f2)" = PLAYED ] || fail "'$vg' speelt niet in elk vocabulaire: $(printf '%s' "$regel" | cut -f2-)"
-vcases=$(printf '%s' "$regel" | cut -f3); vverzoeken=$(printf '%s' "$regel" | cut -f4)
+echo "$output" | sed 's/^/  /'
+line=$(printf '%s\n' "$output" | awk -F'\t' -v g="$vg" '$1 == g')
+[ -n "$line" ] || fail "'$vg' kreeg geen uitkomst"
+[ "$(printf '%s' "$line" | cut -f2)" = PLAYED ] || fail "'$vg' speelt niet in elk vocabulaire: $(printf '%s' "$line" | cut -f2-)"
+vcases=$(printf '%s' "$line" | cut -f3); vrequests=$(printf '%s' "$line" | cut -f4)
 [ "$vcases" -eq "$vpin" ] || fail "'$vg' speelde $vcases cases, gepind zijn er $vpin"
-[ "$vverzoeken" -ge "$EXPECTED_MIN_VOCABULAIRE_VERZOEKEN" ] \
-  || fail "'$vg' deed $vverzoeken verzoeken, de vloer EXPECTED_MIN_VOCABULAIRE_VERZOEKEN is $EXPECTED_MIN_VOCABULAIRE_VERZOEKEN"
-regel=$(printf '%s\n' "$uitvoer" | awk -F'\t' '$1 == "vocabulaire-dubbelzinnig"')
-[ -n "$regel" ] || fail "de getuige kreeg geen uitkomst"
-[ "$(printf '%s' "$regel" | cut -f2)" = PLAYED ] || fail "de getuige getuigt niet: $(printf '%s' "$regel" | cut -f2-)"
-getuigenissen=$(printf '%s' "$regel" | cut -f3)
-[ "$getuigenissen" -ge "$EXPECTED_MIN_GETUIGENISSEN" ] \
-  || fail "de getuige gaf $getuigenissen getuigenissen, de vloer EXPECTED_MIN_GETUIGENISSEN is $EXPECTED_MIN_GETUIGENISSEN"
+[ "$vrequests" -ge "$EXPECTED_MIN_VOCABULAIRE_VERZOEKEN" ] \
+  || fail "'$vg' deed $vrequests verzoeken, de vloer EXPECTED_MIN_VOCABULAIRE_VERZOEKEN is $EXPECTED_MIN_VOCABULAIRE_VERZOEKEN"
+line=$(printf '%s\n' "$output" | awk -F'\t' '$1 == "vocabulaire-dubbelzinnig"')
+[ -n "$line" ] || fail "de getuige kreeg geen uitkomst"
+[ "$(printf '%s' "$line" | cut -f2)" = PLAYED ] || fail "de getuige getuigt niet: $(printf '%s' "$line" | cut -f2-)"
+witnesses=$(printf '%s' "$line" | cut -f3)
+[ "$witnesses" -ge "$EXPECTED_MIN_GETUIGENISSEN" ] \
+  || fail "de getuige gaf $witnesses getuigenissen, de vloer EXPECTED_MIN_GETUIGENISSEN is $EXPECTED_MIN_GETUIGENISSEN"
 
-echo "check-tweelingen: PASS — ${#TWEELINGEN[@]} tweelingen, $totaal cases via HTTP met de gepinde verwachtingen;" \
-  "vocabulairetweeling $vg: $vcases cases in $vverzoeken verzoeken; getuige: $getuigenissen getuigenissen"
+echo "check-tweelingen: PASS — ${#TWEELINGEN[@]} tweelingen, $total cases via HTTP met de gepinde verwachtingen;" \
+  "vocabulairetweeling $vg: $vcases cases in $vrequests verzoeken; getuige: $witnesses getuigenissen"

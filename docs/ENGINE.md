@@ -2,7 +2,7 @@
 
 Everything here fires through uchar: a RegelSpraak source is resolved by uchar's frontend, emitted as a
 `uchar-ir-v1` document, and built by uchar's Drools backend on its exec-model branch
-(`DroolsBackend.build(document, branch)`, called from `UcharBouw`). That build generates the fact beans from the
+(`DroolsBackend.build(document, branch)`, called from `UcharBuild`). That build generates the fact beans from the
 model, compiles them into a class loader of their own, checks the bean contract and lowers every construct with
 every side table the loader returns. It refuses a model with a construct the branch does not lower, so no KieBase
 here lacks a rule without saying so.
@@ -31,18 +31,18 @@ needs the full timeline computes over that segment without a fault. `lijst(houde
 to-many list, which decides only which member a fault of a fold names; without it a list keeps the order of the
 inserts.
 The exec-model branch derives with truth maintenance, so a derived value is a fact of the session and the beans hold
-the input alone until `zetTerug()`: `lees()` gives what stands at the fixpoint of the last fire (uchar's `Fixpunt`: the
+the input alone until `restore()`: `lees()` gives what stands at the fixpoint of the last fire (uchar's `Fixpunt`: the
 derived values and characteristics, the objects and links the creations made, the evaluation faults as data, the
-inconsistencies) without writing anything, and `zetTerug()` puts it on the beans, after which the session does not
+inconsistencies) without writing anything, and `restore()` puts it on the beans, after which the session does not
 fire again. Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
 `update(bean)`; an object that comes or goes, a changed relation or another global asks a fresh session, and
 `setGlobal` belongs before the first `fire()`. uchar's entry refuses each of these by name. A model with an object or
 a fact creation fires once per session: uchar refuses a second `fire()` there, so a change asks a fresh session. In a
 session that may fire again, a forgotten `update` uchar's entry does not refuse: the entry does not see an attribute
-or a characteristic set without one, so the next `fire()` fires nothing, and `lees()` and `zetTerug()` give the old
+or a characteristic set without one, so the next `fire()` fires nothing, and `lees()` and `restore()` give the old
 fixpoint (uchar's `backends/drools/README.md`, "What a consumer can forget"). `fire()` returns the number of firings
 and throws with uchar's sentence when a run reaches no fixpoint;
-`zetTerug()` throws every evaluation fault that stands at the fixpoint as uchar's own exception, two or more as
+`restore()` throws every evaluation fault that stands at the fixpoint as uchar's own exception, two or more as
 `Evaluatiefouten`: one of the four types uchar's README names (`Breuk.DelingDoorNul`, `Rekenfout`,
 `Schrijversconflict`, `Invoervormfout`) or another, such as the `IllegalStateException` of a fact creation that gives
 a to-one role a second filling. A fault is an evaluation fault by its place at the fixpoint, not by its type:
@@ -72,11 +72,11 @@ gives what uchar's replay gives on the same case; a type error and a construct u
 
 ## The decision service
 
-`service/` (`DienstMain`, the JDK `HttpServer`) and `service-quarkus/` (the Quarkus adapter) serve a JSON
-descriptor over the same core (`BeslisserKern`). Its source is a set of `.rgs` files, resolved together into one
+`service/` (`ServiceMain`, the JDK `HttpServer`) and `service-quarkus/` (the Quarkus adapter) serve a JSON
+descriptor over the same core (`DecisionCore`). Its source is a set of `.rgs` files, resolved together into one
 model, or one `uchar-ir-v1` document (a `.json` file) that uchar's loader reads. Per entry point the core keeps the
 forms its scope names — the rules, decision-table rows, defaults groups and other forms of its rule names and rule
-groups (`VormIndex`, then `CaseEmitter.metScope`, the lowering of uchar's scenario layer) — and builds that document
+groups (`FormIndex`, then `CaseEmitter.metScope`, the lowering of uchar's scenario layer) — and builds that document
 through uchar, so each entry point has its own KieBase and bean class loader and a form outside its scope does not
 decide whether it runs. A defaults group without a base of its own, which uchar makes of the own exceptions of a
 subtype (`<basis> voor <subtype>`), goes with the groups of the base it inherits, since RUNTIME-SEMANTICS ch. 7.10
@@ -106,7 +106,7 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
 ```
 
 - `POST /<pad>` per entry point; `?uitleg=true` adds the verbaliser's sentences to the answer. The service makes no
-  bean itself: `VerzoekMapper` validates the request (names, types, units; a 400 with the field path) and writes it as
+  bean itself: `RequestMapper` validates the request (names, types, units; a 400 with the field path) and writes it as
   the input of a `uchar-case-v0` case, `{"asOfDate", "input": {"instances": [...]}}` with the ids of the request as
   labels, the inline `rollen` and each relation of `relaties` as `roles` (a relation on the end whose role toward the
   other is to-one). uchar's input step reads that case (`CaseInvoer.van`), the one its replay reads every case with:
@@ -122,13 +122,13 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   as well: a 400 `VERKEERD_TYPE` on the field that holds it (`peildatum`, `rekendatum` or the attribute), with uchar's
   sentence. An enumeration value names a declared value as uchar compares declared names (case and spacing aside),
   and keeps its own spelling.
-- Names and vocabularies (README, "Vocabularies"). `NaamLezer` reads every name of a request canonically or as a
+- Names and vocabularies (README, "Vocabularies"). `NameReader` reads every name of a request canonically or as a
   designation in any vocabulary of the model (uchar's `RegelSpraakModel.benoemd`), within the scope of its kind,
   case-insensitively and mixed; a name that reads as two declarations is a 400 `DUBBELZINNIGE_NAAM` naming both
   readings, and `?invoervocabulaire=<naam>` (or `canoniek`) pins the vocabulary names are read in. A designation is
   read as the declaration's canonical name, an enumeration value as the declared value it names. Two names of one
   object that read as one declaration are a 400 `MALFORMED`. `?vocabulaire=<naam>` chooses the names of the answer,
-  its `inconsistenties` and its `uitleg` (`Naamgeving`), else the entry point's `vocabulaire` from the descriptor,
+  its `inconsistenties` and its `uitleg` (`Naming`), else the entry point's `vocabulaire` from the descriptor,
   else the canonical names; an unknown vocabulary is a 400 `ONBEKEND_VOCABULAIRE`, and a descriptor naming one does
   not start. A declaration without a designation in the chosen vocabulary keeps its canonical name. The Quarkus
   adapter reads the same query parameters.
@@ -153,11 +153,11 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   kinds).
 - A request whose session reaches no fixpoint gets 422 with `{"status": "GEEN_FIXPUNT", "fout": <uchar's
   sentence>}`: uchar's `DroolsBackend.vuur` ended the run at its fire cap or at the creation budget
-  (`Vuring.geenFixpunt`), and the core throws `GeenFixpunt` with that sentence. Nothing stands to be read then, so
+  (`Vuring.geenFixpunt`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so
   nothing is read or written back; the service does not judge which of the two it was. With the detail flags (below)
   the 422 carries `trace` and `dekking` of what fired up to the end of the run, and for `?fixpunt=true` `fixpuntFout`
   with the same sentence. The Quarkus adapter answers the same; the OpenAPI 422 is one of `Evaluatiefout` and
-  `GeenFixpunt`. Any other exception stays a 500 `interne fout`.
+  `NoFixpoint`. Any other exception stays a 500 `interne fout`.
 - The detail of a session. A service started with `--detail` or `DETAIL=true` (Quarkus: `DETAIL=true`; default off,
   as `PLAYGROUND`, and no part of the container contract) answers three more query flags, read as `uitleg` is (`true`
   or bare), each adding a field after `uitleg`: `?trace=true` gives `trace: [{regel, labels, aantal}]`, per form that
@@ -174,8 +174,8 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   fields show every intermediate value, where the answer gives the selected `uitvoer` alone, so a service started
   without `DETAIL` answers each flag with a 400 `NIET_ONDERSTEUND` whose `veld` is the flag's name, before the body is
   read. Without a flag the answer is byte for byte that of a service without `DETAIL`. The core builds the fields
-  (`BeslisserKern.verwerk` with the flags of `VerzoekOpties`), so the Quarkus adapter answers the same, and the
-  playground and the service render a fixpoint with one class (`FixpuntGegevens`).
+  (`DecisionCore.process` with the flags of `RequestOptions`), so the Quarkus adapter answers the same, and the
+  playground and the service render a fixpoint with one class (`FixpointGivens`).
 - `GET /info`: per entry point whether it is `uitvoerbaar`, its `dekking` (the exec-model branch's verdict per form
   of its document, defaults groups included), its markers and, when uchar does not carry it, uchar's sentence as
   `weigering`; the parameter defaults, the loaded parameter sets and the period-coverage warnings. An entry point
@@ -189,7 +189,7 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   every enumeration its values' in `x-waardespellingen`, the descriptions say the service accepts them, the
   operations document `vocabulaire` and `invoervocabulaire`, and `info.x-vocabulaire` names the document's
   vocabulary. A model without vocabularies gets none of it. Every operation documents the flags `uitleg`, `trace`,
-  `dekking` and `fixpunt`; `Antwoord` has the fields they add, `Evaluatiefout` those of the detail, with the
+  `dekking` and `fixpunt`; `Antwoord` has the fields they add, `EvaluationFault` those of the detail, with the
   components `Trace`, `Dekking` and `Fixpunt`. The 422 is one of `Evaluatiefout` and `GeenFixpunt`. The documents are written by the emitter's API
   (`schrijf`, file `<dienst>.<vocabulaire>.json`); the service serves no route for them.
 - What uchar does not carry — a refusal of its emitter, loader or backend (a construct the exec-model branch does
@@ -228,21 +228,21 @@ bin/regelspraak serve <descriptor.dienst.json> <bron.rgs…> | <document.json> [
   scenarios, so that a PASS says: this service gives this answer. It shows the session of each scenario, so a service
   started without `DETAIL` answers it with a 400 that names `DETAIL` (`veld` `via`), and another value of `via` is a
   400. The service computes with its own sources: the `uchar-ir-v1` document uchar's emitter writes of the posted
-  source, without its scenarios, must equal the service's (`BeslisserKern.document`: the document it was given, or the
+  source, without its scenarios, must equal the service's (`DecisionCore.document`: the document it was given, or the
   one its `.rgs` sources make, in the order the service reads them), as JSON trees, the source lines uchar's document
   carries included; otherwise the whole request is a 400 `NIET_ONDERSTEUND` on `veld` `bron` that names the first
   difference as a JSON pointer. A source with a parse or resolver error gets its diagnostics, as without the flag. Per
   scenario:
-  - its scope is mapped to an entry point of the descriptor (`BeslisserKern.padVoorScope`): one whose scope carries the
+  - its scope is mapped to an entry point of the descriptor (`DecisionCore.pathForScope`): one whose scope carries the
     forms of the scenario's scope, or every form of the model for a scenario without a scope; an exact match first, else
     the entry point with the fewest forms beside them, the first in the descriptor's order on a tie. The result names
     it as `pad`, after `regel`. Without one the result is a MARKER whose `diagnose` says what each entry point lacks,
     with `pad` null; there is no fallback to the ordinary route;
-  - the situation becomes a request (`SituatieNaarVerzoek`, each instance with its label as its id, the names
+  - the situation becomes a request (`SituationToRequest`, each instance with its label as its id, the names
     canonical, read with `invoervocabulaire=canoniek`), and the core answers it with `uitleg`, `trace`, `dekking` and
     `fixpunt`, in the vocabulary of `?vocabulaire=` (canonical without it). uchar compares the `expected` of the case
     its frontend writes for the scenario with the written-back session of that request, the ids of the request as
-    labels (`BeslisserKern.beoordeel`, `DroolsBackend.vergelijk`): PASS or FAIL, the `verwachtingen` and the `diagnose`
+    labels (`DecisionCore.assess`, `DroolsBackend.vergelijk`): PASS or FAIL, the `verwachtingen` and the `diagnose`
     as uchar's report gives them, prefixed with the name of the case file as the report prefixes it;
   - an evaluation fault (the service's 422) is a FAIL with no `verwachtingen` and the line of uchar's report,
     `<case file>: ERROR <exception>: <sentence>`, the exception uchar's write-back throws for the faults; `trace`,

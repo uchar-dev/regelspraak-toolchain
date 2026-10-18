@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
+import dev.uchar.regelspraak.toolchain.engine.Naming;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -22,63 +22,63 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.junit.jupiter.api.Assertions.fail;
 
 /**
- * The OpenAPI document per vocabulary ({@link OpenApiEmitter#emit(DienstDescriptor, RegelSpraakModel, String)}) over
+ * The OpenAPI document per vocabulary ({@link OpenApiEmitter#emit(ServiceDescriptor, RegelSpraakModel, String)}) over
  * uchar's golden {@code jutterswet-vocabulaires}: the canonical document and those of {@code handboek} and {@code cgm}
  * are byte-pinned against goldens under {@code src/test/resources/openapi/} and written to {@code target/openapi/},
  * each property, value and entry point lists its other spellings, and a model without vocabularies gets none of the
  * extension (the TOKA golden of {@link OpenApiEmitterTest} pins that byte for byte; here an own model without
  * vocabularies is searched for any trace of it).
  */
-class OpenApiVocabulaireTest {
+class OpenApiVocabularyTest {
 
     private static final Path GOLDENS = Path.of("src/test/resources/openapi");
-    private static DienstDescriptor DESCRIPTOR;
+    private static ServiceDescriptor DESCRIPTOR;
     private static RegelSpraakModel MODEL;
 
     @BeforeAll
-    static void bouw() throws IOException {
-        MODEL = VocabulaireBron.model();
-        DESCRIPTOR = DescriptorLoader.MAPPER.readValue(VocabulaireBron.descriptorJson(), DienstDescriptor.class);
+    static void assemble() throws IOException {
+        MODEL = VocabularySource.model();
+        DESCRIPTOR = DescriptorLoader.MAPPER.readValue(VocabularySource.descriptorJson(), ServiceDescriptor.class);
         for (String v : new String[]{null, "handboek", "cgm"})
-            OpenApiEmitter.schrijf(DESCRIPTOR, MODEL, v, Path.of("target", "openapi", OpenApiEmitter.bestandsnaam(DESCRIPTOR, v)));
+            OpenApiEmitter.write(DESCRIPTOR, MODEL, v, Path.of("target", "openapi", OpenApiEmitter.fileName(DESCRIPTOR, v)));
     }
 
-    private static void byteGelijk(String vocabulaire) throws IOException {
-        String naam = OpenApiEmitter.bestandsnaam(DESCRIPTOR, vocabulaire).replace(".json", ".golden.json");
-        byte[] verwacht = Files.readAllBytes(GOLDENS.resolve(naam));
-        byte[] werkelijk = OpenApiEmitter.naarBytes(OpenApiEmitter.emit(DESCRIPTOR, MODEL, vocabulaire));
-        if (Arrays.equals(verwacht, werkelijk)) return;
-        String v = new String(verwacht, StandardCharsets.UTF_8), w = new String(werkelijk, StandardCharsets.UTF_8);
+    private static void byteEqual(String vocabulary) throws IOException {
+        String name = OpenApiEmitter.fileName(DESCRIPTOR, vocabulary).replace(".json", ".golden.json");
+        byte[] expected = Files.readAllBytes(GOLDENS.resolve(name));
+        byte[] actual = OpenApiEmitter.toBytes(OpenApiEmitter.emit(DESCRIPTOR, MODEL, vocabulary));
+        if (Arrays.equals(expected, actual)) return;
+        String v = new String(expected, StandardCharsets.UTF_8), w = new String(actual, StandardCharsets.UTF_8);
         int i = 0;
         while (i < Math.min(v.length(), w.length()) && v.charAt(i) == w.charAt(i)) i++;
-        fail(naam + " wijkt af op teken " + i + ": golden '" + v.substring(i, Math.min(v.length(), i + 120))
+        fail(name + " wijkt af op teken " + i + ": golden '" + v.substring(i, Math.min(v.length(), i + 120))
                 + "', emitted '" + w.substring(i, Math.min(w.length(), i + 120)) + "'; is dit een bewuste wijziging,"
                 + " schrijf de golden dan opnieuw uit target/openapi/");
     }
 
     @Test
-    void het_canonieke_document_is_byte_gelijk_aan_de_golden() throws IOException { byteGelijk(null); }
+    void the_canonical_document_is_byte_equal_to_the_golden() throws IOException { byteEqual(null); }
 
     @Test
-    void het_document_van_het_handboek_is_byte_gelijk_aan_de_golden() throws IOException { byteGelijk("handboek"); }
+    void the_document_of_the_handbook_is_byte_equal_to_the_golden() throws IOException { byteEqual("handboek"); }
 
     @Test
-    void het_document_van_cgm_is_byte_gelijk_aan_de_golden() throws IOException { byteGelijk("cgm"); }
+    void the_document_of_cgm_is_byte_equal_to_the_golden() throws IOException { byteEqual("cgm"); }
 
     @Test
-    void elke_eigenschap_waarde_en_entrypoint_noemt_zijn_andere_spellingen() {
+    void every_property_value_and_entrypoint_names_its_other_spellings() {
         ObjectNode doc = OpenApiEmitter.emit(DESCRIPTOR, MODEL, "cgm");
         assertEquals("cgm", doc.at("/info/x-vocabulaire").asText());
         JsonNode vondst = doc.at("/components/schemas/Vondst");
-        JsonNode soort = vondst.at("/properties/VONDST_SOORT");
-        assertEquals("[\"WRAKHOUT\",\"BARNSTEEN\",\"FLESSENPOST\"]", soort.get("enum").toString());
-        assertEquals("soort", soort.at("/x-spellingen/canoniek").asText());
-        assertEquals("soort vondst", soort.at("/x-spellingen/handboek").asText());
-        assertFalse(soort.get("x-spellingen").has("cgm"), "het eigen vocabulaire is geen andere spelling");
-        assertEquals("amber", soort.at("/x-waardespellingen/BARNSTEEN/handboek").asText());
-        assertEquals("barnsteen", soort.at("/x-waardespellingen/BARNSTEEN/canoniek").asText());
+        JsonNode kind = vondst.at("/properties/VONDST_SOORT");
+        assertEquals("[\"WRAKHOUT\",\"BARNSTEEN\",\"FLESSENPOST\"]", kind.get("enum").toString());
+        assertEquals("soort", kind.at("/x-spellingen/canoniek").asText());
+        assertEquals("soort vondst", kind.at("/x-spellingen/handboek").asText());
+        assertFalse(kind.get("x-spellingen").has("cgm"), "het eigen vocabulaire is geen andere spelling");
+        assertEquals("amber", kind.at("/x-waardespellingen/BARNSTEEN/handboek").asText());
+        assertEquals("barnsteen", kind.at("/x-waardespellingen/BARNSTEEN/canoniek").asText());
         assertEquals("De dienst neemt ook 'soort' (canoniek) en 'soort vondst' (handboek) aan.",
-                soort.get("description").asText());
+                kind.get("description").asText());
         assertEquals("aangespoeld voorwerp", vondst.at("/x-spellingen/handboek").asText());
         JsonNode post = doc.at("/paths/~1premie/post");
         assertEquals("[\"Jutter\",\"Vondst\"]", post.at("/x-spellingen/canoniek/invoer").toString());
@@ -88,18 +88,18 @@ class OpenApiVocabulaireTest {
         assertTrue(doc.at("/paths/~1premie-cgm/post/parameters/0/description").asText().contains("'cgm', de standaard"),
                 doc.at("/paths/~1premie-cgm/post/parameters/0/description").asText());
 
-        ObjectNode canoniek = OpenApiEmitter.emit(DESCRIPTOR, MODEL, "canoniek");
-        assertEquals(OpenApiEmitter.emit(DESCRIPTOR, MODEL), canoniek);
-        assertEquals("VONDST_SOORT", canoniek.at("/components/schemas/Vondst/properties/soort/x-spellingen/cgm").asText());
+        ObjectNode canonical = OpenApiEmitter.emit(DESCRIPTOR, MODEL, "canoniek");
+        assertEquals(OpenApiEmitter.emit(DESCRIPTOR, MODEL), canonical);
+        assertEquals("VONDST_SOORT", canonical.at("/components/schemas/Vondst/properties/soort/x-spellingen/cgm").asText());
     }
 
     @Test
-    void een_model_zonder_vocabulaires_krijgt_geen_extensie() throws IOException {
-        DienstDescriptor d = DescriptorLoader.MAPPER.readValue(KetenBron.descriptorJson(), DienstDescriptor.class);
-        String doc = new String(OpenApiEmitter.naarBytes(OpenApiEmitter.emit(d, KetenBron.model())), StandardCharsets.UTF_8);
-        for (String spoor : new String[]{"x-spellingen", "x-waardespellingen", "x-vocabulaire", "invoervocabulaire"})
-            assertFalse(doc.contains(spoor), "'" + spoor + "' in een document zonder vocabulaires");
-        assertThrows(Naamgeving.Vocabulairefout.class, () -> OpenApiEmitter.emit(d, KetenBron.model(), "cgm"));
-        assertThrows(Naamgeving.Vocabulairefout.class, () -> OpenApiEmitter.emit(DESCRIPTOR, MODEL, "wetboek"));
+    void a_model_without_vocabularies_gets_no_extension() throws IOException {
+        ServiceDescriptor d = DescriptorLoader.MAPPER.readValue(ChainSource.descriptorJson(), ServiceDescriptor.class);
+        String doc = new String(OpenApiEmitter.toBytes(OpenApiEmitter.emit(d, ChainSource.model())), StandardCharsets.UTF_8);
+        for (String trace : new String[]{"x-spellingen", "x-waardespellingen", "x-vocabulaire", "invoervocabulaire"})
+            assertFalse(doc.contains(trace), "'" + trace + "' in een document zonder vocabulaires");
+        assertThrows(Naming.VocabularyError.class, () -> OpenApiEmitter.emit(d, ChainSource.model(), "cgm"));
+        assertThrows(Naming.VocabularyError.class, () -> OpenApiEmitter.emit(DESCRIPTOR, MODEL, "wetboek"));
     }
 }

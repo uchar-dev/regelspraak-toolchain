@@ -16,12 +16,12 @@ import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The session {@link ScenarioRunner#runMetUitleg} gives beside each report: the case played in a session of its own,
+ * The session {@link ScenarioRunner#runWithUitleg} gives beside each report: the case played in a session of its own,
  * with uchar's reading of its fixpoint ({@code DroolsBackend.lees}) taken before the write-back. It is there when the
  * session follows uchar's replay; for a case the replay did not play out it is there when evaluation faults stand at
  * its fixpoint, the faults that made the replay's write-back throw, now as data; a MARKER scenario has none.
  */
-class ScenarioRunnerSessieTest {
+class ScenarioRunnerSessionTest {
 
     private static final String BERGING = """
             Objecttype de Berging (mv: Bergingen)
@@ -37,14 +37,14 @@ class ScenarioRunnerSessieTest {
             Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
             """;
 
-    private static List<ScenarioRunner.Uitgelegd> speel(String bron) {
-        return ScenarioRunner.runMetUitleg(ScenarioResolver.resolve(bron));
+    private static List<ScenarioRunner.Explained> play(String source) {
+        return ScenarioRunner.runWithUitleg(ScenarioResolver.resolve(source));
     }
 
     /** A played scenario: the fixpoint carries every derived value, the one without an expectation too, on the bean of
      *  the input it was read for; the session is the one the explanation verbalised. */
-    @Test void een_gespeeld_scenario_geeft_zijn_fixpunt() {
-        List<ScenarioRunner.Uitgelegd> u = speel(BERGING + """
+    @Test void a_played_scenario_gives_its_fixpoint() {
+        List<ScenarioRunner.Explained> u = play(BERGING + """
             Scenario met twee helpers
             Gegeven is de volgende situatie:
             een Berging B
@@ -54,22 +54,22 @@ class ScenarioRunnerSessieTest {
             - de premie van B is 20,00
             """);
         assertEquals(1, u.size());
-        ScenarioRunner.Uitgelegd s = u.get(0);
-        assertEquals(Status.PASS, s.resultaat().status(), s.resultaat()::diagnose);
-        assertNull(s.sessieFout(), s::sessieFout);
-        assertNotNull(s.sessie());
-        Fixpunt f = s.sessie().fixpunt();
+        ScenarioRunner.Explained s = u.get(0);
+        assertEquals(Status.PASS, s.result().status(), s.result()::diagnose);
+        assertNull(s.sessionError(), s::sessionError);
+        assertNotNull(s.session());
+        Fixpunt f = s.session().fixpoint();
         assertTrue(f.fouten().isEmpty(), f.fouten()::toString);
-        Object b = s.sessie().beans().get("B");
-        List<String> afgeleid = f.waarden().stream().filter(w -> w.object() == b)
+        Object b = s.session().beans().get("B");
+        List<String> derived = f.waarden().stream().filter(w -> w.object() == b)
                 .map(w -> w.attribuut() + "=" + w.waarde()).sorted().toList();
-        assertEquals(List.of("helpersdeel=50", "premie=20"), afgeleid, "het helpersdeel heeft geen verwachting");
+        assertEquals(List.of("helpersdeel=50", "premie=20"), derived, "het helpersdeel heeft geen verwachting");
     }
 
     /** A division by zero stands at the fixpoint: uchar's replay throws it at the write-back and does not play the case
      *  out, so there is no explanation; the session reads the fault as data and does not write back. */
-    @Test void een_staande_evaluatiefout_staat_als_gegeven_in_het_fixpunt() {
-        List<ScenarioRunner.Uitgelegd> u = speel(BERGING + """
+    @Test void a_standing_evaluation_fault_stands_as_given_in_the_fixpoint() {
+        List<ScenarioRunner.Explained> u = play(BERGING + """
             Scenario zonder helpers
             Gegeven is de volgende situatie:
             een Berging B
@@ -78,24 +78,24 @@ class ScenarioRunnerSessieTest {
             Met als verwacht resultaat:
             - de premie van B is 20,00
             """);
-        ScenarioRunner.Uitgelegd s = u.get(0);
-        assertEquals(Status.FAIL, s.resultaat().status(), s.resultaat()::diagnose);
-        assertTrue(s.resultaat().verwachtingen().isEmpty(), s.resultaat().verwachtingen()::toString);
-        assertTrue(s.uitlegFout().startsWith("uchars replay speelde de case niet uit: "), s::uitlegFout);
+        ScenarioRunner.Explained s = u.get(0);
+        assertEquals(Status.FAIL, s.result().status(), s.result()::diagnose);
+        assertTrue(s.result().verwachtingen().isEmpty(), s.result().verwachtingen()::toString);
+        assertTrue(s.uitlegError().startsWith("uchars replay speelde de case niet uit: "), s::uitlegError);
         assertTrue(s.uitleg().isEmpty());
-        assertNull(s.sessieFout(), s::sessieFout);
-        List<Fout> fouten = s.sessie().fixpunt().fouten();
-        assertEquals(1, fouten.size(), fouten::toString);
-        assertEquals("helpersdeel van een berging", fouten.get(0).regel());
-        assertSame(s.sessie().beans().get("B"), fouten.get(0).onderwerp());
-        assertTrue(fouten.get(0).melding().contains("deling door nul"), fouten.get(0)::melding);
-        assertNull(CaseSessie.lees(s.sessie().beans().get("B"), "getPremie"),
+        assertNull(s.sessionError(), s::sessionError);
+        List<Fout> errors = s.session().fixpoint().fouten();
+        assertEquals(1, errors.size(), errors::toString);
+        assertEquals("helpersdeel van een berging", errors.get(0).regel());
+        assertSame(s.session().beans().get("B"), errors.get(0).onderwerp());
+        assertTrue(errors.get(0).melding().contains("deling door nul"), errors.get(0)::melding);
+        assertNull(CaseSession.read(s.session().beans().get("B"), "getPremie"),
                 "met een staande fout zet de sessie niets terug: de bean houdt de invoer");
     }
 
     /** A MARKER scenario has no session: uchar's replay did not play it. */
-    @Test void een_marker_heeft_geen_sessie() {
-        List<ScenarioRunner.Uitgelegd> u = speel("""
+    @Test void a_marker_has_no_session() {
+        List<ScenarioRunner.Explained> u = play("""
             Objecttype de Vlucht (mv: Vluchten)
                 de heffing Numeriek (niet-negatief geheel getal);
                 is belast kenmerk (bijvoeglijk) voor elke dag;
@@ -111,8 +111,8 @@ class ScenarioRunnerSessieTest {
             Met als verwacht resultaat:
             - de heffing van V1 is 5
             """);
-        assertEquals(Status.MARKER, u.get(0).resultaat().status(), u.get(0).resultaat()::diagnose);
-        assertNull(u.get(0).sessie());
-        assertNull(u.get(0).sessieFout());
+        assertEquals(Status.MARKER, u.get(0).result().status(), u.get(0).result()::diagnose);
+        assertNull(u.get(0).session());
+        assertNull(u.get(0).sessionError());
     }
 }

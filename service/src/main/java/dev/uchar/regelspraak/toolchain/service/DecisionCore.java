@@ -12,18 +12,18 @@ import dev.uchar.regelspraak.ir.Bron;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
-import dev.uchar.regelspraak.toolchain.engine.Naamgeving;
-import dev.uchar.regelspraak.toolchain.engine.ParametersetLader;
-import dev.uchar.regelspraak.toolchain.engine.UcharBouw;
-import dev.uchar.regelspraak.toolchain.engine.Verbalisator;
-import dev.uchar.regelspraak.toolchain.engine.ParametersetLader.ParametersetFout;
+import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.toolchain.engine.ParameterSetLoader;
+import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
+import dev.uchar.regelspraak.toolchain.engine.Verbaliser;
+import dev.uchar.regelspraak.toolchain.engine.ParameterSetLoader.ParameterSetError;
 import dev.uchar.regelspraak.graaf.ProducentConsument;
 import dev.uchar.regelspraak.graaf.ProducentConsument.ElementSleutel;
 import dev.uchar.regelspraak.model.Parameterset;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
-import dev.uchar.regelspraak.transpiler.kern.Dekking;
-import dev.uchar.regelspraak.transpiler.kern.PeriodeDekking;
+import dev.uchar.regelspraak.transpiler.core.Dekking;
+import dev.uchar.regelspraak.transpiler.core.PeriodeDekking;
 import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
 
 import org.kie.api.KieBase;
@@ -47,55 +47,55 @@ import java.util.Map;
  *       descriptor is validated against it (unknown regel / regelgroep / objecttype / attribuut / kenmerk /
  *       parameter = a startup error naming the value, ALL collected first). A file set whose union does not
  *       resolve refuses startup with the resolver diagnostics.</li>
- *   <li><b>Build each entry point from the forms of its scope</b> ({@link VormIndex}): the forms its rule names
+ *   <li><b>Build each entry point from the forms of its scope</b> ({@link FormIndex}): the forms its rule names
  *       and rule groups carry are kept, the others dropped ({@link CaseEmitter#metScope}, the lowering uchar's
  *       scenario layer uses), and that model is emitted as a {@code uchar-ir-v1} document and built by uchar's
- *       backend on the exec-model branch ({@link UcharBouw}) — one {@link KieBase} per entry point, so upstream
+ *       backend on the exec-model branch ({@link UcharBuild}) — one {@link KieBase} per entry point, so upstream
  *       rules cannot overwrite request-given intermediate inputs, and a form outside the scope does not decide
  *       whether the entry point runs. The build generates the fact beans into a class loader of the entry point's
  *       own, checks the bean contract, and lowers every form with every side table the loader returns.</li>
  *   <li><b>Fail-fast on what uchar does not carry</b> — every refusal on the way (emitter, loader, document,
  *       backend: a construct the exec-model branch does not lower among them), and a scoped rule name that carries
- *       no form in uchar's model, makes the entry point a marker. With {@link KernConfig#allowMarkers()} false the
+ *       no form in uchar's model, makes the entry point a marker. With {@link CoreConfig#allowMarkers()} false the
  *       startup refuses naming it; with true it starts, lists it under the entry point's markers with uchar's
- *       sentence, and refuses every request to that entry point ({@link NietUitvoerbaar}), since an answer
+ *       sentence, and refuses every request to that entry point ({@link NonExecutable}), since an answer
  *       without the construct would be an answer to another rule set.</li>
  * </ol>
  *
  * <p>The generated beans live on the entry point's class loader, so every fact {@code Class.forName}/read/write
  * of a request goes through it. KieBases are immutable after startup; a session is opened per request
- * ({@link Uitvoerder}), so the core is thread-safe by construction.
+ * ({@link Executor}), so the core is thread-safe by construction.
  */
-public final class BeslisserKern {
+public final class DecisionCore {
 
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);
 
-    private final DienstDescriptor descriptor;
+    private final ServiceDescriptor descriptor;
     private final RegelSpraakModel model;
-    private final Map<String, Entrypoint> perPad;   // URL path -> compiled entry point
+    private final Map<String, Entrypoint> perPath;   // URL path -> compiled entry point
     /** The loaded, validity-versioned parameter sets (fase 5), or empty when the descriptor names no sidecar. */
-    private final List<Parameterset> parametersets;
+    private final List<Parameterset> parameterSets;
     /** The rendered {@link PeriodeDekking} WARNING lines (regel-geldigheid × parameter-geldigheid gaps), computed
-     *  once at startup; served verbatim on /info and logged by DienstMain. Empty when no gap or no sets. */
-    private final List<String> periodeWaarschuwingen;
-    /** Whether a request may ask to see its session ({@link KernConfig#detail()}). */
+     *  once at startup; served verbatim on /info and logged by ServiceMain. Empty when no gap or no sets. */
+    private final List<String> periodWarnings;
+    /** Whether a request may ask to see its session ({@link CoreConfig#detail()}). */
     private final boolean detail;
     /** The forms of the model by the names a scope uses, as the entry points were built from them. */
-    private final VormIndex vormen;
+    private final FormIndex forms;
     /** The {@code uchar-ir-v1} document of the source: the one the service was given, or, for {@code .rgs} sources,
      *  the one uchar's emitter writes of the model, emitted on the first ask ({@link #document()}). */
     private volatile String document;
 
-    private BeslisserKern(DienstDescriptor descriptor, RegelSpraakModel model,
-                          Map<String, Entrypoint> perPad, List<Parameterset> parametersets,
-                          List<String> periodeWaarschuwingen, boolean detail, VormIndex vormen, String document) {
+    private DecisionCore(ServiceDescriptor descriptor, RegelSpraakModel model,
+                          Map<String, Entrypoint> perPath, List<Parameterset> parameterSets,
+                          List<String> periodWarnings, boolean detail, FormIndex forms, String document) {
         this.descriptor = descriptor;
         this.model = model;
-        this.perPad = perPad;
-        this.parametersets = parametersets;
-        this.periodeWaarschuwingen = periodeWaarschuwingen;
+        this.perPath = perPath;
+        this.parameterSets = parameterSets;
+        this.periodWarnings = periodWarnings;
         this.detail = detail;
-        this.vormen = vormen;
+        this.forms = forms;
         this.document = document;
     }
 
@@ -104,20 +104,20 @@ public final class BeslisserKern {
      *  to go through uchar's entry), its marker list, the descriptor parameter defaults resolved to globals, and when
      *  uchar refused its build, the refusal.
      *
-     *  <p>{@link #dekking()} is the exec-model branch's manifest of the entry point's document, one verdict per form,
+     *  <p>{@link #coverage()} is the exec-model branch's manifest of the entry point's document, one verdict per form,
      *  the defaults groups included; the document carries only the forms of the scope, so the manifest is the
      *  scope's. {@code /info} reports it verbatim.
      *
-     *  <p>An entry point uchar does not carry, started with {@link KernConfig#allowMarkers()}, has no build:
+     *  <p>An entry point uchar does not carry, started with {@link CoreConfig#allowMarkers()}, has no build:
      *  {@code markers} names the construct when uchar's refusal names one, {@code weigering} carries uchar's sentence,
-     *  and a request to it is refused with {@link NietUitvoerbaar}. */
-    public record Entrypoint(DienstDescriptor.Entrypoint descriptor, DroolsBackend.Build build,
-                             List<String> markers, Map<String, Object> defaultGlobals, String weigering) {
+     *  and a request to it is refused with {@link NonExecutable}. */
+    public record Entrypoint(ServiceDescriptor.Entrypoint descriptor, DroolsBackend.Build build,
+                             List<String> markers, Map<String, Object> defaultGlobals, String refusal) {
         /** Whether a request to this entry point can fire: uchar built it. */
-        public boolean uitvoerbaar() { return build != null; }
+        public boolean executable() { return build != null; }
 
         /** The manifest of the build, empty for an entry point uchar does not carry. */
-        public List<Dekking> dekking() { return build == null ? List.of() : build.dekking(); }
+        public List<Dekking> coverage() { return build == null ? List.of() : build.dekking(); }
 
         /** The class loader of the generated fact beans, null for an entry point uchar does not carry. */
         public ClassLoader beanLoader() { return build == null ? null : build.beanLoader(); }
@@ -126,137 +126,137 @@ public final class BeslisserKern {
     // ---------------- startup ----------------
 
     /** Build the core from a descriptor file and the service's {@code .rgs} source files (in order), or from one
-     *  {@code uchar-ir-v1} document (a {@code .json} file, the only source then; see {@link #bouwVanDocument}). The
+     *  {@code uchar-ir-v1} document (a {@code .json} file, the only source then; see {@link #buildFromDocument}). The
      *  {@code loader} is the parent for the bean classloader; the generated beans are served from a child
      *  loader created here, not looked up on {@code loader}.
      *
-     *  <p><b>Parametersets (fase 5, decision A).</b> When the descriptor names a {@code parametersets} sidecar
-     *  file, it is read RELATIVE to {@code descriptorBestand} ({@code descriptorBestand.getParent().resolve(naam)})
-     *  and handed to the String-form as {@code parametersetsJson}. A named-but-unreadable sidecar refuses startup
-     *  with a {@link DienstFout} naming the bouw-pad (never a silent skip). */
-    public static BeslisserKern bouw(Path descriptorBestand, List<Path> bronBestanden, KernConfig config,
+     *  <p><b>Parametersets (fase 5, decision A).</b> When the descriptor names a {@code parameterSets} sidecar
+     *  file, it is read RELATIVE to {@code descriptorFile} ({@code descriptorFile.getParent().resolve(naam)})
+     *  and handed to the String-form as {@code parameterSetsJson}. A named-but-unreadable sidecar refuses startup
+     *  with a {@link ServiceError} naming the bouw-pad (never a silent skip). */
+    public static DecisionCore assemble(Path descriptorFile, List<Path> sourceFiles, CoreConfig config,
                                      ClassLoader loader) throws IOException {
-        boolean document = bronBestanden.stream().anyMatch(BeslisserKern::isDocument);
-        if (document && bronBestanden.size() != 1)
-            throw new DienstFout("dienst start niet: een uchar-ir-v1-document is de enige bron van een dienst",
-                    List.of(Schending.van(Schending.Soort.MALFORMED, "bronnen",
-                            "de bronnen mengen een .json-document met andere bestanden: " + bronBestanden)));
-        Map<String, String> tekst = new LinkedHashMap<>();
-        for (Path p : bronBestanden) tekst.put(p.toString(), Files.readString(p));
-        String json = Files.readString(descriptorBestand);
+        boolean document = sourceFiles.stream().anyMatch(DecisionCore::isDocument);
+        if (document && sourceFiles.size() != 1)
+            throw new ServiceError("dienst start niet: een uchar-ir-v1-document is de enige bron van een dienst",
+                    List.of(Violation.van(Violation.Kind.MALFORMED, "bronnen",
+                            "de bronnen mengen een .json-document met andere bestanden: " + sourceFiles)));
+        Map<String, String> text = new LinkedHashMap<>();
+        for (Path p : sourceFiles) text.put(p.toString(), Files.readString(p));
+        String json = Files.readString(descriptorFile);
         // resolve the parametersets sidecar (if the descriptor names one) relative to the descriptor file.
-        String parametersetsJson = null;
-        String naam = parametersetsNaamUit(json);
-        if (naam != null) {
-            Path parent = descriptorBestand.toAbsolutePath().getParent();
-            Path sidecar = parent == null ? Path.of(naam) : parent.resolve(naam);
+        String parameterSetsJson = null;
+        String name = peekParameterSetsName(json);
+        if (name != null) {
+            Path parent = descriptorFile.toAbsolutePath().getParent();
+            Path sidecar = parent == null ? Path.of(name) : parent.resolve(name);
             try {
-                parametersetsJson = Files.readString(sidecar);
+                parameterSetsJson = Files.readString(sidecar);
             } catch (IOException e) {
-                throw new DienstFout("dienst start niet: parametersets-bestand kan niet gelezen worden op dit"
-                        + " bouwpad", List.of(Schending.van(Schending.Soort.MALFORMED, "parametersets",
+                throw new ServiceError("dienst start niet: parametersets-bestand kan niet gelezen worden op dit"
+                        + " bouwpad", List.of(Violation.van(Violation.Kind.MALFORMED, "parametersets",
                         "kon parametersets-bestand '" + sidecar + "' niet lezen: " + e.getMessage())));
             }
         }
         if (document)
-            return bouwVanDocument(json, tekst.values().iterator().next(), config, loader, parametersetsJson);
-        return bouw(json, tekst, config, loader, parametersetsJson);
+            return buildFromDocument(json, text.values().iterator().next(), config, loader, parameterSetsJson);
+        return assemble(json, text, config, loader, parameterSetsJson);
     }
 
-    private static boolean isDocument(Path bron) {
-        return bron.getFileName().toString().endsWith(".json");
+    private static boolean isDocument(Path source) {
+        return source.getFileName().toString().endsWith(".json");
     }
 
-    /** Peek the {@code parametersets} file-name field out of a descriptor JSON WITHOUT a full validated bind
+    /** Peek the {@code parameterSets} file-name field out of a descriptor JSON WITHOUT a full validated bind
      *  (which needs the model). Returns null when absent/blank. A malformed descriptor here is left for the full
-     *  {@link #bouw} to report as its own MALFORMED startup fout. */
-    private static String parametersetsNaamUit(String descriptorJson) {
+     *  {@link #assemble} to report as its own MALFORMED startup fout. */
+    private static String peekParameterSetsName(String descriptorJson) {
         try {
-            var boom = DescriptorLoader.MAPPER.readTree(descriptorJson);
-            var node = boom == null ? null : boom.get("parametersets");
+            var tree = DescriptorLoader.MAPPER.readTree(descriptorJson);
+            var node = tree == null ? null : tree.get("parametersets");
             if (node != null && node.isTextual() && !node.asText().isBlank()) return node.asText();
         } catch (IOException ignore) { /* full bouw reports the malformed descriptor */ }
         return null;
     }
 
     /** Build the core from descriptor JSON text and the ordered file-id→source-text map, WITHOUT a parametersets
-     *  sidecar (delegates with {@code null}). A descriptor that DOES name a {@code parametersets} file on this
-     *  String-form path — where no sidecar JSON can be resolved — is a startup {@link DienstFout} (decision A). */
-    public static BeslisserKern bouw(String descriptorJson, Map<String, String> bronPerBestand, KernConfig config,
+     *  sidecar (delegates with {@code null}). A descriptor that DOES name a {@code parameterSets} file on this
+     *  String-form path — where no sidecar JSON can be resolved — is a startup {@link ServiceError} (decision A). */
+    public static DecisionCore assemble(String descriptorJson, Map<String, String> sourcePerFile, CoreConfig config,
                                      ClassLoader loader) {
-        return bouw(descriptorJson, bronPerBestand, config, loader, null);
+        return assemble(descriptorJson, sourcePerFile, config, loader, null);
     }
 
     /** Build the core from descriptor JSON text, the ordered file-id→source-text map, and OPTIONALLY the
-     *  parameterset sidecar JSON (fase 5). {@code parametersetsJson == null} = no sidecar (the fase 1-4 path,
-     *  byte-identical). When the descriptor names a {@code parametersets} file but {@code parametersetsJson} is
-     *  null, that is a startup {@link DienstFout} (decision A: the String-form cannot resolve a bestandsnaam). */
-    public static BeslisserKern bouw(String descriptorJson, Map<String, String> bronPerBestand, KernConfig config,
-                                     ClassLoader loader, String parametersetsJson) {
+     *  parameterset sidecar JSON (fase 5). {@code parameterSetsJson == null} = no sidecar (the fase 1-4 path,
+     *  byte-identical). When the descriptor names a {@code parameterSets} file but {@code parameterSetsJson} is
+     *  null, that is a startup {@link ServiceError} (decision A: the String-form cannot resolve a bestandsnaam). */
+    public static DecisionCore assemble(String descriptorJson, Map<String, String> sourcePerFile, CoreConfig config,
+                                     ClassLoader loader, String parameterSetsJson) {
         // 1. resolve the FULL concatenated source once -> the shared model. A union that does not resolve
         //    refuses startup naming each resolver diagnostic (a scope cannot fire against an ill-typed model).
         StringBuilder full = new StringBuilder();
-        for (String tekst : bronPerBestand.values()) full.append(tekst).append('\n');
+        for (String text : sourcePerFile.values()) full.append(text).append('\n');
         RegelSpraakModel model = Resolver.resolve(full.toString());
-        List<Schending> startFouten = new ArrayList<>();
+        List<Violation> startErrors = new ArrayList<>();
         for (var d : model.errors())
-            startFouten.add(Schending.van(Schending.Soort.MALFORMED, "bron:regel" + d.line(),
+            startErrors.add(Violation.van(Violation.Kind.MALFORMED, "bron:regel" + d.line(),
                     "resolve-fout: " + d.message()));
 
         // 2. descriptor validation against the shared model (collect all)
-        DienstDescriptor descriptor = leesDescriptor(descriptorJson);
+        ServiceDescriptor descriptor = readDescriptor(descriptorJson);
         // only validate the descriptor against a well-formed model — a resolve failure already dominates
-        VormIndex vormen = VormIndex.van(model, model.prioritizedDefaults);
-        if (startFouten.isEmpty()) startFouten.addAll(DescriptorLoader.valideer(descriptor, model, vormen));
-        if (!startFouten.isEmpty())
-            throw new DienstFout("dienst start niet: descriptor/model-validatie faalt", startFouten);
+        FormIndex forms = FormIndex.van(model, model.prioritizedDefaults);
+        if (startErrors.isEmpty()) startErrors.addAll(DescriptorLoader.validate(descriptor, model, forms));
+        if (!startErrors.isEmpty())
+            throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
 
         // 3. per entry point: the document of the forms its scope carries, built through uchar. What uchar does not
         //    carry — a refusal on the way, or a scoped rule that carries no form — is a marker of that entry point;
         //    allowMarkers only decides whether the service then starts without it.
-        Map<String, Entrypoint> perPad = new LinkedHashMap<>();
-        List<Schending> markerFouten = new ArrayList<>();
-        List<Schending> scopeFouten = new ArrayList<>();
+        Map<String, Entrypoint> perPath = new LinkedHashMap<>();
+        List<Violation> markerErrors = new ArrayList<>();
+        List<Violation> scopeErrors = new ArrayList<>();
         // the producer index is model-wide (every form that WRITES a kenmerk/attribuut), computed once.
-        Map<ElementSleutel, java.util.Set<String>> producenten =
+        Map<ElementSleutel, java.util.Set<String>> producers =
                 ProducentConsument.producentIndex(model, model.prioritizedDefaults);
-        for (DienstDescriptor.Entrypoint ep : descriptor.entrypoints()) {
-            VormIndex.Keuze keuze = vormen.scope(ep.scope());
+        for (ServiceDescriptor.Entrypoint ep : descriptor.entrypoints()) {
+            FormIndex.Choice choice = forms.scope(ep.scope());
             Map<String, Object> defaults = defaultGlobals(descriptor, model);
-            if (!keuze.zonderVorm().isEmpty()) {
-                String naam = keuze.zonderVorm().get(0);
-                List<String> uchar = vormen.waarschuwingenOver(naam);
-                marker(ep, naam, "de regel '" + naam + "' uit de scope levert in uchars model geen vorm op"
+            if (!choice.withoutForm().isEmpty()) {
+                String name = choice.withoutForm().get(0);
+                List<String> uchar = forms.warningsAbout(name);
+                marker(ep, name, "de regel '" + name + "' uit de scope levert in uchars model geen vorm op"
                         + (uchar.isEmpty() ? "" : "; uchar: " + String.join("; ", uchar)),
-                        defaults, config, perPad, markerFouten);
+                        defaults, config, perPath, markerErrors);
                 continue;
             }
-            RegelSpraakModel gescoopt = CaseEmitter.metScope(model, new ResolvedScenario.Scope(keuze.vormen()));
+            RegelSpraakModel scoped = CaseEmitter.metScope(model, new ResolvedScenario.Scope(choice.forms()));
             DroolsBackend.Build build;
             try {
-                build = UcharBouw.bouw(gescoopt, DroolsBackend.Branch.EXEC_MODEL);
-            } catch (UcharBouw.NietGedragen ng) {
-                marker(ep, ng.construct(), ng.getMessage(), defaults, config, perPad, markerFouten);
+                build = UcharBuild.assemble(scoped, DroolsBackend.Branch.EXEC_MODEL);
+            } catch (UcharBuild.NotCarried ng) {
+                marker(ep, ng.construct(), ng.getMessage(), defaults, config, perPath, markerErrors);
                 continue;
             }
             // Only once uchar carries the scope: a marker answers no request, so its reads decide nothing, and uchar's
             // walk throws on a navigation its emitter refuses, where the marker names the refusal.
-            if (!ep.scopeControleUit())
-                scopeFouten.addAll(scopeVolledigheid(ep, model, gescoopt, producenten));
-            perPad.put(ep.pad(), new Entrypoint(ep, build, List.of(), defaults, null));
+            if (!ep.scopeCheckOptOut())
+                scopeErrors.addAll(scopeCompleteness(ep, model, scoped, producers));
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null));
         }
-        if (!scopeFouten.isEmpty())
-            throw new DienstFout("dienst start niet: onvolledige regel-scope (buiten-scope kenmerk-producent)",
-                    scopeFouten);
-        if (!markerFouten.isEmpty())
-            throw new DienstFout("dienst start niet: uchar draagt een entrypoint niet", markerFouten);
+        if (!scopeErrors.isEmpty())
+            throw new ServiceError("dienst start niet: onvolledige regel-scope (buiten-scope kenmerk-producent)",
+                    scopeErrors);
+        if (!markerErrors.isEmpty())
+            throw new ServiceError("dienst start niet: uchar draagt een entrypoint niet", markerErrors);
 
         // 6. parametersets (fase 5, decision B). Load + validate the sidecar against the model, apply the
         //    default×set conflict rule, then compute the regel×parameter period-coverage WARNINGs.
-        List<Parameterset> sets = laadParametersets(descriptor, parametersetsJson, model);
-        List<String> waarschuwingen = periodeWaarschuwingen(model, sets);
+        List<Parameterset> sets = loadParameterSets(descriptor, parameterSetsJson, model);
+        List<String> warnings = periodWarnings(model, sets);
 
-        return new BeslisserKern(descriptor, model, perPad, sets, waarschuwingen, config.detail(), vormen, null);
+        return new DecisionCore(descriptor, model, perPath, sets, warnings, config.detail(), forms, null);
     }
 
     /**
@@ -269,139 +269,139 @@ public final class BeslisserKern {
      * carrying the service (all entry points are markers); the loader's refusal leaves no model to validate
      * against, so that one refuses the start even with markers allowed.
      */
-    public static BeslisserKern bouwVanDocument(String descriptorJson, String documentJson, KernConfig config,
-                                                ClassLoader loader, String parametersetsJson) {
+    public static DecisionCore buildFromDocument(String descriptorJson, String documentJson, CoreConfig config,
+                                                ClassLoader loader, String parameterSetsJson) {
         com.fasterxml.jackson.databind.JsonNode document;
         try {
             document = DescriptorLoader.MAPPER.readTree(documentJson);
         } catch (IOException e) {
-            throw new DienstFout("dienst start niet: het document is geen JSON", List.of(
-                    Schending.van(Schending.Soort.MALFORMED, "bron", e.getMessage())));
+            throw new ServiceError("dienst start niet: het document is geen JSON", List.of(
+                    Violation.van(Violation.Kind.MALFORMED, "bron", e.getMessage())));
         }
-        IrLoader.Loaded geladen;
+        IrLoader.Loaded loaded;
         try {
-            geladen = IrLoader.loadAll(document);
+            loaded = IrLoader.loadAll(document);
         } catch (IrLoader.Refusal | IrLoader.Documentfout e) {
-            throw new DienstFout("dienst start niet: uchar draagt het document niet", List.of(
-                    Schending.van(Schending.Soort.MARKER, "bron", (e instanceof IrLoader.Refusal ? "loader: "
+            throw new ServiceError("dienst start niet: uchar draagt het document niet", List.of(
+                    Violation.van(Violation.Kind.MARKER, "bron", (e instanceof IrLoader.Refusal ? "loader: "
                             : "document: ") + e.getMessage())));
         }
-        RegelSpraakModel model = geladen.model();
-        DienstDescriptor descriptor = leesDescriptor(descriptorJson);
-        VormIndex vormen = VormIndex.van(model, geladen.prioritizedDefaults());
-        List<Schending> startFouten = DescriptorLoader.valideer(descriptor, model, vormen);
-        if (!startFouten.isEmpty())
-            throw new DienstFout("dienst start niet: descriptor/model-validatie faalt", startFouten);
+        RegelSpraakModel model = loaded.model();
+        ServiceDescriptor descriptor = readDescriptor(descriptorJson);
+        FormIndex forms = FormIndex.van(model, loaded.prioritizedDefaults());
+        List<Violation> startErrors = DescriptorLoader.validate(descriptor, model, forms);
+        if (!startErrors.isEmpty())
+            throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
 
         // one build: every entry point serves the whole document
         DroolsBackend.Build build = null;
-        UcharBouw.NietGedragen weigering = null;
+        UcharBuild.NotCarried refusal = null;
         try {
-            build = UcharBouw.bouw(document, DroolsBackend.Branch.EXEC_MODEL);
-        } catch (UcharBouw.NietGedragen ng) {
-            weigering = ng;
+            build = UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL);
+        } catch (UcharBuild.NotCarried ng) {
+            refusal = ng;
         }
-        Map<String, Entrypoint> perPad = new LinkedHashMap<>();
-        List<Schending> markerFouten = new ArrayList<>();
-        List<Schending> scopeFouten = new ArrayList<>();
-        for (DienstDescriptor.Entrypoint ep : descriptor.entrypoints()) {
-            List<String> ontbreekt = new ArrayList<>(vormen.alle());
-            ontbreekt.removeAll(vormen.scope(ep.scope()).vormen());
-            if (!ontbreekt.isEmpty()) {
-                scopeFouten.add(Schending.van(Schending.Soort.MALFORMED, "entrypoint:" + ep.pad(),
-                        "een uchar-ir-v1-document wordt heel gediend, maar de scope van entrypoint '" + ep.naam()
-                                + "' draagt niet: " + ontbreekt));
+        Map<String, Entrypoint> perPath = new LinkedHashMap<>();
+        List<Violation> markerErrors = new ArrayList<>();
+        List<Violation> scopeErrors = new ArrayList<>();
+        for (ServiceDescriptor.Entrypoint ep : descriptor.entrypoints()) {
+            List<String> absent = new ArrayList<>(forms.all());
+            absent.removeAll(forms.scope(ep.scope()).forms());
+            if (!absent.isEmpty()) {
+                scopeErrors.add(Violation.van(Violation.Kind.MALFORMED, "entrypoint:" + ep.path(),
+                        "een uchar-ir-v1-document wordt heel gediend, maar de scope van entrypoint '" + ep.name()
+                                + "' draagt niet: " + absent));
                 continue;
             }
             Map<String, Object> defaults = defaultGlobals(descriptor, model);
-            if (weigering != null) {
-                marker(ep, weigering.construct(), weigering.getMessage(), defaults, config, perPad, markerFouten);
+            if (refusal != null) {
+                marker(ep, refusal.construct(), refusal.getMessage(), defaults, config, perPath, markerErrors);
                 continue;
             }
-            perPad.put(ep.pad(), new Entrypoint(ep, build, List.of(), defaults, null));
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null));
         }
-        if (!scopeFouten.isEmpty())
-            throw new DienstFout("dienst start niet: een scope draagt niet het hele document", scopeFouten);
-        if (!markerFouten.isEmpty())
-            throw new DienstFout("dienst start niet: uchar draagt een entrypoint niet", markerFouten);
-        List<Parameterset> sets = laadParametersets(descriptor, parametersetsJson, model);
-        return new BeslisserKern(descriptor, model, perPad, sets, periodeWaarschuwingen(model, sets), config.detail(),
-                vormen, documentJson);
+        if (!scopeErrors.isEmpty())
+            throw new ServiceError("dienst start niet: een scope draagt niet het hele document", scopeErrors);
+        if (!markerErrors.isEmpty())
+            throw new ServiceError("dienst start niet: uchar draagt een entrypoint niet", markerErrors);
+        List<Parameterset> sets = loadParameterSets(descriptor, parameterSetsJson, model);
+        return new DecisionCore(descriptor, model, perPath, sets, periodWarnings(model, sets), config.detail(),
+                forms, documentJson);
     }
 
-    private static DienstDescriptor leesDescriptor(String descriptorJson) {
+    private static ServiceDescriptor readDescriptor(String descriptorJson) {
         try {
-            return DescriptorLoader.MAPPER.readValue(descriptorJson, DienstDescriptor.class);
+            return DescriptorLoader.MAPPER.readValue(descriptorJson, ServiceDescriptor.class);
         } catch (IOException e) {
-            throw new DienstFout("descriptor is geen geldige JSON", List.of(
-                    Schending.van(Schending.Soort.MALFORMED, "", e.getMessage())));
+            throw new ServiceError("descriptor is geen geldige JSON", List.of(
+                    Violation.van(Violation.Kind.MALFORMED, "", e.getMessage())));
         }
     }
 
     /** Record that uchar does not carry entry point {@code ep}: {@code construct} is the construct uchar's refusal
      *  names (null when it names none) and {@code reden} uchar's sentence. Strict, it is a startup violation; with
      *  markers allowed, the entry point is registered without a KieBase and every request to it is refused. */
-    private static void marker(DienstDescriptor.Entrypoint ep, String construct, String reden,
-                               Map<String, Object> defaults, KernConfig config, Map<String, Entrypoint> perPad,
-                               List<Schending> markerFouten) {
+    private static void marker(ServiceDescriptor.Entrypoint ep, String construct, String reason,
+                               Map<String, Object> defaults, CoreConfig config, Map<String, Entrypoint> perPath,
+                               List<Violation> markerErrors) {
         if (config.allowMarkers()) {
-            perPad.put(ep.pad(), new Entrypoint(ep, null, construct == null ? List.of() : List.of(construct),
-                    defaults, reden));
+            perPath.put(ep.path(), new Entrypoint(ep, null, construct == null ? List.of() : List.of(construct),
+                    defaults, reason));
             return;
         }
-        markerFouten.add(Schending.van(Schending.Soort.MARKER, "entrypoint:" + ep.pad(), construct == null
-                ? "entrypoint '" + ep.naam() + "' wordt niet gedragen door uchar: " + reden
-                : "regel '" + construct + "' in de scope van entrypoint '" + ep.naam()
-                        + "' is een marker (niet gedragen): " + reden));
+        markerErrors.add(Violation.van(Violation.Kind.MARKER, "entrypoint:" + ep.path(), construct == null
+                ? "entrypoint '" + ep.name() + "' wordt niet gedragen door uchar: " + reason
+                : "regel '" + construct + "' in de scope van entrypoint '" + ep.name()
+                        + "' is een marker (niet gedragen): " + reason));
     }
 
     /**
      * Load the parameterset sidecar (fase 5, decision B). Returns the empty list when the descriptor names no
      * sidecar. When it DOES:
      * <ul>
-     *   <li>{@code parametersetsJson == null} — a named-but-unresolvable sidecar on the String-form path: a
-     *       startup {@link DienstFout} (decision A);</li>
-     *   <li>{@link ParametersetLader#laad} — every {@link ParametersetFout} becomes a MALFORMED startup schending
+     *   <li>{@code parameterSetsJson == null} — a named-but-unresolvable sidecar on the String-form path: a
+     *       startup {@link ServiceError} (decision A);</li>
+     *   <li>{@link ParameterSetLoader#load} — every {@link ParameterSetError} becomes a MALFORMED startup schending
      *       (a set that does not validate against the model refuses start);</li>
      *   <li><b>conflict rule (pinned):</b> a parameter present in BOTH {@code descriptor.parameters} (defaults)
      *       AND the sets is a startup ERROR naming the parameter — ambiguous authority, never last-one-wins.</li>
      * </ul>
      */
-    private static List<Parameterset> laadParametersets(DienstDescriptor descriptor, String parametersetsJson,
+    private static List<Parameterset> loadParameterSets(ServiceDescriptor descriptor, String parameterSetsJson,
                                                         RegelSpraakModel model) {
-        if (descriptor.parametersets() == null || descriptor.parametersets().isBlank()) return List.of();
-        if (parametersetsJson == null)
-            throw new DienstFout("dienst start niet: parametersets-bestand kan niet gelezen worden op dit bouwpad",
-                    List.of(Schending.van(Schending.Soort.MALFORMED, "parametersets",
-                            "de descriptor noemt parametersets '" + descriptor.parametersets() + "' maar er is geen"
+        if (descriptor.parameterSets() == null || descriptor.parameterSets().isBlank()) return List.of();
+        if (parameterSetsJson == null)
+            throw new ServiceError("dienst start niet: parametersets-bestand kan niet gelezen worden op dit bouwpad",
+                    List.of(Violation.van(Violation.Kind.MALFORMED, "parametersets",
+                            "de descriptor noemt parametersets '" + descriptor.parameterSets() + "' maar er is geen"
                                     + " parametersets-JSON meegegeven op dit bouwpad")));
         List<Parameterset> sets;
         try {
-            sets = ParametersetLader.laad(parametersetsJson, model);
-        } catch (ParametersetFout f) {
-            List<Schending> uit = new ArrayList<>();
-            for (String fout : f.fouten())
-                uit.add(Schending.van(Schending.Soort.MALFORMED, "parametersets", fout));
-            if (uit.isEmpty())   // malformed-JSON single-throw carries the message, not the fouten list
-                uit.add(Schending.van(Schending.Soort.MALFORMED, "parametersets", f.getMessage()));
-            throw new DienstFout("dienst start niet: parametersets valideren niet tegen het model", uit);
+            sets = ParameterSetLoader.load(parameterSetsJson, model);
+        } catch (ParameterSetError f) {
+            List<Violation> sink = new ArrayList<>();
+            for (String error : f.errors())
+                sink.add(Violation.van(Violation.Kind.MALFORMED, "parametersets", error));
+            if (sink.isEmpty())   // malformed-JSON single-throw carries the message, not the fouten list
+                sink.add(Violation.van(Violation.Kind.MALFORMED, "parametersets", f.getMessage()));
+            throw new ServiceError("dienst start niet: parametersets valideren niet tegen het model", sink);
         }
 
         // conflict rule: a parameter that is a descriptor default AND a set value has ambiguous authority.
-        List<Schending> conflict = new ArrayList<>();
+        List<Violation> conflict = new ArrayList<>();
         if (descriptor.parameters() != null) {
-            java.util.Set<String> setNamen = Parameterset.pool(sets).keySet();
+            java.util.Set<String> setNames = Parameterset.pool(sets).keySet();
             for (String d : descriptor.parameters().keySet()) {
                 RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, d);
-                String canoniek = p == null ? d : p.naam();
-                if (setNamen.contains(canoniek))
-                    conflict.add(Schending.van(Schending.Soort.MALFORMED, "parameters." + d,
-                            "parameter '" + canoniek + "' staat ZOWEL in descriptor.parameters (default) ALS in de"
+                String canonical = p == null ? d : p.naam();
+                if (setNames.contains(canonical))
+                    conflict.add(Violation.van(Violation.Kind.MALFORMED, "parameters." + d,
+                            "parameter '" + canonical + "' staat ZOWEL in descriptor.parameters (default) ALS in de"
                                     + " parametersets — ambigue autoriteit; kies er één"));
             }
         }
         if (!conflict.isEmpty())
-            throw new DienstFout("dienst start niet: parameter staat zowel in de defaults als in de sets", conflict);
+            throw new ServiceError("dienst start niet: parameter staat zowel in de defaults als in de sets", conflict);
         return sets;
     }
 
@@ -409,14 +409,14 @@ public final class BeslisserKern {
      *  (fase 5, gate G3). {@link PeriodeDekking#controleer} is pure; {@link PeriodeDekking#meldAlle} renders each
      *  finding onto a throw-away model so we can lift the WARNING message text out verbatim (the SAME text the
      *  engine surfaces), without polluting the real service model's diagnostics. Empty when no gap / no sets. */
-    private static List<String> periodeWaarschuwingen(RegelSpraakModel model, List<Parameterset> sets) {
-        List<PeriodeDekking> bevindingen = PeriodeDekking.controleer(model, sets);
-        List<String> uit = new ArrayList<>();
-        RegelSpraakModel schaduw = new RegelSpraakModel();
-        PeriodeDekking.meldAlle(bevindingen, schaduw);
-        for (var d : schaduw.diagnostics)
-            if (d.severity() == RegelSpraakModel.Severity.WARNING) uit.add(d.message());
-        return uit;
+    private static List<String> periodWarnings(RegelSpraakModel model, List<Parameterset> sets) {
+        List<PeriodeDekking> findings = PeriodeDekking.controleer(model, sets);
+        List<String> sink = new ArrayList<>();
+        RegelSpraakModel shadow = new RegelSpraakModel();
+        PeriodeDekking.meldAlle(findings, shadow);
+        for (var d : shadow.diagnostics)
+            if (d.severity() == RegelSpraakModel.Severity.WARNING) sink.add(d.message());
+        return sink;
     }
 
     // ---------------- scope-completeness validation ----------------
@@ -428,347 +428,347 @@ public final class BeslisserKern {
 
     /**
      * The scope-completeness violations for one entry point (decision: fail-fast, opt-out per entrypoint). It reads
-     * the forms the entry point's KieBase carries — {@code gescoopt}, the model of its scope — as uchar's rule graph
+     * the forms the entry point's KieBase carries — {@code scoped}, the model of its scope — as uchar's rule graph
      * reads them: of a rule the kenmerken/attributen its voorwaarde and value read, of a defaults group those the
      * justification and consequence of every default read, nested exception groups included. A read element is a
-     * violation iff (a) some form in {@code producenten} WRITES it, (b) NONE of those producers is in this entry
-     * point's scope, and (c) the element is not a declared {@code invoerElementen} (the caller then supplies the
+     * violation iff (a) some form in {@code producers} WRITES it, (b) NONE of those producers is in this entry
+     * point's scope, and (c) the element is not a declared {@code inputElements} (the caller then supplies the
      * value, so the missing producer is intentional). Elements with no producer at all are genuine request inputs,
      * not violations. The violation of a group also names the defaults that read the element, from uchar's walk per
      * default ({@link ProducentConsument#lezingen}), of which the group's reads are the union.
      */
-    private static List<Schending> scopeVolledigheid(DienstDescriptor.Entrypoint ep, RegelSpraakModel model,
-            RegelSpraakModel gescoopt, Map<ElementSleutel, java.util.Set<String>> producenten) {
+    private static List<Violation> scopeCompleteness(ServiceDescriptor.Entrypoint ep, RegelSpraakModel model,
+            RegelSpraakModel scoped, Map<ElementSleutel, java.util.Set<String>> producers) {
         // a resolver's model: a navigated kenmerk check reads the kenmerk of the type its role reaches
-        ProducentConsument.Navigatie navigatie = ProducentConsument.bronNavigatie(gescoopt);
-        List<ProducentConsument.Vorm> gedragen = ProducentConsument.vormen(gescoopt, gescoopt.prioritizedDefaults,
-                navigatie);
-        Map<String, PrioritizedDefaults> groepen = new java.util.HashMap<>();
-        for (PrioritizedDefaults p : gescoopt.prioritizedDefaults)
-            if (p.naam() != null) groepen.put(ProducentConsument.basisNaam(p.naam()), p);
+        ProducentConsument.Navigatie navigation = ProducentConsument.bronNavigatie(scoped);
+        List<ProducentConsument.Vorm> carried = ProducentConsument.vormen(scoped, scoped.prioritizedDefaults,
+                navigation);
+        Map<String, PrioritizedDefaults> groups = new java.util.HashMap<>();
+        for (PrioritizedDefaults p : scoped.prioritizedDefaults)
+            if (p.naam() != null) groups.put(ProducentConsument.basisNaam(p.naam()), p);
         // the writers in the scope, under the names the producer index keys them on
         java.util.Set<String> scope = new java.util.LinkedHashSet<>();
-        for (ProducentConsument.Vorm v : gedragen) scope.add(v.naam());
+        for (ProducentConsument.Vorm v : carried) scope.add(v.naam());
         // The opt-out keys through the SAME element identity the consumption does ({@link
         // ProducentConsument#elementVan}), so the declaration binds on the member's declarant: a caller that
         // declares the element on the type that DECLARES it silences a consumption on any subtype, and one that
         // names a subtype silences it too — the alternative is an escape hatch that exists but cannot be spelled.
-        java.util.Set<ElementSleutel> invoerElementen = new java.util.LinkedHashSet<>();
-        for (String sel : ep.invoerElementenOfLeeg()) {
-            Uitvoerselector u = Uitvoerselector.ontleed(sel);
+        java.util.Set<ElementSleutel> inputElements = new java.util.LinkedHashSet<>();
+        for (String sel : ep.inputElementsOrEmpty()) {
+            OutputSelector u = OutputSelector.parse(sel);
             if (u == null) continue;
-            RegelSpraakModel.Objecttype houder = DescriptorLoader.objecttype(model, u.objecttype());
-            invoerElementen.add(houder == null ? ElementSleutel.van(u.objecttype(), u.lid(), u.kenmerk())
-                    : ProducentConsument.elementVan(houder, u.lid(), u.kenmerk()));
+            RegelSpraakModel.Objecttype houder = DescriptorLoader.objectType(model, u.objectType());
+            inputElements.add(houder == null ? ElementSleutel.van(u.objectType(), u.member(), u.characteristic())
+                    : ProducentConsument.elementVan(houder, u.member(), u.characteristic()));
         }
         // A tree of exceptions is lowered to one group named after its base rule, an unordered block without a
         // carrier to one group per member; the opgave marker and a subtype's own exceptions get a group whose name
         // uchar makes up. The author knows the first two by a rule they wrote, the last two only by that name.
-        java.util.Set<String> geschreven = new java.util.HashSet<>();
-        for (var r : model.regels) if (r.naam() != null) geschreven.add(CaseEmitter.norm(r.naam()));
+        java.util.Set<String> written = new java.util.HashSet<>();
+        for (var r : model.regels) if (r.naam() != null) written.add(CaseEmitter.norm(r.naam()));
 
-        List<Schending> uit = new ArrayList<>();
-        java.util.Set<ElementSleutel> gemeld = new java.util.LinkedHashSet<>();
-        for (ProducentConsument.Vorm v : gedragen) {
-            String lezer = switch (v.soort()) {
+        List<Violation> sink = new ArrayList<>();
+        java.util.Set<ElementSleutel> reported = new java.util.LinkedHashSet<>();
+        for (ProducentConsument.Vorm v : carried) {
+            String reader = switch (v.soort()) {
                 case REGEL -> "regel '" + v.naam() + "'";
-                case DEFAULTSGROEP -> geschreven.contains(CaseEmitter.norm(v.naam()))
+                case DEFAULTSGROEP -> written.contains(CaseEmitter.norm(v.naam()))
                         ? "defaults-groep van regel '" + v.naam() + "'"
                         : "gegenereerde defaults-groep '" + v.naam() + "'";
                 // The other forms read as well, but are not held to it: five entry points of
-                // examples/toka/toka.dienst.json scope an allocation without the writers of what it reads.
+                // examples/toka/toka.service.json scope an allocation without the writers of what it reads.
                 case OBJECTCREATIE, VERDELING, CONSISTENTIE, UNICITEIT, FEITCREATIE -> null;
             };
-            if (lezer == null) continue;
-            List<ProducentConsument.DefaultLezing> lezingen = null;
+            if (reader == null) continue;
+            List<ProducentConsument.DefaultLezing> reads = null;
             for (ElementSleutel consumed : v.leest()) {
-                java.util.Set<String> writers = producenten.get(consumed);
+                java.util.Set<String> writers = producers.get(consumed);
                 if (writers == null || writers.isEmpty()) continue;          // a genuine request input
                 if (writers.stream().anyMatch(scope::contains)) continue;    // produced in scope: fine
-                if (invoerElementen.contains(consumed)) continue;            // element-level caller input: opt-out
-                if (!gemeld.add(consumed)) continue;
-                String waar = "";
+                if (inputElements.contains(consumed)) continue;            // element-level caller input: opt-out
+                if (!reported.add(consumed)) continue;
+                String where = "";
                 if (v.soort() == ProducentConsument.Vormsoort.DEFAULTSGROEP) {
-                    PrioritizedDefaults groep = java.util.Objects.requireNonNull(groepen.get(v.naam()),
+                    PrioritizedDefaults group = java.util.Objects.requireNonNull(groups.get(v.naam()),
                             () -> "geen defaultsgroep '" + v.naam() + "' in de scope");
-                    if (lezingen == null) lezingen = ProducentConsument.lezingen(gescoopt, groep, navigatie);
-                    waar = " " + waarGelezen(lezingen, consumed, v.naam());
+                    if (reads == null) reads = ProducentConsument.lezingen(scoped, group, navigation);
+                    where = " " + whereRead(reads, consumed, v.naam());
                 }
-                uit.add(Schending.van(Schending.Soort.SCOPE_ONVOLLEDIG, "entrypoint:" + ep.pad(),
-                        lezer + " in entrypoint '" + ep.naam() + "' leest "
+                sink.add(Violation.van(Violation.Kind.SCOPE_ONVOLLEDIG, "entrypoint:" + ep.path(),
+                        reader + " in entrypoint '" + ep.name() + "' leest "
                                 + (consumed.kenmerk() ? "kenmerk" : "attribuut") + " '" + consumed.naam() + "'"
                                 + (consumed.objecttype().isEmpty() ? "" : " van '" + consumed.objecttype() + "'")
-                                + waar + ", maar de enige producent(en) " + writers + " vallen buiten de scope"
+                                + where + ", maar de enige producent(en) " + writers + " vallen buiten de scope"
                                 + " en het element is niet als invoerElement gedeclareerd"));
             }
         }
-        return uit;
+        return sink;
     }
 
     /** Where a defaults group reads {@code element}: every default that reads it, by the part that reads (its
      *  justification or its consequence) with that part's source text, and by its path in the group. */
-    private static String waarGelezen(List<ProducentConsument.DefaultLezing> lezingen, ElementSleutel element,
-                                      String groep) {
-        List<String> plekken = new ArrayList<>();
-        for (ProducentConsument.DefaultLezing d : lezingen) {
+    private static String whereRead(List<ProducentConsument.DefaultLezing> reads, ElementSleutel element,
+                                      String group) {
+        List<String> sites = new ArrayList<>();
+        for (ProducentConsument.DefaultLezing d : reads) {
             var dflt = d.dflt();
             if (d.rechtvaardiging().contains(element))
-                plekken.add(plek("rechtvaardiging", dflt.voorwaarde() == null ? null : dflt.voorwaarde().bron(), d));
+                sites.add(site("rechtvaardiging", dflt.voorwaarde() == null ? null : dflt.voorwaarde().bron(), d));
             if (d.consequentie().contains(element))
-                plekken.add(plek("consequentie", dflt.consequentie() == null ? null : dflt.consequentie().bron(), d));
+                sites.add(site("consequentie", dflt.consequentie() == null ? null : dflt.consequentie().bron(), d));
         }
         // uchar takes a group's reads from these, so an element no default reads is a broken promise of uchar's
-        if (plekken.isEmpty())
-            throw new IllegalStateException("uchars wandeling per default van defaults-groep '" + groep
+        if (sites.isEmpty())
+            throw new IllegalStateException("uchars wandeling per default van defaults-groep '" + group
                     + "' leest '" + element.naam() + "' niet, maar die van de groep wel");
-        return String.join(" en ", plekken);
+        return String.join(" en ", sites);
     }
 
     /** One reading default: the part that reads, its source text as the author wrote it (or else the default's own
      *  source, which the opgave marker fills with the attribute it reads), and the default's path in the group. */
-    private static String plek(String deel, Bron bron, ProducentConsument.DefaultLezing d) {
-        String tekst = bron != null && bron.snippet() != null && !bron.snippet().isBlank()
-                ? bron.snippet() : d.dflt().bron();
-        return "in de " + deel + (tekst == null ? "" : " '" + tekst + "'") + " van default " + d.pad();
+    private static String site(String part, Bron source, ProducentConsument.DefaultLezing d) {
+        String text = source != null && source.snippet() != null && !source.snippet().isBlank()
+                ? source.snippet() : d.dflt().bron();
+        return "in de " + part + (text == null ? "" : " '" + text + "'") + " van default " + d.pad();
     }
 
-    /** The descriptor parameter defaults, decoded per-parameter datatype to (globalNaam -> value). */
-    private static Map<String, Object> defaultGlobals(DienstDescriptor descriptor, RegelSpraakModel model) {
+    /** The descriptor parameter defaults, decoded per-parameter datatype to (globalName -> value). */
+    private static Map<String, Object> defaultGlobals(ServiceDescriptor descriptor, RegelSpraakModel model) {
         Map<String, Object> globals = new LinkedHashMap<>();
         if (descriptor.parameters() == null) return globals;
-        List<Schending> fouten = new ArrayList<>();
+        List<Violation> errors = new ArrayList<>();
         for (var e : descriptor.parameters().entrySet()) {
             RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, e.getKey());
             if (p == null) continue;   // already reported by descriptor validation
-            WaardeCoder.Resultaat r = WaardeCoder.decodeer(e.getValue(), p.datatype(), "parameters." + e.getKey());
-            fouten.addAll(r.schendingen());
-            if (r.schendingen().isEmpty()) globals.put(VerzoekMapper.globalNaam(p.naam()), r.waarde());
+            ValueCoder.Result r = ValueCoder.decodeer(e.getValue(), p.datatype(), "parameters." + e.getKey());
+            errors.addAll(r.violations());
+            if (r.violations().isEmpty()) globals.put(RequestMapper.globalName(p.naam()), r.value());
         }
-        if (!fouten.isEmpty()) throw new DienstFout("descriptor parameter-default ongeldig", fouten);
+        if (!errors.isEmpty()) throw new ServiceError("descriptor parameter-default ongeldig", errors);
         return globals;
     }
 
     // ---------------- request handling ----------------
 
-    /** Handle a request against the entry point at {@code pad}: map → fire → build response. Existing 2-arg
-     *  contract (no uitleg); delegates with {@link VerzoekOpties#STANDAARD}, byte-identical for every current caller. */
-    public ObjectNode verwerk(String pad, JsonNode verzoekBoom) {
-        return verwerk(pad, verzoekBoom, VerzoekOpties.STANDAARD);
+    /** Handle a request against the entry point at {@code path}: map → fire → build response. Existing 2-arg
+     *  contract (no uitleg); delegates with {@link RequestOptions#DEFAULT}, byte-identical for every current caller. */
+    public ObjectNode process(String path, JsonNode requestTree) {
+        return process(path, requestTree, RequestOptions.DEFAULT);
     }
 
-    /** As {@link #verwerk(String, JsonNode, VerzoekOpties)} with only the explanation asked for or not. */
-    public ObjectNode verwerk(String pad, JsonNode verzoekBoom, boolean uitleg) {
-        return verwerk(pad, verzoekBoom, new VerzoekOpties(uitleg, null, null));
+    /** As {@link #process(String, JsonNode, RequestOptions)} with only the explanation asked for or not. */
+    public ObjectNode process(String path, JsonNode requestTree, boolean uitleg) {
+        return process(path, requestTree, new RequestOptions(uitleg, null, null));
     }
 
     /**
      * Handle a request with what it asks beside its body. When {@code uitleg} is asked, an {@code "uitleg"} array is
      * added to the response — one NL sentence per assigned/withheld kenmerk of a request instance, justified with the
      * evaluated operandwaarden (§norm read via the IR, not the programmer); without it the response tree has no such
-     * key. The request's names are read by a {@link NaamLezer}, liberally or in the input vocabulary the request
+     * key. The request's names are read by a {@link NameReader}, liberally or in the input vocabulary the request
      * pins; the answer and its explanation name the declarations in the vocabulary the request chooses, else in the
-     * entry point's default from the descriptor, else canonically ({@link Naamgeving}). A vocabulary the model does
+     * entry point's default from the descriptor, else canonically ({@link Naming}). A vocabulary the model does
      * not declare is refused before the body is read: an answer in it could not be given.
      *
-     * <p>The detail flags of {@code opties} add the session to the answer, after the explanation ({@link #detail}), to
-     * the {@link Evaluatiefout} of a request on which the rules give a fault, and to the {@link GeenFixpunt} of a request
+     * <p>The detail flags of {@code options} add the session to the answer, after the explanation ({@link #detail}), to
+     * the {@link EvaluationFault} of a request on which the rules give a fault, and to the {@link NoFixpoint} of a request
      * whose session reached no fixpoint. A core started without
-     * {@link KernConfig#detail()} refuses each of them by its name before the body is read: it shows every intermediate
-     * value, where the answer gives the selected {@code uitvoer} alone. Without a detail flag the answer is the one a
+     * {@link CoreConfig#detail()} refuses each of them by its name before the body is read: it shows every intermediate
+     * value, where the answer gives the selected {@code output} alone. Without a detail flag the answer is the one a
      * core without detail gives, byte for byte.
      */
-    public ObjectNode verwerk(String pad, JsonNode verzoekBoom, VerzoekOpties opties) {
-        return verwerk(pad, verzoekBoom, opties, null).antwoord();
+    public ObjectNode process(String path, JsonNode requestTree, RequestOptions options) {
+        return process(path, requestTree, options, null).answer();
     }
 
-    /** The answer to a request and uchar's verdict on expectations about it ({@link #beoordeel}). */
-    public record Beoordeling(ObjectNode antwoord, DroolsBackend.Vergelijking vergelijking) {}
+    /** The answer to a request and uchar's verdict on expectations about it ({@link #assess}). */
+    public record Assessment(ObjectNode answer, DroolsBackend.Vergelijking comparison) {}
 
     /**
-     * As {@link #verwerk(String, JsonNode, VerzoekOpties)}, with uchar's verdict on {@code verwachtingen}, the
+     * As {@link #process(String, JsonNode, RequestOptions)}, with uchar's verdict on {@code expectations}, the
      * {@code expected} of a {@code uchar-case-v0} case whose labels are ids of the request: uchar compares them with the
      * written-back session of the request ({@link DroolsBackend#vergelijk}), the ids of the request as labels. No route
      * of the service asks it; the playground does, for {@code via=dienst}.
      *
-     * @throws Evaluatiefout what {@link #verwerk(String, JsonNode, VerzoekOpties)} throws, and nothing is compared
-     * @throws GeenFixpunt   what {@link #verwerk(String, JsonNode, VerzoekOpties)} throws, and nothing is compared
+     * @throws Evaluatiefout what {@link #process(String, JsonNode, RequestOptions)} throws, and nothing is compared
+     * @throws NoFixpoint   what {@link #process(String, JsonNode, RequestOptions)} throws, and nothing is compared
      * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare
      */
-    public Beoordeling beoordeel(String pad, JsonNode verzoekBoom, VerzoekOpties opties, JsonNode verwachtingen) {
-        java.util.Objects.requireNonNull(verwachtingen, "verwachtingen");
-        return verwerk(pad, verzoekBoom, opties, verwachtingen);
+    public Assessment assess(String path, JsonNode requestTree, RequestOptions options, JsonNode expectations) {
+        java.util.Objects.requireNonNull(expectations, "verwachtingen");
+        return process(path, requestTree, options, expectations);
     }
 
-    private Beoordeling verwerk(String pad, JsonNode verzoekBoom, VerzoekOpties opties, JsonNode verwachtingen) {
-        Entrypoint ep = perPad.get(pad);
-        if (ep == null) throw new OnbekendPad(pad);
-        if (!ep.uitvoerbaar()) throw new NietUitvoerbaar(ep);
-        List<Schending> keuzes = new ArrayList<>();
-        Naamgeving uitvoer = naamgeving(opties.vocabulaire() != null ? opties.vocabulaire()
-                : ep.descriptor().vocabulaire(), "vocabulaire", keuzes);
-        if (opties.invoervocabulaire() != null) naamgeving(opties.invoervocabulaire(), "invoervocabulaire", keuzes);
+    private Assessment process(String path, JsonNode requestTree, RequestOptions options, JsonNode expectations) {
+        Entrypoint ep = perPath.get(path);
+        if (ep == null) throw new UnknownPath(path);
+        if (!ep.executable()) throw new NonExecutable(ep);
+        List<Violation> choices = new ArrayList<>();
+        Naming output = naming(options.vocabulary() != null ? options.vocabulary()
+                : ep.descriptor().vocabulary(), "vocabulaire", choices);
+        if (options.invoervocabulaire() != null) naming(options.invoervocabulaire(), "invoervocabulaire", choices);
         if (!detail)
-            for (String vlag : opties.detailvlaggen())
-                keuzes.add(Schending.van(Schending.Soort.NIET_ONDERSTEUND, vlag, "de dienst is zonder DETAIL gestart"
-                        + " en geeft geen " + vlag + "; start hem met DETAIL=true of --detail"));
-        if (!keuzes.isEmpty()) throw new DienstFout("verzoek valideert niet", keuzes);
-        VerzoekMapper mapper = new VerzoekMapper(model, ep.build(), new NaamLezer(model, opties.invoervocabulaire()));
-        VerzoekMapper.Resultaat mr = mapper.map(new Verzoek(verzoekBoom));
-        if (!mr.schendingen().isEmpty())
-            throw new DienstFout("verzoek valideert niet", mr.schendingen());
+            for (String flag : options.detailFlags())
+                choices.add(Violation.van(Violation.Kind.NIET_ONDERSTEUND, flag, "de dienst is zonder DETAIL gestart"
+                        + " en geeft geen " + flag + "; start hem met DETAIL=true of --detail"));
+        if (!choices.isEmpty()) throw new ServiceError("verzoek valideert niet", choices);
+        RequestMapper mapper = new RequestMapper(model, ep.build(), new NameReader(model, options.invoervocabulaire()));
+        RequestMapper.Result mr = mapper.map(new Request(requestTree));
+        if (!mr.violations().isEmpty())
+            throw new ServiceError("verzoek valideert niet", mr.violations());
         // core contract check (fase 6, G4): the entrypoint's invoer list is the DECLARED contract — every
         // objecttype it names MUST have at least one instantie in the request. A mapping/adapter rejection here
-        // happens strictly BEFORE Uitvoerder.vuur, so the resulting 4xx is itself the no-fire witness: an absent
+        // happens strictly BEFORE Executor.fire, so the resulting 4xx is itself the no-fire witness: an absent
         // required instance can never fire meaningfully (the scoped rules quantify over instances of that
         // objecttype, so a missing invoer objecttype means the rule has nothing to fire against). Collected first,
         // then thrown together as one 400.
-        List<Schending> ontbrekend = ontbrekendeInvoer(ep, mr.typePerLabel(), model);
-        if (!ontbrekend.isEmpty())
-            throw new DienstFout("verzoek valideert niet", ontbrekend);
+        List<Violation> missing = missingInput(ep, mr.typePerLabel(), model);
+        if (!missing.isEmpty())
+            throw new ServiceError("verzoek valideert niet", missing);
         // fase 5, decision D: resolve the parameterset vintage against the one date authority (the request
-        // peildatum, which IS Wereld.rekendatum). The resolved values sit BETWEEN the descriptor defaults and the
+        // peildatum, which IS World.evaluationDate). The resolved values sit BETWEEN the descriptor defaults and the
         // request parameter overrides (descriptor default first, set-value next — the conflict rule guarantees
         // they never name the same parameter — request override last: explicit caller-intent wins).
-        Map<String, Object> setGlobals = vintageGlobals(mr.wereld().rekendatum());
-        boolean metDetail = !opties.detailvlaggen().isEmpty();
+        Map<String, Object> setGlobals = vintageGlobals(mr.world().evaluationDate());
+        boolean withDetail = !options.detailFlags().isEmpty();
         // uchar's waarnemer labels a firing with the ids of the request; the input is read off the beans before the
         // fire, because the write-back puts the derived values on the same beans
         Map<Object, String> label = new IdentityHashMap<>();
-        mr.wereld().beans().forEach((id, bean) -> label.put(bean, id));
-        DroolsBackend.Waarnemer waarnemer = opties.trace() || opties.dekking()
+        mr.world().beans().forEach((id, bean) -> label.put(bean, id));
+        DroolsBackend.Waarnemer observer = options.trace() || options.coverage()
                 ? new DroolsBackend.Waarnemer(label::get) : null;
-        List<FixpuntGegevens.Invoerobject> invoer = opties.fixpunt()
-                ? FixpuntGegevens.invoer(mr.wereld().beans(), mr.typePerLabel(), uitvoer) : null;
-        Uitvoerder uitvoerder = new Uitvoerder(ep.build(), ep.defaultGlobals());
-        Uitvoerder.Uitkomst uitkomst;
+        List<FixpointGivens.InputObject> input = options.fixpoint()
+                ? FixpointGivens.input(mr.world().beans(), mr.typePerLabel(), output) : null;
+        Executor executor = new Executor(ep.build(), ep.defaultGlobals());
+        Executor.Outcome outcome;
         try {
-            uitkomst = uitvoerder.vuur(mr.wereld(), setGlobals, waarnemer, verwachtingen);
-        } catch (Evaluatiefout fout) {
-            if (!metDetail) throw fout;
-            throw fout.metDetail(detail(opties, ep, waarnemer, fout.fixpunt(), null, invoer, uitvoer));
-        } catch (GeenFixpunt geen) {
-            if (!metDetail) throw geen;
-            throw geen.metDetail(detail(opties, ep, waarnemer, null, geen.getMessage(), invoer, uitvoer));
+            outcome = executor.fire(mr.world(), setGlobals, observer, expectations);
+        } catch (EvaluationFault error) {
+            if (!withDetail) throw error;
+            throw error.withDetail(detail(options, ep, observer, error.fixpoint(), null, input, output));
+        } catch (NoFixpoint none) {
+            if (!withDetail) throw none;
+            throw none.withDetail(detail(options, ep, observer, null, none.getMessage(), input, output));
         }
-        ObjectNode antwoord = new AntwoordBouwer(model, uitvoer).bouw(uitkomst, ep.descriptor().uitvoer(),
+        ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());
-        if (opties.uitleg()) voegUitlegToe(antwoord, uitkomst, mr, setGlobals, ep, uitvoer);
-        if (metDetail) antwoord.setAll(detail(opties, ep, waarnemer, uitkomst.fixpunt(), null, invoer, uitvoer));
-        return new Beoordeling(antwoord, uitkomst.vergelijking());
+        if (options.uitleg()) addUitleg(answer, outcome, mr, setGlobals, ep, output);
+        if (withDetail) answer.setAll(detail(options, ep, observer, outcome.fixpoint(), null, input, output));
+        return new Assessment(answer, outcome.comparison());
     }
 
     /**
-     * The detail of a request's session that {@code opties} asks, in this order and under these keys, the names in
-     * {@code naamgeving}: {@code trace}, per form that fired, in the order a rule of it first fired, the ids of the
+     * The detail of a request's session that {@code options} asks, in this order and under these keys, the names in
+     * {@code naming}: {@code trace}, per form that fired, in the order a rule of it first fired, the ids of the
      * request its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's
-     * {@code waarnemer} recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
+     * {@code observer} recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
      * ({@link DroolsBackend#dekking}: {@code GEVUURD} or {@code NIET_GERAAKT}); and {@code fixpunt}, what stands at the
-     * fixpoint with the instances of the request as its input ({@link FixpuntGegevens}), or {@code fixpuntFout} with the
-     * reason a value of it cannot be shown, or {@code zonderFixpunt}, uchar's sentence of a run that reached no fixpoint
+     * fixpoint with the instances of the request as its input ({@link FixpointGivens}), or {@code fixpointError} with the
+     * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no fixpoint
      * (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.
      */
-    private ObjectNode detail(VerzoekOpties opties, Entrypoint ep, DroolsBackend.Waarnemer waarnemer, Fixpunt fixpunt,
-                              String zonderFixpunt, List<FixpuntGegevens.Invoerobject> invoer, Naamgeving naamgeving) {
+    private ObjectNode detail(RequestOptions options, Entrypoint ep, DroolsBackend.Waarnemer observer, Fixpunt fixpoint,
+                              String withoutFixpoint, List<FixpointGivens.InputObject> input, Naming naming) {
         ObjectNode n = NF.objectNode();
-        if (opties.trace()) {
+        if (options.trace()) {
             ArrayNode trace = n.putArray("trace");
-            for (ScenarioResultaat.Vuring v : waarnemer.vuringen()) {
+            for (ScenarioResultaat.Vuring v : observer.vuringen()) {
                 ObjectNode tn = trace.addObject();
-                tn.put("regel", naamgeving.vorm(v.regel()));
+                tn.put("regel", naming.form(v.regel()));
                 ArrayNode labels = tn.putArray("labels");
                 for (String l : v.labels()) labels.add(l);
                 tn.put("aantal", v.aantal());
             }
         }
-        if (opties.dekking()) {
-            ArrayNode dekking = n.putArray("dekking");
-            for (ScenarioResultaat.DekkingRegel d : DroolsBackend.dekking(ep.build(), waarnemer.vormen())) {
-                ObjectNode dn = dekking.addObject();
-                dn.put("regel", naamgeving.vorm(d.regel()));
+        if (options.coverage()) {
+            ArrayNode coverage = n.putArray("dekking");
+            for (ScenarioResultaat.DekkingRegel d : DroolsBackend.dekking(ep.build(), observer.vormen())) {
+                ObjectNode dn = coverage.addObject();
+                dn.put("regel", naming.form(d.regel()));
                 dn.put("soort", d.soort().name());
             }
         }
-        if (opties.fixpunt() && zonderFixpunt != null) {
-            n.put("fixpuntFout", zonderFixpunt);
-        } else if (opties.fixpunt()) {
+        if (options.fixpoint() && withoutFixpoint != null) {
+            n.put("fixpuntFout", withoutFixpoint);
+        } else if (options.fixpoint()) {
             try {
-                n.set("fixpunt", FixpuntGegevens.fixpunt(fixpunt, invoer, model, naamgeving));
-            } catch (FixpuntGegevens.OnweergeefbareWaarde o) {
+                n.set("fixpunt", FixpointGivens.fixpoint(fixpoint, input, model, naming));
+            } catch (FixpointGivens.UnrenderableValue o) {
                 n.put("fixpuntFout", o.getMessage());
             }
         }
         return n;
     }
 
-    /** The naming {@code keuze} names, or the canonical one after adding the violation of a vocabulary the model does
-     *  not declare to {@code fouten}, on the query parameter {@code veld}. */
-    private Naamgeving naamgeving(String keuze, String veld, List<Schending> fouten) {
+    /** The naming {@code choice} names, or the canonical one after adding the violation of a vocabulary the model does
+     *  not declare to {@code errors}, on the query parameter {@code field}. */
+    private Naming naming(String choice, String field, List<Violation> errors) {
         try {
-            return Naamgeving.van(model, keuze);
-        } catch (Naamgeving.Vocabulairefout f) {
-            fouten.add(Schending.van(Schending.Soort.ONBEKEND_VOCABULAIRE, veld, f.getMessage()));
-            return Naamgeving.canoniek(model);
+            return Naming.van(model, choice);
+        } catch (Naming.VocabularyError f) {
+            errors.add(Violation.van(Violation.Kind.ONBEKEND_VOCABULAIRE, field, f.getMessage()));
+            return Naming.canonical(model);
         }
     }
 
     /**
-     * Attach the {@link Verbalisator} verhaal to {@code antwoord} as an {@code "uitleg"} array. The globals the
+     * Attach the {@link Verbaliser} verhaal to {@code answer} as an {@code "uitleg"} array. The globals the
      * verbalisator re-evaluates condition operands against are rebuilt with the SAME precedence
-     * {@link Uitvoerder#vuur} fired them under (descriptor defaults → set-vintage → request overrides → rekendatum);
-     * the keys are {@link VerzoekMapper#globalNaam}, which the verbalisator reads a {@code ParameterRef} on. A pure
+     * {@link Executor#fire} fired them under (descriptor defaults → set-vintage → request overrides → rekendatum);
+     * the keys are {@link RequestMapper#globalName}, which the verbalisator reads a {@code ParameterRef} on. A pure
      * read of the already-fired beans — nothing re-fires.
      */
-    private void voegUitlegToe(ObjectNode antwoord, Uitvoerder.Uitkomst uitkomst, VerzoekMapper.Resultaat mr,
-                               Map<String, Object> setGlobals, Entrypoint ep, Naamgeving naamgeving) {
+    private void addUitleg(ObjectNode answer, Executor.Outcome outcome, RequestMapper.Result mr,
+                               Map<String, Object> setGlobals, Entrypoint ep, Naming naming) {
         Map<String, Object> globals = new LinkedHashMap<>(ep.defaultGlobals());
         globals.putAll(setGlobals);
-        globals.putAll(mr.wereld().globals());
-        if (mr.wereld().rekendatum() != null) globals.put("rekendatum", mr.wereld().rekendatum());
-        List<String> zinnen = new Verbalisator(model, globals, naamgeving)
-                .verbaliseer(uitkomst.beans(), mr.typePerLabel());
-        var arr = antwoord.putArray("uitleg");
-        for (String zin : zinnen) arr.add(zin);
+        globals.putAll(mr.world().globals());
+        if (mr.world().evaluationDate() != null) globals.put("rekendatum", mr.world().evaluationDate());
+        List<String> sentences = new Verbaliser(model, globals, naming)
+                .verbalise(outcome.beans(), mr.typePerLabel());
+        var arr = answer.putArray("uitleg");
+        for (String sentence : sentences) arr.add(sentence);
     }
 
     /**
      * Resolve the parameterset vintage for one request (fase 5, decision D). Returns the (global-name → value) map
      * of set-resolved parameters, empty when no sets are loaded. Fail-fast against the one date authority
-     * ({@code datum} = the request peildatum = {@code Wereld.rekendatum}):
+     * ({@code datum} = the request peildatum = {@code World.evaluationDate}):
      * <ul>
-     *   <li><b>datum present</b> — {@link Parameterset#waardenOp}; any gap is a 4xx {@link DienstFout} whose
+     *   <li><b>datum present</b> — {@link Parameterset#waardenOp}; any gap is a 4xx {@link ServiceError} whose
      *       schendingen name the parameter + the datum, on veld {@code "peildatum"};</li>
      *   <li><b>datum absent + multi-vintage</b> — a 4xx naming veld {@code "peildatum"}: the peildatum is
      *       mandatory because the sets carry more than one vintage (ambiguous truth);</li>
      *   <li><b>datum absent + NOT multi-vintage</b> — the degenerate single-value case: resolve with
      *       {@link LocalDate#EPOCH} (date-independent by construction, mirroring the ScenarioRunner).</li>
      * </ul>
-     * The resolved values are keyed by the engine's camelCase global name ({@link VerzoekMapper#globalNaam}),
+     * The resolved values are keyed by the engine's camelCase global name ({@link RequestMapper#globalName}),
      * exactly as the descriptor defaults are.
      */
-    private Map<String, Object> vintageGlobals(LocalDate datum) {
-        if (parametersets.isEmpty()) return Map.of();
-        if (datum == null && Parameterset.meerVintage(parametersets))
-            throw new DienstFout("verzoek valideert niet", List.of(Schending.van(Schending.Soort.VERKEERD_TYPE,
+    private Map<String, Object> vintageGlobals(LocalDate date) {
+        if (parameterSets.isEmpty()) return Map.of();
+        if (date == null && Parameterset.meerVintage(parameterSets))
+            throw new ServiceError("verzoek valideert niet", List.of(Violation.van(Violation.Kind.VERKEERD_TYPE,
                     "peildatum", "peildatum is verplicht: de geladen parametersets dragen meer dan één vintage")));
-        LocalDate peil = datum != null ? datum : LocalDate.EPOCH;   // degeneraat: datum-onafhankelijk
-        List<String> gaten = new ArrayList<>();
-        Map<String, Object> opgelost = Parameterset.waardenOp(parametersets, peil, gaten);
-        if (!gaten.isEmpty()) {
-            List<Schending> fouten = new ArrayList<>();
-            for (String gat : gaten)
-                fouten.add(Schending.van(Schending.Soort.VERKEERD_TYPE, "peildatum", gat));
-            throw new DienstFout("verzoek valideert niet", fouten);
+        LocalDate asOf = date != null ? date : LocalDate.EPOCH;   // degeneraat: datum-onafhankelijk
+        List<String> holes = new ArrayList<>();
+        Map<String, Object> resolved = Parameterset.waardenOp(parameterSets, asOf, holes);
+        if (!holes.isEmpty()) {
+            List<Violation> errors = new ArrayList<>();
+            for (String gap : holes)
+                errors.add(Violation.van(Violation.Kind.VERKEERD_TYPE, "peildatum", gap));
+            throw new ServiceError("verzoek valideert niet", errors);
         }
         Map<String, Object> globals = new LinkedHashMap<>();
-        for (var e : opgelost.entrySet())
-            globals.put(VerzoekMapper.globalNaam(e.getKey()), e.getValue());
+        for (var e : resolved.entrySet())
+            globals.put(RequestMapper.globalName(e.getKey()), e.getValue());
         return globals;
     }
 
     /**
-     * The invoer contract check: for every objecttype the entrypoint declares in {@code invoer}, require at
+     * The invoer contract check: for every objecttype the entrypoint declares in {@code input}, require at
      * least ONE mapped instance that IS one of that objecttype in the request. A missing one yields a
-     * {@link Schending.Soort#ONTBREKENDE_INSTANTIE} with veld {@code "instanties"} whose message names BOTH the
+     * {@link Violation.Kind#ONTBREKENDE_INSTANTIE} with veld {@code "instanties"} whose message names BOTH the
      * objecttype AND the entrypoint.
      *
      * <p>Membership is the ch. 2.2 ⊑ ({@link DescriptorLoader#objectMatch}), not name equality: the scoped
@@ -777,109 +777,109 @@ public final class BeslisserKern {
      * reject a request the engine can serve. Case-insensitive and, on a model without subtypes, identical to
      * the previous name equality.
      */
-    private static List<Schending> ontbrekendeInvoer(Entrypoint ep,
+    private static List<Violation> missingInput(Entrypoint ep,
             Map<String, RegelSpraakModel.Objecttype> typePerLabel, RegelSpraakModel model) {
-        List<Schending> uit = new ArrayList<>();
-        List<String> invoer = ep.descriptor().invoer();
-        if (invoer == null) return uit;
-        for (String vereist : invoer) {
-            boolean aanwezig = false;
+        List<Violation> sink = new ArrayList<>();
+        List<String> input = ep.descriptor().input();
+        if (input == null) return sink;
+        for (String required : input) {
+            boolean present = false;
             for (RegelSpraakModel.Objecttype ot : typePerLabel.values())
-                if (DescriptorLoader.objectMatch(model, ot, vereist)) { aanwezig = true; break; }
-            if (!aanwezig)
-                uit.add(Schending.van(Schending.Soort.ONTBREKENDE_INSTANTIE, "instanties",
-                        "entrypoint '" + ep.descriptor().naam() + "' vereist minstens één instantie van objecttype '"
-                                + vereist + "', maar het verzoek levert er geen"));
+                if (DescriptorLoader.objectMatch(model, ot, required)) { present = true; break; }
+            if (!present)
+                sink.add(Violation.van(Violation.Kind.ONTBREKENDE_INSTANTIE, "instanties",
+                        "entrypoint '" + ep.descriptor().name() + "' vereist minstens één instantie van objecttype '"
+                                + required + "', maar het verzoek levert er geen"));
         }
-        return uit;
+        return sink;
     }
 
     // ---------------- accessors (fase-3 /info) ----------------
 
-    public DienstDescriptor descriptor() { return descriptor; }
+    public ServiceDescriptor descriptor() { return descriptor; }
     public RegelSpraakModel model() { return model; }
 
-    /** Whether a request may ask to see its session: the core was started with {@link KernConfig#detail()}. */
+    /** Whether a request may ask to see its session: the core was started with {@link CoreConfig#detail()}. */
     public boolean detail() { return detail; }
 
     /** The {@code uchar-ir-v1} document the service serves: the one it was given as its source, or the one uchar's
-     *  emitter writes of the model of its {@code .rgs} sources ({@link UcharBouw#document}), the forms of every scope
+     *  emitter writes of the model of its {@code .rgs} sources ({@link UcharBuild#document}), the forms of every scope
      *  together. Whoever holds a document equal to it holds the service's model. */
     public String document() {
         String d = document;
-        if (d == null) document = d = UcharBouw.document(model);
+        if (d == null) document = d = UcharBuild.document(model);
         return d;
     }
 
     /**
      * The entry point a scenario with {@code scope} runs on, by its path: one whose scope carries the forms of the
-     * scenario ({@link VormIndex}), the forms named as the model spells them without a version. A scenario without a
+     * scenario ({@link FormIndex}), the forms named as the model spells them without a version. A scenario without a
      * scope runs on every form of the model. An entry point that carries exactly those forms comes first, the first
      * in the order of the descriptor; else the one that carries them with the fewest others, the first on a tie. That
      * one fires the extra forms as well, so its answer can differ from the scenario's, and the path says which entry
      * point it was.
      *
-     * @throws GeenIngangspunt when no entry point carries every form of the scenario, naming what each one lacks
+     * @throws NoEntryPoint when no entry point carries every form of the scenario, naming what each one lacks
      */
-    public String padVoorScope(ResolvedScenario.Scope scope) {
-        java.util.Set<String> gevraagd = new java.util.LinkedHashSet<>();
-        for (String v : scope == null ? vormen.alle() : scope.vormen())
-            gevraagd.add(CaseEmitter.norm(CaseEmitter.basisNaam(v)));
-        String beste = null;
+    public String pathForScope(ResolvedScenario.Scope scope) {
+        java.util.Set<String> requested = new java.util.LinkedHashSet<>();
+        for (String v : scope == null ? forms.all() : scope.vormen())
+            requested.add(CaseEmitter.norm(CaseEmitter.basisNaam(v)));
+        String best = null;
         int extra = Integer.MAX_VALUE;
-        List<String> tekort = new ArrayList<>();
-        for (DienstDescriptor.Entrypoint ep : descriptor.entrypoints()) {
-            java.util.Set<String> gedragen = new java.util.LinkedHashSet<>();
-            for (String v : vormen.scope(ep.scope()).vormen()) gedragen.add(CaseEmitter.norm(v));
-            List<String> mist = new ArrayList<>();
-            for (String v : gevraagd) if (!gedragen.contains(v)) mist.add(v);
-            if (!mist.isEmpty()) {
-                tekort.add("'" + ep.pad() + "' mist " + (mist.size() <= 5 ? mist : mist.subList(0, 5) + " en "
-                        + (mist.size() - 5) + " andere"));
+        List<String> shortfall = new ArrayList<>();
+        for (ServiceDescriptor.Entrypoint ep : descriptor.entrypoints()) {
+            java.util.Set<String> carried = new java.util.LinkedHashSet<>();
+            for (String v : forms.scope(ep.scope()).forms()) carried.add(CaseEmitter.norm(v));
+            List<String> lacking = new ArrayList<>();
+            for (String v : requested) if (!carried.contains(v)) lacking.add(v);
+            if (!lacking.isEmpty()) {
+                shortfall.add("'" + ep.path() + "' mist " + (lacking.size() <= 5 ? lacking : lacking.subList(0, 5) + " en "
+                        + (lacking.size() - 5) + " andere"));
                 continue;
             }
-            int erbij = gedragen.size() - gevraagd.size();
-            if (erbij < extra) { beste = ep.pad(); extra = erbij; }
+            int surplus = carried.size() - requested.size();
+            if (surplus < extra) { best = ep.path(); extra = surplus; }
         }
-        if (beste != null) return beste;
-        throw new GeenIngangspunt((scope == null ? "het scenario noemt geen scope en rekent dus met alle "
-                + gevraagd.size() + " vormen van het model" : "de scope van het scenario draagt " + gevraagd.size()
+        if (best != null) return best;
+        throw new NoEntryPoint((scope == null ? "het scenario noemt geen scope en rekent dus met alle "
+                + requested.size() + " vormen van het model" : "de scope van het scenario draagt " + requested.size()
                 + " vorm(en)") + "; geen ingangspunt van de dienst draagt ze alle: "
-                + String.join("; ", tekort));
+                + String.join("; ", shortfall));
     }
 
-    public Map<String, Entrypoint> entrypoints() { return perPad; }
-    public Entrypoint entrypoint(String pad) { return perPad.get(pad); }
+    public Map<String, Entrypoint> entrypoints() { return perPath; }
+    public Entrypoint entrypoint(String path) { return perPath.get(path); }
 
     /** The loaded validity-versioned parameter sets (fase 5), or the empty list when the descriptor names none. */
-    public List<Parameterset> parametersets() { return parametersets; }
+    public List<Parameterset> parameterSets() { return parameterSets; }
 
     /** The rendered regel-geldigheid × parameter-geldigheid WARNING lines (gate G3), served on /info and logged
-     *  by {@link dev.uchar.regelspraak.toolchain.service.http.DienstMain} at startup. Empty when no gap / no sets. */
-    public List<String> periodeWaarschuwingen() { return periodeWaarschuwingen; }
+     *  by {@link dev.uchar.regelspraak.toolchain.service.http.ServiceMain} at startup. Empty when no gap / no sets. */
+    public List<String> periodWarnings() { return periodWarnings; }
 
-    /** Thrown when no entry point of the service carries the forms of a scenario ({@link #padVoorScope}). */
-    public static final class GeenIngangspunt extends RuntimeException {
-        public GeenIngangspunt(String zin) { super(zin); }
+    /** Thrown when no entry point of the service carries the forms of a scenario ({@link #pathForScope}). */
+    public static final class NoEntryPoint extends RuntimeException {
+        public NoEntryPoint(String sentence) { super(sentence); }
     }
 
     /** Thrown when a request targets a path no entry point serves. */
-    public static final class OnbekendPad extends RuntimeException {
-        public OnbekendPad(String pad) { super("onbekend pad: '" + pad + "'"); }
+    public static final class UnknownPath extends RuntimeException {
+        public UnknownPath(String path) { super("onbekend pad: '" + path + "'"); }
     }
 
     /** Thrown when a request targets an entry point uchar does not carry, started with
-     *  {@link KernConfig#allowMarkers()}: uchar built no KieBase for it, so no answer it could give is complete.
-     *  {@link #reden()} is uchar's sentence, {@link #markers()} the construct it names, if any. */
-    public static final class NietUitvoerbaar extends RuntimeException {
+     *  {@link CoreConfig#allowMarkers()}: uchar built no KieBase for it, so no answer it could give is complete.
+     *  {@link #reason()} is uchar's sentence, {@link #markers()} the construct it names, if any. */
+    public static final class NonExecutable extends RuntimeException {
         private final transient Entrypoint ep;
 
-        public NietUitvoerbaar(Entrypoint ep) {
-            super("entrypoint '" + ep.descriptor().naam() + "' is niet uitvoerbaar: " + ep.weigering());
+        public NonExecutable(Entrypoint ep) {
+            super("entrypoint '" + ep.descriptor().name() + "' is niet uitvoerbaar: " + ep.refusal());
             this.ep = ep;
         }
 
-        public String reden() { return ep.weigering(); }
+        public String reason() { return ep.refusal(); }
         public List<String> markers() { return ep.markers(); }
     }
 }
