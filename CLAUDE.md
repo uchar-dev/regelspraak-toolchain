@@ -59,4 +59,7 @@ Beslistabel converter). `make image` and `make kind-smoke` need Docker and run o
 
 - Work enters as a card in `backlog/`: `new/` → `doing/` → `done/`, with the result recorded in the card.
 - Commit messages in Dutch: short, the why, wrapped at 72 columns.
-- Infrastructure names in English, the domain vocabulary in Dutch (`DecisionCore`, `Verbaliser`).
+- Every identifier is English, as in the Conventions of uchar (`uchar/CLAUDE.md`): classes, methods, fields, variables, shell
+  variables and the names of files and directories. The RegelSpraak language and the domain content (declared names in test
+  documents, the `jutterswet-*` names) stay Dutch, and so do the parser rules of the grammar. What is visible outside the code
+  also stays: JSON keys, OpenAPI, subcommands and flags, Make targets, environment variables, Helm and Docker configuration, messages.
