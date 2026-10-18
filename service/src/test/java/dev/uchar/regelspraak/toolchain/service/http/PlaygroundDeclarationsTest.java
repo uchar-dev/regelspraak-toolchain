@@ -3,7 +3,7 @@ package dev.uchar.regelspraak.toolchain.service.http;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.toolchain.service.TokaSource;
@@ -200,9 +200,9 @@ class PlaygroundDeclarationsTest {
      *  none of these in the corpus), and the line of each declaration carries the name it declares. */
     @Test
     void every_golden_links() throws IOException {
-        Set<Benoembaar.Soort> always = EnumSet.of(Benoembaar.Soort.OBJECTTYPE, Benoembaar.Soort.FEITTYPE,
-                Benoembaar.Soort.ROL, Benoembaar.Soort.PARAMETER, Benoembaar.Soort.ENUMERATIEWAARDE,
-                Benoembaar.Soort.REGELGROEP);
+        Set<Designatable.Kind> always = EnumSet.of(Designatable.Kind.OBJECTTYPE, Designatable.Kind.FEITTYPE,
+                Designatable.Kind.ROL, Designatable.Kind.PARAMETER, Designatable.Kind.ENUMERATIEWAARDE,
+                Designatable.Kind.REGELGROEP);
         List<Path> sources;
         try (Stream<Path> s = Files.list(TokaSource.REPO.resolve("uchar/corpus/golden"))) {
             sources = s.map(p -> p.resolve("bron.rgs")).filter(Files::isRegularFile).sorted().toList();
@@ -217,7 +217,7 @@ class PlaygroundDeclarationsTest {
             RegelSpraakModel model = scenario
                     ? ScenarioResolver.resolve(source).model() : Resolver.resolve(source);
             if (!model.isOk()) continue;
-            Map<Benoembaar, Declarations.Declaration> d;
+            Map<Designatable, Declarations.Declaration> d;
             try {
                 d = Declarations.van(parseResult.document(), parseResult.tokens(), model);
             } catch (Declarations.Unlinkable o) {
@@ -225,10 +225,10 @@ class PlaygroundDeclarationsTest {
                 continue;
             }
             List<String> lines = ScenarioData.lines(source);
-            for (Benoembaar b : model.benoembaar()) {
+            for (Designatable b : model.designatable()) {
                 Declarations.Declaration x = d.get(b);
                 if (x == null) {
-                    if (always.contains(b.soort()))
+                    if (always.contains(b.category()))
                         errors.add(p.getParent().getFileName() + ": " + b + " heeft geen declaratie");
                     continue;
                 }

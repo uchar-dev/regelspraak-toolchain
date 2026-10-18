@@ -1,9 +1,9 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
+import dev.uchar.regelspraak.engine.ScenarioResult.Status;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
-import dev.uchar.regelspraak.transpiler.tms.Fout;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
+import dev.uchar.regelspraak.transpiler.tms.Fault;
 
 import org.junit.jupiter.api.Test;
 
@@ -55,14 +55,14 @@ class ScenarioRunnerSessionTest {
             """);
         assertEquals(1, u.size());
         ScenarioRunner.Explained s = u.get(0);
-        assertEquals(Status.PASS, s.result().status(), s.result()::diagnose);
+        assertEquals(Status.PASS, s.result().status(), s.result()::diagnostic);
         assertNull(s.sessionError(), s::sessionError);
         assertNotNull(s.session());
-        Fixpunt f = s.session().fixpoint();
-        assertTrue(f.fouten().isEmpty(), f.fouten()::toString);
+        Fixpoint f = s.session().fixpoint();
+        assertTrue(f.faults().isEmpty(), f.faults()::toString);
         Object b = s.session().beans().get("B");
         List<String> derived = f.waarden().stream().filter(w -> w.object() == b)
-                .map(w -> w.attribuut() + "=" + w.waarde()).sorted().toList();
+                .map(w -> w.attribute() + "=" + w.value()).sorted().toList();
         assertEquals(List.of("helpersdeel=50", "premie=20"), derived, "het helpersdeel heeft geen verwachting");
     }
 
@@ -79,16 +79,16 @@ class ScenarioRunnerSessionTest {
             - de premie van B is 20,00
             """);
         ScenarioRunner.Explained s = u.get(0);
-        assertEquals(Status.FAIL, s.result().status(), s.result()::diagnose);
-        assertTrue(s.result().verwachtingen().isEmpty(), s.result().verwachtingen()::toString);
+        assertEquals(Status.FAIL, s.result().status(), s.result()::diagnostic);
+        assertTrue(s.result().expectations().isEmpty(), s.result().expectations()::toString);
         assertTrue(s.uitlegError().startsWith("uchars replay speelde de case niet uit: "), s::uitlegError);
         assertTrue(s.uitleg().isEmpty());
         assertNull(s.sessionError(), s::sessionError);
-        List<Fout> errors = s.session().fixpoint().fouten();
+        List<Fault> errors = s.session().fixpoint().faults();
         assertEquals(1, errors.size(), errors::toString);
         assertEquals("helpersdeel van een berging", errors.get(0).regel());
         assertSame(s.session().beans().get("B"), errors.get(0).onderwerp());
-        assertTrue(errors.get(0).melding().contains("deling door nul"), errors.get(0)::melding);
+        assertTrue(errors.get(0).message().contains("deling door nul"), errors.get(0)::message);
         assertNull(CaseSession.read(s.session().beans().get("B"), "getPremie"),
                 "met een staande fout zet de sessie niets terug: de bean houdt de invoer");
     }
@@ -111,7 +111,7 @@ class ScenarioRunnerSessionTest {
             Met als verwacht resultaat:
             - de heffing van V1 is 5
             """);
-        assertEquals(Status.MARKER, u.get(0).result().status(), u.get(0).result()::diagnose);
+        assertEquals(Status.MARKER, u.get(0).result().status(), u.get(0).result()::diagnostic);
         assertNull(u.get(0).session());
         assertNull(u.get(0).sessionError());
     }

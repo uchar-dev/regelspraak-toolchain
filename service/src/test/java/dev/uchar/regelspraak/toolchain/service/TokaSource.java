@@ -100,7 +100,7 @@ public final class TokaSource {
      *  (two of its allocations write one attribute, WF-026), and the mapper reads no rule: mapper/relation tests read
      *  their requests with the input step of this build, whose bean model carries every type and fact type. */
     static DroolsBackend.Build build() {
-        return UcharBuild.assemble(CaseEmitter.metScope(model(), new ResolvedScenario.Scope(List.of())),
+        return UcharBuild.assemble(CaseEmitter.withScope(model(), new ResolvedScenario.Scope(List.of())),
                 DroolsBackend.Branch.EXEC_MODEL);
     }
 }

@@ -1,7 +1,7 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.toolchain.engine.ParameterSetLoader.ParameterSetError;
-import dev.uchar.regelspraak.model.Parameterset;
+import dev.uchar.regelspraak.model.ParameterSet;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.Test;
@@ -50,7 +50,7 @@ class ParameterSetLoaderTest {
                 }}
             ]}
             """;
-        List<Parameterset> sets = ParameterSetLoader.load(json, model());
+        List<ParameterSet> sets = ParameterSetLoader.load(json, model());
         assertEquals(2, sets.size());
         assertEquals("2025", sets.get(0).naam());
 
@@ -59,8 +59,8 @@ class ParameterSetLoaderTest {
 
         // vintage-selectie over de UNIE: 2025 -> 18, 2026 -> 21.
         List<String> errors = new ArrayList<>();
-        Map<String, Object> op2025 = Parameterset.waardenOp(sets, LocalDate.parse("2025-06-01"), errors);
-        Map<String, Object> op2026 = Parameterset.waardenOp(sets, LocalDate.parse("2026-06-01"), errors);
+        Map<String, Object> op2025 = ParameterSet.valuesOn(sets, LocalDate.parse("2025-06-01"), errors);
+        Map<String, Object> op2026 = ParameterSet.valuesOn(sets, LocalDate.parse("2026-06-01"), errors);
         assertTrue(errors.isEmpty(), errors::toString);
         assertEquals(new BigDecimal(18), op2025.get("volwassenleeftijd"));
         assertEquals(new BigDecimal(21), op2026.get("volwassenleeftijd"));

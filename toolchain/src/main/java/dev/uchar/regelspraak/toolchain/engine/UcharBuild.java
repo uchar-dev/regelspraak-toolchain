@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.IrEmitter;
-import dev.uchar.regelspraak.graaf.ProducentConsument;
+import dev.uchar.regelspraak.graph.ProducerConsumer;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
@@ -75,7 +75,7 @@ public final class UcharBuild {
         if (!model.isOk())
             throw new IllegalArgumentException("UcharBouw: het model draagt resolverfouten " + model.errors()
                     + "; meld die voordat er gebouwd wordt");
-        List<Diagnostic> unwritten = IrEmitter.ongeschrevenVerdelingen(model);
+        List<Diagnostic> unwritten = IrEmitter.unwrittenAllocations(model);
         if (!unwritten.isEmpty())
             throw new NotCarried("emitter: " + unwritten.get(0).message(), allocationName(model), null);
         try {
@@ -92,7 +92,7 @@ public final class UcharBuild {
             return DroolsBackend.build(document, branch);
         } catch (IrLoader.Refusal e) {
             throw new NotCarried("loader: " + e.getMessage(), null, e);
-        } catch (IrLoader.Documentfout e) {
+        } catch (IrLoader.DocumentError e) {
             throw new NotCarried("document: " + e.getMessage(), null, e);
         } catch (CaseRunner.Excluded e) {
             throw new NotCarried(e.getMessage(), notLowered(e.getMessage()), e);
@@ -103,12 +103,12 @@ public final class UcharBuild {
     static String notLowered(String message) {
         if (message == null) return null;
         Matcher m = NOT_LOWERED.matcher(message);
-        return m.matches() ? ProducentConsument.basisNaam(m.group(1)) : null;
+        return m.matches() ? ProducerConsumer.baseName(m.group(1)) : null;
     }
 
     private static String allocationName(RegelSpraakModel model) {
-        return model.verdelingen.stream()
-                .filter(v -> v.methode() == dev.uchar.regelspraak.ir.ResolvedVerdeling.Methode.COMPLEX)
-                .map(v -> ProducentConsument.basisNaam(v.naam())).findFirst().orElseThrow();
+        return model.allocations.stream()
+                .filter(v -> v.method() == dev.uchar.regelspraak.ir.ResolvedAllocation.Method.COMPLEX)
+                .map(v -> ProducerConsumer.baseName(v.naam())).findFirst().orElseThrow();
     }
 }

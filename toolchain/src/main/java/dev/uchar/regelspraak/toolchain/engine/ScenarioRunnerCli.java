@@ -1,10 +1,10 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.engine.ScenarioResultaat;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.DekkingRegel;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.Vuring;
+import dev.uchar.regelspraak.engine.ScenarioResult;
+import dev.uchar.regelspraak.engine.ScenarioResult.CoverageRule;
+import dev.uchar.regelspraak.engine.ScenarioResult.Status;
+import dev.uchar.regelspraak.engine.ScenarioResult.ExpectationResult;
+import dev.uchar.regelspraak.engine.ScenarioResult.Firing;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -140,34 +140,34 @@ public final class ScenarioRunnerCli {
     /** Print each result (FAIL detail / MARKER / optional trace) and return the run's exit code: 1 if any FAIL, else
      *  3 if any MARKER, else 0 — the single-file CLI's exit contract, extracted so {@code --manifest} reuses it. A
      *  FAIL without a failed expectation (no fixpoint, or a case the replay could not play) prints its diagnose. */
-    private static int reportAndCode(List<ScenarioResultaat> results, boolean trace) {
+    private static int reportAndCode(List<ScenarioResult> results, boolean trace) {
         return reportAndCode(results, trace, null, null);
     }
 
     /** As above; with {@code uitleg} (the same scenarios, explained) each played scenario's explanation follows, and
      *  with {@code naming} the rules of the trace and the coverage go by their names in its vocabulary (null: as
      *  uchar's report names them). */
-    private static int reportAndCode(List<ScenarioResultaat> results, boolean trace,
+    private static int reportAndCode(List<ScenarioResult> results, boolean trace,
                                         List<ScenarioRunner.Explained> uitleg, Naming naming) {
         boolean anyFail = false, anyMarker = false;
         for (int n = 0; n < results.size(); n++) {
-            ScenarioResultaat r = results.get(n);
+            ScenarioResult r = results.get(n);
             System.out.println(r.status() + "  " + r.naam());
             if (r.status() == Status.FAIL) {
                 anyFail = true;
                 boolean reported = false;
-                for (VerwachtingResultaat v : r.verwachtingen())
+                for (ExpectationResult v : r.expectations())
                     if (!v.ok()) {
                         reported = true;
-                        System.out.println("    verwachting " + v.positie() + " FOUT: " + v.bron().trim()
-                                + "  (verwacht=" + v.verwacht() + ", werkelijk=" + v.werkelijk() + ")");
+                        System.out.println("    verwachting " + v.position() + " FOUT: " + v.source().trim()
+                                + "  (verwacht=" + v.expected() + ", werkelijk=" + v.actual() + ")");
                     }
-                if (!reported) System.out.println("    FOUT: " + r.diagnose());
+                if (!reported) System.out.println("    FOUT: " + r.diagnostic());
                 printTrace(r, naming);
                 printCoverage(r, naming);
             } else if (r.status() == Status.MARKER) {
                 anyMarker = true;
-                System.out.println("    MARKER: " + r.diagnose());
+                System.out.println("    MARKER: " + r.diagnostic());
                 printCoverage(r, naming);
             }
             if (trace && r.status() != Status.FAIL) printTrace(r, naming);
@@ -316,7 +316,7 @@ public final class ScenarioRunnerCli {
             System.err.println("kon een bestand niet lezen: " + e.getCause().getMessage());
             return 1;
         }
-        List<ScenarioResultaat> results;
+        List<ScenarioResult> results;
         try {
             results = ScenarioRunner.run(source);
         } catch (ScenarioRunner.ResolveError f) {
@@ -328,26 +328,26 @@ public final class ScenarioRunnerCli {
     }
 
     /** The exit code for a result list WITHOUT printing (1 FAIL, else 3 MARKER, else 0). */
-    private static int silentCode(List<ScenarioResultaat> results) {
+    private static int silentCode(List<ScenarioResult> results) {
         boolean fail = false, marker = false;
-        for (ScenarioResultaat r : results) {
+        for (ScenarioResult r : results) {
             if (r.status() == Status.FAIL) fail = true;
             else if (r.status() == Status.MARKER) marker = true;
         }
         return fail ? 1 : marker ? 3 : 0;
     }
 
-    private static void printTrace(ScenarioResultaat r, Naming naming) {
-        System.out.println("    trace (" + r.trace().totaal() + " vuring(en)):");
-        for (Vuring v : r.trace().vuringen())
+    private static void printTrace(ScenarioResult r, Naming naming) {
+        System.out.println("    trace (" + r.trace().total() + " vuring(en)):");
+        for (Firing v : r.trace().firings())
             System.out.println("      " + ruleName(v.regel(), naming) + (v.labels().isEmpty() ? "" : " @ " + v.labels())
-                    + " x" + v.aantal());
+                    + " x" + v.count());
     }
 
-    private static void printCoverage(ScenarioResultaat r, Naming naming) {
+    private static void printCoverage(ScenarioResult r, Naming naming) {
         System.out.println("    dekking:");
-        for (DekkingRegel d : r.dekking())
-            System.out.println("      " + ruleName(d.regel(), naming) + " : " + d.soort());
+        for (CoverageRule d : r.coverage())
+            System.out.println("      " + ruleName(d.regel(), naming) + " : " + d.category());
     }
 
     private static String ruleName(String line, Naming naming) {

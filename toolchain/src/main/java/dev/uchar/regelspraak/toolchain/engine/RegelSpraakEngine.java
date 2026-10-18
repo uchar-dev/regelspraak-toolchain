@@ -1,18 +1,18 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
-import dev.uchar.regelspraak.cases.Invoer;
+import dev.uchar.regelspraak.cases.Input;
 import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
-import dev.uchar.regelspraak.model.Parameterset;
+import dev.uchar.regelspraak.model.ParameterSet;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Severity;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.kern.Dekking;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
+import dev.uchar.regelspraak.transpiler.core.Coverage;
+import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import org.kie.api.KieBase;
 import org.kie.api.runtime.KieSession;
@@ -77,9 +77,9 @@ public final class RegelSpraakEngine {
 
     /** A fresh instance of the generated bean for objecttype {@code objectType} (its declared name). */
     public Object newInstance(String objectType) {
-        Objecttype ot = model.objecttypeOpNaam(objectType);
+        Objecttype ot = model.objectTypeByName(objectType);
         if (ot == null) throw new IllegalArgumentException("onbekend objecttype '" + objectType + "'");
-        String clazz = FactModelGenerator.PAKKET + "." + Namen.ident(ot.naam, true);
+        String clazz = FactModelGenerator.PACKAGE + "." + Namen.ident(ot.naam, true);
         try {
             return Class.forName(clazz, true, build.beanLoader()).getConstructor().newInstance();
         } catch (ReflectiveOperationException e) {
@@ -107,7 +107,7 @@ public final class RegelSpraakEngine {
      * dus ALTIJD dezelfde datum; een tweede datumnotie is onmogelijk. Fail-fast:
      * <ul>
      *   <li><b>peildatum {@code null}</b> — de datumautoriteit is verplicht op dit pad ({@link IllegalArgumentException});</li>
-     *   <li><b>overlap</b> — {@link Parameterset#overlapFouten} niet-leeg is nooit last-one-wins, ook voor
+     *   <li><b>overlap</b> — {@link ParameterSet#overlapFouten} niet-leeg is nooit last-one-wins, ook voor
      *       hand-gebouwde sets ({@link IllegalArgumentException}); de lader vangt dit normaal al af;</li>
      *   <li><b>gap</b> — geen interval bevat de peildatum voor een parameter is een SESSION-fout die parameter +
      *       peildatum noemt ({@link IllegalStateException} met alle gap-regels; geen compile-fout, dus geen
@@ -117,21 +117,21 @@ public final class RegelSpraakEngine {
      * transpiler de global geeft, tolerant voor niet-gedeclareerde globals: een parameter die geen enkele regel leest
      * is geen fout.
      */
-    public Session newSession(LocalDate asOfDate, List<Parameterset> parameterSets) {
+    public Session newSession(LocalDate asOfDate, List<ParameterSet> parameterSets) {
         if (asOfDate == null)
             throw new IllegalArgumentException("peildatum is verplicht: de datumautoriteit selecteert de "
                     + "parameter-vintage en is tevens de rekendatum — een null-datum kan geen vintage kiezen");
 
-        List<Parameterset> sets = parameterSets == null ? List.of() : parameterSets;
+        List<ParameterSet> sets = parameterSets == null ? List.of() : parameterSets;
 
         // defensieve overlap-hercheck: ook hand-gebouwde sets krijgen nooit last-one-wins (de lader vangt dit al af).
-        List<String> overlap = Parameterset.overlapFouten(sets);
+        List<String> overlap = ParameterSet.overlapErrors(sets);
         if (!overlap.isEmpty())
             throw new IllegalArgumentException("parametersets bevatten overlappende geldigheidsperiodes: "
                     + String.join("; ", overlap));
 
         List<String> holes = new ArrayList<>();
-        Map<String, Object> resolved = Parameterset.waardenOp(sets, asOfDate, holes);
+        Map<String, Object> resolved = ParameterSet.valuesOn(sets, asOfDate, holes);
         if (!holes.isEmpty())
             throw new IllegalStateException("geen parameterwaarde geldig op peildatum " + asOfDate + ": "
                     + String.join("; ", holes));
@@ -153,7 +153,7 @@ public final class RegelSpraakEngine {
 
     /** The coverage manifest of the built rule base: one verdict per construct, every one LOWERED, because the build
      *  refuses any other. */
-    public List<Dekking> coverage() { return build.dekking(); }
+    public List<Coverage> coverage() { return build.coverage(); }
 
     /**
      * A unit of work on uchar's entry ({@code DroolsBackend.voegIn}, {@code vuur}, {@code read},
@@ -173,7 +173,7 @@ public final class RegelSpraakEngine {
         private final List<Object> input = new ArrayList<>();
         /** The bucket scalars and list orders of the first fire's input, stated on its {@code Invoer} beside the
          *  beans of {@link #input}. */
-        private final List<Consumer<Invoer>> feeds = new ArrayList<>();
+        private final List<Consumer<Input>> feeds = new ArrayList<>();
         private boolean filled;
 
         Session(DroolsBackend.Build build, KieSession session) {
@@ -208,7 +208,7 @@ public final class RegelSpraakEngine {
             Objects.requireNonNull(bean, "bean");
             Objects.requireNonNull(attribute, "attribuut");
             beforeFirstFire("emmerscalair", "een emmerscalair erbij");
-            feeds.add(i -> i.emmerscalair(bean, attribute));
+            feeds.add(i -> i.bucketScalar(bean, attribute));
             return this;
         }
 
@@ -225,7 +225,7 @@ public final class RegelSpraakEngine {
             Objects.requireNonNull(role, "rol");
             List<Object> order = List.copyOf(members);   // the order as given now, not as the list reads at the fire
             beforeFirstFire("lijst", "een lijst erbij");
-            feeds.add(i -> i.lijst(houder, role, order));
+            feeds.add(i -> i.list(houder, role, order));
             return this;
         }
 
@@ -248,14 +248,14 @@ public final class RegelSpraakEngine {
         public int fire() {
             return withBeanLoader(() -> {
                 if (!filled) {
-                    Invoer in = new Invoer().beans(input);
-                    for (Consumer<Invoer> feed : feeds) feed.accept(in);
-                    DroolsBackend.voegIn(build, session, in);
+                    Input in = new Input().beans(input);
+                    for (Consumer<Input> feed : feeds) feed.accept(in);
+                    DroolsBackend.insert(build, session, in);
                     filled = true;
                 }
-                DroolsBackend.Vuring firing = DroolsBackend.vuur(build, session);
-                if (firing.geenFixpunt() != null) throw new IllegalStateException(firing.geenFixpunt());
-                return firing.vuringen();
+                DroolsBackend.Firing firing = DroolsBackend.fire(build, session);
+                if (firing.noFixpoint() != null) throw new IllegalStateException(firing.noFixpoint());
+                return firing.firings();
             });
         }
 
@@ -282,8 +282,8 @@ public final class RegelSpraakEngine {
         /** What stands at the fixpoint of the last {@link #fire}, without writing anything on a bean: the derived values
          *  and characteristics, the objects and links the creations made, the evaluation faults as data and the
          *  inconsistencies. */
-        public Fixpunt read() {
-            return withBeanLoader(() -> DroolsBackend.lees(build, session));
+        public Fixpoint read() {
+            return withBeanLoader(() -> DroolsBackend.fixpointOf(build, session));
         }
 
         /** Puts what stands at the fixpoint of the last {@link #fire} on the beans, after which the session does not
@@ -294,7 +294,7 @@ public final class RegelSpraakEngine {
          *  filling. A fault is an evaluation fault by its place at the fixpoint, not by its type: a consumer that must
          *  tell it from an exception of the entry itself reads {@link #read}{@code ().fouten()} first. */
         public void restore() {
-            withBeanLoader(() -> { DroolsBackend.zetAfgeleideWaarden(build, session); return null; });
+            withBeanLoader(() -> { DroolsBackend.setDerivedValues(build, session); return null; });
         }
 
         /** All facts in working memory that are instances of {@code type} — e.g. objects a §13.4.6 objectcreatie
@@ -309,11 +309,11 @@ public final class RegelSpraakEngine {
          *  {@link FactModelGenerator#PAKKET}), e.g. {@code "Inconsistentie"} for the §9.5 inconsistency facts. */
         public Collection<?> facts(String clazz) {
             try {
-                Class<?> type = Class.forName(FactModelGenerator.PAKKET + "." + clazz, true, build.beanLoader());
+                Class<?> type = Class.forName(FactModelGenerator.PACKAGE + "." + clazz, true, build.beanLoader());
                 return session.getObjects(type::isInstance);
             } catch (ClassNotFoundException e) {
                 throw new IllegalArgumentException("geen gegenereerde klasse " + clazz + " in "
-                        + FactModelGenerator.PAKKET, e);
+                        + FactModelGenerator.PACKAGE, e);
             }
         }
 

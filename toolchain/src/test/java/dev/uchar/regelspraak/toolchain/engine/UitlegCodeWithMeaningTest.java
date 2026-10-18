@@ -1,6 +1,6 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
+import dev.uchar.regelspraak.engine.ScenarioResult.Status;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 
 import org.junit.jupiter.api.Test;
@@ -52,7 +52,7 @@ class UitlegCodeWithMeaningTest {
     private static List<String> uitleg(String vocabulary) {
         List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(ScenarioResolver.resolve(DOCUMENT), vocabulary);
         assertEquals(1, u.size());
-        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnose());
+        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
         assertNull(u.get(0).uitlegError(), u.get(0)::uitlegError);
         return u.get(0).uitleg();
     }

@@ -87,7 +87,7 @@ public final class AnswerBuilder {
                 if (!DescriptorLoader.objectMatch(model, ot, u.objectType())) continue;
                 Object value = RegelSpraakRuntime.get(bean, RequestMapper.prop(u.member()));
                 if (u.characteristic()) characteristics.set(naming.characteristic(ot, u.member()), renderCharacteristic(value));
-                else attributes.set(naming.attribute(ot, u.member()), rend(value, ot.attribuut(u.member())));
+                else attributes.set(naming.attribute(ot, u.member()), rend(value, ot.attribute(u.member())));
             }
             if (attributes.isEmpty() && characteristics.isEmpty()) continue;
             ObjectNode inst = NF.objectNode();

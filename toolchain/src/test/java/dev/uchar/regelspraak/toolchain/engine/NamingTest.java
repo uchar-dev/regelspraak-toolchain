@@ -54,7 +54,7 @@ class NamingTest {
         assertEquals("aangespoeld voorwerp", handboek.objectType("Strandvondst"));
         assertEquals("wrak", handboek.objectType("Wrakstuk"));
         // the subtype's inherited attribute carries the designation written on its declaring supertype
-        RegelSpraakModel.Objecttype wrakstuk = m.objecttypeOpNaam("Wrakstuk");
+        RegelSpraakModel.Objecttype wrakstuk = m.objectTypeByName("Wrakstuk");
         assertEquals("gewicht in kilogram", handboek.attribute(wrakstuk, "gewicht"));
         assertEquals("diepte", handboek.attribute(wrakstuk, "diepte"), "zonder benaming: de naam zoals gegeven");
         assertEquals("waardevol", handboek.characteristic(wrakstuk, "waardevol"));

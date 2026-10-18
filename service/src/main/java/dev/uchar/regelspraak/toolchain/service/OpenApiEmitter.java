@@ -10,14 +10,14 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import dev.uchar.regelspraak.engine.ScenarioResultaat;
+import dev.uchar.regelspraak.engine.ScenarioResult;
 import dev.uchar.regelspraak.model.Datatype;
-import dev.uchar.regelspraak.model.Eenheid;
+import dev.uchar.regelspraak.model.Unit;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -131,17 +131,17 @@ public final class OpenApiEmitter {
         Spellings(RegelSpraakModel model, Naming in) {
             this.model = model;
             this.in = in;
-            if (model.vocabulaires.isEmpty()) return;
+            if (model.vocabularies.isEmpty()) return;
             if (!in.isCanonical()) other.add(Naming.canonical(model));
-            for (RegelSpraakModel.Vocabulaire v : model.vocabulaires)
+            for (RegelSpraakModel.Vocabulary v : model.vocabularies)
                 if (!v.naam().equals(in.choice())) other.add(Naming.van(model, v.naam()));
         }
 
         /** Whether the document lists other spellings: the model declares vocabularies. */
-        boolean enabled() { return !model.vocabulaires.isEmpty(); }
+        boolean enabled() { return !model.vocabularies.isEmpty(); }
 
         /** {@code {<keuze>: <naam>}} of declaration {@code b} in the other spellings. */
-        ObjectNode van(Benoembaar b) {
+        ObjectNode van(Designatable b) {
             ObjectNode sink = NF.objectNode();
             for (Naming n : other) sink.put(n.choice(), n.name(b));
             return sink;
@@ -156,7 +156,7 @@ public final class OpenApiEmitter {
 
         /** The info block's description: whose names the document carries, and what else the service reads. */
         String documentDescription() {
-            List<String> vocabularies = model.vocabulaires.stream().map(v -> "'" + v.naam() + "'").toList();
+            List<String> vocabularies = model.vocabularies.stream().map(v -> "'" + v.naam() + "'").toList();
             return (in.isCanonical() ? "De namen in dit document zijn de canonieke namen."
                     : "De namen in dit document zijn die van het vocabulaire '" + in.choice() + "'.")
                     + " De dienst neemt in een verzoek elke naam aan: canoniek of als benaming in "
@@ -176,7 +176,7 @@ public final class OpenApiEmitter {
         List<String> choices() {
             List<String> sink = new ArrayList<>();
             sink.add(Naming.CANONICAL);
-            for (RegelSpraakModel.Vocabulaire v : model.vocabulaires) sink.add(v.naam());
+            for (RegelSpraakModel.Vocabulary v : model.vocabularies) sink.add(v.naam());
             return sink;
         }
     }
@@ -353,9 +353,9 @@ public final class OpenApiEmitter {
         ObjectNode props = NF.objectNode();
 
         // attributen (own first, then inherited — declared order within each)
-        for (var e : ot.attribuutLeden().entrySet()) {
+        for (var e : ot.attributeMembers().entrySet()) {
             String name = sp.in.attribute(ot, e.getKey());
-            if (!ot.dimensiesVan(e.getKey()).isEmpty()) { rejected.add(name + " (dimensie)"); continue; }
+            if (!ot.dimensionsOf(e.getKey()).isEmpty()) { rejected.add(name + " (dimensie)"); continue; }
             if (temporalAttribute(ot, e.getKey()))      { rejected.add(name + " (tijdlijn)"); continue; }
             ObjectNode attribute = attributeSchema(e.getValue(), sp);
             if (sp.enabled()) spellings(attribute, sp.van(Naming.attributeOf(ot, e.getKey())));
@@ -374,7 +374,7 @@ public final class OpenApiEmitter {
         }
         schema.set("properties", props);
         schema.put("description", objectTypeDescription(ot, sp.in, characteristics, rejected));
-        if (sp.enabled()) spellings(schema, sp.van(Benoembaar.objecttype(ot.naam)));
+        if (sp.enabled()) spellings(schema, sp.van(Designatable.objectType(ot.naam)));
         return schema;
     }
 
@@ -404,7 +404,7 @@ public final class OpenApiEmitter {
      *  with vocabularies their other spellings in {@code x-waardespellingen}. */
     private static ObjectNode attributeSchema(Datatype dt, Spellings sp) {
         ObjectNode s = NF.objectNode();
-        Eenheid unit = null;
+        Unit unit = null;
         switch (dt) {
             case Datatype.Numeriek n -> {
                 s.put("type", n.geheel() ? "integer" : "number");
@@ -415,9 +415,9 @@ public final class OpenApiEmitter {
                 unit = p.eenheid();
             }
             case Datatype.Tekst t -> s.put("type", "string");
-            case Datatype.Booleaan b -> s.put("type", "boolean");
+            case Datatype.BooleanType b -> s.put("type", "boolean");
             case Datatype.DatumInDagen d -> { s.put("type", "string"); s.put("format", "date"); }
-            case Datatype.DatumTijd d -> { s.put("type", "string"); s.put("format", "date-time"); }
+            case Datatype.DateTime d -> { s.put("type", "string"); s.put("format", "date-time"); }
             case Datatype.Enumeratie e -> {
                 s.put("type", "string");
                 ArrayNode enumArray = s.putArray("enum");
@@ -425,13 +425,13 @@ public final class OpenApiEmitter {
                 if (sp.enabled()) {
                     ObjectNode values = s.putObject("x-waardespellingen");
                     for (String w : e.waarden())
-                        values.set(sp.in.value(e, w), sp.van(Benoembaar.enumeratiewaarde(e.domein(), w)));
+                        values.set(sp.in.value(e, w), sp.van(Designatable.enumerationValue(e.domain(), w)));
                 }
             }
-            case Datatype.Onbekend o -> s.put("type", "string");
+            case Datatype.Unknown o -> s.put("type", "string");
         }
         if (unit != null) {
-            String rendering = unit.weergave();
+            String rendering = unit.rendering();
             s.put("x-eenheid", rendering);
             s.put("description", "eenheid: " + rendering
                     + " (een getal in deze eenheid, of {\"waarde\": n, \"eenheid\": \"" + rendering + "\"})");
@@ -445,12 +445,12 @@ public final class OpenApiEmitter {
      *  maps would call an INHERITED timeline scalar and emit a plain property for it — a contract the service
      *  then refuses at request time ({@link RequestMapper} NIET_ONDERSTEUND). */
     private static boolean temporalAttribute(Objecttype ot, String name) {
-        return ot.granulariteitVan(name) != null || ot.tijdlijnAantalVan(name) != null;
+        return ot.granularityOf(name) != null || ot.timelineCountOf(name) != null;
     }
 
     /** The kenmerk twin of {@link #temporalAttribute}, chain-closed for the same reason. */
     private static boolean temporalCharacteristic(Objecttype ot, String name) {
-        return ot.kenmerkGranulariteitVan(name) != null || ot.kenmerkTijdlijnAantalVan(name) != null;
+        return ot.characteristicGranularityOf(name) != null || ot.characteristicTimelineCountOf(name) != null;
     }
 
     // ------------------------------------------------------------------ generic request/response/fout schemas
@@ -601,7 +601,7 @@ public final class OpenApiEmitter {
         ObjectNode kind = props.putObject("soort");
         kind.put("type", "string");
         ArrayNode kinds = kind.putArray("enum");
-        for (ScenarioResultaat.DekkingSoort k : ScenarioResultaat.DekkingSoort.values()) kinds.add(k.name());
+        for (ScenarioResult.CoverageKind k : ScenarioResult.CoverageKind.values()) kinds.add(k.name());
         return s;
     }
 

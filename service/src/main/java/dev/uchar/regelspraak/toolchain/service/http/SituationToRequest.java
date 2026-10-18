@@ -5,12 +5,12 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.ir.ResolvedScenario;
-import dev.uchar.regelspraak.ir.ResolvedScenario.AttribuutWaarde;
-import dev.uchar.regelspraak.ir.ResolvedScenario.Instantie;
-import dev.uchar.regelspraak.ir.ResolvedScenario.KenmerkWaarde;
-import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterWaarde;
-import dev.uchar.regelspraak.ir.ResolvedScenario.RolWaarde;
-import dev.uchar.regelspraak.ir.ResolvedScenario.Waarde;
+import dev.uchar.regelspraak.ir.ResolvedScenario.AttributeValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.Instance;
+import dev.uchar.regelspraak.ir.ResolvedScenario.CharacteristicValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.RoleValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
 
 import java.math.BigDecimal;
 
@@ -49,56 +49,56 @@ final class SituationToRequest {
 
     /** Build the request tree from a resolved scenario's situatie + peildatum. */
     static ObjectNode assemble(ResolvedScenario scenario) {
-        ResolvedScenario.Situatie situation = scenario.situatie();
+        ResolvedScenario.Situation situation = scenario.situation();
         ObjectNode root = NF.objectNode();
 
         // rekendatum (peildatum) — the mapper reads it as an ISO date.
-        if (scenario.peildatum() != null) root.put("rekendatum", scenario.peildatum().toString());
+        if (scenario.asOfDate() != null) root.put("rekendatum", scenario.asOfDate().toString());
 
         // parameters — the last-wins merged parameter values, keyed by declared parameter name.
         if (!situation.parameters().isEmpty()) {
             ObjectNode params = root.putObject("parameters");
-            for (ParameterWaarde p : situation.parameters()) {
+            for (ParameterValue p : situation.parameters()) {
                 if (p.tijdlijn() != null)
                     throw new NonPortable("parameter '" + p.parameter() + "' heeft een tijdlijn; het "
                             + "verzoek van de dienst draagt geen tijdlijnwaarde");
-                params.set(p.parameter(), valueToJson(p.waarde()));
+                params.set(p.parameter(), valueToJson(p.value()));
             }
         }
 
         // instanties — one per labelled instance, in first-seen order.
         ArrayNode instances = root.putArray("instanties");
-        for (Instantie i : situation.instanties()) {
+        for (Instance i : situation.instances()) {
             ObjectNode inst = instances.addObject();
-            inst.put("type", i.objecttype().naam);
+            inst.put("type", i.objectType().naam);
             inst.put("id", i.label());
 
             if (!i.attributen().isEmpty()) {
                 ObjectNode attributes = inst.putObject("attributen");
-                for (AttribuutWaarde a : i.attributen()) {
+                for (AttributeValue a : i.attributen()) {
                     if (a.tijdlijn() != null)
-                        throw new NonPortable("attribuut '" + a.attribuut() + "' van " + i.label()
+                        throw new NonPortable("attribuut '" + a.attribute() + "' van " + i.label()
                                 + " heeft een tijdlijn; het verzoek van de dienst draagt geen tijdlijnwaarde");
-                    attributes.set(a.attribuut(), valueToJson(a.waarde()));
+                    attributes.set(a.attribute(), valueToJson(a.value()));
                 }
             }
             if (!i.kenmerken().isEmpty()) {
                 ObjectNode characteristics = inst.putObject("kenmerken");
-                for (KenmerkWaarde k : i.kenmerken()) {
-                    if (k.perioden() != null)
-                        throw new NonPortable("kenmerk '" + k.kenmerk() + "' van " + i.label()
+                for (CharacteristicValue k : i.kenmerken()) {
+                    if (k.periods() != null)
+                        throw new NonPortable("kenmerk '" + k.characteristic() + "' van " + i.label()
                                 + " is tijdsafhankelijk; het verzoek van de dienst draagt geen perioden");
-                    characteristics.put(k.kenmerk(), Boolean.TRUE);   // a situatie only ever ASSERTS a kenmerk
+                    characteristics.put(k.characteristic(), Boolean.TRUE);   // a situatie only ever ASSERTS a kenmerk
                 }
             }
             if (!i.rollen().isEmpty()) {
                 ObjectNode roles = inst.putObject("rollen");
-                for (RolWaarde r : i.rollen()) {
+                for (RoleValue r : i.rollen()) {
                     if (r.meervoudig()) {
-                        ArrayNode targets = roles.putArray(r.sleutel());
-                        for (String label : r.doelLabels()) targets.add(label);
+                        ArrayNode targets = roles.putArray(r.key());
+                        for (String label : r.targetLabels()) targets.add(label);
                     } else {
-                        roles.put(r.sleutel(), r.doelLabels().get(0));
+                        roles.put(r.key(), r.targetLabels().get(0));
                     }
                 }
             }
@@ -108,12 +108,12 @@ final class SituationToRequest {
 
     /** The already-normalised value → its JSON form the request mapper accepts. A number lexeme → exact number;
      *  LocalDate/LocalDateTime → ISO string; Boolean → boolean; String/enum → string. */
-    static com.fasterxml.jackson.databind.JsonNode valueToJson(Waarde w) {
-        if (w.getal() != null) return NF.numberNode(number(w.getal()));   // EXACT BigDecimal, no double
-        if (w.datum() != null) return NF.textNode(w.datum().toString()); // yyyy-MM-dd
-        if (w.datumTijd() != null) return NF.textNode(w.datumTijd().toString());
+    static com.fasterxml.jackson.databind.JsonNode valueToJson(ScenarioValue w) {
+        if (w.number() != null) return NF.numberNode(number(w.number()));   // EXACT BigDecimal, no double
+        if (w.date() != null) return NF.textNode(w.date().toString()); // yyyy-MM-dd
+        if (w.dateTime() != null) return NF.textNode(w.dateTime().toString());
         if (w.bool() != null) return NF.booleanNode(w.bool());
-        if (w.enumWaarde() != null) return NF.textNode(w.enumWaarde());  // enum literal
+        if (w.enumValue() != null) return NF.textNode(w.enumValue());  // enum literal
         return NF.textNode(w.tekst());
     }
 

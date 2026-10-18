@@ -7,10 +7,10 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
-import dev.uchar.regelspraak.engine.ScenarioResultaat;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.DekkingRegel;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.Vuring;
+import dev.uchar.regelspraak.engine.ScenarioResult;
+import dev.uchar.regelspraak.engine.ScenarioResult.CoverageRule;
+import dev.uchar.regelspraak.engine.ScenarioResult.ExpectationResult;
+import dev.uchar.regelspraak.engine.ScenarioResult.Firing;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.toolchain.engine.ScenarioRunner;
 import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
@@ -21,23 +21,23 @@ import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
 import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 import dev.uchar.regelspraak.toolchain.service.RequestOptions;
-import dev.uchar.regelspraak.graaf.ProducentConsument;
-import dev.uchar.regelspraak.graaf.RegelGraaf;
+import dev.uchar.regelspraak.graph.ProducerConsumer;
+import dev.uchar.regelspraak.graph.RuleGraph;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
-import dev.uchar.regelspraak.model.RegelSpraakModel.GegenereerdUit;
+import dev.uchar.regelspraak.model.RegelSpraakModel.GeneratedFrom;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Severity;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Vocabulaire;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Vocabulary;
 import dev.uchar.regelspraak.parser.RegelSpraak;
 import dev.uchar.regelspraak.parser.RegelSpraakLexer;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
-import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
-import dev.uchar.regelspraak.transpiler.kern.Dekking;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
+import dev.uchar.regelspraak.transpiler.core.Coverage;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
@@ -167,7 +167,7 @@ public final class Playground {
         }
 
         // 2. RESOLVER — for a scenario source the bundle's model carries the scenario diagnostics as well.
-        ScenarioBundel bundle = scenario ? ScenarioResolver.resolve(source) : null;
+        ScenarioBundle bundle = scenario ? ScenarioResolver.resolve(source) : null;
         RegelSpraakModel model = scenario ? bundle.model() : Resolver.resolve(source);
         ObjectNode resolver = root.putObject("resolver");
         resolver.put("ok", model.isOk());
@@ -197,9 +197,9 @@ public final class Playground {
             DroolsBackend.Build build = UcharBuild.assemble(model, DroolsBackend.Branch.EXEC_MODEL);
             root.put("uitvoerbaar", true);
             ArrayNode coverage = root.putArray("dekking");
-            for (Dekking d : build.dekking()) {
+            for (Coverage d : build.coverage()) {
                 ObjectNode dn = coverage.addObject();
-                dn.put("soort", d.soort());
+                dn.put("soort", d.category());
                 dn.put("naam", d.naam());
                 dn.put("verdict", d.verdict().name());
             }
@@ -227,15 +227,15 @@ public final class Playground {
         } else {
             try {
                 IrLoader.Loaded loaded = IrLoader.loadAll(ir);
-                RegelGraaf graph = RegelGraaf.bouw(loaded.model(), loaded.prioritizedDefaults(),
-                        ProducentConsument.wireNavigatie(loaded));
+                RuleGraph graph = RuleGraph.build(loaded.model(), loaded.prioritizedDefaults(),
+                        ProducerConsumer.wireNavigation(loaded));
                 root.put("graaf", graph.mermaid());
                 try {
                     root.set("graafJson", graphJson(graph, model, naming));
                 } catch (UndesignatableNode o) {
                     root.put("graafFout", o.getMessage());
                 }
-            } catch (IrLoader.Refusal | IrLoader.Documentfout e) {
+            } catch (IrLoader.Refusal | IrLoader.DocumentError e) {
                 root.put("graaf", "");
                 root.put("graafFout", "loader: " + notice(e));
             }
@@ -264,43 +264,43 @@ public final class Playground {
 
     private static void rendScenario(ObjectNode n, ScenarioRunner.Explained u, ResolvedScenario s,
                                      List<String> sourceLines, RegelSpraakModel model, Naming naming) {
-        ScenarioResultaat r = u.result();
+        ScenarioResult r = u.result();
         if (!r.naam().equals(s.naam()))
             throw new IllegalStateException("het rapport '" + r.naam() + "' staat op de plaats van het scenario '"
                     + s.naam() + "'");
         // an expectation of the report is found by its position in the case, which the lowering writes one per
         // expectation of the resolved scenario, in its order
         int inCase = expectationsInCase(s);
-        if (inCase != s.verwachtingen().size())
+        if (inCase != s.expectations().size())
             throw new IllegalStateException("de case van het scenario '" + s.naam() + "' telt " + inCase
-                    + " verwachting(en), het scenario " + s.verwachtingen().size());
+                    + " verwachting(en), het scenario " + s.expectations().size());
         n.put("naam", r.naam());
         n.put("status", r.status().name());
-        if (r.diagnose() != null && !r.diagnose().isEmpty()) n.put("diagnose", r.diagnose());
+        if (r.diagnostic() != null && !r.diagnostic().isEmpty()) n.put("diagnose", r.diagnostic());
         n.put("regel", s.line());
         ArrayNode expectations = n.putArray("verwachtingen");
-        for (VerwachtingResultaat v : r.verwachtingen()) {
+        for (ExpectationResult v : r.expectations()) {
             ObjectNode vn = expectations.addObject();
-            vn.put("bron", v.bron().trim());
-            vn.put("verwacht", v.verwacht());
-            vn.put("werkelijk", v.werkelijk());
+            vn.put("bron", v.source().trim());
+            vn.put("verwacht", v.expected());
+            vn.put("werkelijk", v.actual());
             vn.put("ok", v.ok());
             ScenarioData.place(vn, v, s, sourceLines);
         }
         ArrayNode coverage = n.putArray("dekking");
-        for (DekkingRegel d : r.dekking()) {
+        for (CoverageRule d : r.coverage()) {
             ObjectNode dn = coverage.addObject();
             dn.put("regel", naming.form(d.regel()));
-            dn.put("soort", d.soort().name());
+            dn.put("soort", d.category().name());
         }
         // the fired rules in the order they first fired, with the labels of the input instances they bound
         ArrayNode trace = n.putArray("trace");
-        for (Vuring firing : r.trace().vuringen()) {
+        for (Firing firing : r.trace().firings()) {
             ObjectNode tn = trace.addObject();
             tn.put("regel", naming.form(firing.regel()));
             ArrayNode labels = tn.putArray("labels");
             for (String l : firing.labels()) labels.add(l);
-            tn.put("aantal", firing.aantal());
+            tn.put("aantal", firing.count());
         }
         ArrayNode uitleg = n.putArray("uitleg");
         for (String z : u.uitleg()) uitleg.add(z);
@@ -411,15 +411,15 @@ public final class Playground {
     private static void renderViaService(ObjectNode n, int i, ResolvedScenario s, DecisionCore service,
                                       List<String> sourceLines, RegelSpraakModel model, Naming naming,
                                       String vocabulary) {
-        String caseName = CaseEmitter.bestandsnaam(i + 1, s);
+        String caseName = CaseEmitter.fileName(i + 1, s);
         com.fasterxml.jackson.databind.JsonNode expected = expectations(s);
-        if (expected.size() != s.verwachtingen().size())
+        if (expected.size() != s.expectations().size())
             throw new IllegalStateException("de case van het scenario '" + s.naam() + "' telt " + expected.size()
-                    + " verwachting(en), het scenario " + s.verwachtingen().size());
+                    + " verwachting(en), het scenario " + s.expectations().size());
         String path = null;
-        ScenarioResultaat.Status status;
+        ScenarioResult.Status status;
         String diagnostic = "";
-        List<VerwachtingResultaat> expectations = List.of();
+        List<ExpectationResult> expectations = List.of();
         com.fasterxml.jackson.databind.JsonNode session = NF.objectNode();   // trace, dekking, uitleg, fixpunt
         String uitlegError = null;
         try {
@@ -427,13 +427,13 @@ public final class Playground {
             RequestOptions options = new RequestOptions(true, vocabulary == null ? Naming.CANONICAL : vocabulary,
                     Naming.CANONICAL, true, true, true);
             DecisionCore.Assessment b = service.assess(path, SituationToRequest.assemble(s), options, expected);
-            status = b.comparison().pass() ? ScenarioResultaat.Status.PASS : ScenarioResultaat.Status.FAIL;
-            if (!b.comparison().pass()) diagnostic = caseName + ": " + b.comparison().diagnose();
-            expectations = b.comparison().verwachtingen();
+            status = b.comparison().pass() ? ScenarioResult.Status.PASS : ScenarioResult.Status.FAIL;
+            if (!b.comparison().pass()) diagnostic = caseName + ": " + b.comparison().diagnostic();
+            expectations = b.comparison().expectations();
             session = b.answer();
         } catch (DecisionCore.NoEntryPoint | SituationToRequest.NonPortable | DecisionCore.NonExecutable
                  | CaseRunner.Excluded none) {
-            status = ScenarioResultaat.Status.MARKER;
+            status = ScenarioResult.Status.MARKER;
             diagnostic = none.getMessage();
         } catch (ServiceError error) {
             List<String> sentences = new ArrayList<>();
@@ -442,19 +442,19 @@ public final class Playground {
                 sentences.add(sch.toString());
                 notSupported &= sch.kind() == Violation.Kind.NIET_ONDERSTEUND;
             }
-            status = notSupported ? ScenarioResultaat.Status.MARKER : ScenarioResultaat.Status.FAIL;
+            status = notSupported ? ScenarioResult.Status.MARKER : ScenarioResult.Status.FAIL;
             diagnostic = notSupported ? String.join("; ", sentences)
                     : caseName + ": de dienst weigert het verzoek: " + String.join("; ", sentences);
         } catch (EvaluationFault error) {
             Throwable uchar = error.getCause();
-            status = ScenarioResultaat.Status.FAIL;
+            status = ScenarioResult.Status.FAIL;
             diagnostic = caseName + ": ERROR " + uchar.getClass().getSimpleName() + ": "
                     + String.valueOf(uchar.getMessage()).replace('\n', ' ');
             session = error.detail();
             uitlegError = "de dienst gaf een evaluatiefout (422) en geeft dan geen uitleg";
         } catch (NoFixpoint none) {
             // uchar's report makes such a case a FAIL with its sentence after the name of the case file, no ERROR
-            status = ScenarioResultaat.Status.FAIL;
+            status = ScenarioResult.Status.FAIL;
             diagnostic = caseName + ": " + none.getMessage();
             session = none.detail();
             uitlegError = "de dienst bereikte geen fixpunt (422) en geeft dan geen uitleg";
@@ -465,11 +465,11 @@ public final class Playground {
         n.put("regel", s.line());
         if (path == null) n.putNull("pad"); else n.put("pad", path);
         ArrayNode va = n.putArray("verwachtingen");
-        for (VerwachtingResultaat v : expectations) {
+        for (ExpectationResult v : expectations) {
             ObjectNode vn = va.addObject();
-            vn.put("bron", v.bron().trim());
-            vn.put("verwacht", v.verwacht());
-            vn.put("werkelijk", v.werkelijk());
+            vn.put("bron", v.source().trim());
+            vn.put("verwacht", v.expected());
+            vn.put("werkelijk", v.actual());
             vn.put("ok", v.ok());
             ScenarioData.place(vn, v, s, sourceLines);
         }
@@ -496,14 +496,14 @@ public final class Playground {
         n.put("gekozen", naming.choice());
         ArrayNode declared = n.putArray("gedeclareerd");
         List<Naming> per = new ArrayList<>();
-        for (Vocabulaire v : model.vocabulaires) {
+        for (Vocabulary v : model.vocabularies) {
             ObjectNode vn = declared.addObject();
             vn.put("naam", v.naam());
-            vn.put("standaard", v.standaard());
-            if (v.taal() == null) vn.putNull("taal"); else vn.put("taal", v.taal());
+            vn.put("standaard", v.isDefault());
+            if (v.language() == null) vn.putNull("taal"); else vn.put("taal", v.language());
             per.add(Naming.van(model, v.naam()));
         }
-        Map<Benoembaar, Declarations.Declaration> declarations = Map.of();
+        Map<Designatable, Declarations.Declaration> declarations = Map.of();
         String declarationError = null;
         try {
             declarations = Declarations.van(parseResult.document(), parseResult.tokens(), model);
@@ -511,10 +511,10 @@ public final class Playground {
             declarationError = o.getMessage();
         }
         ArrayNode elements = n.putArray("elementen");
-        for (Benoembaar b : model.benoembaar()) {
+        for (Designatable b : model.designatable()) {
             ObjectNode enumArray = elements.addObject();
-            enumArray.put("soort", b.soort().name());
-            if (b.eigenaar() == null) enumArray.putNull("eigenaar"); else enumArray.put("eigenaar", b.eigenaar());
+            enumArray.put("soort", b.category().name());
+            if (b.owner() == null) enumArray.putNull("eigenaar"); else enumArray.put("eigenaar", b.owner());
             enumArray.put("canoniek", b.naam());
             ObjectNode designations = enumArray.putObject("benamingen");
             for (Naming g : per) {
@@ -527,7 +527,7 @@ public final class Playground {
                 ArrayNode comment = enumArray.putArray("commentaar");
                 for (String c : d.comment()) comment.add(c);
             }
-            model.gegenereerdUit(b).ifPresent(g -> enumArray.set("gegenereerdUit", generatedFrom(g)));
+            model.generatedFrom(b).ifPresent(g -> enumArray.set("gegenereerdUit", generatedFrom(g)));
         }
         if (declarationError != null) n.put("declaratieFout", declarationError);
         return n;
@@ -536,12 +536,12 @@ public final class Playground {
     /** Where an element uchar made comes from, as {@code {soort, eigenaar, naam, vorm}}: the kind, owner and name of the
      *  source element as declared (canonical, as an element of {@code vocabularies} carries them) and uchar's fixed key
      *  of the form that made it. */
-    private static ObjectNode generatedFrom(GegenereerdUit g) {
+    private static ObjectNode generatedFrom(GeneratedFrom g) {
         ObjectNode n = NF.objectNode();
-        n.put("soort", g.bron().soort().name());
-        if (g.bron().eigenaar() == null) n.putNull("eigenaar"); else n.put("eigenaar", g.bron().eigenaar());
-        n.put("naam", g.bron().naam());
-        n.put("vorm", g.vorm().sleutel());
+        n.put("soort", g.source().category().name());
+        if (g.source().owner() == null) n.putNull("eigenaar"); else n.put("eigenaar", g.source().owner());
+        n.put("naam", g.source().naam());
+        n.put("vorm", g.form().key());
         return n;
     }
 
@@ -553,14 +553,14 @@ public final class Playground {
      *  no form of the model and has no origin in uchar's table is a fault of the analysis, not an answer. */
     static ArrayNode generated(DroolsBackend.Build build, RegelSpraakModel model, Naming naming) {
         Set<String> forms = new HashSet<>();
-        for (Benoembaar b : model.benoembaar()) if (b.soort() == Benoembaar.Soort.VORM) forms.add(b.naam());
-        Map<String, GegenereerdUit> table = build.execModelTranspiler().gegenereerd();
+        for (Designatable b : model.designatable()) if (b.category() == Designatable.Kind.VORM) forms.add(b.naam());
+        Map<String, GeneratedFrom> table = build.execModelTranspiler().generated();
         ArrayNode sink = NF.arrayNode();
-        for (Dekking d : build.dekking()) {
-            GegenereerdUit g = table.get(d.naam());
+        for (Coverage d : build.coverage()) {
+            GeneratedFrom g = table.get(d.naam());
             if (g == null) {
                 if (!forms.contains(d.naam()))
-                    throw new IllegalStateException("de dekking noemt " + d.soort() + " '" + d.naam() + "', geen "
+                    throw new IllegalStateException("de dekking noemt " + d.category() + " '" + d.naam() + "', geen "
                             + "vorm van het model, en uchar noemt de naam niet gegenereerd");
                 continue;
             }
@@ -568,7 +568,7 @@ public final class Playground {
             String chosen = naming.form(d.naam());
             n.put("naam", chosen);
             if (!chosen.equals(d.naam())) n.put("naamCanoniek", d.naam());
-            n.put("soort", d.soort());
+            n.put("soort", d.category());
             n.set("gegenereerdUit", generatedFrom(g));
         }
         return sink;
@@ -576,22 +576,22 @@ public final class Playground {
 
     /** The rule graph as {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, each label in the names of
      *  {@code naming}. */
-    private static ObjectNode graphJson(RegelGraaf graph, RegelSpraakModel model, Naming naming) {
-        Map<String, List<Benoembaar>> members = naming.isCanonical() ? Map.of() : membersPerLabel(model);
+    private static ObjectNode graphJson(RuleGraph graph, RegelSpraakModel model, Naming naming) {
+        Map<String, List<Designatable>> members = naming.isCanonical() ? Map.of() : membersPerLabel(model);
         ObjectNode g = NF.objectNode();
         ArrayNode nodes = g.putArray("nodes");
-        for (RegelGraaf.Node kn : graph.nodes()) {
+        for (RuleGraph.Node kn : graph.nodes()) {
             ObjectNode nn = nodes.addObject();
             nn.put("id", kn.id());
             nn.put("label", naming.isCanonical() ? kn.label() : label(kn, members, naming));
             nn.put("kind", kn.kind().name());
-            nn.put("eindOutput", kn.eindOutput());
+            nn.put("eindOutput", kn.endOutput());
         }
         ArrayNode edges = g.putArray("edges");
-        for (RegelGraaf.Edge e : graph.edges()) {
+        for (RuleGraph.Edge e : graph.edges()) {
             ObjectNode enumArray = edges.addObject();
             enumArray.put("van", e.van());
-            enumArray.put("naar", e.naar());
+            enumArray.put("naar", e.destination());
         }
         return g;
     }
@@ -607,14 +607,14 @@ public final class Playground {
      *  normalised): the member is looked up among the attributes and characteristics of that type, by the node's kind,
      *  and an input node, which is either, by both. uchar's graph does not hand out the element behind a node, so an
      *  input node whose attribute and characteristic of one name are named differently is refused, never guessed. */
-    private static String label(RegelGraaf.Node kn, Map<String, List<Benoembaar>> members, Naming naming) {
-        if (kn.kind() == RegelGraaf.NodeKind.REGEL) return naming.form(kn.label());
+    private static String label(RuleGraph.Node kn, Map<String, List<Designatable>> members, Naming naming) {
+        if (kn.kind() == RuleGraph.NodeKind.RULE) return naming.form(kn.label());
         List<String> names = new ArrayList<>();
-        for (Benoembaar b : members.getOrDefault(kn.label(), List.of())) {
-            boolean characteristic = b.soort() == Benoembaar.Soort.KENMERK;
-            if (kn.kind() == RegelGraaf.NodeKind.ATTRIBUUT && characteristic) continue;
-            if (kn.kind() == RegelGraaf.NodeKind.KENMERK && !characteristic) continue;
-            String name = naming.name(b) + " · " + naming.objectType(b.eigenaar());
+        for (Designatable b : members.getOrDefault(kn.label(), List.of())) {
+            boolean characteristic = b.category() == Designatable.Kind.KENMERK;
+            if (kn.kind() == RuleGraph.NodeKind.ATTRIBUTE && characteristic) continue;
+            if (kn.kind() == RuleGraph.NodeKind.CHARACTERISTIC && !characteristic) continue;
+            String name = naming.name(b) + " · " + naming.objectType(b.owner());
             if (!names.contains(name)) names.add(name);
         }
         if (names.isEmpty()) return kn.label();       // no declared member: nothing to name
@@ -625,11 +625,11 @@ public final class Playground {
     }
 
     /** The attributes and characteristics of {@code model} by the label uchar's graph gives their element node. */
-    private static Map<String, List<Benoembaar>> membersPerLabel(RegelSpraakModel model) {
-        Map<String, List<Benoembaar>> sink = new LinkedHashMap<>();
-        for (Benoembaar b : model.benoembaar())
-            if (b.soort() == Benoembaar.Soort.ATTRIBUUT || b.soort() == Benoembaar.Soort.KENMERK)
-                sink.computeIfAbsent(Namen.norm(b.naam()) + " · " + Namen.norm(b.eigenaar()), k -> new ArrayList<>()).add(b);
+    private static Map<String, List<Designatable>> membersPerLabel(RegelSpraakModel model) {
+        Map<String, List<Designatable>> sink = new LinkedHashMap<>();
+        for (Designatable b : model.designatable())
+            if (b.category() == Designatable.Kind.ATTRIBUUT || b.category() == Designatable.Kind.KENMERK)
+                sink.computeIfAbsent(Namen.norm(b.naam()) + " · " + Namen.norm(b.owner()), k -> new ArrayList<>()).add(b);
         return sink;
     }
 

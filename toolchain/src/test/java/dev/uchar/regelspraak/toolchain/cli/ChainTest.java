@@ -60,7 +60,7 @@ class ChainTest {
         String haven = write("haven.rgs", HAVEN);
         Path sink = map.resolve("uit");
         assertEquals(0, RegelSpraakCli.factsMode(List.of(sink.toString(), boot, haven)));
-        Path pkg = sink.resolve(FactModelGenerator.PAKKET.replace('.', '/'));
+        Path pkg = sink.resolve(FactModelGenerator.PACKAGE.replace('.', '/'));
         assertTrue(Files.isRegularFile(pkg.resolve("Boot.java")), "Boot.java uit het eerste bestand");
         assertTrue(Files.isRegularFile(pkg.resolve("Haven.java")), "Haven.java uit het tweede bestand");
     }

@@ -3,9 +3,9 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import dev.uchar.regelspraak.graaf.ProducentConsument;
-import dev.uchar.regelspraak.graaf.ProducentConsument.ElementSleutel;
-import dev.uchar.regelspraak.graaf.RegelGraaf;
+import dev.uchar.regelspraak.graph.ProducerConsumer;
+import dev.uchar.regelspraak.graph.ProducerConsumer.ElementKey;
+import dev.uchar.regelspraak.graph.RuleGraph;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 
@@ -169,13 +169,13 @@ class ScopeChainTest {
     void producer_and_consumer_key_on_the_declaring_type() {
         RegelSpraakModel m = Resolver.resolve(MODEL_CHAIN + PRODUCER_SUPER + CONSUMER_SUB);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
-        ElementSleutel expected = ElementSleutel.van("Persoon", "volwassen", true);
-        var index = ProducentConsument.producentIndex(m, m.prioritizedDefaults);
+        ElementKey expected = ElementKey.van("Persoon", "volwassen", true);
+        var index = ProducerConsumer.producerIndex(m, m.prioritizedDefaults);
         assertTrue(index.containsKey(expected), () -> "producentsleutel: " + index.keySet());
         boolean found = false;
         for (var r : m.resolvedRegels)
-            if (ProducentConsument.basisNaam(r.naam()).equals("bepaal korting"))
-                found = ProducentConsument.verbruikt(r, ProducentConsument.bronNavigatie(m)).contains(expected);
+            if (ProducerConsumer.baseName(r.naam()).equals("bepaal korting"))
+                found = ProducerConsumer.consumed(r, ProducerConsumer.sourceNavigation(m)).contains(expected);
         assertTrue(found, "de consument op het subtype hoort dezelfde sleutel te dragen");
     }
 
@@ -191,12 +191,12 @@ class ScopeChainTest {
                 de gekeurd Numeriek (geheel getal);
             """);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
-        var student = m.objecttypeOpNaam("Student");
-        assertEquals(ElementSleutel.van("Persoon", "gekeurd", true),
-                ProducentConsument.elementVan(student, "gekeurd", true),
+        var student = m.objectTypeByName("Student");
+        assertEquals(ElementKey.van("Persoon", "gekeurd", true),
+                ProducerConsumer.elementOf(student, "gekeurd", true),
                 "het kenmerk is op Persoon gedeclareerd");
-        assertEquals(ElementSleutel.van("Student", "gekeurd", false),
-                ProducentConsument.elementVan(student, "gekeurd", false),
+        assertEquals(ElementKey.van("Student", "gekeurd", false),
+                ProducerConsumer.elementOf(student, "gekeurd", false),
                 "het gelijknamige attribuut op Student");
     }
 
@@ -205,31 +205,31 @@ class ScopeChainTest {
         // README-invariant: de scope-poort en de graaf lezen dezelfde IR-feiten. Op een ketenmodel tekende de
         // graaf het lid TWEE keer — 'volwassen · student' als INVOER die niemand schrijft, 'volwassen · persoon'
         // als eind-output die niemand leest — en allebei die beweringen waren onwaar.
-        RegelGraaf g = graph(MODEL_CHAIN + PRODUCER_SUPER + CONSUMER_SUB);
+        RuleGraph g = graph(MODEL_CHAIN + PRODUCER_SUPER + CONSUMER_SUB);
         long volwassenNodes = g.nodes().stream().filter(n -> n.label().startsWith("volwassen")).count();
         assertEquals(1, volwassenNodes, () -> "één element-node voor één lid: " + g.nodes());
-        RegelGraaf.Node volwassen = g.nodes().stream().filter(n -> n.label().startsWith("volwassen"))
+        RuleGraph.Node volwassen = g.nodes().stream().filter(n -> n.label().startsWith("volwassen"))
                 .findFirst().orElseThrow();
         assertEquals("volwassen · persoon", volwassen.label(), "gelabeld op zijn declarant");
-        assertEquals(RegelGraaf.NodeKind.KENMERK, volwassen.kind(), "geen INVOER: er IS een producent");
-        assertFalse(volwassen.eindOutput(), "geen eind-output: er IS een consument");
+        assertEquals(RuleGraph.NodeKind.CHARACTERISTIC, volwassen.kind(), "geen INVOER: er IS een producent");
+        assertFalse(volwassen.endOutput(), "geen eind-output: er IS een consument");
     }
 
     @Test
     void the_graph_on_a_flat_model_does_not_change() {
         // De ketenlezing mag op een model zonder subtypen niets doen: elke keten is één element lang.
-        RegelGraaf g = graph(MODEL_FLAT + PRODUCER_SUPER + CONSUMER_SUPER);
+        RuleGraph g = graph(MODEL_FLAT + PRODUCER_SUPER + CONSUMER_SUPER);
         assertEquals(5, g.nodes().size(), () -> "" + g.nodes());
         assertEquals(4, g.edges().size(), () -> "" + g.edges());
         assertTrue(g.nodes().stream().anyMatch(n -> n.label().equals("leeftijd · persoon")
-                && n.kind() == RegelGraaf.NodeKind.INVOER), () -> "" + g.nodes());
+                && n.kind() == RuleGraph.NodeKind.INPUT), () -> "" + g.nodes());
     }
 
     /** uchar's rule graph of a resolver's model: its defaults groups ride on the model, and a navigated kenmerk
      *  check reaches the type of the role it names. */
-    private static RegelGraaf graph(String source) {
+    private static RuleGraph graph(String source) {
         RegelSpraakModel m = Resolver.resolve(source);
-        return RegelGraaf.bouw(m, m.prioritizedDefaults, ProducentConsument.bronNavigatie(m));
+        return RuleGraph.build(m, m.prioritizedDefaults, ProducerConsumer.sourceNavigation(m));
     }
 
     private static JsonNode parse(String json) {

@@ -6,17 +6,17 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.fasterxml.jackson.databind.node.TextNode;
 
-import dev.uchar.regelspraak.cases.CaseInvoer;
+import dev.uchar.regelspraak.cases.CaseInput;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Feittype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Rol;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -202,12 +202,12 @@ public final class RequestMapper {
         if (date != null) c.put("asOfDate", date.toString());
         ArrayNode cInstances = c.putObject("input").putArray("instances");
         instances.values().forEach(cInstances::add);
-        CaseInvoer input = null;
+        CaseInput input = null;
         try {
-            input = CaseInvoer.van(build, c);
-        } catch (CaseInvoer.Rolbotsing b) {
+            input = CaseInput.van(build, c);
+        } catch (CaseInput.RoleCollision b) {
             s.add(Violation.van(Violation.Kind.VERKEERD_TYPE, path(paths, b), b.getMessage()));
-        } catch (CaseInvoer.Rolweigering w) {
+        } catch (CaseInput.RoleRefusal w) {
             s.add(Violation.van(Violation.Kind.NIET_ONDERSTEUND, path(paths, w), w.getMessage()));
         } catch (CaseRunner.Excluded x) {
             // a form uchar's input step does not carry that the validation above let through: no link names it
@@ -223,11 +223,11 @@ public final class RequestMapper {
 
     /** The field of the request that wrote the link uchar refused. A link the mapper did not write is a broken promise
      *  of the input step, and fails here. */
-    private static String path(Map<Link, String> paths, CaseInvoer.Rolfout f) {
-        String path = paths.get(new Link(f.label(), f.rol(), f.doel()));
+    private static String path(Map<Link, String> paths, CaseInput.RoleError f) {
+        String path = paths.get(new Link(f.label(), f.role(), f.target()));
         if (path == null)
-            throw new IllegalStateException("uchars invoerstap weigerde de link " + f.label() + " -" + f.rol() + "-> "
-                    + f.doel() + ", die het verzoek niet schreef: " + ((RuntimeException) f).getMessage());
+            throw new IllegalStateException("uchars invoerstap weigerde de link " + f.label() + " -" + f.role() + "-> "
+                    + f.target() + ", die het verzoek niet schreef: " + ((RuntimeException) f).getMessage());
         return path;
     }
 
@@ -308,13 +308,13 @@ public final class RequestMapper {
             Read g = read(reader.attribute(ot, name), name, field, duplicate, s);
             if (g.refused()) return;
             String canonical = g.name();
-            Datatype dt = canonical == null ? null : ot.attribuut(canonical);
+            Datatype dt = canonical == null ? null : ot.attribute(canonical);
             if (dt == null) {
                 s.add(Violation.van(Violation.Kind.ONBEKEND_VELD, field,
                         "onbekend attribuut '" + name + "' op objecttype '" + ot.naam + "'" + reader.pinnedClause()));
                 return;
             }
-            if (!ot.dimensiesVan(canonical).isEmpty()) {
+            if (!ot.dimensionsOf(canonical).isEmpty()) {
                 s.add(Violation.van(Violation.Kind.NIET_ONDERSTEUND, field,
                         "dimensie-gewaardeerd attribuut '" + name + "' wordt niet ondersteund door de dienst-kern"));
                 return;
@@ -396,7 +396,7 @@ public final class RequestMapper {
      *  a second value for it. */
     private static final class Duplicate {
         private final String where;
-        private final List<RegelSpraakModel.Benoembaar> declarations = new ArrayList<>();
+        private final List<RegelSpraakModel.Designatable> declarations = new ArrayList<>();
         private final List<String> names = new ArrayList<>();
 
         Duplicate(String where) { this.where = where; }
@@ -404,7 +404,7 @@ public final class RequestMapper {
         String where() { return where; }
 
         /** The name that already read {@code b}, or null after recording {@code naam} for it. */
-        String earlier(RegelSpraakModel.Benoembaar b, String name) {
+        String earlier(RegelSpraakModel.Designatable b, String name) {
             for (int i = 0; i < declarations.size(); i++)
                 if (NameReader.same(declarations.get(i), b)) return names.get(i);
             declarations.add(b);
@@ -427,7 +427,7 @@ public final class RequestMapper {
         if (reading instanceof NameReader.Found g) return TextNode.valueOf(g.name());
         if (reader.pinnedInVocabulary()) {
             s.add(Violation.van(Violation.Kind.ONBEKENDE_ENUM_WAARDE, field, "'" + node.asText()
-                    + "' is geen waarde van domein '" + e.domein() + "' (toegestaan in het invoervocabulaire '"
+                    + "' is geen waarde van domein '" + e.domain() + "' (toegestaan in het invoervocabulaire '"
                     + reader.pinned() + "': " + reader.values(e) + ")"));
             return null;
         }
@@ -453,7 +453,7 @@ public final class RequestMapper {
             Read wasRead = read(reader.roleFrom(ot, role), role, field, duplicate, s);
             if (wasRead.refused()) return;
             String canonical = wasRead.name();
-            Objecttype targetType = canonical == null ? null : model.rolDoeltypeNaarSubject(ot, canonical);
+            Objecttype targetType = canonical == null ? null : model.roleTargetTypeToSubject(ot, canonical);
             if (targetType == null) {
                 s.add(Violation.van(Violation.Kind.ONBEKEND_VELD, field,
                         "onbekende rol '" + role + "' vanaf objecttype '" + ot.naam + "'" + reader.pinnedClause()));
@@ -470,7 +470,7 @@ public final class RequestMapper {
                             "rol '" + role + "' verwijst naar onbekend id '" + label + "'"));
                     continue;
                 }
-                if (!labelType.isEen(targetType)) {
+                if (!labelType.isA(targetType)) {
                     s.add(wrongType(field, role, targetType, label, labelType));
                     continue;
                 }
@@ -513,7 +513,7 @@ public final class RequestMapper {
             }
             Read factType = read(reader.factType(ftN.asText()), ftN.asText(), path + ".feittype", null, s);
             if (factType.refused()) continue;
-            Feittype ft = factType.name() == null ? null : factType(factType.name());
+            FactType ft = factType.name() == null ? null : factType(factType.name());
             if (ft == null) {
                 s.add(Violation.van(Violation.Kind.ONBEKEND_VELD, path + ".feittype",
                         "onbekend feittype '" + ftN.asText() + "'" + reader.pinnedClause()));
@@ -528,8 +528,8 @@ public final class RequestMapper {
             // resolve each named role to its id. A binary feittype has two roles; a §13.3.9.2 WEDERKERIG feittype
             // relates an objecttype to itself through ONE role entry — the request then names that one role TWICE
             // (two ids under the same role name in a JSON array), or gives an array value.
-            List<Rol> roles = ft.rollen;
-            if (roles.size() != 2 && !(ft.wederkerig && roles.size() == 1)) {
+            List<Role> roles = ft.rollen;
+            if (roles.size() != 2 && !(ft.reciprocal && roles.size() == 1)) {
                 s.add(Violation.van(Violation.Kind.NIET_ONDERSTEUND, path,
                         "alleen binaire (of wederkerige) feittypen worden ondersteund door de dienst-kern (feittype '"
                                 + ft.naam + "')"));
@@ -537,7 +537,7 @@ public final class RequestMapper {
             }
             // collect the (roleName, id) endpoints: two entries even for a wederkerig 1-role feittype (its role
             // appears once but with an array of two ids, or is repeated).
-            List<String[]> endPoints = endPoints(rolesN, roles, ft.wederkerig);
+            List<String[]> endPoints = endPoints(rolesN, roles, ft.reciprocal);
             if (endPoints.size() != 2) {
                 s.add(Violation.van(Violation.Kind.MALFORMED, path + ".rollen",
                         "relatie moet precies twee rol-eindpunten noemen (feittype '" + ft.naam + "')"));
@@ -554,7 +554,7 @@ public final class RequestMapper {
             if (!fillsA || !fillsB) continue;
             // the link goes where its field is: A holds B in a to-one field named after B's role, or else B holds A.
             // The role NAME disambiguates when the same objecttype pair is joined by more than one feittype.
-            if (!model.naarVeelRol(otA, otB, roleB) || model.naarVeelRol(otB, otA, roleA))
+            if (!model.toManyRole(otA, otB, roleB) || model.toManyRole(otB, otA, roleA))
                 writeLink(instances, paths, idA, roleB, idB, path + ".rollen." + roleB);
             else
                 writeLink(instances, paths, idB, roleA, idA, path + ".rollen." + roleA);
@@ -564,7 +564,7 @@ public final class RequestMapper {
     /** The roles of a relation keyed by their declared names, which {@link #endPoints} looks them up by: each written
      *  name read as a role of {@code ft}. A name no role of {@code ft} answers to stays as written, so the endpoint
      *  count refuses the relation as before; null after adding the violation of an ambiguous or a repeated role. */
-    private JsonNode rolesRead(Feittype ft, JsonNode rolesN, String path, List<Violation> s) {
+    private JsonNode rolesRead(FactType ft, JsonNode rolesN, String path, List<Violation> s) {
         com.fasterxml.jackson.databind.node.ObjectNode wasRead =
                 com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
         Duplicate duplicate = new Duplicate("de relatie");
@@ -580,11 +580,11 @@ public final class RequestMapper {
 
     /** Whether {@code id} (of objecttype {@code type}) fills the role {@code role} of {@code ft}, its declared type or a
      *  subtype of it; if not, a {@link Violation.Kind#VERKEERD_TYPE} on that role's field. */
-    private boolean fillsRole(Feittype ft, String role, String id, Objecttype type, String path, List<Violation> s) {
-        for (Rol r : ft.rollen) {
+    private boolean fillsRole(FactType ft, String role, String id, Objecttype type, String path, List<Violation> s) {
+        for (Role r : ft.rollen) {
             if (!r.naam().equals(role)) continue;
-            Objecttype targetType = model.objecttypeOpNaam(r.objecttypeNaam());
-            if (targetType == null || type.isEen(targetType)) return true;
+            Objecttype targetType = model.objectTypeByName(r.objecttypeNaam());
+            if (targetType == null || type.isA(targetType)) return true;
             s.add(wrongType(path + ".rollen." + role, role, targetType, id, type));
             return false;
         }
@@ -594,7 +594,7 @@ public final class RequestMapper {
     /** Collect exactly the two (roleName, id) endpoints of a relation. For a normal binary feittype that is one
      *  id per role name; for a WEDERKERIG 1-role feittype the single role name carries an array of two ids (or
      *  is listed twice via a JSON array), both under the same role name. */
-    private static List<String[]> endPoints(JsonNode rolesN, List<Rol> roles, boolean reciprocal) {
+    private static List<String[]> endPoints(JsonNode rolesN, List<Role> roles, boolean reciprocal) {
         List<String[]> sink = new ArrayList<>();
         if (reciprocal && roles.size() == 1) {
             String role = roles.get(0).naam();
@@ -604,7 +604,7 @@ public final class RequestMapper {
                 v.forEach(n -> sink.add(new String[]{role, n.asText()}));
             else if (v != null) sink.add(new String[]{role, v.asText()});
         } else {
-            for (Rol r : roles) {
+            for (Role r : roles) {
                 JsonNode v = rolesN.get(r.naam());
                 if (v != null && !v.isNull()) sink.add(new String[]{r.naam(), v.asText()});
             }
@@ -612,10 +612,10 @@ public final class RequestMapper {
         return sink;
     }
 
-    private Feittype factType(String name) {
-        Feittype ft = model.feittypen.get(name);
+    private FactType factType(String name) {
+        FactType ft = model.feittypen.get(name);
         if (ft != null) return ft;
-        for (Feittype f : model.feittypen.values()) if (f.naam.equalsIgnoreCase(name)) return f;
+        for (FactType f : model.feittypen.values()) if (f.naam.equalsIgnoreCase(name)) return f;
         return null;
     }
 
@@ -626,13 +626,13 @@ public final class RequestMapper {
      *  carry, instead of a violation naming the field.
      *  The model's chain walk is case-INSENSITIVE, exactly as this scan was. */
     private static boolean isTemporal(Objecttype ot, String name) {
-        return ot.granulariteitVan(name) != null || ot.tijdlijnAantalVan(name) != null;
+        return ot.granularityOf(name) != null || ot.timelineCountOf(name) != null;
     }
 
     /** The kenmerk analogue of {@link #isTemporal} — a §13.3.6.7 tijdlijn kenmerk (a {@code List<Segment>}
      *  field), which the service core does not support; chain-closed for the same reason. */
     private static boolean isTemporalCharacteristic(Objecttype ot, String name) {
-        return ot.kenmerkGranulariteitVan(name) != null || ot.kenmerkTijdlijnAantalVan(name) != null;
+        return ot.characteristicGranularityOf(name) != null || ot.characteristicTimelineCountOf(name) != null;
     }
 
     /** The parameter GLOBAL name the exec-model branch registers — {@link Namen#ident}(naam,false), the

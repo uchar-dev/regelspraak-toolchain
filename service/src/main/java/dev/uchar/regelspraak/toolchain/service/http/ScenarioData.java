@@ -4,16 +4,16 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
+import dev.uchar.regelspraak.engine.ScenarioResult.ExpectationResult;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
-import dev.uchar.regelspraak.ir.ResolvedScenario.AttribuutWaarde;
-import dev.uchar.regelspraak.ir.ResolvedScenario.Instantie;
-import dev.uchar.regelspraak.ir.ResolvedScenario.KenmerkWaarde;
-import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterWaarde;
-import dev.uchar.regelspraak.ir.ResolvedScenario.Periode;
-import dev.uchar.regelspraak.ir.ResolvedScenario.RolWaarde;
+import dev.uchar.regelspraak.ir.ResolvedScenario.AttributeValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.Instance;
+import dev.uchar.regelspraak.ir.ResolvedScenario.CharacteristicValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.TimeWindow;
+import dev.uchar.regelspraak.ir.ResolvedScenario.RoleValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Segment;
-import dev.uchar.regelspraak.ir.ResolvedScenario.Waarde;
+import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
@@ -56,53 +56,53 @@ final class ScenarioData {
      *  situation. Every assignment carries its source line ({@code line}). */
     static ObjectNode situation(ResolvedScenario s, RegelSpraakModel model, Naming ng) {
         ObjectNode n = NF.objectNode();
-        if (s.peildatum() == null) n.putNull("peildatum"); else n.put("peildatum", s.peildatum().toString());
+        if (s.asOfDate() == null) n.putNull("peildatum"); else n.put("peildatum", s.asOfDate().toString());
         ArrayNode objects = n.putArray("objecten");
-        for (Instantie i : s.situatie().instanties()) {
-            Objecttype ot = i.objecttype();
+        for (Instance i : s.situation().instances()) {
+            Objecttype ot = i.objectType();
             ObjectNode on = objects.addObject();
             on.put("label", i.label());
             name(on, "objecttype", ng.objectType(ot.naam), ot.naam);
             ArrayNode attributes = on.putArray("attributen");
-            for (AttribuutWaarde a : i.attributen()) {
+            for (AttributeValue a : i.attributen()) {
                 ObjectNode an = attributes.addObject();
-                name(an, "attribuut", ng.attribute(ot, a.attribuut()), a.attribuut());
-                Datatype dt = ot.attribuut(a.attribuut());
+                name(an, "attribuut", ng.attribute(ot, a.attribute()), a.attribute());
+                Datatype dt = ot.attribute(a.attribute());
                 if (a.tijdlijn() != null) an.set("tijdlijn", timeline(a.tijdlijn(), dt, ng));
-                else value(an, a.waarde(), dt, ng);
+                else value(an, a.value(), dt, ng);
                 unit(an, dt);
                 an.put("regel", a.line());
             }
             ArrayNode characteristics = on.putArray("kenmerken");
-            for (KenmerkWaarde k : i.kenmerken()) {
+            for (CharacteristicValue k : i.kenmerken()) {
                 ObjectNode kn = characteristics.addObject();
-                name(kn, "kenmerk", ng.characteristic(ot, k.kenmerk()), k.kenmerk());
-                if (k.perioden() != null) {
+                name(kn, "kenmerk", ng.characteristic(ot, k.characteristic()), k.characteristic());
+                if (k.periods() != null) {
                     ArrayNode periods = kn.putArray("perioden");
-                    for (Periode p : k.perioden())
-                        periods.addObject().put("van", p.van().toString()).put("tot", p.tot().toString());
+                    for (TimeWindow p : k.periods())
+                        periods.addObject().put("van", p.van().toString()).put("tot", p.until().toString());
                 }
                 kn.put("regel", k.line());
             }
             ArrayNode roles = on.putArray("rollen");
-            for (RolWaarde r : i.rollen()) {
+            for (RoleValue r : i.rollen()) {
                 ObjectNode rn = roles.addObject();
-                name(rn, "rol", ng.roleFrom(ot, r.sleutel()), r.sleutel());
-                name(rn, "feittype", ng.factType(r.feittype().naam), r.feittype().naam);
-                name(rn, "doeltype", ng.objectType(r.doeltype().naam), r.doeltype().naam);
+                name(rn, "rol", ng.roleFrom(ot, r.key()), r.key());
+                name(rn, "feittype", ng.factType(r.factType().naam), r.factType().naam);
+                name(rn, "doeltype", ng.objectType(r.targetType().naam), r.targetType().naam);
                 ArrayNode labels = rn.putArray("labels");
-                for (String l : r.doelLabels()) labels.add(l);
+                for (String l : r.targetLabels()) labels.add(l);
                 rn.put("meervoudig", r.meervoudig());
                 rn.put("regel", r.line());
             }
         }
         ArrayNode parameters = n.putArray("parameters");
-        for (ParameterWaarde p : s.situatie().parameters()) {
+        for (ParameterValue p : s.situation().parameters()) {
             ObjectNode pn = parameters.addObject();
             name(pn, "parameter", ng.parameter(p.parameter()), p.parameter());
             Datatype dt = parameterType(model, p.parameter());
             if (p.tijdlijn() != null) pn.set("tijdlijn", timeline(p.tijdlijn(), dt, ng));
-            else value(pn, p.waarde(), dt, ng);
+            else value(pn, p.value(), dt, ng);
             unit(pn, dt);
             pn.put("regel", p.line());
         }
@@ -114,14 +114,14 @@ final class ScenarioData {
      *  first bullet), found by the report's position of the expectation in the case, and {@code regeltekst}, the text
      *  of that line as written. uchar gives the line on which an expectation begins and no end, so the line text is
      *  the whole expectation only where one bullet stands on one line. */
-    static void place(ObjectNode vn, VerwachtingResultaat v, ResolvedScenario s, List<String> sourceLines) {
-        int i = v.positie() - 1;
-        if (i < 0 || i >= s.verwachtingen().size())
-            throw new IllegalStateException("uchars rapport geeft verwachting " + v.positie() + " van het scenario '"
-                    + s.naam() + "', dat er " + s.verwachtingen().size() + " heeft");
-        int line = s.verwachtingen().get(i).line();
+    static void place(ObjectNode vn, ExpectationResult v, ResolvedScenario s, List<String> sourceLines) {
+        int i = v.position() - 1;
+        if (i < 0 || i >= s.expectations().size())
+            throw new IllegalStateException("uchars rapport geeft verwachting " + v.position() + " van het scenario '"
+                    + s.naam() + "', dat er " + s.expectations().size() + " heeft");
+        int line = s.expectations().get(i).line();
         if (line < 1 || line > sourceLines.size())
-            throw new IllegalStateException("de verwachting " + v.positie() + " van het scenario '" + s.naam()
+            throw new IllegalStateException("de verwachting " + v.position() + " van het scenario '" + s.naam()
                     + "' staat volgens uchar op regel " + line + ", en de bron telt " + sourceLines.size() + " regels");
         vn.put("regel", line);
         vn.put("regeltekst", sourceLines.get(line - 1).strip());
@@ -136,22 +136,22 @@ final class ScenarioData {
      */
     static ObjectNode fixpoint(CaseSession.Outcome session, ResolvedScenario s, RegelSpraakModel model, Naming ng) {
         List<FixpointGivens.InputObject> input = new ArrayList<>();
-        for (Instantie i : s.situatie().instanties()) {
+        for (Instance i : s.situation().instances()) {
             Object bean = session.beans().get(i.label());
             if (bean == null)
                 throw new IllegalStateException("de sessie van het scenario '" + s.naam() + "' heeft geen object '"
                         + i.label() + "' van de situatie");
-            Objecttype ot = i.objecttype();
+            Objecttype ot = i.objectType();
             Map<String, ObjectNode> attributes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-            for (AttribuutWaarde a : i.attributen()) {
-                Datatype dt = ot.attribuut(a.attribuut());
+            for (AttributeValue a : i.attributen()) {
+                Datatype dt = ot.attribute(a.attribute());
                 ObjectNode an = NF.objectNode();
                 if (a.tijdlijn() != null) an.set("tijdlijn", timeline(a.tijdlijn(), dt, ng));
-                else value(an, a.waarde(), dt, ng);
-                attributes.put(a.attribuut(), an);
+                else value(an, a.value(), dt, ng);
+                attributes.put(a.attribute(), an);
             }
             Set<String> characteristics = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            for (KenmerkWaarde k : i.kenmerken()) if (k.perioden() == null) characteristics.add(k.kenmerk());
+            for (CharacteristicValue k : i.kenmerken()) if (k.periods() == null) characteristics.add(k.characteristic());
             input.add(new FixpointGivens.InputObject(i.label(), ot, bean, attributes, characteristics));
         }
         if (session.beans().size() != input.size())
@@ -165,13 +165,13 @@ final class ScenarioData {
     }
 
     /** A value of the situation under {@code waarde}: the case value as uchar's resolver normalised it. */
-    private static void value(ObjectNode n, Waarde w, Datatype dt, Naming ng) {
-        if (w.getal() != null) n.put("waarde", w.getal());
-        else if (w.datum() != null) n.put("waarde", w.datum().toString());
-        else if (w.datumTijd() != null) n.put("waarde", w.datumTijd().toString());
+    private static void value(ObjectNode n, ScenarioValue w, Datatype dt, Naming ng) {
+        if (w.number() != null) n.put("waarde", w.number());
+        else if (w.date() != null) n.put("waarde", w.date().toString());
+        else if (w.dateTime() != null) n.put("waarde", w.dateTime().toString());
         else if (w.bool() != null) n.put("waarde", w.bool());
         else if (w.tekst() != null) n.put("waarde", w.tekst());
-        else if (w.enumWaarde() != null) enumValue(n, w.enumWaarde(), dt, ng);
+        else if (w.enumValue() != null) enumValue(n, w.enumValue(), dt, ng);
         else throw new IllegalStateException("uchars resolver gaf een waarde zonder variant");
     }
 
@@ -180,8 +180,8 @@ final class ScenarioData {
         for (Segment seg : segments) {
             ObjectNode sn = sink.addObject();
             sn.put("van", seg.van().toString());
-            sn.put("tot", seg.tot().toString());
-            value(sn, seg.waarde(), dt, ng);
+            sn.put("tot", seg.until().toString());
+            value(sn, seg.value(), dt, ng);
         }
         return sink;
     }

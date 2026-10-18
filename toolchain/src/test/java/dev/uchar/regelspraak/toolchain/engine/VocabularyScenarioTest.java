@@ -1,6 +1,6 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
+import dev.uchar.regelspraak.engine.ScenarioResult.Status;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 
 import org.junit.jupiter.api.Test;
@@ -36,7 +36,7 @@ class VocabularyScenarioTest {
     void the_uitleg_names_the_declarations_in_the_chosen_vocabulary() throws IOException {
         List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(ScenarioResolver.resolve(document()), "handboek");
         assertEquals(1, u.size());
-        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnose());
+        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
         assertNull(u.get(0).uitlegError(), u.get(0)::uitlegError);
         assertEquals(List.of(
                 "J1 is komt in aanmerking voor premie, omdat zijn vondstbedrag (12,60) is groter dan 10",

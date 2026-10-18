@@ -6,20 +6,20 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.model.Datatype;
-import dev.uchar.regelspraak.model.Eenheid;
+import dev.uchar.regelspraak.model.Unit;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt.AfgeleidKenmerk;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt.AfgeleideWaarde;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt.GemaakteKoppeling;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt.GemaaktObject;
-import dev.uchar.regelspraak.transpiler.tms.Fout;
+import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint.DerivedCharacteristic;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint.DerivedValue;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint.MadeLink;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint.MadeObject;
+import dev.uchar.regelspraak.transpiler.tms.Fault;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -94,17 +94,17 @@ public final class FixpointGivens {
                 throw new IllegalStateException("het verzoek heeft een object '" + e.getKey() + "' zonder objecttype");
             Object bean = e.getValue();
             Map<String, ObjectNode> attributes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-            for (Objecttype t : ot.keten())
+            for (Objecttype t : ot.chain())
                 for (String a : t.attributen.keySet()) {
                     Object v = RegelSpraakRuntime.get(bean, RequestMapper.prop(a));
                     if (v == null || v instanceof List<?> l && l.isEmpty() || v instanceof Map<?, ?> m && m.isEmpty())
                         continue;
                     ObjectNode n = NF.objectNode();
-                    java(n, v, ot.attribuut(a), ng);
+                    java(n, v, ot.attribute(a), ng);
                     attributes.put(a, n);
                 }
             Set<String> characteristics = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            for (Objecttype t : ot.keten())
+            for (Objecttype t : ot.chain())
                 for (String k : t.kenmerken)
                     if (Boolean.TRUE.equals(RegelSpraakRuntime.get(bean, RequestMapper.prop(k)))) characteristics.add(k);
             sink.add(new InputObject(e.getKey(), ot, bean, attributes, characteristics));
@@ -122,7 +122,7 @@ public final class FixpointGivens {
      *
      * @throws UnrenderableValue a value in a form this view does not show
      */
-    public static ObjectNode fixpoint(Fixpunt f, List<InputObject> input, RegelSpraakModel model, Naming ng) {
+    public static ObjectNode fixpoint(Fixpoint f, List<InputObject> input, RegelSpraakModel model, Naming ng) {
         Map<Object, String> ref = new IdentityHashMap<>();
         Map<Object, Objecttype> type = new IdentityHashMap<>();
         Map<Object, InputObject> entered = new IdentityHashMap<>();
@@ -137,9 +137,9 @@ public final class FixpointGivens {
 
         Map<String, Objecttype> typePerClass = new HashMap<>();
         for (Objecttype ot : model.objecttypen.values())
-            typePerClass.put(FactModelGenerator.PAKKET + "." + Namen.ident(ot.naam, true), ot);
-        Map<Object, GemaaktObject> made = new IdentityHashMap<>();
-        for (GemaaktObject g : f.objecten()) {
+            typePerClass.put(FactModelGenerator.PACKAGE + "." + Namen.ident(ot.naam, true), ot);
+        Map<Object, MadeObject> made = new IdentityHashMap<>();
+        for (MadeObject g : f.objects()) {
             Objecttype ot = typePerClass.get(g.object().getClass().getName());
             if (ot == null)
                 throw new IllegalStateException("het gemaakte object " + g.object().getClass().getName()
@@ -148,15 +148,15 @@ public final class FixpointGivens {
             made.put(g.object(), g);
         }
 
-        Map<Object, Map<String, AfgeleideWaarde>> values = new IdentityHashMap<>();
-        for (AfgeleideWaarde w : f.waarden())
+        Map<Object, Map<String, DerivedValue>> values = new IdentityHashMap<>();
+        for (DerivedValue w : f.waarden())
             if (values.computeIfAbsent(known(w.object(), type), o -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
-                    .put(w.attribuut(), w) != null)
-                throw new IllegalStateException("het fixpunt geeft het attribuut '" + w.attribuut() + "' twee keer");
+                    .put(w.attribute(), w) != null)
+                throw new IllegalStateException("het fixpunt geeft het attribuut '" + w.attribute() + "' twee keer");
         Map<Object, Set<String>> characteristics = new IdentityHashMap<>();
-        for (AfgeleidKenmerk k : f.kenmerken())
+        for (DerivedCharacteristic k : f.kenmerken())
             characteristics.computeIfAbsent(known(k.object(), type),
-                    o -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)).add(k.kenmerk());
+                    o -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)).add(k.characteristic());
 
         // the members of every object first: a made object is ordered by its values too
         Map<Object, ArrayNode[]> members = new IdentityHashMap<>();
@@ -187,39 +187,39 @@ public final class FixpointGivens {
         }
         ArrayNode madeNode = n.putArray("gemaakteObjecten");
         for (Object o : madeObjects) {
-            GemaaktObject g = made.get(o);
+            MadeObject g = made.get(o);
             ObjectNode gn = madeNode.addObject();
             gn.put("object", ref.get(o));
             name(gn, "objecttype", ng.objectType(type.get(o).naam), type.get(o).naam);
-            name(gn, "creatie", ng.form(g.creatie()), g.creatie());
+            name(gn, "creatie", ng.form(g.creation()), g.creation());
             gn.put("onderwerp", refOf(g.onderwerp(), ref));
         }
-        List<GemaakteKoppeling> links = new ArrayList<>(f.koppelingen());
-        links.sort(Comparator.comparing(GemaakteKoppeling::feittype).thenComparing(GemaakteKoppeling::eersteRol)
-                .thenComparing(k -> refOf(k.eerste(), ref)).thenComparing(GemaakteKoppeling::tweedeRol)
-                .thenComparing(k -> refOf(k.tweede(), ref)));
+        List<MadeLink> links = new ArrayList<>(f.links());
+        links.sort(Comparator.comparing(MadeLink::factType).thenComparing(MadeLink::firstRole)
+                .thenComparing(k -> refOf(k.first(), ref)).thenComparing(MadeLink::secondRole)
+                .thenComparing(k -> refOf(k.second(), ref)));
         ArrayNode linkNode = n.putArray("koppelingen");
-        for (GemaakteKoppeling k : links) {
+        for (MadeLink k : links) {
             ObjectNode kn = linkNode.addObject();
-            name(kn, "feittype", ng.factType(k.feittype()), k.feittype());
-            name(kn, "eersteRol", ng.role(k.feittype(), k.eersteRol()), k.eersteRol());
-            kn.put("eerste", refOf(k.eerste(), ref));
-            name(kn, "tweedeRol", ng.role(k.feittype(), k.tweedeRol()), k.tweedeRol());
-            kn.put("tweede", refOf(k.tweede(), ref));
+            name(kn, "feittype", ng.factType(k.factType()), k.factType());
+            name(kn, "eersteRol", ng.role(k.factType(), k.firstRole()), k.firstRole());
+            kn.put("eerste", refOf(k.first(), ref));
+            name(kn, "tweedeRol", ng.role(k.factType(), k.secondRole()), k.secondRole());
+            kn.put("tweede", refOf(k.second(), ref));
         }
-        List<Fout> errors = new ArrayList<>(f.fouten());
-        errors.sort(Comparator.comparing(Fout::regel).thenComparing(Fout::melding)
+        List<Fault> errors = new ArrayList<>(f.faults());
+        errors.sort(Comparator.comparing(Fault::regel).thenComparing(Fault::message)
                 .thenComparing(x -> refOf(x.onderwerp(), ref)));
         ArrayNode faultNode = n.putArray("fouten");
-        for (Fout x : errors) {
+        for (Fault x : errors) {
             ObjectNode fn = faultNode.addObject();
             name(fn, "regel", ng.form(x.regel()), x.regel());
             fn.put("onderwerp", refOf(x.onderwerp(), ref));
-            fn.put("soort", EvaluationFault.kind(x.fout()).name());
-            fn.put("zin", x.melding());
+            fn.put("soort", EvaluationFault.kind(x.fault()).name());
+            fn.put("zin", x.message());
         }
         List<String[]> inconsistencies = new ArrayList<>();
-        for (Object o : f.inconsistenties()) {
+        for (Object o : f.inconsistencies()) {
             Object line = CaseSession.read(o, "getRegel");
             Object subject = CaseSession.read(o, "getSubject");
             inconsistencies.add(new String[]{line == null ? null : line.toString(),
@@ -241,17 +241,17 @@ public final class FixpointGivens {
      *  value from the fixpoint, else an input value, else, on a made object, the value its creation initialised on the
      *  bean. A member with none of these is no row; a timeline counts as none when empty. */
     private static ArrayNode valuesOf(Object o, Objecttype ot, Map<String, ObjectNode> entered,
-                                        Map<String, AfgeleideWaarde> derived, boolean made, Naming ng) {
+                                        Map<String, DerivedValue> derived, boolean made, Naming ng) {
         List<String> declared = new ArrayList<>();
-        for (Objecttype t : ot.keten()) declared.addAll(t.attributen.keySet());
+        for (Objecttype t : ot.chain()) declared.addAll(t.attributen.keySet());
         for (String a : derived.keySet())
             if (declared.stream().noneMatch(a::equalsIgnoreCase))
                 throw new IllegalStateException("het fixpunt geeft het attribuut '" + a + "', dat het objecttype '"
                         + ot.naam + "' niet declareert");
         ArrayNode sink = NF.arrayNode();
         for (String a : declared) {
-            Datatype dt = ot.attribuut(a);
-            AfgeleideWaarde w = derived.get(a);
+            Datatype dt = ot.attribute(a);
+            DerivedValue w = derived.get(a);
             ObjectNode in = entered.get(a);
             Object opBean = made && w == null ? CaseSession.read(o, Namen.getter(a)) : null;
             if (opBean instanceof List<?> l && l.isEmpty()) opBean = null;
@@ -259,7 +259,7 @@ public final class FixpointGivens {
             ObjectNode rn = sink.addObject();
             name(rn, "attribuut", ng.attribute(ot, a), a);
             if (w != null) {
-                java(rn, w.waarde(), dt, ng);
+                java(rn, w.value(), dt, ng);
                 rn.put("herkomst", "afgeleid");
                 if (in != null) rn.set("invoer", in.has("tijdlijn") ? in.get("tijdlijn") : in.get("waarde"));
             } else if (in != null) {
@@ -278,7 +278,7 @@ public final class FixpointGivens {
      *  ({@code derived}, with {@code invoer: true} when the input set it too) or set by the input ({@code input}). */
     private static ArrayNode characteristicsOf(Objecttype ot, Set<String> entered, Set<String> derived, Naming ng) {
         List<String> declared = new ArrayList<>();
-        for (Objecttype t : ot.keten()) declared.addAll(t.kenmerken);
+        for (Objecttype t : ot.chain()) declared.addAll(t.kenmerken);
         for (String k : derived)
             if (declared.stream().noneMatch(k::equalsIgnoreCase))
                 throw new IllegalStateException("het fixpunt geeft het kenmerk '" + k + "', dat het objecttype '"
@@ -297,7 +297,7 @@ public final class FixpointGivens {
 
     /** The sort key of made object {@code o}: its type, its creation, the key of its subject (a label, or the key of
      *  the made object that is its subject) and its values. */
-    private static String key(Object o, Map<Object, String> ref, Map<Object, GemaaktObject> made,
+    private static String key(Object o, Map<Object, String> ref, Map<Object, MadeObject> made,
                                   Map<Object, Objecttype> type, Map<Object, ArrayNode[]> members,
                                   Map<Object, String> key, List<Object> path) {
         String label = ref.get(o);
@@ -307,11 +307,11 @@ public final class FixpointGivens {
         if (path.stream().anyMatch(p -> p == o))
             throw new IllegalStateException("de gemaakte objecten zijn elkaars onderwerp in een kring");
         path.add(o);
-        GemaaktObject g = made.get(o);
+        MadeObject g = made.get(o);
         String subject = made.containsKey(g.onderwerp()) || ref.containsKey(g.onderwerp())
                 ? key(g.onderwerp(), ref, made, type, members, key, path)
                 : refOf(g.onderwerp(), ref);
-        String k = String.join("\u0000", type.get(o).naam, g.creatie(), subject, members.get(o)[0].toString(),
+        String k = String.join("\u0000", type.get(o).naam, g.creation(), subject, members.get(o)[0].toString(),
                 members.get(o)[1].toString());
         key.put(o, k);
         path.remove(path.size() - 1);
@@ -381,7 +381,7 @@ public final class FixpointGivens {
 
     /** The declared unit of a number under {@code unit}, when it has one. */
     public static void unit(ObjectNode n, Datatype dt) {
-        Eenheid e = dt == null ? null : dt.eenheidOf();
-        if (e != null) n.put("eenheid", e.weergave());
+        Unit e = dt == null ? null : dt.unitOf();
+        if (e != null) n.put("eenheid", e.rendering());
     }
 }

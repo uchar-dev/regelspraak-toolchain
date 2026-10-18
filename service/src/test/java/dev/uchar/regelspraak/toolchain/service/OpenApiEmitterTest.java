@@ -173,7 +173,7 @@ class OpenApiEmitterTest {
             JsonNode props = schemas.get(component(ot)).get("properties");
             for (var e : ot.attributen.entrySet()) {
                 if (!(e.getValue() instanceof Datatype.Enumeratie enm)) continue;
-                if (!ot.dimensiesVan(e.getKey()).isEmpty()) continue;   // dimensie: not emitted (rejected)
+                if (!ot.dimensionsOf(e.getKey()).isEmpty()) continue;   // dimensie: not emitted (rejected)
                 JsonNode prop = property(props, e.getKey());
                 assertNotNull(prop, "geen eigenschap voor enumeratie-attribuut '" + e.getKey() + "'");
                 JsonNode enumN = prop.get("enum");
@@ -181,7 +181,7 @@ class OpenApiEmitterTest {
                 java.util.List<String> found = new java.util.ArrayList<>();
                 enumN.forEach(w -> found.add(w.asText()));
                 assertEquals(enm.waarden(), found,
-                        "enum-waarden van '" + e.getKey() + "' (" + enm.domein() + ") onvolledig/afwijkend");
+                        "enum-waarden van '" + e.getKey() + "' (" + enm.domain() + ") onvolledig/afwijkend");
             }
         }
     }
@@ -206,9 +206,9 @@ class OpenApiEmitterTest {
             JsonNode props = schemas.get(component(ot)).get("properties");
             for (var e : ot.attributen.entrySet()) {
                 Datatype dt = e.getValue();
-                var unit = dt.eenheidOf();
+                var unit = dt.unitOf();
                 if (unit == null) continue;
-                if (!ot.dimensiesVan(e.getKey()).isEmpty()) continue;
+                if (!ot.dimensionsOf(e.getKey()).isEmpty()) continue;
                 if (ot.attribuutGranulariteit.containsKey(e.getKey())
                         || ot.attribuutTijdlijnAantal.containsKey(e.getKey())) continue;
                 // A bare Percentage's implicit '%' unit still documents as x-eenheid "%".
@@ -216,7 +216,7 @@ class OpenApiEmitterTest {
                 assertNotNull(prop, "geen eigenschap voor eenheid-dragend attribuut '" + e.getKey() + "'");
                 assertTrue(prop.has("x-eenheid"),
                         "geen x-eenheid op eenheid-dragend attribuut '" + e.getKey() + "' van '" + ot.naam + "'");
-                assertEquals(unit.weergave(), prop.get("x-eenheid").asText(),
+                assertEquals(unit.rendering(), prop.get("x-eenheid").asText(),
                         "x-eenheid van '" + e.getKey() + "' wijkt af");
             }
         }
@@ -244,7 +244,7 @@ class OpenApiEmitterTest {
     // ------------------------------------------------------------------ helpers
 
     private static String component(Objecttype ot) {
-        return dev.uchar.regelspraak.transpiler.kern.Namen.ident(ot.naam, true);
+        return dev.uchar.regelspraak.transpiler.core.Namen.ident(ot.naam, true);
     }
 
     /** A property lookup tolerant of the resolver's case-insensitive attribuut/kenmerk naming. */

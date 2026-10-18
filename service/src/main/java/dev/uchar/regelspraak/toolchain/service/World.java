@@ -1,6 +1,6 @@
 package dev.uchar.regelspraak.toolchain.service;
 
-import dev.uchar.regelspraak.cases.CaseInvoer;
+import dev.uchar.regelspraak.cases.CaseInput;
 
 import java.time.LocalDate;
 import java.util.LinkedHashMap;
@@ -16,7 +16,7 @@ import java.util.Objects;
  * @param globals    global name (already the engine's camelCase form) → value (BigDecimal / LocalDate / …)
  * @param rekendatum the §4.2 rekendatum, or null when the request set none
  */
-public record World(CaseInvoer input, Map<String, Object> globals, LocalDate evaluationDate) {
+public record World(CaseInput input, Map<String, Object> globals, LocalDate evaluationDate) {
 
     public World {
         Objects.requireNonNull(input, "invoer");

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
-import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
+import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceDescriptor;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
@@ -246,7 +246,7 @@ class ConcurrencyTest {
         StringBuilder source = new StringBuilder();
         for (Path c : companions) source.append(Files.readString(c)).append('\n');
         source.append(Files.readString(scenario)).append('\n');
-        ScenarioBundel bundle = ScenarioResolver.resolve(source.toString());
+        ScenarioBundle bundle = ScenarioResolver.resolve(source.toString());
         assertTrue(bundle.isOk() && !bundle.scenarios().isEmpty(),
                 () -> "scenario resolvet niet: " + scenarioPath + " " + bundle.model().errors());
         ResolvedScenario sc = bundle.scenarios().get(0);

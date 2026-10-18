@@ -261,7 +261,7 @@ class PlaygroundGeneratedFromTest {
                 named.add(g.get("naam").asText());
                 if (g.get("soort").asText().equals("defaults")) stacks++;
             }
-            for (var d : build.dekking())
+            for (var d : build.coverage())
                 if (forms.contains(d.naam()) == named.contains(d.naam()))
                     errors.add(golden + ": de dekkingnaam '" + d.naam() + "' is "
                             + (forms.contains(d.naam()) ? "een element en gegenereerd" : "geen element en niet gegenereerd"));

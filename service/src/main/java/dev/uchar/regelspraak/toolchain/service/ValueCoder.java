@@ -3,8 +3,8 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.model.Datatype;
-import dev.uchar.regelspraak.model.Eenheid;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.model.Unit;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -55,11 +55,11 @@ public final class ValueCoder {
 
         if (dt instanceof Datatype.Numeriek n)   return numeric(node, field, n.eenheid());
         if (dt instanceof Datatype.Percentage p) return numeric(node, field, percentUnit(p.eenheid()));
-        if (dt instanceof Datatype.Booleaan)     return decodeBoolean(node, field);
+        if (dt instanceof Datatype.BooleanType)     return decodeBoolean(node, field);
         if (dt instanceof Datatype.Tekst)        return text(node, field);
         if (dt instanceof Datatype.Enumeratie e) return enumeration(node, field, e);
         if (dt instanceof Datatype.DatumInDagen) return date(node, field);
-        if (dt instanceof Datatype.DatumTijd)    return dateTime(node, field);
+        if (dt instanceof Datatype.DateTime)    return dateTime(node, field);
 
         return Result.error(Violation.van(Violation.Kind.NIET_ONDERSTEUND, field,
                 "datatype " + dt + " wordt niet ondersteund door de dienst-kern"));
@@ -67,7 +67,7 @@ public final class ValueCoder {
 
     // ---- numeric (+ eenheid) ----
 
-    private static Result numeric(JsonNode node, String field, Eenheid declared) {
+    private static Result numeric(JsonNode node, String field, Unit declared) {
         // an eenheid-bearing value may arrive as {"waarde": n, "eenheid": "afk"}
         if (node.isObject()) {
             JsonNode w = node.get("waarde");
@@ -82,10 +82,10 @@ public final class ValueCoder {
                 return Result.error(Violation.van(Violation.Kind.VERKEERDE_EENHEID, field,
                         "eenheid-object mist een tekstuele 'eenheid'"));
             String requested = e.asText();
-            if (!requested.equals(declared.weergave()))
+            if (!requested.equals(declared.rendering()))
                 return Result.error(Violation.van(Violation.Kind.VERKEERDE_EENHEID, field,
                         "eenheid '" + requested + "' komt niet overeen met de gedeclareerde eenheid '"
-                                + declared.weergave() + "'"));
+                                + declared.rendering() + "'"));
             return number(w, field);
         }
         return number(node, field);
@@ -103,7 +103,7 @@ public final class ValueCoder {
 
     /** A Percentage's eenheid is always '%' (optionally a rate); a plain number in a request is the percentage
      *  value itself, so we only enforce a supplied eenheid object against the declared weergave. */
-    private static Eenheid percentUnit(Eenheid e) { return e; }
+    private static Unit percentUnit(Unit e) { return e; }
 
     // ---- boolean / tekst / enum ----
 
@@ -126,7 +126,7 @@ public final class ValueCoder {
         String v = node.asText();
         if (e.waarden().stream().noneMatch(w -> Namen.norm(w).equals(Namen.norm(v))))
             return Result.error(Violation.van(Violation.Kind.ONBEKENDE_ENUM_WAARDE, field,
-                    "'" + v + "' is geen waarde van domein '" + e.domein() + "' (toegestaan: " + e.waarden() + ")"));
+                    "'" + v + "' is geen waarde van domein '" + e.domain() + "' (toegestaan: " + e.waarden() + ")"));
         return Result.ok(v);
     }
 

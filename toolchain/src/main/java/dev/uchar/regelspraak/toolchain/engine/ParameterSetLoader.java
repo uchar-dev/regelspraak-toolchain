@@ -4,11 +4,11 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
-import dev.uchar.regelspraak.ir.Geldigheid;
+import dev.uchar.regelspraak.ir.Validity;
 import dev.uchar.regelspraak.model.Datatype;
-import dev.uchar.regelspraak.model.Eenheid;
-import dev.uchar.regelspraak.model.Parameterset;
-import dev.uchar.regelspraak.model.Parameterset.WaardeInterval;
+import dev.uchar.regelspraak.model.Unit;
+import dev.uchar.regelspraak.model.ParameterSet;
+import dev.uchar.regelspraak.model.ParameterSet.ValueInterval;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 
 import java.io.IOException;
@@ -36,7 +36,7 @@ import java.util.List;
  * <p>Fouten worden VERZAMELEND gerapporteerd (alle eerst, dan één {@link ParameterSetError}), house-style: elke fout
  * noemt de overtreder + locatie. Malformed JSON mag direct één throw zijn. Gedekte fouten: onbekende parameternaam,
  * verkeerd getypeerde waarde, verkeerde eenheid, ongeldige/omgekeerde vanaf/tot, en overlap (via
- * {@link Parameterset#overlapFouten}, ná decode).
+ * {@link ParameterSet#overlapFouten}, ná decode).
  *
  * <p>De waarde-decodering spiegelt {@code dev.uchar.regelspraak.toolchain.service.ValueCoder} (Numeriek/Percentage → BigDecimal
  * met eenheid-objectvorm {@code {"waarde": n, "eenheid": "<afk>"}} waarvan de eenheid EXACT de gedeclareerde
@@ -103,12 +103,12 @@ public final class ParameterSetLoader {
     }
 
     /** Parse + valideer een parameterset-bestand tegen {@code model}. */
-    public static List<Parameterset> load(Path file, RegelSpraakModel model) throws IOException {
+    public static List<ParameterSet> load(Path file, RegelSpraakModel model) throws IOException {
         return load(Files.readString(file), model);
     }
 
     /** Parse + valideer parametersets uit hun JSON-tekst tegen {@code model}. */
-    public static List<Parameterset> load(String json, RegelSpraakModel model) {
+    public static List<ParameterSet> load(String json, RegelSpraakModel model) {
         JsonNode root;
         try {
             root = MAPPER.readTree(json);
@@ -120,7 +120,7 @@ public final class ParameterSetLoader {
                     List.of("verwacht een JSON-object met sleutel 'parametersets'"));
 
         List<String> errors = new ArrayList<>();
-        List<Parameterset> sets = new ArrayList<>();
+        List<ParameterSet> sets = new ArrayList<>();
 
         JsonNode arr = root.get("parametersets");
         if (arr == null || !arr.isArray()) {
@@ -136,7 +136,7 @@ public final class ParameterSetLoader {
             if (nameNode == null || !nameNode.isTextual() || nameNode.asText().isBlank())
                 errors.add(path + ".naam ontbreekt");
 
-            java.util.Map<String, List<WaardeInterval>> values = new java.util.LinkedHashMap<>();
+            java.util.Map<String, List<ValueInterval>> values = new java.util.LinkedHashMap<>();
             JsonNode valuesNode = setNode.get("waarden");
             if (valuesNode != null && valuesNode.isObject()) {
                 var fields = valuesNode.fields();
@@ -150,7 +150,7 @@ public final class ParameterSetLoader {
                         continue;
                     }
                     String canonical = param.naam();   // normaliseer naar de canonieke model-naam
-                    List<WaardeInterval> intervals =
+                    List<ValueInterval> intervals =
                             values.computeIfAbsent(canonical, k -> new ArrayList<>());
                     JsonNode listNode = entry.getValue();
                     if (listNode == null || !listNode.isArray()) {
@@ -158,16 +158,16 @@ public final class ParameterSetLoader {
                         continue;
                     }
                     for (int j = 0; j < listNode.size(); j++) {
-                        WaardeInterval wi = decodeerInterval(listNode.get(j), param, wpad + "[" + j + "]", errors);
+                        ValueInterval wi = decodeerInterval(listNode.get(j), param, wpad + "[" + j + "]", errors);
                         if (wi != null) intervals.add(wi);
                     }
                 }
             }
-            sets.add(new Parameterset(setName, values));
+            sets.add(new ParameterSet(setName, values));
         }
 
         // overlap wordt PAS ná decode over de UNIE per parameter gecheckt.
-        errors.addAll(Parameterset.overlapFouten(sets));
+        errors.addAll(ParameterSet.overlapErrors(sets));
 
         if (!errors.isEmpty())
             throw new ParameterSetError("parametersets valideren niet tegen het model", errors);
@@ -176,7 +176,7 @@ public final class ParameterSetLoader {
 
     /** Decodeer één {@code {waarde, vanaf?, tot?}}-interval; {@code null} bij een fout (die aan {@code errors} is
      *  toegevoegd). */
-    private static WaardeInterval decodeerInterval(JsonNode node, RegelSpraakModel.Parameter param,
+    private static ValueInterval decodeerInterval(JsonNode node, RegelSpraakModel.Parameter param,
                                                    String path, List<String> errors) {
         if (node == null || !node.isObject()) {
             errors.add(path + ": verwacht een object {waarde, vanaf?, tot?}");
@@ -204,7 +204,7 @@ public final class ParameterSetLoader {
         }
 
         if (!ok) return null;
-        return new WaardeInterval(value, new Geldigheid(from, to));
+        return new ValueInterval(value, new Validity(from, to));
     }
 
     private static LocalDate dateOrNull(JsonNode node, String path, List<String> errors) {
@@ -230,16 +230,16 @@ public final class ParameterSetLoader {
 
         if (dt instanceof Datatype.Numeriek n)   return numeric(node, field, n.eenheid());
         if (dt instanceof Datatype.Percentage p) return numeric(node, field, p.eenheid());
-        if (dt instanceof Datatype.Booleaan)     return decodeBoolean(node, field);
+        if (dt instanceof Datatype.BooleanType)     return decodeBoolean(node, field);
         if (dt instanceof Datatype.Tekst)        return text(node, field);
         if (dt instanceof Datatype.Enumeratie e) return enumeration(node, field, e);
         if (dt instanceof Datatype.DatumInDagen) return date(node, field);
-        if (dt instanceof Datatype.DatumTijd)    return dateTime(node, field);
+        if (dt instanceof Datatype.DateTime)    return dateTime(node, field);
 
         return DecodeResult.error(field + ": datatype " + dt + " wordt niet ondersteund");
     }
 
-    private static DecodeResult numeric(JsonNode node, String field, Eenheid declared) {
+    private static DecodeResult numeric(JsonNode node, String field, Unit declared) {
         if (node.isObject()) {
             JsonNode w = node.get("waarde");
             JsonNode e = node.get("eenheid");
@@ -250,9 +250,9 @@ public final class ParameterSetLoader {
             if (e == null || !e.isTextual())
                 return DecodeResult.error(field + ": eenheid-object mist een tekstuele 'eenheid'");
             String requested = e.asText();
-            if (!requested.equals(declared.weergave()))
+            if (!requested.equals(declared.rendering()))
                 return DecodeResult.error(field + ": eenheid '" + requested + "' komt niet overeen met de gedeclareerde"
-                        + " eenheid '" + declared.weergave() + "'");
+                        + " eenheid '" + declared.rendering() + "'");
             return number(w, field);
         }
         return number(node, field);
@@ -282,7 +282,7 @@ public final class ParameterSetLoader {
             return DecodeResult.error(field + ": verwacht een enumeratie-waarde (tekst), kreeg " + describe(node));
         String v = node.asText();
         if (!e.waarden().contains(v))
-            return DecodeResult.error(field + ": '" + v + "' is geen waarde van domein '" + e.domein()
+            return DecodeResult.error(field + ": '" + v + "' is geen waarde van domein '" + e.domain()
                     + "' (toegestaan: " + e.waarden() + ")");
         return DecodeResult.ok(v);
     }

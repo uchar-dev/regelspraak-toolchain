@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
-import dev.uchar.regelspraak.cases.Invoer;
+import dev.uchar.regelspraak.cases.Input;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
@@ -89,7 +89,7 @@ class NegationStratificationTest {
         DroolsBackend.Build build = UcharBuild.assemble(model, DroolsBackend.Branch.EXEC_MODEL);
         ClassLoader cl = build.beanLoader();
 
-        Class<?> wn = Class.forName(FactModelGenerator.PAKKET + ".Werknemer", true, cl);
+        Class<?> wn = Class.forName(FactModelGenerator.PACKAGE + ".Werknemer", true, cl);
         Object bean = wn.getConstructor().newInstance();
         wn.getMethod("setMaandloonNieuw", BigDecimal.class).invoke(bean, new BigDecimal("150"));
 
@@ -98,9 +98,9 @@ class NegationStratificationTest {
         try {
             KieSession s = build.kieBase().newKieSession();
             try {
-                DroolsBackend.voegIn(build, s, new Invoer().bean(bean));
-                assertNull(DroolsBackend.vuur(build, s).geenFixpunt(), "de sessie bereikt haar fixpunt");
-                DroolsBackend.zetAfgeleideWaarden(build, s);
+                DroolsBackend.insert(build, s, new Input().bean(bean));
+                assertNull(DroolsBackend.fire(build, s).noFixpoint(), "de sessie bereikt haar fixpunt");
+                DroolsBackend.setDerivedValues(build, s);
             } finally { s.dispose(); }
         } finally { Thread.currentThread().setContextClassLoader(previous); }
 

@@ -3,10 +3,10 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.runtime.Breuk;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
-import dev.uchar.regelspraak.transpiler.tms.Invoervormfout;
-import dev.uchar.regelspraak.transpiler.tms.Rekenfout;
-import dev.uchar.regelspraak.transpiler.tms.Schrijversconflict;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
+import dev.uchar.regelspraak.transpiler.tms.InputFormFault;
+import dev.uchar.regelspraak.transpiler.tms.ComputeFault;
+import dev.uchar.regelspraak.transpiler.tms.WritersConflict;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -35,10 +35,10 @@ public final class EvaluationFault extends RuntimeException {
     public record Fault(Kind kind, String sentence) {}
 
     private final transient List<Fault> errors;
-    private final transient Fixpunt fixpoint;
+    private final transient Fixpoint fixpoint;
     private final transient ObjectNode detail;
 
-    private EvaluationFault(List<Fault> errors, RuntimeException cause, Fixpunt fixpoint, ObjectNode detail) {
+    private EvaluationFault(List<Fault> errors, RuntimeException cause, Fixpoint fixpoint, ObjectNode detail) {
         super(errors.size() == 1 ? "de regels geven op deze invoer een evaluatiefout"
                 : "de regels geven op deze invoer " + errors.size() + " evaluatiefouten", cause);
         this.errors = List.copyOf(errors);
@@ -49,9 +49,9 @@ public final class EvaluationFault extends RuntimeException {
     /** The faults that stand at {@code fixpunt}, one element per fault in the order of its {@code errors}, which is
      *  uchar's: by the name of the form, then by the sentence. {@code cause} is what uchar's write-back threw for
      *  them. */
-    static EvaluationFault van(Fixpunt fixpoint, RuntimeException cause) {
+    static EvaluationFault van(Fixpoint fixpoint, RuntimeException cause) {
         List<Fault> sink = new ArrayList<>();
-        for (dev.uchar.regelspraak.transpiler.tms.Fout f : fixpoint.fouten()) sink.add(new Fault(kind(f.fout()), f.melding()));
+        for (dev.uchar.regelspraak.transpiler.tms.Fault f : fixpoint.faults()) sink.add(new Fault(kind(f.fault()), f.message()));
         return new EvaluationFault(sink, cause, fixpoint, null);
     }
 
@@ -64,9 +64,9 @@ public final class EvaluationFault extends RuntimeException {
     public static Kind kind(RuntimeException f) {
         return switch (f) {
             case Breuk.DelingDoorNul d -> Kind.DELING_DOOR_NUL;
-            case Rekenfout r -> Kind.REKENFOUT;
-            case Schrijversconflict s -> Kind.SCHRIJVERSCONFLICT;
-            case Invoervormfout i -> Kind.INVOERVORMFOUT;
+            case ComputeFault r -> Kind.REKENFOUT;
+            case WritersConflict s -> Kind.SCHRIJVERSCONFLICT;
+            case InputFormFault i -> Kind.INVOERVORMFOUT;
             default -> Kind.ANDERE;
         };
     }
@@ -77,7 +77,7 @@ public final class EvaluationFault extends RuntimeException {
     }
 
     /** What stands at the fixpoint the faults stand at, as uchar's entry reads it. */
-    public Fixpunt fixpoint() {
+    public Fixpoint fixpoint() {
         return fixpoint;
     }
 

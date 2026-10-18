@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import org.kie.api.runtime.KieSession;
 
@@ -44,8 +44,8 @@ public final class Executor {
     /** The result of a fire: the beans by id with the derived values written back, the firings, the
      *  inconsistenties, what stood at the fixpoint before the write-back, as uchar's entry reads it, and uchar's
      *  verdict on the expectations the caller gave ({@link DroolsBackend#vergelijk}), null when it gave none. */
-    public record Outcome(Map<String, Object> beans, int fired, List<Object> inconsistencies, Fixpunt fixpoint,
-                           DroolsBackend.Vergelijking comparison) {}
+    public record Outcome(Map<String, Object> beans, int fired, List<Object> inconsistencies, Fixpoint fixpoint,
+                           DroolsBackend.Comparison comparison) {}
 
     /** Fire the entry point's rules over {@code world} and return the beans with their derived values and the
      *  inconsistenties. */
@@ -74,7 +74,7 @@ public final class Executor {
      * @throws Evaluatiefout the evaluation faults that stand at the fixpoint, one or more, of any type, with the
      *                       fixpoint they stand at
      */
-    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Waarnemer observer) {
+    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer) {
         return fire(world, setGlobals, observer, null);
     }
 
@@ -90,7 +90,7 @@ public final class Executor {
      * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare, in the
      *                                  sentence of its replay
      */
-    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Waarnemer observer,
+    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer,
                          JsonNode expectations) {
         // descriptor defaults first, set-vintage values next, request parameters override last
         Map<String, Object> globals = new LinkedHashMap<>(defaultGlobals);
@@ -102,28 +102,28 @@ public final class Executor {
         KieSession session = build.kieBase().newKieSession();
         try {
             // the branch states the globals as facts at the first fire, so they all go on before it
-            for (var e : build.dagsoortGlobalen().entrySet()) setGlobalSafe(session, e.getKey(), e.getValue());
+            for (var e : build.dayKindGlobals().entrySet()) setGlobalSafe(session, e.getKey(), e.getValue());
             for (var e : globals.entrySet()) setGlobalSafe(session, e.getKey(), e.getValue());
             LocalDate rd = world.evaluationDate();
             if (rd != null) setGlobalSafe(session, "rekendatum", rd);
             // the input as uchar's replay puts it in: the order of a list decides which member a fault of a fold
             // names, so the 422 names the member uchar's replay names on the same input
-            DroolsBackend.voegIn(build, session, world.input().invoer());
-            DroolsBackend.Vuring firing = observer == null ? DroolsBackend.vuur(build, session)
-                    : DroolsBackend.vuur(build, session, observer);
-            if (firing.geenFixpunt() != null) throw new NoFixpoint(firing.geenFixpunt());
+            DroolsBackend.insert(build, session, world.input().inputData());
+            DroolsBackend.Firing firing = observer == null ? DroolsBackend.fire(build, session)
+                    : DroolsBackend.fire(build, session, observer);
+            if (firing.noFixpoint() != null) throw new NoFixpoint(firing.noFixpoint());
             // a fault names its object by the id of the request; a made object has none, and uchar names it as ref does
             Map<Object, String> label = new IdentityHashMap<>();
             world.beans().forEach((id, bean) -> label.put(bean, id));
             // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
             // it as one exception among those the entry throws itself, so the faults are read as data first
-            Fixpunt fixpoint = DroolsBackend.lees(build, session, label::get);
-            if (!fixpoint.fouten().isEmpty()) throw EvaluationFault.van(fixpoint, rethrown(session, label, fixpoint));
-            DroolsBackend.zetAfgeleideWaarden(build, session, label::get);
+            Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, label::get);
+            if (!fixpoint.faults().isEmpty()) throw EvaluationFault.van(fixpoint, rethrown(session, label, fixpoint));
+            DroolsBackend.setDerivedValues(build, session, label::get);
             List<Object> inc = readInconsistencies(session);
-            DroolsBackend.Vergelijking comparison = expectations == null ? null
-                    : DroolsBackend.vergelijk(build, session, label::get, expectations);
-            return new Outcome(world.beans(), firing.vuringen(), inc, fixpoint, comparison);
+            DroolsBackend.Comparison comparison = expectations == null ? null
+                    : DroolsBackend.compare(build, session, label::get, expectations);
+            return new Outcome(world.beans(), firing.firings(), inc, fixpoint, comparison);
         } finally {
             session.dispose();
             Thread.currentThread().setContextClassLoader(previous);
@@ -133,14 +133,14 @@ public final class Executor {
     /** The exception uchar's write-back throws for the faults that stand at {@code fixpunt}: the fault's own for one,
      *  uchar's {@code Evaluatiefouten} for two or more. It writes nothing back then; a write-back that does not throw
      *  is a broken promise of uchar's entry. */
-    private RuntimeException rethrown(KieSession session, Map<Object, String> label, Fixpunt fixpoint) {
+    private RuntimeException rethrown(KieSession session, Map<Object, String> label, Fixpoint fixpoint) {
         try {
-            DroolsBackend.zetAfgeleideWaarden(build, session, label::get);
+            DroolsBackend.setDerivedValues(build, session, label::get);
         } catch (RuntimeException e) {
             return e;
         }
         throw new IllegalStateException("uchars terugzetting wierp niets, terwijl aan het fixpunt "
-                + fixpoint.fouten().size() + " evaluatiefout(en) staan, de eerste: " + fixpoint.fouten().get(0).melding());
+                + fixpoint.faults().size() + " evaluatiefout(en) staan, de eerste: " + fixpoint.faults().get(0).message());
     }
 
     /** setGlobal tolerating a global the compiled DRL did not declare (a parameter no scoped rule reads is not
@@ -153,7 +153,7 @@ public final class Executor {
     /** uchar's generator writes the {@code Inconsistentie} bean for every model, so a class loader without it is not
      *  the one the KieBase was built against: that fails here rather than dropping every inconsistency. */
     private List<Object> readInconsistencies(KieSession session) {
-        String name = FactModelGenerator.PAKKET + ".Inconsistentie";
+        String name = FactModelGenerator.PACKAGE + ".Inconsistentie";
         Class<?> inc;
         try {
             inc = Class.forName(name, true, build.beanLoader());

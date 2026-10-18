@@ -4,10 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
-import dev.uchar.regelspraak.ir.ResolvedScenario.Verwachting;
-import dev.uchar.regelspraak.ir.ResolvedScenario.Waarde;
+import dev.uchar.regelspraak.ir.ResolvedScenario.Expectation;
+import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
-import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
+import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceDescriptor;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
@@ -144,7 +144,7 @@ class GoldenOverHttpTest {
         StringBuilder source = new StringBuilder();
         for (Path c : g.companions) source.append(Files.readString(c)).append('\n');
         source.append(Files.readString(g.scenarioFile)).append('\n');
-        ScenarioBundel bundle = ScenarioResolver.resolve(source.toString());
+        ScenarioBundle bundle = ScenarioResolver.resolve(source.toString());
         assertTrue(!bundle.isOk() && bundle.model().errors().stream().anyMatch(d -> d.message().contains(fragment)),
                 () -> g.scenarioFile.getFileName() + " staat in UCHAR_WEIGERT met '" + fragment + "', maar uchar "
                         + "weigert het zo niet (meer); fouten: " + bundle.model().errors());
@@ -156,7 +156,7 @@ class GoldenOverHttpTest {
         StringBuilder source = new StringBuilder();
         for (Path c : g.companions) source.append(Files.readString(c)).append('\n');
         source.append(Files.readString(g.scenarioFile)).append('\n');
-        ScenarioBundel bundle = ScenarioResolver.resolve(source.toString());
+        ScenarioBundle bundle = ScenarioResolver.resolve(source.toString());
         assertTrue(bundle.isOk(), () -> "scenario resolvet niet: " + bundle.model().errors());
         assertEquals(1, bundle.scenarios().size(),
                 "een golden bestand hoort precies één scenario te dragen: " + g.scenarioFile);
@@ -177,32 +177,32 @@ class GoldenOverHttpTest {
 
         // 4. every verwachting against the answer on the wire. uchar's DroolsBackend.vergelijk judges a session in
         //    memory, which an HTTP answer does not carry; this test checks what the service sends, so it reads it.
-        for (Verwachting v : scenario.verwachtingen()) compare(v, answer, path, request);
+        for (Expectation v : scenario.expectations()) compare(v, answer, path, request);
     }
 
     // ---------------- verwachting comparison ----------------
 
-    private void compare(Verwachting v, JsonNode answer, String path, JsonNode request) {
-        String ctx = "\nscope-pad /" + path + "\nverwachting op regel " + v.line() + " (" + v.soort() + ")"
+    private void compare(Expectation v, JsonNode answer, String path, JsonNode request) {
+        String ctx = "\nscope-pad /" + path + "\nverwachting op regel " + v.line() + " (" + v.category() + ")"
                 + "\nverzoek: " + request + "\nantwoord: " + answer;
-        switch (v.soort()) {
-            case ATTRIBUUT_WAARDE -> {
-                JsonNode w = attribute(answer, v.label(), v.attribuut());
-                assertNotNull(w, () -> "geen attribuut '" + v.attribuut() + "' op instantie '" + v.label() + "'" + ctx);
-                assertTrue(equal(v.verwachteWaarde(), w),
-                        () -> "verwacht " + renderValue(v.verwachteWaarde()) + ", kreeg " + w + ctx);
+        switch (v.category()) {
+            case ATTRIBUTE_VALUE -> {
+                JsonNode w = attribute(answer, v.label(), v.attribute());
+                assertNotNull(w, () -> "geen attribuut '" + v.attribute() + "' op instantie '" + v.label() + "'" + ctx);
+                assertTrue(equal(v.expectedValue(), w),
+                        () -> "verwacht " + renderValue(v.expectedValue()) + ", kreeg " + w + ctx);
             }
-            case ATTRIBUUT_LEEG -> {
+            case ATTRIBUTE_EMPTY -> {
                 // AnswerBuilder renders an unresolved value as JSON null (rend(null) -> nullNode). So an empty
                 // attribute is either JSON null OR the attribute node absent for that instance — assert THAT.
-                JsonNode w = attribute(answer, v.label(), v.attribuut());
+                JsonNode w = attribute(answer, v.label(), v.attribute());
                 assertTrue(w == null || w.isNull(),
                         () -> "verwacht leeg, kreeg " + w + ctx);
             }
-            case KENMERK_AANWEZIG -> assertTrue(characteristicTrue(answer, v.label(), v.kenmerk()),
-                    () -> "verwacht kenmerk '" + v.kenmerk() + "' AANWEZIG op '" + v.label() + "'" + ctx);
-            case KENMERK_AFWEZIG -> assertTrue(!characteristicTrue(answer, v.label(), v.kenmerk()),
-                    () -> "verwacht kenmerk '" + v.kenmerk() + "' AFWEZIG op '" + v.label() + "'" + ctx);
+            case CHARACTERISTIC_PRESENT -> assertTrue(characteristicTrue(answer, v.label(), v.characteristic()),
+                    () -> "verwacht kenmerk '" + v.characteristic() + "' AANWEZIG op '" + v.label() + "'" + ctx);
+            case CHARACTERISTIC_ABSENT -> assertTrue(!characteristicTrue(answer, v.label(), v.characteristic()),
+                    () -> "verwacht kenmerk '" + v.characteristic() + "' AFWEZIG op '" + v.label() + "'" + ctx);
             case CONSISTENT -> assertTrue(inconsistencies(answer).isEmpty(),
                     () -> "verwacht consistent (lege inconsistenties), kreeg " + inconsistencies(answer) + ctx);
             case INCONSISTENT -> {
@@ -214,36 +214,36 @@ class GoldenOverHttpTest {
                     assertTrue(inc.contains(line),
                             () -> "verwacht dat regel '" + line + "' in de inconsistenties staat, kreeg " + inc + ctx);
             }
-            case ATTRIBUUT_TIJDLIJN -> throw new AssertionError(
+            case ATTRIBUTE_TIMELINE -> throw new AssertionError(
                     "het antwoord van de dienst draagt geen tijdlijn, dus deze verwachting is over HTTP niet te toetsen" + ctx);
         }
     }
 
     /** Numeriek via BigDecimal.compareTo, datum/datumtijd/bool/enum/tekst via equals-after-normalisation (a
      *  datetime response is the LocalDateTime.toString() form, so parse it back). */
-    private static boolean equal(Waarde expected, JsonNode actual) {
+    private static boolean equal(ScenarioValue expected, JsonNode actual) {
         if (actual == null || actual.isNull()) return false;
-        if (expected.getal() != null)
-            return actual.isNumber() && SituationToRequest.number(expected.getal()).compareTo(actual.decimalValue()) == 0;
-        if (expected.datum() != null)
-            return actual.isTextual() && expected.datum().equals(LocalDate.parse(actual.asText()));
-        if (expected.datumTijd() != null)
-            return actual.isTextual() && expected.datumTijd().equals(LocalDateTime.parse(actual.asText()));
+        if (expected.number() != null)
+            return actual.isNumber() && SituationToRequest.number(expected.number()).compareTo(actual.decimalValue()) == 0;
+        if (expected.date() != null)
+            return actual.isTextual() && expected.date().equals(LocalDate.parse(actual.asText()));
+        if (expected.dateTime() != null)
+            return actual.isTextual() && expected.dateTime().equals(LocalDateTime.parse(actual.asText()));
         if (expected.bool() != null)
             return actual.isBoolean() && expected.bool() == actual.booleanValue();
-        if (expected.enumWaarde() != null)
-            return actual.isTextual() && expected.enumWaarde().equals(actual.asText());
+        if (expected.enumValue() != null)
+            return actual.isTextual() && expected.enumValue().equals(actual.asText());
         if (expected.tekst() != null)
             return actual.isTextual() && expected.tekst().equals(actual.asText());
         return actual.isNull();
     }
 
-    private static String renderValue(Waarde w) {
-        if (w.getal() != null) return w.getal();
-        if (w.datum() != null) return w.datum().toString();
-        if (w.datumTijd() != null) return w.datumTijd().toString();
+    private static String renderValue(ScenarioValue w) {
+        if (w.number() != null) return w.number();
+        if (w.date() != null) return w.date().toString();
+        if (w.dateTime() != null) return w.dateTime().toString();
         if (w.bool() != null) return w.bool().toString();
-        if (w.enumWaarde() != null) return "'" + w.enumWaarde() + "'";
+        if (w.enumValue() != null) return "'" + w.enumValue() + "'";
         return "\"" + w.tekst() + "\"";
     }
 
@@ -297,8 +297,8 @@ class GoldenOverHttpTest {
     private static List<String> scopeNames(ResolvedScenario scenario) {
         List<String> sink = new ArrayList<>();
         if (scenario.scope() == null) return sink;
-        for (String form : scenario.scope().vormen()) {
-            String name = CaseEmitter.basisNaam(form);
+        for (String form : scenario.scope().forms()) {
+            String name = CaseEmitter.baseName(form);
             if (!sink.contains(name)) sink.add(name);
         }
         return sink;

@@ -6,7 +6,7 @@ import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import org.junit.jupiter.api.Test;
 
@@ -79,7 +79,7 @@ class UitlegOriginFromIrTest {
     }
 
     private static List<String> uitleg(RegelSpraakModel model, Map<String, Object> beans) {
-        Objecttype vondst = model.objecttypeOpNaam("Vondst");
+        Objecttype vondst = model.objectTypeByName("Vondst");
         Map<String, Objecttype> types = new LinkedHashMap<>();
         for (String label : beans.keySet()) types.put(label, vondst);
         return new Verbaliser(model, Map.of(), Naming.van(model, "cgm")).verbalise(beans, types);

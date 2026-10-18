@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import dev.uchar.regelspraak.cases.CaseInvoer;
+import dev.uchar.regelspraak.cases.CaseInput;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
@@ -16,7 +16,7 @@ import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 import dev.uchar.regelspraak.toolchain.service.Executor;
 import dev.uchar.regelspraak.toolchain.service.World;
-import dev.uchar.regelspraak.transpiler.tms.Evaluatiefouten;
+import dev.uchar.regelspraak.transpiler.tms.EvaluationFaults;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -356,7 +356,7 @@ class EntryHttpTest {
         }
 
         DecisionCore.Entrypoint ep = core.entrypoint("bewaargeld");
-        CaseInvoer inputSection = CaseInvoer.van(ep.build(), tree("""
+        CaseInput inputSection = CaseInput.van(ep.build(), tree("""
             {"asOfDate":"2026-03-15","input":{"instances":[{"label":"J1","objectType":"Jutter","attributes":
               {"bewaarvergoeding per maand":{"timeline":[{"from":"2026-01-01","to":"2027-01-01","value":{"number":"10"}}]}}}]}}"""));
         EvaluationFault error = assertThrows(EvaluationFault.class, () -> new Executor(ep.build(), ep.defaultGlobals())
@@ -524,7 +524,7 @@ class EntryHttpTest {
      *  in its order: one fault as its own exception, two or more as {@code Evaluatiefouten}. */
     private static List<String> replayFaults(Path map, String source, String request) throws Exception {
         RuntimeException error = replay(map, source, request);
-        if (error instanceof Evaluatiefouten more) return more.fouten().stream().map(Throwable::getMessage).toList();
+        if (error instanceof EvaluationFaults more) return more.faults().stream().map(Throwable::getMessage).toList();
         return List.of(error.getMessage());
     }
 

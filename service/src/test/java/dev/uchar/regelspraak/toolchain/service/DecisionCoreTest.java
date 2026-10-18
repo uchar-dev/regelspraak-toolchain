@@ -153,7 +153,7 @@ class DecisionCoreTest {
         assertNotNull(ep, "de feitcreatie-entrypoint hoort gebouwd te zijn");
         assertTrue(ep.executable() && ep.markers().isEmpty(), ep.toString());
         assertEquals(1, ep.coverage().size(), ep.coverage().toString());
-        assertEquals("feitcreatie", ep.coverage().get(0).soort(), ep.coverage().toString());
+        assertEquals("feitcreatie", ep.coverage().get(0).category(), ep.coverage().toString());
         assertTrue(ep.coverage().get(0).lowered(), ep.coverage().toString());
 
         String request = """

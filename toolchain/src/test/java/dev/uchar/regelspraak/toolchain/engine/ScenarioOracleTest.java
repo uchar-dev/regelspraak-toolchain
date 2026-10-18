@@ -1,14 +1,14 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
-import dev.uchar.regelspraak.cases.Invoer;
-import dev.uchar.regelspraak.engine.ScenarioResultaat;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.VerwachtingResultaat;
+import dev.uchar.regelspraak.cases.Input;
+import dev.uchar.regelspraak.engine.ScenarioResult;
+import dev.uchar.regelspraak.engine.ScenarioResult.Status;
+import dev.uchar.regelspraak.engine.ScenarioResult.ExpectationResult;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.tms.Rekenfout;
+import dev.uchar.regelspraak.transpiler.tms.ComputeFault;
 import org.junit.jupiter.api.Test;
 import org.kie.api.runtime.KieSession;
 
@@ -48,7 +48,7 @@ class ScenarioOracleTest {
     /** A session on uchar's build of a model, with the class loader of its generated beans. */
     private record World(DroolsBackend.Build build, KieSession session, ClassLoader cl) {
         Object newInstance(String clazz) throws Exception {
-            return Class.forName(FactModelGenerator.PAKKET + "." + clazz, true, cl).getConstructor().newInstance();
+            return Class.forName(FactModelGenerator.PACKAGE + "." + clazz, true, cl).getConstructor().newInstance();
         }
         void set(Object o, String setter, Object value, Class<?> type) throws Exception {
             o.getClass().getMethod(setter, type).invoke(o, value);
@@ -73,7 +73,7 @@ class ScenarioOracleTest {
             catch (NoSuchMethodException e) { return (Boolean) read(o, "is" + getter.substring(3)); }
         }
         long inconsistencies() throws Exception {
-            Class<?> inc = Class.forName(FactModelGenerator.PAKKET + ".Inconsistentie", true, cl);
+            Class<?> inc = Class.forName(FactModelGenerator.PACKAGE + ".Inconsistentie", true, cl);
             return session.getObjects(inc::isInstance).size();
         }
     }
@@ -91,10 +91,10 @@ class ScenarioOracleTest {
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(w.cl());
         try {
-            DroolsBackend.voegIn(w.build(), w.session(), new Invoer().beans(List.of(facts)));
-            DroolsBackend.Vuring firing = DroolsBackend.vuur(w.build(), w.session());
-            assertNull(firing.geenFixpunt(), "regel-loop bereikt geen fixpunt");
-            DroolsBackend.zetAfgeleideWaarden(w.build(), w.session());
+            DroolsBackend.insert(w.build(), w.session(), new Input().beans(List.of(facts)));
+            DroolsBackend.Firing firing = DroolsBackend.fire(w.build(), w.session());
+            assertNull(firing.noFixpoint(), "regel-loop bereikt geen fixpunt");
+            DroolsBackend.setDerivedValues(w.build(), w.session());
         } finally {
             Thread.currentThread().setContextClassLoader(previous);
         }
@@ -102,21 +102,21 @@ class ScenarioOracleTest {
 
     // ---------------- scenario-path harness ----------------
 
-    private ScenarioResultaat één(String source) {
-        List<ScenarioResultaat> r = ScenarioRunner.run(source);
+    private ScenarioResult één(String source) {
+        List<ScenarioResult> r = ScenarioRunner.run(source);
         assertEquals(1, r.size(), () -> "verwachtte precies één scenario, kreeg " + r.size());
         return r.get(0);
     }
 
     /** Assert the scenario reached PASS (its OWN exact comparator held for every expectation). */
-    private void pass(ScenarioResultaat r) {
-        assertEquals(Status.PASS, r.status(), () -> "verwacht PASS: " + r.diagnose() + " / " + r.verwachtingen());
+    private void pass(ScenarioResult r) {
+        assertEquals(Status.PASS, r.status(), () -> "verwacht PASS: " + r.diagnostic() + " / " + r.expectations());
     }
 
     /** The runner's rendered werkelijk for the expectation on line {@code lineFragment}'s bron (first matching). */
-    private String actual(ScenarioResultaat r, String sourceFragment) {
-        return r.verwachtingen().stream().filter(v -> v.bron().contains(sourceFragment)).map(VerwachtingResultaat::werkelijk)
-                .findFirst().orElseThrow(() -> new AssertionError("geen verwachting met '" + sourceFragment + "' in " + r.verwachtingen()));
+    private String actual(ScenarioResult r, String sourceFragment) {
+        return r.expectations().stream().filter(v -> v.source().contains(sourceFragment)).map(ExpectationResult::actual)
+                .findFirst().orElseThrow(() -> new AssertionError("geen verwachting met '" + sourceFragment + "' in " + r.expectations()));
     }
 
     private void assertNumber(String expected, BigDecimal actual, String what) {
@@ -150,7 +150,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("110", ground, "java-api totaalprijs");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de basisprijs is 10
@@ -188,7 +188,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(h, "getPrijs");
         assertNumber("120", ground, "java-api prijs (10 EUR/mnd = 120 EUR/jr)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Heffing H1
             - de basis is 10 EUR/mnd
@@ -225,7 +225,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(p, "getDuur");
         assertNumber("27", ground, "java-api duur (2 jr + 3 mnd)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Periode P1
             - de beginduur is 3 mnd
@@ -261,7 +261,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(p, "getNetto");
         assertNumber("12", ground, "java-api netto (min(20 mnd, 12 mnd))");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Periode P1
             - de duur is 20 mnd
@@ -293,7 +293,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(h, "getNetto");
         assertNumber("25", ground, "java-api netto (5^2)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Heffing H1
             - de basis is 5
@@ -324,7 +324,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(h, "getNetto");
         assertNumber("4.47", ground, "java-api netto (sqrt 20 floor 2dec)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Heffing H1
             - de basis is 20
@@ -356,7 +356,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(k, "getC");
         assertNumber("1.66666", ground, "java-api c (5/|3|)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Kandidaat K1
             - de a is 5
@@ -388,7 +388,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(h, "getNetto");
         assertNumber("11398895185373143", ground, "java-api netto (7^19)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Heffing H1
             - de basis is 7
@@ -420,7 +420,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(p, "getPrijs");
         assertNumber("100", ground, "java-api prijs (50% van 200)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Passagier P1
             - het basistarief is 50
@@ -452,7 +452,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(h, "getNetto");
         assertNumber("3", ground, "java-api netto (7/2 floor)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Heffing H1
             - de basis is 7
@@ -484,7 +484,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(v, "isVol");
         assertTrue(ground, "java-api vol (5*2 == 10)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de somMet is 5
@@ -525,7 +525,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(p, "isGepensioneerd");
         assertTrue(ground, "java-api gepensioneerd (70 > 67)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Persoon P1
             - de leeftijd is 70 jr
@@ -558,7 +558,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("12.34", ground, "java-api totaalprijs");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             de parameter de basis is 12,34
@@ -590,7 +590,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getHeffing");
         assertNumber("25.00", ground, "java-api heffing (winnende parameter)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             de parameter het basistarief is 10,00 EUR
             Scenario override
@@ -635,7 +635,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("100", ground, "java-api totaalprijs (30+70)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de totaalprijs is 0
@@ -680,7 +680,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("70", ground, "java-api totaalprijs (30+40)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de totaalprijs is 0
@@ -727,7 +727,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(r0, "getAantalBestemmingen");
         assertNumber("2", ground, "java-api aantal bestemmingen");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Reiziger R1
             - het aantal bestemmingen is 0
@@ -767,7 +767,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("0", ground, "java-api totaal (geen passagiers)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             Scenario lege-totaal
@@ -802,7 +802,7 @@ class ScenarioOracleTest {
         Object ground = w.read(v, "getSomZonder");
         assertNull(ground, "java-api somZonder leeg (geen passagiers, geen fallback)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             Scenario lege-som
@@ -839,7 +839,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("42", ground, "java-api totaalprijs (30+12)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de totaalprijs is 0
@@ -884,7 +884,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("2", ground, "java-api aantal kinderen");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de totaalprijs is 0
@@ -932,7 +932,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("100", ground, "java-api som kinderen (30+70)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de totaalprijs is 0
@@ -983,7 +983,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("20", ground, "java-api totaalprijs (2 × 10)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de totaalprijs is 0
@@ -1029,7 +1029,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(v, "getTotaalprijs");
         assertNumber("3", ground, "java-api union (kind ∪ student)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de totaalprijs is 0
@@ -1084,7 +1084,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(p, "getPrijs");
         assertNumber("77", ground, "java-api prijs (basistarief van de reis)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de basistarief is 77
@@ -1124,7 +1124,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(p, "getPrijs");
         assertNumber("1", ground, "java-api prijs (reis is geen paaskorting)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht GEWOON
             een Passagier P1
@@ -1170,7 +1170,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(rz, "getAfstandTotDoel");
         assertNumber("250", ground, "java-api afstand tot doel (via de bestemming, niet de plek)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Luchthaven DOEL
             - de afstand is 250 km
@@ -1212,7 +1212,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(rz, "getAfstandTotDoel");
         assertNumber("250", ground, "java-api afstand tot doel");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Luchthaven DOEL
             - de afstand is 250 km
@@ -1252,7 +1252,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(a, "getPrijs");
         assertNumber("1", ground, "java-api prijs (reis is paaskorting)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht PAAS
             - is een reis met paaskorting
@@ -1292,7 +1292,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(p, "getGekopieerd");
         assertNumber("30", ground, "java-api gekopieerd (= eigen leeftijd)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Persoon P1
             - de leeftijd is 30
@@ -1333,7 +1333,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(k, "isGekozen");
         assertTrue(ground, "java-api gekozen (2 van 3)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Kandidaat K1
             - de a is 5
@@ -1367,7 +1367,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(o, "isBonus");
         assertTrue(ground, "java-api bonus (oud)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Meting M1
             - is oud
@@ -1399,7 +1399,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(reachable, "isBonus");
         assertTrue(ground, "java-api bonus (bereikbaar per trein)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Meting M1
             - is bereikbaar per trein
@@ -1435,7 +1435,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(above, "isOud");
         assertTrue(ground, "java-api oud (25 mnd > 24 mnd)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Meting M1
             - de duurmnd is 25 mnd
@@ -1469,7 +1469,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(lift, "isDuur");
         assertTrue(ground, "java-api duur (clamp naar 60 > 50)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Passagier P1
             - de basistarief is 10
@@ -1508,7 +1508,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(p1, "isMinderjarig");
         assertTrue(ground, "java-api minderjarig (vervult de passagier-rol)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             een Passagier P1
@@ -1545,7 +1545,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(occupied, "isVol");
         assertTrue(ground, "java-api vol (heeft een passagier)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht BEZET
             - de passagier zijn P
@@ -1581,7 +1581,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(has, "getUitkomst");
         assertNumber("5", ground, "java-api uitkomst (heeft recht)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Persoon P1
             - heeft het recht op duurzaamheidskorting
@@ -1623,7 +1623,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(student, "isKind");
         assertTrue(ground, "java-api kind (is student)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Passagier P1
             - is student
@@ -1643,10 +1643,10 @@ class ScenarioOracleTest {
         World complete = world(model);
         Object minderjarige = complete.newInstance("Passagier");
         complete.characteristic(minderjarige, "setStudent", false); complete.characteristic(minderjarige, "setMinderjarig", true);
-        Rekenfout error = assertThrows(Rekenfout.class, () -> fire(complete, minderjarige));
+        ComputeFault error = assertThrows(ComputeFault.class, () -> fire(complete, minderjarige));
         assertEquals("fout in de regel \"bijvoeglijk\": Unresolved condition reached in evaluation", error.getMessage());
 
-        ScenarioResultaat rb = één(model + """
+        ScenarioResult rb = één(model + """
             Situatie bijvoeglijk:
             een Passagier P2
             - is minderjarig
@@ -1656,8 +1656,8 @@ class ScenarioOracleTest {
             Met als verwacht resultaat:
             - P2 is kind
             """);
-        assertEquals(Status.FAIL, rb.status(), () -> "verwacht FAIL: " + rb.diagnose());
-        assertTrue(rb.diagnose().contains("Rekenfout: " + error.getMessage()), () -> "uchars replay: " + rb.diagnose());
+        assertEquals(Status.FAIL, rb.status(), () -> "verwacht FAIL: " + rb.diagnostic());
+        assertTrue(rb.diagnostic().contains("Rekenfout: " + error.getMessage()), () -> "uchars replay: " + rb.diagnostic());
     }
 
     /** FACET kenmerktoekenning (bezittelijk positief met lidwoord, subjectvorm). Lifted from
@@ -1678,7 +1678,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(extended, "getUitkomst");
         assertNumber("1", ground, "java-api uitkomst (heeft het recht)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Persoon P1
             - heeft het recht op duurzaamheidskorting
@@ -1716,7 +1716,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(none, "isKind");
         assertTrue(ground, "java-api kind (geen student, niet minderjarig)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Passagier P1
             Scenario negatie-compound
@@ -1746,7 +1746,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(jong, "getUitkomst");
         assertNumber("1", ground, "java-api uitkomst (niet oud)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Meting M1
             Scenario niet-oud
@@ -1779,7 +1779,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(without, "getUitkomst");
         assertNumber("1", ground, "java-api uitkomst (geen recht)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Persoon P1
             Scenario geen-recht
@@ -1811,7 +1811,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(other, "getUitkomst");
         assertNumber("1", ground, "java-api uitkomst (geen reiziger)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Persoon P1
             Scenario geen-reiziger
@@ -1846,7 +1846,7 @@ class ScenarioOracleTest {
         boolean ground = w.inconsistencies() > 0;
         assertTrue(ground, "java-api inconsistent (AMS == AMS)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Route R1
             - de vertrek is "AMS"
@@ -1877,7 +1877,7 @@ class ScenarioOracleTest {
         boolean ground = w.inconsistencies() > 0;
         assertFalse(ground, "java-api consistent (AMS != JFK)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Route R1
             - de vertrek is "AMS"
@@ -1909,7 +1909,7 @@ class ScenarioOracleTest {
         boolean ground = w.inconsistencies() > 0;
         assertTrue(ground, "java-api inconsistent (lege saldo-operand)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Konto K1
             - de limiet is 50
@@ -1943,7 +1943,7 @@ class ScenarioOracleTest {
         boolean ground = w.inconsistencies() > 0;
         assertFalse(ground, "java-api consistent (0 < 50 < 100)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Konto K1
             - de saldo is 50
@@ -1977,7 +1977,7 @@ class ScenarioOracleTest {
         boolean ground = w.inconsistencies() > 0;
         assertTrue(ground, "java-api inconsistent (12 / leeg)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Rekensom R1
             - de grondslag is 12
@@ -2010,7 +2010,7 @@ class ScenarioOracleTest {
         BigDecimal groundValue = w.num(emptyRecht, "getDeelResultaat");
         assertNumber("0", groundValue, "java-api deelResultaat (leeg / 4 = 0)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Rekensom R1
             - de aftrek is 4
@@ -2051,7 +2051,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(low, "getPrijs");
         assertNumber("10", ground, "java-api prijs (guard mist → init 10)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Passagier P1
             - het basistarief is 40
@@ -2085,7 +2085,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(high, "getPrijs");
         assertNumber("105", ground, "java-api prijs (berekening wint: 100+5)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Passagier P1
             - het basistarief is 100
@@ -2122,7 +2122,7 @@ class ScenarioOracleTest {
         assertNull(gSquareRoot, "java-api wortelr leeg");
         assertNull(gPower, "java-api machtr leeg");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Heffing H1
             Scenario leeg-wortel-macht
@@ -2173,7 +2173,7 @@ class ScenarioOracleTest {
         assertNumber("14", gPlus, "java-api plus (10+4)");
         assertNumber("40", gTimes, "java-api maal (10*4)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Rekensom R1
             - de grondslag is 10
@@ -2218,7 +2218,7 @@ class ScenarioOracleTest {
         assertEquals(LocalDateTime.of(2023, 3, 12, 11, 34, 42, 679_000_000), gTijdstip, "java-api tijdstip");
         assertEquals(LocalDate.of(2023, 3, 12), gValid, "java-api geldigheid");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Gebeurtenis G1
             Scenario datumtijd
@@ -2253,7 +2253,7 @@ class ScenarioOracleTest {
         Object ground = w.read(v, "getVroegsteVertrek");
         assertEquals(LocalDate.of(2025, 3, 5), ground, "java-api vroegste vertrek");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Vlucht V1
             - de verwacht vertrek is 10-03-2025
@@ -2285,7 +2285,7 @@ class ScenarioOracleTest {
         Object ground = w.read(k, "getGemaakt");
         assertEquals(LocalDate.of(2024, 3, 31), ground, "java-api eerste paasdag 2024");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Klok K1
             - de jaartal is 2024
@@ -2339,7 +2339,7 @@ class ScenarioOracleTest {
         assertNumber("6", gMonth, "java-api maandnr");
         assertEquals(LocalDate.of(2000, 3, 15), gMade, "java-api gemaakt");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Klok K1
             - de saldo is -7
@@ -2376,7 +2376,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(touch, "isDuur");
         assertTrue(ground, "java-api duur (geboortedatum == 08-09-2024)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Passagier P1
             - de geboortedatum is 08-09-2024
@@ -2413,7 +2413,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(equal, "isGemarkeerd");
         assertTrue(ground, "java-api gemarkeerd (A == A)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Route R1
             - de vertrek is "A"
@@ -2447,7 +2447,7 @@ class ScenarioOracleTest {
         Object ground = w.read(p, "getRoepnaam");
         assertEquals("nr Ada jaar", ground, "java-api roepnaam");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Persoon P1
             - de voornaam is "Ada"
@@ -2478,7 +2478,7 @@ class ScenarioOracleTest {
         boolean ground = w.bool(nine, "isGeldig");
         assertTrue(ground, "java-api geldig (9 cijfers)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Natuurlijk persoon NP1
             - de bsn tekst is "123456789"
@@ -2515,7 +2515,7 @@ class ScenarioOracleTest {
         BigDecimal ground = w.num(h, "getPrijs");
         assertNumber("100", ground, "java-api prijs (2024 → versie #1)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Heffing H1
             Scenario venster-2024
@@ -2547,7 +2547,7 @@ class ScenarioOracleTest {
         Object ground = w.read(h, "getPrijs");
         assertNull(ground, "java-api prijs leeg (2023 buiten alle vensters)");
 
-        ScenarioResultaat r = één(model + """
+        ScenarioResult r = één(model + """
             Situatie basis:
             een Heffing H1
             Scenario venster-2023

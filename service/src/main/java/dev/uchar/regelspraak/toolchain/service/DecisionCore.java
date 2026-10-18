@@ -7,8 +7,8 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
-import dev.uchar.regelspraak.engine.ScenarioResultaat;
-import dev.uchar.regelspraak.ir.Bron;
+import dev.uchar.regelspraak.engine.ScenarioResult;
+import dev.uchar.regelspraak.ir.Source;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
@@ -17,14 +17,14 @@ import dev.uchar.regelspraak.toolchain.engine.ParameterSetLoader;
 import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 import dev.uchar.regelspraak.toolchain.engine.Verbaliser;
 import dev.uchar.regelspraak.toolchain.engine.ParameterSetLoader.ParameterSetError;
-import dev.uchar.regelspraak.graaf.ProducentConsument;
-import dev.uchar.regelspraak.graaf.ProducentConsument.ElementSleutel;
-import dev.uchar.regelspraak.model.Parameterset;
+import dev.uchar.regelspraak.graph.ProducerConsumer;
+import dev.uchar.regelspraak.graph.ProducerConsumer.ElementKey;
+import dev.uchar.regelspraak.model.ParameterSet;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
-import dev.uchar.regelspraak.transpiler.kern.Dekking;
-import dev.uchar.regelspraak.transpiler.kern.PeriodeDekking;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
+import dev.uchar.regelspraak.transpiler.core.Coverage;
+import dev.uchar.regelspraak.transpiler.core.PeriodCoverage;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import org.kie.api.KieBase;
 
@@ -74,7 +74,7 @@ public final class DecisionCore {
     private final RegelSpraakModel model;
     private final Map<String, Entrypoint> perPath;   // URL path -> compiled entry point
     /** The loaded, validity-versioned parameter sets (fase 5), or empty when the descriptor names no sidecar. */
-    private final List<Parameterset> parameterSets;
+    private final List<ParameterSet> parameterSets;
     /** The rendered {@link PeriodeDekking} WARNING lines (regel-geldigheid × parameter-geldigheid gaps), computed
      *  once at startup; served verbatim on /info and logged by ServiceMain. Empty when no gap or no sets. */
     private final List<String> periodWarnings;
@@ -87,7 +87,7 @@ public final class DecisionCore {
     private volatile String document;
 
     private DecisionCore(ServiceDescriptor descriptor, RegelSpraakModel model,
-                          Map<String, Entrypoint> perPath, List<Parameterset> parameterSets,
+                          Map<String, Entrypoint> perPath, List<ParameterSet> parameterSets,
                           List<String> periodWarnings, boolean detail, FormIndex forms, String document) {
         this.descriptor = descriptor;
         this.model = model;
@@ -117,7 +117,7 @@ public final class DecisionCore {
         public boolean executable() { return build != null; }
 
         /** The manifest of the build, empty for an entry point uchar does not carry. */
-        public List<Dekking> coverage() { return build == null ? List.of() : build.dekking(); }
+        public List<Coverage> coverage() { return build == null ? List.of() : build.coverage(); }
 
         /** The class loader of the generated fact beans, null for an entry point uchar does not carry. */
         public ClassLoader beanLoader() { return build == null ? null : build.beanLoader(); }
@@ -218,8 +218,8 @@ public final class DecisionCore {
         List<Violation> markerErrors = new ArrayList<>();
         List<Violation> scopeErrors = new ArrayList<>();
         // the producer index is model-wide (every form that WRITES a kenmerk/attribuut), computed once.
-        Map<ElementSleutel, java.util.Set<String>> producers =
-                ProducentConsument.producentIndex(model, model.prioritizedDefaults);
+        Map<ElementKey, java.util.Set<String>> producers =
+                ProducerConsumer.producerIndex(model, model.prioritizedDefaults);
         for (ServiceDescriptor.Entrypoint ep : descriptor.entrypoints()) {
             FormIndex.Choice choice = forms.scope(ep.scope());
             Map<String, Object> defaults = defaultGlobals(descriptor, model);
@@ -231,7 +231,7 @@ public final class DecisionCore {
                         defaults, config, perPath, markerErrors);
                 continue;
             }
-            RegelSpraakModel scoped = CaseEmitter.metScope(model, new ResolvedScenario.Scope(choice.forms()));
+            RegelSpraakModel scoped = CaseEmitter.withScope(model, new ResolvedScenario.Scope(choice.forms()));
             DroolsBackend.Build build;
             try {
                 build = UcharBuild.assemble(scoped, DroolsBackend.Branch.EXEC_MODEL);
@@ -253,7 +253,7 @@ public final class DecisionCore {
 
         // 6. parametersets (fase 5, decision B). Load + validate the sidecar against the model, apply the
         //    default×set conflict rule, then compute the regel×parameter period-coverage WARNINGs.
-        List<Parameterset> sets = loadParameterSets(descriptor, parameterSetsJson, model);
+        List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
         List<String> warnings = periodWarnings(model, sets);
 
         return new DecisionCore(descriptor, model, perPath, sets, warnings, config.detail(), forms, null);
@@ -281,7 +281,7 @@ public final class DecisionCore {
         IrLoader.Loaded loaded;
         try {
             loaded = IrLoader.loadAll(document);
-        } catch (IrLoader.Refusal | IrLoader.Documentfout e) {
+        } catch (IrLoader.Refusal | IrLoader.DocumentError e) {
             throw new ServiceError("dienst start niet: uchar draagt het document niet", List.of(
                     Violation.van(Violation.Kind.MARKER, "bron", (e instanceof IrLoader.Refusal ? "loader: "
                             : "document: ") + e.getMessage())));
@@ -324,7 +324,7 @@ public final class DecisionCore {
             throw new ServiceError("dienst start niet: een scope draagt niet het hele document", scopeErrors);
         if (!markerErrors.isEmpty())
             throw new ServiceError("dienst start niet: uchar draagt een entrypoint niet", markerErrors);
-        List<Parameterset> sets = loadParameterSets(descriptor, parameterSetsJson, model);
+        List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
         return new DecisionCore(descriptor, model, perPath, sets, periodWarnings(model, sets), config.detail(),
                 forms, documentJson);
     }
@@ -367,7 +367,7 @@ public final class DecisionCore {
      *       AND the sets is a startup ERROR naming the parameter — ambiguous authority, never last-one-wins.</li>
      * </ul>
      */
-    private static List<Parameterset> loadParameterSets(ServiceDescriptor descriptor, String parameterSetsJson,
+    private static List<ParameterSet> loadParameterSets(ServiceDescriptor descriptor, String parameterSetsJson,
                                                         RegelSpraakModel model) {
         if (descriptor.parameterSets() == null || descriptor.parameterSets().isBlank()) return List.of();
         if (parameterSetsJson == null)
@@ -375,7 +375,7 @@ public final class DecisionCore {
                     List.of(Violation.van(Violation.Kind.MALFORMED, "parametersets",
                             "de descriptor noemt parametersets '" + descriptor.parameterSets() + "' maar er is geen"
                                     + " parametersets-JSON meegegeven op dit bouwpad")));
-        List<Parameterset> sets;
+        List<ParameterSet> sets;
         try {
             sets = ParameterSetLoader.load(parameterSetsJson, model);
         } catch (ParameterSetError f) {
@@ -390,7 +390,7 @@ public final class DecisionCore {
         // conflict rule: a parameter that is a descriptor default AND a set value has ambiguous authority.
         List<Violation> conflict = new ArrayList<>();
         if (descriptor.parameters() != null) {
-            java.util.Set<String> setNames = Parameterset.pool(sets).keySet();
+            java.util.Set<String> setNames = ParameterSet.pool(sets).keySet();
             for (String d : descriptor.parameters().keySet()) {
                 RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, d);
                 String canonical = p == null ? d : p.naam();
@@ -409,11 +409,11 @@ public final class DecisionCore {
      *  (fase 5, gate G3). {@link PeriodeDekking#controleer} is pure; {@link PeriodeDekking#meldAlle} renders each
      *  finding onto a throw-away model so we can lift the WARNING message text out verbatim (the SAME text the
      *  engine surfaces), without polluting the real service model's diagnostics. Empty when no gap / no sets. */
-    private static List<String> periodWarnings(RegelSpraakModel model, List<Parameterset> sets) {
-        List<PeriodeDekking> findings = PeriodeDekking.controleer(model, sets);
+    private static List<String> periodWarnings(RegelSpraakModel model, List<ParameterSet> sets) {
+        List<PeriodCoverage> findings = PeriodCoverage.check(model, sets);
         List<String> sink = new ArrayList<>();
         RegelSpraakModel shadow = new RegelSpraakModel();
-        PeriodeDekking.meldAlle(findings, shadow);
+        PeriodCoverage.reportAll(findings, shadow);
         for (var d : shadow.diagnostics)
             if (d.severity() == RegelSpraakModel.Severity.WARNING) sink.add(d.message());
         return sink;
@@ -438,28 +438,28 @@ public final class DecisionCore {
      * default ({@link ProducentConsument#lezingen}), of which the group's reads are the union.
      */
     private static List<Violation> scopeCompleteness(ServiceDescriptor.Entrypoint ep, RegelSpraakModel model,
-            RegelSpraakModel scoped, Map<ElementSleutel, java.util.Set<String>> producers) {
+            RegelSpraakModel scoped, Map<ElementKey, java.util.Set<String>> producers) {
         // a resolver's model: a navigated kenmerk check reads the kenmerk of the type its role reaches
-        ProducentConsument.Navigatie navigation = ProducentConsument.bronNavigatie(scoped);
-        List<ProducentConsument.Vorm> carried = ProducentConsument.vormen(scoped, scoped.prioritizedDefaults,
+        ProducerConsumer.Navigation navigation = ProducerConsumer.sourceNavigation(scoped);
+        List<ProducerConsumer.Form> carried = ProducerConsumer.forms(scoped, scoped.prioritizedDefaults,
                 navigation);
         Map<String, PrioritizedDefaults> groups = new java.util.HashMap<>();
         for (PrioritizedDefaults p : scoped.prioritizedDefaults)
-            if (p.naam() != null) groups.put(ProducentConsument.basisNaam(p.naam()), p);
+            if (p.naam() != null) groups.put(ProducerConsumer.baseName(p.naam()), p);
         // the writers in the scope, under the names the producer index keys them on
         java.util.Set<String> scope = new java.util.LinkedHashSet<>();
-        for (ProducentConsument.Vorm v : carried) scope.add(v.naam());
+        for (ProducerConsumer.Form v : carried) scope.add(v.naam());
         // The opt-out keys through the SAME element identity the consumption does ({@link
         // ProducentConsument#elementVan}), so the declaration binds on the member's declarant: a caller that
         // declares the element on the type that DECLARES it silences a consumption on any subtype, and one that
         // names a subtype silences it too — the alternative is an escape hatch that exists but cannot be spelled.
-        java.util.Set<ElementSleutel> inputElements = new java.util.LinkedHashSet<>();
+        java.util.Set<ElementKey> inputElements = new java.util.LinkedHashSet<>();
         for (String sel : ep.inputElementsOrEmpty()) {
             OutputSelector u = OutputSelector.parse(sel);
             if (u == null) continue;
             RegelSpraakModel.Objecttype houder = DescriptorLoader.objectType(model, u.objectType());
-            inputElements.add(houder == null ? ElementSleutel.van(u.objectType(), u.member(), u.characteristic())
-                    : ProducentConsument.elementVan(houder, u.member(), u.characteristic()));
+            inputElements.add(houder == null ? ElementKey.van(u.objectType(), u.member(), u.characteristic())
+                    : ProducerConsumer.elementOf(houder, u.member(), u.characteristic()));
         }
         // A tree of exceptions is lowered to one group named after its base rule, an unordered block without a
         // carrier to one group per member; the opgave marker and a subtype's own exceptions get a group whose name
@@ -468,9 +468,9 @@ public final class DecisionCore {
         for (var r : model.regels) if (r.naam() != null) written.add(CaseEmitter.norm(r.naam()));
 
         List<Violation> sink = new ArrayList<>();
-        java.util.Set<ElementSleutel> reported = new java.util.LinkedHashSet<>();
-        for (ProducentConsument.Vorm v : carried) {
-            String reader = switch (v.soort()) {
+        java.util.Set<ElementKey> reported = new java.util.LinkedHashSet<>();
+        for (ProducerConsumer.Form v : carried) {
+            String reader = switch (v.category()) {
                 case REGEL -> "regel '" + v.naam() + "'";
                 case DEFAULTSGROEP -> written.contains(CaseEmitter.norm(v.naam()))
                         ? "defaults-groep van regel '" + v.naam() + "'"
@@ -480,24 +480,24 @@ public final class DecisionCore {
                 case OBJECTCREATIE, VERDELING, CONSISTENTIE, UNICITEIT, FEITCREATIE -> null;
             };
             if (reader == null) continue;
-            List<ProducentConsument.DefaultLezing> reads = null;
-            for (ElementSleutel consumed : v.leest()) {
+            List<ProducerConsumer.DefaultRead> reads = null;
+            for (ElementKey consumed : v.reads()) {
                 java.util.Set<String> writers = producers.get(consumed);
                 if (writers == null || writers.isEmpty()) continue;          // a genuine request input
                 if (writers.stream().anyMatch(scope::contains)) continue;    // produced in scope: fine
                 if (inputElements.contains(consumed)) continue;            // element-level caller input: opt-out
                 if (!reported.add(consumed)) continue;
                 String where = "";
-                if (v.soort() == ProducentConsument.Vormsoort.DEFAULTSGROEP) {
+                if (v.category() == ProducerConsumer.FormKind.DEFAULTSGROEP) {
                     PrioritizedDefaults group = java.util.Objects.requireNonNull(groups.get(v.naam()),
                             () -> "geen defaultsgroep '" + v.naam() + "' in de scope");
-                    if (reads == null) reads = ProducentConsument.lezingen(scoped, group, navigation);
+                    if (reads == null) reads = ProducerConsumer.readings(scoped, group, navigation);
                     where = " " + whereRead(reads, consumed, v.naam());
                 }
                 sink.add(Violation.van(Violation.Kind.SCOPE_ONVOLLEDIG, "entrypoint:" + ep.path(),
                         reader + " in entrypoint '" + ep.name() + "' leest "
-                                + (consumed.kenmerk() ? "kenmerk" : "attribuut") + " '" + consumed.naam() + "'"
-                                + (consumed.objecttype().isEmpty() ? "" : " van '" + consumed.objecttype() + "'")
+                                + (consumed.characteristic() ? "kenmerk" : "attribuut") + " '" + consumed.naam() + "'"
+                                + (consumed.objectType().isEmpty() ? "" : " van '" + consumed.objectType() + "'")
                                 + where + ", maar de enige producent(en) " + writers + " vallen buiten de scope"
                                 + " en het element is niet als invoerElement gedeclareerd"));
             }
@@ -507,15 +507,15 @@ public final class DecisionCore {
 
     /** Where a defaults group reads {@code element}: every default that reads it, by the part that reads (its
      *  justification or its consequence) with that part's source text, and by its path in the group. */
-    private static String whereRead(List<ProducentConsument.DefaultLezing> reads, ElementSleutel element,
+    private static String whereRead(List<ProducerConsumer.DefaultRead> reads, ElementKey element,
                                       String group) {
         List<String> sites = new ArrayList<>();
-        for (ProducentConsument.DefaultLezing d : reads) {
+        for (ProducerConsumer.DefaultRead d : reads) {
             var dflt = d.dflt();
-            if (d.rechtvaardiging().contains(element))
-                sites.add(site("rechtvaardiging", dflt.voorwaarde() == null ? null : dflt.voorwaarde().bron(), d));
-            if (d.consequentie().contains(element))
-                sites.add(site("consequentie", dflt.consequentie() == null ? null : dflt.consequentie().bron(), d));
+            if (d.justification().contains(element))
+                sites.add(site("rechtvaardiging", dflt.condition() == null ? null : dflt.condition().source(), d));
+            if (d.consequence().contains(element))
+                sites.add(site("consequentie", dflt.consequence() == null ? null : dflt.consequence().source(), d));
         }
         // uchar takes a group's reads from these, so an element no default reads is a broken promise of uchar's
         if (sites.isEmpty())
@@ -526,10 +526,10 @@ public final class DecisionCore {
 
     /** One reading default: the part that reads, its source text as the author wrote it (or else the default's own
      *  source, which the opgave marker fills with the attribute it reads), and the default's path in the group. */
-    private static String site(String part, Bron source, ProducentConsument.DefaultLezing d) {
+    private static String site(String part, Source source, ProducerConsumer.DefaultRead d) {
         String text = source != null && source.snippet() != null && !source.snippet().isBlank()
-                ? source.snippet() : d.dflt().bron();
-        return "in de " + part + (text == null ? "" : " '" + text + "'") + " van default " + d.pad();
+                ? source.snippet() : d.dflt().source();
+        return "in de " + part + (text == null ? "" : " '" + text + "'") + " van default " + d.path();
     }
 
     /** The descriptor parameter defaults, decoded per-parameter datatype to (globalName -> value). */
@@ -582,7 +582,7 @@ public final class DecisionCore {
     }
 
     /** The answer to a request and uchar's verdict on expectations about it ({@link #assess}). */
-    public record Assessment(ObjectNode answer, DroolsBackend.Vergelijking comparison) {}
+    public record Assessment(ObjectNode answer, DroolsBackend.Comparison comparison) {}
 
     /**
      * As {@link #process(String, JsonNode, RequestOptions)}, with uchar's verdict on {@code expectations}, the
@@ -635,8 +635,8 @@ public final class DecisionCore {
         // fire, because the write-back puts the derived values on the same beans
         Map<Object, String> label = new IdentityHashMap<>();
         mr.world().beans().forEach((id, bean) -> label.put(bean, id));
-        DroolsBackend.Waarnemer observer = options.trace() || options.coverage()
-                ? new DroolsBackend.Waarnemer(label::get) : null;
+        DroolsBackend.Observer observer = options.trace() || options.coverage()
+                ? new DroolsBackend.Observer(label::get) : null;
         List<FixpointGivens.InputObject> input = options.fixpoint()
                 ? FixpointGivens.input(mr.world().beans(), mr.typePerLabel(), output) : null;
         Executor executor = new Executor(ep.build(), ep.defaultGlobals());
@@ -667,25 +667,25 @@ public final class DecisionCore {
      * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no fixpoint
      * (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.
      */
-    private ObjectNode detail(RequestOptions options, Entrypoint ep, DroolsBackend.Waarnemer observer, Fixpunt fixpoint,
+    private ObjectNode detail(RequestOptions options, Entrypoint ep, DroolsBackend.Observer observer, Fixpoint fixpoint,
                               String withoutFixpoint, List<FixpointGivens.InputObject> input, Naming naming) {
         ObjectNode n = NF.objectNode();
         if (options.trace()) {
             ArrayNode trace = n.putArray("trace");
-            for (ScenarioResultaat.Vuring v : observer.vuringen()) {
+            for (ScenarioResult.Firing v : observer.firings()) {
                 ObjectNode tn = trace.addObject();
                 tn.put("regel", naming.form(v.regel()));
                 ArrayNode labels = tn.putArray("labels");
                 for (String l : v.labels()) labels.add(l);
-                tn.put("aantal", v.aantal());
+                tn.put("aantal", v.count());
             }
         }
         if (options.coverage()) {
             ArrayNode coverage = n.putArray("dekking");
-            for (ScenarioResultaat.DekkingRegel d : DroolsBackend.dekking(ep.build(), observer.vormen())) {
+            for (ScenarioResult.CoverageRule d : DroolsBackend.coverage(ep.build(), observer.forms())) {
                 ObjectNode dn = coverage.addObject();
                 dn.put("regel", naming.form(d.regel()));
-                dn.put("soort", d.soort().name());
+                dn.put("soort", d.category().name());
             }
         }
         if (options.fixpoint() && withoutFixpoint != null) {
@@ -735,7 +735,7 @@ public final class DecisionCore {
      * of set-resolved parameters, empty when no sets are loaded. Fail-fast against the one date authority
      * ({@code datum} = the request peildatum = {@code World.evaluationDate}):
      * <ul>
-     *   <li><b>datum present</b> — {@link Parameterset#waardenOp}; any gap is a 4xx {@link ServiceError} whose
+     *   <li><b>datum present</b> — {@link ParameterSet#waardenOp}; any gap is a 4xx {@link ServiceError} whose
      *       schendingen name the parameter + the datum, on veld {@code "peildatum"};</li>
      *   <li><b>datum absent + multi-vintage</b> — a 4xx naming veld {@code "peildatum"}: the peildatum is
      *       mandatory because the sets carry more than one vintage (ambiguous truth);</li>
@@ -747,12 +747,12 @@ public final class DecisionCore {
      */
     private Map<String, Object> vintageGlobals(LocalDate date) {
         if (parameterSets.isEmpty()) return Map.of();
-        if (date == null && Parameterset.meerVintage(parameterSets))
+        if (date == null && ParameterSet.multiVintage(parameterSets))
             throw new ServiceError("verzoek valideert niet", List.of(Violation.van(Violation.Kind.VERKEERD_TYPE,
                     "peildatum", "peildatum is verplicht: de geladen parametersets dragen meer dan één vintage")));
         LocalDate asOf = date != null ? date : LocalDate.EPOCH;   // degeneraat: datum-onafhankelijk
         List<String> holes = new ArrayList<>();
-        Map<String, Object> resolved = Parameterset.waardenOp(parameterSets, asOf, holes);
+        Map<String, Object> resolved = ParameterSet.valuesOn(parameterSets, asOf, holes);
         if (!holes.isEmpty()) {
             List<Violation> errors = new ArrayList<>();
             for (String gap : holes)
@@ -823,8 +823,8 @@ public final class DecisionCore {
      */
     public String pathForScope(ResolvedScenario.Scope scope) {
         java.util.Set<String> requested = new java.util.LinkedHashSet<>();
-        for (String v : scope == null ? forms.all() : scope.vormen())
-            requested.add(CaseEmitter.norm(CaseEmitter.basisNaam(v)));
+        for (String v : scope == null ? forms.all() : scope.forms())
+            requested.add(CaseEmitter.norm(CaseEmitter.baseName(v)));
         String best = null;
         int extra = Integer.MAX_VALUE;
         List<String> shortfall = new ArrayList<>();
@@ -852,7 +852,7 @@ public final class DecisionCore {
     public Entrypoint entrypoint(String path) { return perPath.get(path); }
 
     /** The loaded validity-versioned parameter sets (fase 5), or the empty list when the descriptor names none. */
-    public List<Parameterset> parameterSets() { return parameterSets; }
+    public List<ParameterSet> parameterSets() { return parameterSets; }
 
     /** The rendered regel-geldigheid × parameter-geldigheid WARNING lines (gate G3), served on /info and logged
      *  by {@link dev.uchar.regelspraak.toolchain.service.http.ServiceMain} at startup. Empty when no gap / no sets. */

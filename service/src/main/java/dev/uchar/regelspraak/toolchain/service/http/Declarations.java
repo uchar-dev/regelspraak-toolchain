@@ -1,7 +1,7 @@
 package dev.uchar.regelspraak.toolchain.service.http;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.parser.RegelSpraak.AttribuutSpecificatieContext;
 import dev.uchar.regelspraak.parser.RegelSpraak.BijvoeglijkKenmerkContext;
 import dev.uchar.regelspraak.parser.RegelSpraak.DefinitieContext;
@@ -79,7 +79,7 @@ final class Declarations {
     }
 
     /** A declaration as the walk finds it: what it declares, whether it stands in an extension, and its context. */
-    private record Found(Benoembaar element, boolean inExtension, ParserRuleContext ctx) {}
+    private record Found(Designatable element, boolean inExtension, ParserRuleContext ctx) {}
 
     /**
      * The declaration of every element of {@code model} that has one in {@code document}, the tree uchar's parser
@@ -87,22 +87,22 @@ final class Declarations {
      *
      * @throws Onkoppelbaar an element or a declaration that does not couple (see the class comment)
      */
-    static Map<Benoembaar, Declaration> van(ParserRuleContext document, CommonTokenStream tokens,
+    static Map<Designatable, Declaration> van(ParserRuleContext document, CommonTokenStream tokens,
                                            RegelSpraakModel model) {
         List<Found> found = new ArrayList<>();
         for (ParseTree kind : document.children == null ? List.<ParseTree>of() : document.children) {
             if (kind instanceof DefinitieContext d) definition(d, found);
             else if (kind instanceof RegelContext r) line(r, found);
             else if (kind instanceof RegelGroepContext g) {
-                found.add(new Found(Benoembaar.regelgroep(src(g.kaleNaam())), false, g));
+                found.add(new Found(Designatable.ruleGroup(src(g.kaleNaam())), false, g));
                 for (GroepLidContext member : g.groepLid()) if (member.regel() != null) line(member.regel(), found);
             } else if (kind instanceof UitzonderingGroepContext ug) {
                 for (RegelContext r : ug.regel()) line(r, found);
             }
         }
-        Map<Benoembaar, Declaration> sink = new LinkedHashMap<>();
+        Map<Designatable, Declaration> sink = new LinkedHashMap<>();
         Set<Found> linked = Collections.newSetFromMap(new IdentityHashMap<>());
-        for (Benoembaar b : model.benoembaar()) {
+        for (Designatable b : model.designatable()) {
             List<Found> candidates = found.stream().filter(g -> same(g.element(), b)).toList();
             if (candidates.isEmpty()) continue;
             linked.addAll(candidates);
@@ -110,7 +110,7 @@ final class Declarations {
             sink.put(b, new Declaration(ctx.getStart().getLine(), comment(ctx, tokens)));
         }
         for (Found g : found)
-            if (!linked.contains(g) && g.element().soort() != Benoembaar.Soort.VORM)
+            if (!linked.contains(g) && g.element().category() != Designatable.Kind.VORM)
                 throw new Unlinkable(description(g.element()) + " op regel " + g.ctx().getStart().getLine()
                         + " is geen element van het model");
         return sink;
@@ -120,7 +120,7 @@ final class Declarations {
         if (d.objectTypeDefinition() != null) {
             ObjectTypeDefinitionContext head = d.objectTypeDefinition();
             String type = src(head.objectTypeNaam());
-            sink.add(new Found(Benoembaar.objecttype(type), false, head));
+            sink.add(new Found(Designatable.objectType(type), false, head));
             for (ObjectTypeMemberContext m : head.objectTypeMember()) member(type, m, false, sink);
         } else if (d.objectTypeExtensie() != null) {
             ObjectTypeExtensieContext extension = d.objectTypeExtensie();
@@ -131,28 +131,28 @@ final class Declarations {
             String name = src(domain.domeinNaam());
             for (EnumeratieWaardeContext w : domain.enumeratieSpecificatie().enumeratieWaarde()) {
                 String t = w.ENUM_LITERAL().getText();
-                sink.add(new Found(Benoembaar.enumeratiewaarde(name, t.substring(1, t.length() - 1)), false, w));
+                sink.add(new Found(Designatable.enumerationValue(name, t.substring(1, t.length() - 1)), false, w));
             }
         } else if (d.parameterDefinition() != null) {
             ParameterDefinitionContext p = d.parameterDefinition();
-            sink.add(new Found(Benoembaar.parameter(src(p.parameterNaam())), false, p));
+            sink.add(new Found(Designatable.parameter(src(p.parameterNaam())), false, p));
         } else if (d.feitTypeDefinition() != null) {
             FeitTypeDefinitionContext ft = d.feitTypeDefinition();
             String name = src(ft.feitTypeNaam());
-            sink.add(new Found(Benoembaar.feittype(name), false, ft));
+            sink.add(new Found(Designatable.factType(name), false, ft));
             for (RolSpecificatieContext r : ft.rolSpecificatie())
-                sink.add(new Found(Benoembaar.rol(name, src(r.rolNaam())), false, r));
+                sink.add(new Found(Designatable.role(name, src(r.rolNaam())), false, r));
         }
     }
 
     private static void member(String type, ObjectTypeMemberContext m, boolean extension, List<Found> sink) {
         if (m.attribuutSpecificatie() != null) {
             AttribuutSpecificatieContext a = m.attribuutSpecificatie();
-            sink.add(new Found(Benoembaar.attribuut(type, src(a.lowerNaam())), extension, a));
+            sink.add(new Found(Designatable.attribute(type, src(a.lowerNaam())), extension, a));
         } else if (m.kenmerkSpecificatie() instanceof BijvoeglijkKenmerkContext k) {
-            sink.add(new Found(Benoembaar.kenmerk(type, src(k.lowerNaam())), extension, k));
+            sink.add(new Found(Designatable.characteristic(type, src(k.lowerNaam())), extension, k));
         } else if (m.kenmerkSpecificatie() instanceof NaamwoordKenmerkContext k) {
-            sink.add(new Found(Benoembaar.kenmerk(type, src(k.lowerNaam())), extension, k));
+            sink.add(new Found(Designatable.characteristic(type, src(k.lowerNaam())), extension, k));
         } else if (m.kenmerkSpecificatie() != null) {
             throw new IllegalStateException("een kenmerkdeclaratie van een onbekende vorm ("
                     + m.kenmerkSpecificatie().getClass().getSimpleName() + ") op regel " + m.getStart().getLine());
@@ -160,13 +160,13 @@ final class Declarations {
     }
 
     private static void line(RegelContext r, List<Found> sink) {
-        sink.add(new Found(Benoembaar.vorm(src(r.regelNaam())), false, r));
+        sink.add(new Found(Designatable.form(src(r.regelNaam())), false, r));
     }
 
     /** The declaration of {@code b} among its {@code candidates}, which are in document order. */
-    private static ParserRuleContext choice(Benoembaar b, List<Found> candidates) {
+    private static ParserRuleContext choice(Designatable b, List<Found> candidates) {
         if (candidates.size() == 1) return candidates.get(0).ctx();
-        boolean member = b.soort() == Benoembaar.Soort.ATTRIBUUT || b.soort() == Benoembaar.Soort.KENMERK;
+        boolean member = b.category() == Designatable.Kind.ATTRIBUUT || b.category() == Designatable.Kind.KENMERK;
         List<Found> inHead = candidates.stream().filter(g -> !g.inExtension()).toList();
         if (member && inHead.size() == 1) return inHead.get(0).ctx();
         if (member && inHead.isEmpty()) return candidates.get(0).ctx();
@@ -209,10 +209,10 @@ final class Declarations {
     }
 
     /** uchar's name identity of two elements: the kind, and owner and name case-insensitively. */
-    private static boolean same(Benoembaar a, Benoembaar b) {
-        return a.soort() == b.soort() && a.naam().equalsIgnoreCase(b.naam())
-                && (a.eigenaar() == null ? b.eigenaar() == null
-                    : b.eigenaar() != null && a.eigenaar().equalsIgnoreCase(b.eigenaar()));
+    private static boolean same(Designatable a, Designatable b) {
+        return a.category() == b.category() && a.naam().equalsIgnoreCase(b.naam())
+                && (a.owner() == null ? b.owner() == null
+                    : b.owner() != null && a.owner().equalsIgnoreCase(b.owner()));
     }
 
     /** The source slice of {@code ctx} with its whitespace collapsed: the name as uchar's resolver reads it
@@ -225,14 +225,14 @@ final class Declarations {
         return t.replaceAll("\\s+", " ").trim();
     }
 
-    private static String description(Benoembaar b) {
-        return switch (b.soort()) {
+    private static String description(Designatable b) {
+        return switch (b.category()) {
             case OBJECTTYPE -> "het objecttype '" + b.naam() + "'";
-            case ATTRIBUUT -> "het attribuut '" + b.naam() + "' van '" + b.eigenaar() + "'";
-            case KENMERK -> "het kenmerk '" + b.naam() + "' van '" + b.eigenaar() + "'";
+            case ATTRIBUUT -> "het attribuut '" + b.naam() + "' van '" + b.owner() + "'";
+            case KENMERK -> "het kenmerk '" + b.naam() + "' van '" + b.owner() + "'";
             case FEITTYPE -> "het feittype '" + b.naam() + "'";
-            case ROL -> "de rol '" + b.naam() + "' van '" + b.eigenaar() + "'";
-            case ENUMERATIEWAARDE -> "de enumeratiewaarde '" + b.naam() + "' van '" + b.eigenaar() + "'";
+            case ROL -> "de rol '" + b.naam() + "' van '" + b.owner() + "'";
+            case ENUMERATIEWAARDE -> "de enumeratiewaarde '" + b.naam() + "' van '" + b.owner() + "'";
             case PARAMETER -> "de parameter '" + b.naam() + "'";
             case VORM -> "de regel '" + b.naam() + "'";
             case REGELGROEP -> "de regelgroep '" + b.naam() + "'";

@@ -71,7 +71,7 @@ public final class DescriptorLoader {
         if (reserved != null) sink.add(Violation.van(Violation.Kind.MALFORMED, "vocabulaires", reserved));
 
         Set<String> groupNames = new java.util.LinkedHashSet<>();
-        for (var g : model.regelGroepen) groupNames.add(g.naam());
+        for (var g : model.ruleGroups) groupNames.add(g.naam());
 
         // parameters block
         if (d.parameters() != null)
@@ -153,7 +153,7 @@ public final class DescriptorLoader {
                 sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, field,
                         "onbekend kenmerk '" + u.member() + "' op objecttype '" + u.objectType() + "'"));
         } else {
-            if (ot.attribuut(u.member()) == null)
+            if (ot.attribute(u.member()) == null)
                 sink.add(Violation.van(Violation.Kind.ONBEKENDE_VERWIJZING, field,
                         "onbekend attribuut '" + u.member() + "' op objecttype '" + u.objectType() + "'"));
         }
@@ -185,7 +185,7 @@ public final class DescriptorLoader {
      *  model's own chain walk ({@link Objecttype#kenmerkNaam}) is the authority; it is case-insensitive exactly
      *  as the old own-list scan was. */
     static boolean hasCharacteristic(Objecttype ot, String name) {
-        return ot != null && ot.kenmerkNaam(name) != null;
+        return ot != null && ot.characteristicName(name) != null;
     }
 
     /** The chain-closed kenmerk NAMES of {@code ot}, nearest declaration first — the list-shaped twin of
@@ -197,7 +197,7 @@ public final class DescriptorLoader {
     static List<String> characteristicMembers(Objecttype ot) {
         List<String> sink = new ArrayList<>();
         if (ot == null) return sink;
-        for (Objecttype t : ot.keten())
+        for (Objecttype t : ot.chain())
             for (String k : t.kenmerken)
                 if (sink.stream().noneMatch(g -> g.equalsIgnoreCase(k))) sink.add(k);
         return sink;
@@ -216,6 +216,6 @@ public final class DescriptorLoader {
      *  {@code this.model} and resolves {@code naam} against that same model here, so the condition holds by
      *  construction; a future caller that resolves a second model would have to pass its own, not another's. */
     static boolean objectMatch(RegelSpraakModel model, Objecttype ot, String name) {
-        return ot != null && ot.isEen(objectType(model, name));
+        return ot != null && ot.isA(objectType(model, name));
     }
 }

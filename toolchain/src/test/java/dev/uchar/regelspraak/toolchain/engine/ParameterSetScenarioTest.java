@@ -1,7 +1,7 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.engine.ScenarioResultaat;
-import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
+import dev.uchar.regelspraak.engine.ScenarioResult;
+import dev.uchar.regelspraak.engine.ScenarioResult.Status;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
@@ -68,11 +68,11 @@ class ParameterSetScenarioTest {
             Met als verwacht resultaat:
             - de grens van P1 is 40
             """;
-        List<ScenarioResultaat> r = ScenarioRunner.run(source);
+        List<ScenarioResult> r = ScenarioRunner.run(source);
         assertEquals(1, r.size());
         assertEquals(Status.PASS, r.get(0).status(),
                 () -> "verwacht PASS (situatie 40): "
-                        + r.get(0).diagnose() + " / " + r.get(0).verwachtingen());
+                        + r.get(0).diagnostic() + " / " + r.get(0).expectations());
     }
 
     // ---------------- s6 : bestaand pad zonder sets ----------------
@@ -95,10 +95,10 @@ class ParameterSetScenarioTest {
             Met als verwacht resultaat:
             - de grens van P1 is 18
             """;
-        List<ScenarioResultaat> r = ScenarioRunner.run(source);
+        List<ScenarioResult> r = ScenarioRunner.run(source);
         assertEquals(1, r.size());
         assertEquals(Status.PASS, r.get(0).status(),
                 () -> "verwacht PASS (situatie-waarde 18, geen sets): "
-                        + r.get(0).diagnose() + " / " + r.get(0).verwachtingen());
+                        + r.get(0).diagnostic() + " / " + r.get(0).expectations());
     }
 }

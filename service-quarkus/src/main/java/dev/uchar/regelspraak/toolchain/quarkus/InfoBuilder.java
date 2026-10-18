@@ -5,13 +5,13 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
-import dev.uchar.regelspraak.ir.Geldigheid;
-import dev.uchar.regelspraak.model.Parameterset;
-import dev.uchar.regelspraak.model.Parameterset.WaardeInterval;
+import dev.uchar.regelspraak.ir.Validity;
+import dev.uchar.regelspraak.model.ParameterSet;
+import dev.uchar.regelspraak.model.ParameterSet.ValueInterval;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceDescriptor;
 import dev.uchar.regelspraak.toolchain.service.Completeness;
-import dev.uchar.regelspraak.transpiler.kern.Dekking;
+import dev.uchar.regelspraak.transpiler.core.Coverage;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -57,12 +57,12 @@ final class InfoBuilder {
             if (!ep.executable()) eNode.put("weigering", ep.refusal());
 
             ArrayNode coverage = eNode.putArray("dekking");
-            for (Dekking d : ep.coverage()) {
+            for (Coverage d : ep.coverage()) {
                 ObjectNode dn = coverage.addObject();
-                dn.put("soort", d.soort());
+                dn.put("soort", d.category());
                 dn.put("naam", d.naam());
                 dn.put("verdict", d.verdict().name());
-                if (d.reden() != null && !d.reden().isEmpty()) dn.put("reden", d.reden());
+                if (d.reason() != null && !d.reason().isEmpty()) dn.put("reden", d.reason());
             }
 
             ArrayNode markers = eNode.putArray("markers");
@@ -80,18 +80,18 @@ final class InfoBuilder {
             for (var e : params.entrySet()) parameters.set(e.getKey(), e.getValue());
 
         ArrayNode parameterSets = root.putArray("parametersets");
-        for (Parameterset set : core.parameterSets()) {
+        for (ParameterSet set : core.parameterSets()) {
             ObjectNode sn = parameterSets.addObject();
             sn.put("naam", set.naam());
             ObjectNode values = sn.putObject("waarden");
             for (var e : set.waarden().entrySet()) {
                 ArrayNode intervals = values.putArray(e.getKey());
-                for (WaardeInterval wi : e.getValue()) {
+                for (ValueInterval wi : e.getValue()) {
                     ObjectNode iv = intervals.addObject();
-                    Geldigheid g = wi.geldigheid();
-                    if (g.vanaf() != null) iv.put("vanaf", g.vanaf().toString()); else iv.putNull("vanaf");
-                    if (g.tot() != null) iv.put("tot", g.tot().toString()); else iv.putNull("tot");
-                    iv.set("waarde", renderValue(wi.waarde()));
+                    Validity g = wi.validity();
+                    if (g.from() != null) iv.put("vanaf", g.from().toString()); else iv.putNull("vanaf");
+                    if (g.until() != null) iv.put("tot", g.until().toString()); else iv.putNull("tot");
+                    iv.set("waarde", renderValue(wi.value()));
                 }
             }
         }
@@ -99,7 +99,7 @@ final class InfoBuilder {
         ArrayNode warnings = root.putArray("periodeWaarschuwingen");
         for (String w : core.periodWarnings()) warnings.add(w);
 
-        if (!core.model().vocabulaires.isEmpty()) root.set("vocabulaires", Completeness.info(core.model()));
+        if (!core.model().vocabularies.isEmpty()) root.set("vocabulaires", Completeness.info(core.model()));
 
         return root;
     }

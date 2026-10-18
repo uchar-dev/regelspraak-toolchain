@@ -1,12 +1,12 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.engine.ScenarioResultaat.Status;
-import dev.uchar.regelspraak.model.RegelSpraakModel.GegenereerdUit;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Herkomstvorm;
+import dev.uchar.regelspraak.engine.ScenarioResult.Status;
+import dev.uchar.regelspraak.model.RegelSpraakModel.GeneratedFrom;
+import dev.uchar.regelspraak.model.RegelSpraakModel.OriginForm;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
-import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundel;
+import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import org.junit.jupiter.api.Test;
 
@@ -90,10 +90,10 @@ class UitlegGeneratedRuleInVocabularyTest {
         return uitleg(ScenarioResolver.resolve(DOCUMENT), vocabulary);
     }
 
-    private static List<String> uitleg(ScenarioBundel bundle, String vocabulary) {
+    private static List<String> uitleg(ScenarioBundle bundle, String vocabulary) {
         List<ScenarioRunner.Explained> u = ScenarioRunner.runWithUitleg(bundle, vocabulary);
         assertEquals(1, u.size());
-        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnose());
+        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
         assertNull(u.get(0).uitlegError(), u.get(0)::uitlegError);
         return u.get(0).uitleg();
     }
@@ -149,9 +149,9 @@ class UitlegGeneratedRuleInVocabularyTest {
      *  in a vocabulary as well. */
     @Test
     void a_decision_table_row_keeps_the_text_of_the_author() {
-        ScenarioBundel bundle = ScenarioResolver.resolve(DECISION_TABLE);
-        assertEquals(List.of(Herkomstvorm.BESLISTABELRIJ),
-                bundle.model().gegenereerd.values().stream().map(GegenereerdUit::vorm).toList());
+        ScenarioBundle bundle = ScenarioResolver.resolve(DECISION_TABLE);
+        assertEquals(List.of(OriginForm.BESLISTABELRIJ),
+                bundle.model().generated.values().stream().map(GeneratedFrom::form).toList());
         assertEquals(List.of("V1 is zwaar, omdat zijn gewicht (12) is groter dan 10"), uitleg(bundle, "cgm"));
     }
 
@@ -171,6 +171,6 @@ class UitlegGeneratedRuleInVocabularyTest {
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is"),
                 new Verbaliser(engine.model(), Map.of(), Naming.van(engine.model(), "cgm"))
-                        .verbalise(Map.of("V2", v2), Map.of("V2", engine.model().objecttypeOpNaam("Vondst"))));
+                        .verbalise(Map.of("V2", v2), Map.of("V2", engine.model().objectTypeByName("Vondst"))));
     }
 }

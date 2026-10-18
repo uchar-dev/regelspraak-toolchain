@@ -6,9 +6,9 @@ import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
 import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.kern.Dekking;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
-import dev.uchar.regelspraak.transpiler.tms.Invoervormfout;
+import dev.uchar.regelspraak.transpiler.core.Coverage;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
+import dev.uchar.regelspraak.transpiler.tms.InputFormFault;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -46,8 +46,8 @@ class RegelSpraakEngineTest {
     void compiles_and_fires_end_to_end() {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(MINDERJARIG);
         // the build refuses a model with a form its branch does not lower, so its manifest names the rule, lowered
-        assertEquals(List.of("regel: R"), engine.coverage().stream().map(Dekking::sleutel).toList());
-        assertTrue(engine.coverage().stream().allMatch(Dekking::lowered), engine.coverage()::toString);
+        assertEquals(List.of("regel: R"), engine.coverage().stream().map(Coverage::key).toList());
+        assertTrue(engine.coverage().stream().allMatch(Coverage::lowered), engine.coverage()::toString);
 
         Object minor = persoon(engine, 16);
         Object adult = persoon(engine, 40);
@@ -80,7 +80,7 @@ class RegelSpraakEngineTest {
     @Test void a_session_fires_twice_with_an_update_in_between_as_a_fresh_session() {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(FUTURE);
         Object p = persoon(engine, 16);
-        Fixpunt first;
+        Fixpoint first;
         try (RegelSpraakEngine.Session s = engine.newSession()) {
             s.insert(p).setGlobal("volwassenleeftijd", new BigDecimal(18)).fire();
             first = s.read();
@@ -90,9 +90,9 @@ class RegelSpraakEngineTest {
             s.restore();
         }
         assertEquals(List.of(new BigDecimal(17)), first.waarden().stream()
-                .filter(w -> w.object() == p && w.attribuut().equals("toekomstige leeftijd"))
-                .map(Fixpunt.AfgeleideWaarde::waarde).toList(), first.waarden()::toString);
-        assertTrue(first.kenmerken().stream().anyMatch(k -> k.object() == p && k.kenmerk().equals("minderjarig")),
+                .filter(w -> w.object() == p && w.attribute().equals("toekomstige leeftijd"))
+                .map(Fixpoint.DerivedValue::value).toList(), first.waarden()::toString);
+        assertTrue(first.kenmerken().stream().anyMatch(k -> k.object() == p && k.characteristic().equals("minderjarig")),
                 first.kenmerken()::toString);
 
         Object fresh = persoon(engine, 40);
@@ -208,7 +208,7 @@ class RegelSpraakEngineTest {
         Object without = jutter(engine, 10);
         try (RegelSpraakEngine.Session s = engine.newSession(asOfDate)) {
             s.insert(without).fire();
-            assertThrows(Invoervormfout.class, s::restore);
+            assertThrows(InputFormFault.class, s::restore);
         }
 
         Object extended = jutter(engine, 10);
@@ -305,7 +305,7 @@ class RegelSpraakEngineTest {
      *  period of the peildatum 2026-03-15 on the attribute's monthly grid. */
     static Object jutter(RegelSpraakEngine engine, int value) throws Exception {
         Object j = engine.newInstance("Jutter");
-        Object segment = Class.forName(FactModelGenerator.PAKKET + ".Segment", true, engine.beanLoader())
+        Object segment = Class.forName(FactModelGenerator.PACKAGE + ".Segment", true, engine.beanLoader())
                 .getConstructor(LocalDate.class, LocalDate.class, BigDecimal.class)
                 .newInstance(LocalDate.of(2026, 3, 1), LocalDate.of(2026, 4, 1), new BigDecimal(value));
         RegelSpraakRuntime.set(j, "bewaarvergoedingPerMaand", List.of(segment));

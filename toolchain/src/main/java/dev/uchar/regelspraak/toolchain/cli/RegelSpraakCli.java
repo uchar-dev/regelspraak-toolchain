@@ -1,8 +1,8 @@
 package dev.uchar.regelspraak.toolchain.cli;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
-import dev.uchar.regelspraak.graaf.ProducentConsument;
-import dev.uchar.regelspraak.graaf.RegelGraaf;
+import dev.uchar.regelspraak.graph.ProducerConsumer;
+import dev.uchar.regelspraak.graph.RuleGraph;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.resolver.Resolver;
@@ -50,8 +50,8 @@ public final class RegelSpraakCli {
      *  contract this method touches disk ONLY when invoked, so main's error path (which never calls it) writes
      *  nothing. */
     public static int factsToDisk(RegelSpraakModel m, java.nio.file.Path outdir) throws java.io.IOException {
-        var sources = FactModelGenerator.genereer(m);
-        java.nio.file.Path pkgDir = outdir.resolve(FactModelGenerator.PAKKET.replace('.', '/'));
+        var sources = FactModelGenerator.generate(m);
+        java.nio.file.Path pkgDir = outdir.resolve(FactModelGenerator.PACKAGE.replace('.', '/'));
         java.nio.file.Files.createDirectories(pkgDir);
         for (var e : sources.entrySet())
             java.nio.file.Files.writeString(pkgDir.resolve(e.getKey() + ".java"), e.getValue(),
@@ -78,7 +78,7 @@ public final class RegelSpraakCli {
         }
         int n = factsToDisk(mf, outdir);
         System.out.printf("facts: %d klasse(n) geschreven naar %s/%s%n",
-                n, outdir, FactModelGenerator.PAKKET.replace('.', '/'));
+                n, outdir, FactModelGenerator.PACKAGE.replace('.', '/'));
         return 0;
     }
 
@@ -104,12 +104,12 @@ public final class RegelSpraakCli {
             m.diagnostics.forEach(d -> System.out.println("  " + chain.message(d)));
             return 1;
         }
-        var graph = RegelGraaf.bouw(m, m.prioritizedDefaults, ProducentConsument.bronNavigatie(m));
+        var graph = RuleGraph.build(m, m.prioritizedDefaults, ProducerConsumer.sourceNavigation(m));
         java.nio.file.Files.writeString(out, html ? graph.html() : graph.mermaid(),
                 java.nio.charset.StandardCharsets.UTF_8);
         long input = graph.nodes().stream()
-                .filter(n -> n.kind() == RegelGraaf.NodeKind.INVOER).count();
-        long end = graph.nodes().stream().filter(RegelGraaf.Node::eindOutput).count();
+                .filter(n -> n.kind() == RuleGraph.NodeKind.INPUT).count();
+        long end = graph.nodes().stream().filter(RuleGraph.Node::endOutput).count();
         System.out.printf("graaf: %d knopen, %d kanten (%d invoer-bronnen, %d eind-outputs) geschreven naar %s%n",
                 graph.nodes().size(), graph.edges().size(), input, end, out);
         return 0;
@@ -144,7 +144,7 @@ public final class RegelSpraakCli {
         boolean ir = rest.remove("--ir");
         int outputModes = (drl ? 1 : 0) + (facts ? 1 : 0) + (graph || graphMmd ? 1 : 0) + (ir ? 1 : 0);
         if (outputModes > 1) { System.err.println("usage: --drl, --facts, --graaf[-mmd] en --ir sluiten elkaar uit"); System.exit(2); }
-        if (ir) System.exit(Resolver.irModus(rest));   // the emitter path is uchar's own
+        if (ir) System.exit(Resolver.irMode(rest));   // the emitter path is uchar's own
         if (graph || graphMmd) System.exit(graphMode(rest, graph));
         if (facts) System.exit(factsMode(rest));
         if (rest.isEmpty()) { System.err.println("usage: RegelSpraakCli [--drl | --facts <outdir> | --graaf <out.html> | --graaf-mmd <out.mmd> | --ir <out.json>] <file.rgs...>"); System.exit(2); }
@@ -170,9 +170,9 @@ public final class RegelSpraakCli {
                 m.objecttypen.size(), m.domeinen.size(), m.parameters.size(), m.feittypen.size(),
                 m.regels.size(), m.resolvedRegels.size());
         m.resolvedRegels.forEach(r -> {
-            System.out.printf("  [%s] %s := %s :: %s%n", r.soort(), r.doel().bron(), r.waarde().bron(),
-                    r.waarde().type() == null ? "(geen type)" : r.waarde().type().naam());
-            if (r.voorwaarde() != null) System.out.println("      indien " + r.voorwaarde().bron());
+            System.out.printf("  [%s] %s := %s :: %s%n", r.category(), r.target().source(), r.value().source(),
+                    r.value().type() == null ? "(geen type)" : r.value().type().naam());
+            if (r.condition() != null) System.out.println("      indien " + r.condition().source());
         });
         m.diagnostics.forEach(d -> System.out.println("  " + chain.message(d)));
         if (!m.isOk()) System.exit(1);

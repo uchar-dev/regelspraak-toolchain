@@ -2,13 +2,13 @@ package dev.uchar.regelspraak.toolchain.engine;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-import dev.uchar.regelspraak.cases.CaseInvoer;
+import dev.uchar.regelspraak.cases.CaseInput;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
-import dev.uchar.regelspraak.engine.ScenarioResultaat;
+import dev.uchar.regelspraak.engine.ScenarioResult;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
-import dev.uchar.regelspraak.transpiler.tms.Fixpunt;
+import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import org.kie.api.runtime.KieSession;
 
@@ -53,7 +53,7 @@ public final class CaseSession {
      *  unless an evaluation fault stands at the fixpoint ({@code fixpoint.errors()} not empty): the write-back would
      *  throw it, so the beans then hold the input alone and the fault is in the fixpoint as data. */
     public record Outcome(Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
-                           Map<String, Object> globals, List<ScenarioResultaat.Vuring> firings, Fixpunt fixpoint) {}
+                           Map<String, Object> globals, List<ScenarioResult.Firing> firings, Fixpoint fixpoint) {}
 
     /** Play case {@code c} on {@code build}, a build of the exec-model branch, whose
      *  {@link DroolsBackend.Build#model()} names the types. The branch is required because the caller compares the
@@ -74,9 +74,9 @@ public final class CaseSession {
         }
 
         Outcome play(JsonNode c) {
-            CaseInvoer input;
+            CaseInput input;
             try {
-                input = CaseInvoer.van(build, c);
+                input = CaseInput.van(build, c);
             } catch (CaseRunner.Excluded e) {
                 throw new NotPlayable(e.getMessage());
             }
@@ -96,18 +96,18 @@ public final class CaseSession {
                 }
                 if (evaluationDate != null) globals.put("rekendatum", evaluationDate);
                 for (Map.Entry<String, Object> g : globals.entrySet()) setGlobalSafe(session, g.getKey(), g.getValue());
-                for (Map.Entry<String, java.util.function.Predicate<LocalDate>> d : build.dagsoortGlobalen().entrySet())
+                for (Map.Entry<String, java.util.function.Predicate<LocalDate>> d : build.dayKindGlobals().entrySet())
                     setGlobalSafe(session, d.getKey(), d.getValue());
-                DroolsBackend.voegIn(build, session, input.invoer());
-                DroolsBackend.Waarnemer observer = new DroolsBackend.Waarnemer(labels::get);
-                DroolsBackend.Vuring firing = DroolsBackend.vuur(build, session, observer);
-                if (firing.geenFixpunt() != null) throw new NotPlayable(firing.geenFixpunt());
+                DroolsBackend.insert(build, session, input.inputData());
+                DroolsBackend.Observer observer = new DroolsBackend.Observer(labels::get);
+                DroolsBackend.Firing firing = DroolsBackend.fire(build, session, observer);
+                if (firing.noFixpoint() != null) throw new NotPlayable(firing.noFixpoint());
                 // read before the write-back, which throws a standing evaluation fault where the reading gives it as
                 // data, and writes nothing after a throw (uchar's entry, as the service's Uitvoerder reads it)
-                Fixpunt fixpoint = DroolsBackend.lees(build, session, labels::get);
-                if (fixpoint.fouten().isEmpty()) DroolsBackend.zetAfgeleideWaarden(build, session, labels::get);
-                return new Outcome(new LinkedHashMap<>(input.beans()), new LinkedHashMap<>(input.typen()),
-                        new LinkedHashMap<>(globals), observer.vuringen(), fixpoint);
+                Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, labels::get);
+                if (fixpoint.faults().isEmpty()) DroolsBackend.setDerivedValues(build, session, labels::get);
+                return new Outcome(new LinkedHashMap<>(input.beans()), new LinkedHashMap<>(input.types()),
+                        new LinkedHashMap<>(globals), observer.firings(), fixpoint);
             } finally {
                 session.dispose();
                 Thread.currentThread().setContextClassLoader(previous);

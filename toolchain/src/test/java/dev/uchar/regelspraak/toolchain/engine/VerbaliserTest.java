@@ -1,7 +1,7 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.transpiler.kern.Namen;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
@@ -40,7 +40,7 @@ class VerbaliserTest {
             s.restore();
         }
         return new Verbaliser(engine.model(), Map.of())
-                .verbalise(Map.of("V1", v1), Map.of("V1", engine.model().objecttypeOpNaam("Vlucht")));
+                .verbalise(Map.of("V1", v1), Map.of("V1", engine.model().objectTypeByName("Vlucht")));
     }
 
     /** A fired bijvoeglijk kenmerk: the verhaal states the kenmerk AND justifies it with the comparison, showing

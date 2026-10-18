@@ -1,10 +1,10 @@
 package dev.uchar.regelspraak.toolchain.service;
 
 import dev.uchar.regelspraak.emit.CaseEmitter;
-import dev.uchar.regelspraak.graaf.ProducentConsument;
+import dev.uchar.regelspraak.graph.ProducerConsumer;
 import dev.uchar.regelspraak.ir.Default;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
-import dev.uchar.regelspraak.ir.ResolvedRegelGroep;
+import dev.uchar.regelspraak.ir.ResolvedRuleGroup;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 
 import java.util.ArrayList;
@@ -37,13 +37,13 @@ public final class FormIndex {
 
     private final List<String> forms;
     private final Set<String> declared;
-    private final List<ResolvedRegelGroep> groups;
+    private final List<ResolvedRuleGroup> groups;
     private final List<RegelSpraakModel.Diagnostic> warnings;
     /** Per defaults group (by its normalised form name) the groups of its stack, itself included, in model order;
      *  only for a group that has company. */
     private final Map<String, List<String>> stackMates;
 
-    private FormIndex(List<String> forms, Set<String> declared, List<ResolvedRegelGroep> groups,
+    private FormIndex(List<String> forms, Set<String> declared, List<ResolvedRuleGroup> groups,
                       List<RegelSpraakModel.Diagnostic> warnings, Map<String, List<String>> stackMates) {
         this.forms = forms;
         this.declared = declared;
@@ -58,19 +58,19 @@ public final class FormIndex {
     public static FormIndex van(RegelSpraakModel model, List<PrioritizedDefaults> defaults) {
         LinkedHashSet<String> names = new LinkedHashSet<>();
         for (var r : model.resolvedRegels) add(names, r.naam());
-        for (var x : model.objectCreaties) add(names, x.naam());
-        for (var x : model.verdelingen) add(names, x.naam());
+        for (var x : model.objectCreations) add(names, x.naam());
+        for (var x : model.allocations) add(names, x.naam());
         for (var x : model.consistenties) add(names, x.naam());
-        for (var x : model.uniciteiten) add(names, x.naam());
-        for (var x : model.uniciteitUnies) add(names, x.naam());
-        for (var x : model.feitCreaties) add(names, x.naam());
+        for (var x : model.uniquenesses) add(names, x.naam());
+        for (var x : model.uniquenessUnions) add(names, x.naam());
+        for (var x : model.factCreations) add(names, x.naam());
         for (var x : defaults) add(names, x.naam());
         Set<String> declared = new LinkedHashSet<>();
         for (var r : model.regels) if (r.naam() != null) declared.add(CaseEmitter.norm(r.naam()));
         List<RegelSpraakModel.Diagnostic> warnings = new ArrayList<>();
         for (var d : model.diagnostics)
             if (d.severity() == RegelSpraakModel.Severity.WARNING) warnings.add(d);
-        return new FormIndex(List.copyOf(names), declared, List.copyOf(model.regelGroepen),
+        return new FormIndex(List.copyOf(names), declared, List.copyOf(model.ruleGroups),
                 List.copyOf(warnings), stackMates(model, defaults));
     }
 
@@ -89,15 +89,15 @@ public final class FormIndex {
         Map<PrioritizedDefaults, PrioritizedDefaults> parent = new IdentityHashMap<>();
         for (PrioritizedDefaults p : named) parent.put(p, p);
         for (PrioritizedDefaults p : named) {
-            RegelSpraakModel.Objecttype subject = model.objecttypeOpNaam(p.onderwerp());
-            if (subject == null || p.ongeordend() || ownBase(p)) continue;
-            ProducentConsument.ElementSleutel target = ProducentConsument.elementVan(subject, p.doel(), p.isKenmerk());
-            List<RegelSpraakModel.Objecttype> chain = subject.keten();
+            RegelSpraakModel.Objecttype subject = model.objectTypeByName(p.onderwerp());
+            if (subject == null || p.unordered() || ownBase(p)) continue;
+            ProducerConsumer.ElementKey target = ProducerConsumer.elementOf(subject, p.target(), p.isCharacteristic());
+            List<RegelSpraakModel.Objecttype> chain = subject.chain();
             for (RegelSpraakModel.Objecttype higher : chain.subList(1, chain.size())) {
                 List<PrioritizedDefaults> remaining = new ArrayList<>();
                 for (PrioritizedDefaults q : named)
-                    if (model.objecttypeOpNaam(q.onderwerp()) == higher
-                            && ProducentConsument.elementVan(higher, q.doel(), q.isKenmerk()).equals(target))
+                    if (model.objectTypeByName(q.onderwerp()) == higher
+                            && ProducerConsumer.elementOf(higher, q.target(), q.isCharacteristic()).equals(target))
                         remaining.add(q);
                 if (remaining.isEmpty()) continue;
                 for (PrioritizedDefaults q : remaining) unite(parent, p, q);
@@ -106,11 +106,11 @@ public final class FormIndex {
         }
         Map<PrioritizedDefaults, List<String>> perRoot = new IdentityHashMap<>();
         for (PrioritizedDefaults p : named)
-            perRoot.computeIfAbsent(root(parent, p), w -> new ArrayList<>()).add(CaseEmitter.basisNaam(p.naam()));
+            perRoot.computeIfAbsent(root(parent, p), w -> new ArrayList<>()).add(CaseEmitter.baseName(p.naam()));
         Map<String, List<String>> sink = new HashMap<>();
         for (PrioritizedDefaults p : named) {
             List<String> stack = perRoot.get(root(parent, p));
-            if (stack.size() > 1) sink.put(CaseEmitter.norm(CaseEmitter.basisNaam(p.naam())), List.copyOf(stack));
+            if (stack.size() > 1) sink.put(CaseEmitter.norm(CaseEmitter.baseName(p.naam())), List.copyOf(stack));
         }
         return sink;
     }
@@ -120,7 +120,7 @@ public final class FormIndex {
     private static boolean ownBase(PrioritizedDefaults p) {
         Default last = null;
         for (Default d : p.defaults()) if (!d.initialisatie()) last = d;
-        return last != null && last.heeftEigenInhoud();
+        return last != null && last.hasOwnContent();
     }
 
     private static PrioritizedDefaults root(Map<PrioritizedDefaults, PrioritizedDefaults> parent, PrioritizedDefaults p) {
@@ -135,7 +135,7 @@ public final class FormIndex {
     }
 
     private static void add(Set<String> names, String name) {
-        if (name != null) names.add(CaseEmitter.basisNaam(name));
+        if (name != null) names.add(CaseEmitter.baseName(name));
     }
 
     /** Every form, in model order. */
@@ -168,7 +168,7 @@ public final class FormIndex {
         List<String> withoutForm = new ArrayList<>();
         List<String> names = new ArrayList<>(scope.ruleNamesOrEmpty());
         for (String group : scope.ruleGroupsOrEmpty())
-            for (ResolvedRegelGroep g : groups) if (g.naam().equals(group)) names.addAll(g.leden());
+            for (ResolvedRuleGroup g : groups) if (g.naam().equals(group)) names.addAll(g.members());
         for (String name : names) {
             List<String> v = formsOf(name);
             if (v.isEmpty()) { if (!withoutForm.contains(name)) withoutForm.add(name); }

@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Benoembaar;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 
 import java.util.List;
 
@@ -22,8 +22,8 @@ public final class Completeness {
     private Completeness() {}
 
     /** The declarations of {@code model} without a designation in vocabulary {@code vocabulaire}. */
-    public static List<Benoembaar> withoutDesignation(RegelSpraakModel model, String vocabulary) {
-        return model.benoembaar().stream().filter(b -> model.benaming(vocabulary, b).isEmpty()).toList();
+    public static List<Designatable> withoutDesignation(RegelSpraakModel model, String vocabulary) {
+        return model.designatable().stream().filter(b -> model.benaming(vocabulary, b).isEmpty()).toList();
     }
 
     /** The {@code vocabulaires} block of {@code /info}: per vocabulary its {@code naam}, {@code standaard},
@@ -31,18 +31,18 @@ public final class Completeness {
      *  {@code {soort, eigenaar?, naam}} by its canonical name. */
     public static ArrayNode info(RegelSpraakModel model) {
         ArrayNode sink = NF.arrayNode();
-        for (RegelSpraakModel.Vocabulaire v : model.vocabulaires) {
+        for (RegelSpraakModel.Vocabulary v : model.vocabularies) {
             ObjectNode vn = sink.addObject();
             vn.put("naam", v.naam());
-            vn.put("standaard", v.standaard());
-            if (v.taal() != null) vn.put("taal", v.taal());
-            List<Benoembaar> without = withoutDesignation(model, v.naam());
+            vn.put("standaard", v.isDefault());
+            if (v.language() != null) vn.put("taal", v.language());
+            List<Designatable> without = withoutDesignation(model, v.naam());
             vn.put("volledig", without.isEmpty());
             ArrayNode list = vn.putArray("zonderBenaming");
-            for (Benoembaar b : without) {
+            for (Designatable b : without) {
                 ObjectNode bn = list.addObject();
-                bn.put("soort", b.soort().name());
-                if (b.eigenaar() != null) bn.put("eigenaar", b.eigenaar());
+                bn.put("soort", b.category().name());
+                if (b.owner() != null) bn.put("eigenaar", b.owner());
                 bn.put("naam", b.naam());
             }
         }

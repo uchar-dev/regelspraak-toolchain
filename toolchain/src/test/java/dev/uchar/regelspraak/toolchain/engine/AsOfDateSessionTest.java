@@ -1,10 +1,10 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import dev.uchar.regelspraak.ir.Geldigheid;
-import dev.uchar.regelspraak.model.Parameterset;
-import dev.uchar.regelspraak.model.Parameterset.WaardeInterval;
+import dev.uchar.regelspraak.ir.Validity;
+import dev.uchar.regelspraak.model.ParameterSet;
+import dev.uchar.regelspraak.model.ParameterSet.ValueInterval;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.transpiler.kern.Dekking;
+import dev.uchar.regelspraak.transpiler.core.Coverage;
 
 import org.junit.jupiter.api.Test;
 
@@ -41,21 +41,21 @@ class AsOfDateSessionTest {
             """;
 
     /** Twee vintages van één parameter: 2025 -> 18, 2026 -> 21 (aangrenzend, geen overlap). */
-    private static List<Parameterset> twoVintages() {
+    private static List<ParameterSet> twoVintages() {
         var intervals = List.of(
-                new WaardeInterval(new BigDecimal(18),
-                        new Geldigheid(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31))),
-                new WaardeInterval(new BigDecimal(21),
-                        new Geldigheid(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))));
-        return List.of(new Parameterset("tarieven", Map.of("volwassenleeftijd", intervals)));
+                new ValueInterval(new BigDecimal(18),
+                        new Validity(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31))),
+                new ValueInterval(new BigDecimal(21),
+                        new Validity(LocalDate.of(2026, 1, 1), LocalDate.of(2026, 12, 31))));
+        return List.of(new ParameterSet("tarieven", Map.of("volwassenleeftijd", intervals)));
     }
 
     // t1 — VINTAGE: één gecompileerde engine, zelfde feiten, twee peildatums -> twee VERSCHILLENDE gepinde uitkomsten.
     @Test void t1_vintage_selection_on_as_of_date() {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(BOUND_FROM_PARAMETER);
-        assertEquals(List.of("regel: bepaal grens"), engine.coverage().stream().map(Dekking::sleutel).toList(),
+        assertEquals(List.of("regel: bepaal grens"), engine.coverage().stream().map(Coverage::key).toList(),
                 "de build draagt de regel");
-        List<Parameterset> sets = twoVintages();
+        List<ParameterSet> sets = twoVintages();
 
         Object p2025 = engine.newInstance("Persoon");
         try (RegelSpraakEngine.Session s = engine.newSession(LocalDate.of(2025, 6, 1), sets)) {
@@ -85,11 +85,11 @@ class AsOfDateSessionTest {
     // t3 — OVERLAP defensief: hand-gebouwde overlappende sets -> fout die de parameter noemt.
     @Test void t3_overlap_defensive_names_parameter() {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(BOUND_FROM_PARAMETER);
-        var overlapping = List.of(new Parameterset("bug", Map.of("volwassenleeftijd", List.of(
-                new WaardeInterval(new BigDecimal(18),
-                        new Geldigheid(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31))),
-                new WaardeInterval(new BigDecimal(21),
-                        new Geldigheid(LocalDate.of(2025, 6, 1), LocalDate.of(2026, 12, 31)))))));
+        var overlapping = List.of(new ParameterSet("bug", Map.of("volwassenleeftijd", List.of(
+                new ValueInterval(new BigDecimal(18),
+                        new Validity(LocalDate.of(2025, 1, 1), LocalDate.of(2025, 12, 31))),
+                new ValueInterval(new BigDecimal(21),
+                        new Validity(LocalDate.of(2025, 6, 1), LocalDate.of(2026, 12, 31)))))));
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> engine.newSession(LocalDate.of(2025, 6, 1), overlapping));
         assertTrue(ex.getMessage().contains("volwassenleeftijd"),
@@ -115,7 +115,7 @@ class AsOfDateSessionTest {
     @Test void t4_one_date_authority() {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(DATE);
         assertEquals(List.of("regel: bepaal grens", "regel: bepaal prijs"),
-                engine.coverage().stream().map(Dekking::sleutel).toList(),
+                engine.coverage().stream().map(Coverage::key).toList(),
                 "de build draagt beide regels (parameter + Rekenjaar)");
 
         Object p = engine.newInstance("Persoon");
