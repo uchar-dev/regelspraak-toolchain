@@ -20,7 +20,7 @@ COPY service-quarkus/pom.xml service-quarkus/pom.xml
 COPY uchar/frontends/regelspraak/ uchar/frontends/regelspraak/
 COPY uchar/backends/drools/ uchar/backends/drools/
 
-# No tests here: the reactor's suites run in CI and in `make poorten`, and the kind smoke replays the golden TOKA
+# No tests here: the reactor's suites run in CI and in `make gates-no-docker`, and the kind smoke replays the golden TOKA
 # scenarios against the running service. Maven fetches the plugins and dependencies online inside this stage.
 RUN mvn -B -ntp -DskipTests package -pl service -am
 

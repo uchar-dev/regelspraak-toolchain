@@ -3,13 +3,13 @@
 #
 #   1 pin         scripts/check-pin.sh            de submodule op de pin, schoon, de versies van uchar
 #   2 reactor     mvn -B -o verify                de reactor met zijn suites en vloeren
-#   3 tweelingen  scripts/check-tweelingen.sh     de dialect-tweelingen en de vocabulairetweeling over HTTP
-#   4 replay      scripts/check-dienst-replay.sh  de goldens van uchars gate 12 door de dienst
+#   3 twins  scripts/check-twins.sh     de dialect-tweelingen en de vocabulairetweeling over HTTP
+#   4 replay      scripts/check-service-replay.sh  de goldens van uchars gate 12 door de dienst
 #   5 manifest    make scenario-test              het gouden TOKA-manifest
 #   6 image       make image                      het image van de dienst
 #   7 kind-smoke  make kind-smoke                 het image in kind: H2, H3 en H4 tegen de draaiende dienst
 #
-# Stap 1 tot en met 5 zijn make poorten; 6 en 7 vragen docker, kind, kubectl en helm. Per stap één regel met de
+# Stap 1 tot en met 5 zijn make gates-no-docker; 6 en 7 vragen docker, kind, kubectl en helm. Per stap één regel met de
 # uitkomst, de duur en de kern van de uitvoer; de volledige uitvoer staat in out/gates/<nr>-<stap>.log. Een rode stap
 # stopt de reeks: de laatste regels van zijn log komen erbij en de eindregel noemt hem. TAG, DESCRIPTOR_SRC en
 # CLUSTER uit de omgeving gaan door naar make image en make kind-smoke.
@@ -30,7 +30,7 @@ core() {
     pin)        grep -E '^PASS' "$2" | tail -1 ;;
     reactor)    printf 'testgevallen per module %s\n' \
                   "$(sed -n 's/^\[INFO\] Tests run: \([0-9][0-9]*\), Failures: 0, Errors: 0, Skipped: 0$/\1/p' "$2" | paste -s -d / -)" ;;
-    tweelingen) sed -n 's/^check-tweelingen: PASS — //p' "$2" ;;
+    twins) sed -n 's/^check-twins: PASS — //p' "$2" ;;
     replay)     sed -n 's/^  gespeeld door de dienst: //p' "$2" ;;
     manifest)   sed -n 's/^manifest: //p' "$2" ;;
     image)      sed -n 's/.*naming to docker\.io\/library\/\([^ ]*\).*/\1/p' "$2" | tail -1 ;;
@@ -60,8 +60,8 @@ step() {
 
 step pin        bash scripts/check-pin.sh
 step reactor    mvn -B -o verify
-step tweelingen bash scripts/check-tweelingen.sh
-step replay     bash scripts/check-dienst-replay.sh
+step twins    bash scripts/check-twins.sh
+step replay     bash scripts/check-service-replay.sh
 step manifest   make --no-print-directory scenario-test
 step image      make --no-print-directory image
 step kind-smoke make --no-print-directory kind-smoke

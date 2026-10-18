@@ -107,16 +107,16 @@ pf "$RELEASE"
 INFO=$(curl -fsS "http://127.0.0.1:$PF_PORT/info")
 printf '%s' "$INFO" | python3 -c 'import json, sys
 e = json.load(sys.stdin)["entrypoints"]
-print("/info:", len(e), "entrypoints,", sum(1 for x in e if x.get("uitvoerbaar")), "uitvoerbaar")'
+print("/info:", len(e), "entrypoints,", sum(1 for x in e if x.get("executable")), "uitvoerbaar")'
 
 # ---- H2: cluster oracle -------------------------------------------------------
 step "H2"
 # The identical golden assertions (GoldenOverHttpTest) against the IN-CLUSTER service via
-# -Ddienst.url, in the reactor (the service module needs the modules below it). The
+# -Dservice.url, in the reactor (the service module needs the modules below it). The
 # surefire goal runs alone after test-compile: the module's skip-pin step counts full
 # suites against a floor, and this is one class. Offline (-o): the deps are in the local repo.
 mvn -o -B -pl service -am test-compile surefire:test -Dtest=GoldenOverHttpTest \
-    -Dsurefire.failIfNoSpecifiedTests=false -Ddienst.url="http://127.0.0.1:$PF_PORT"
+    -Dsurefire.failIfNoSpecifiedTests=false -Dservice.url="http://127.0.0.1:$PF_PORT"
 echo "H2 PASS: GoldenOverHttpTest tegen de in-cluster dienst (26 over HTTP gereproduceerd, 3 door uchar geweigerd)"
 
 # ---- H3: fail-fast ------------------------------------------------------------
@@ -165,7 +165,7 @@ pf "$MARKER_RELEASE"
 curl -fsS "http://127.0.0.1:$PF_PORT/info" | grep "heffing markert" \
   || { echo "/info noemt 'heffing markert' niet onder --allow-markers" >&2; exit 1; }
 STATUS=$(curl -s -o /dev/null -w '%{http_code}' -X POST "http://127.0.0.1:$PF_PORT/heffing-markert" \
-    -H 'Content-Type: application/json' -d '{"instanties":[{"type":"Vlucht","id":"V1","attributen":{}}]}')
+    -H 'Content-Type: application/json' -d '{"instances":[{"type":"Vlucht","id":"V1","attributes":{}}]}')
 [ "$STATUS" = 503 ] || { echo "een verzoek aan het marker-entrypoint gaf $STATUS, verwacht 503" >&2; exit 1; }
 echo "H3 PASS: met --allow-markers start de dienst, toont /info de marker en krijgt een verzoek 503"
 h uninstall "$MARKER_RELEASE"
@@ -174,16 +174,16 @@ h uninstall "$MARKER_RELEASE"
 step "H4"
 # Pinned request: a Vlucht op 2026-07-01 met een persoon geboren 2007-01-01 (19 jr).
 read -r -d '' H4_BODY <<'JSON' || true
-{"instanties":[{"type":"Vlucht","id":"V1","attributen":{"vluchtdatum":"2026-07-01"}},{"type":"Natuurlijk persoon","id":"P1","attributen":{"geboortedatum":"2007-01-01"},"rollen":{"reis":"V1"}}]}
+{"instances":[{"type":"Vlucht","id":"V1","attributes":{"vluchtdatum":"2026-07-01"}},{"type":"Natuurlijk persoon","id":"P1","attributes":{"geboortedatum":"2007-01-01"},"roles":{"reis":"V1"}}]}
 JSON
 
 # H4a: volwassenleeftijd = 18 → 19-jarige is NIET minderjarig.
 python3 - "$OVERLAY" 18 <<'PY'
 import json, sys
 src = "examples/toka/toka.service.json"
-overlay, leeftijd = sys.argv[1], int(sys.argv[2])
+overlay, age = sys.argv[1], int(sys.argv[2])
 d = json.load(open(src))
-d["parameters"] = {"volwassenleeftijd": leeftijd}
+d["parameters"] = {"volwassenleeftijd": age}
 json.dump(d, open(overlay, "w"), ensure_ascii=False, indent=2)
 PY
 make image TAG="$TAG-h4a" DESCRIPTOR_SRC="$OVERLAY"
@@ -198,11 +198,11 @@ echo "H4a respons (volwassenleeftijd 18): $RESP_A"
 # The heredoc IS python's stdin (it would shadow a pipe), so the response rides in via env.
 RESP="$RESP_A" EXPECTED=false python3 - <<'PY'
 import json, os
-pid, verwacht = "P1", os.environ["VERWACHT"] == "true"
+pid, expected = "P1", os.environ["EXPECTED"] == "true"
 resp = json.loads(os.environ["RESP"])
-inst = next(i for i in resp["instanties"] if i["id"] == pid)
-mind = inst.get("kenmerken", {}).get("minderjarig", False)
-assert bool(mind) == verwacht, f"P1 minderjarig={mind}, verwacht {verwacht}"
+inst = next(i for i in resp["instances"] if i["id"] == pid)
+mind = inst.get("characteristics", {}).get("minderjarig", False)
+assert bool(mind) == expected, f"P1 minderjarig={mind}, verwacht {expected}"
 print(f"H4a OK: P1 minderjarig={mind}")
 PY
 
@@ -210,9 +210,9 @@ PY
 python3 - "$OVERLAY" 21 <<'PY'
 import json, sys
 src = "examples/toka/toka.service.json"
-overlay, leeftijd = sys.argv[1], int(sys.argv[2])
+overlay, age = sys.argv[1], int(sys.argv[2])
 d = json.load(open(src))
-d["parameters"] = {"volwassenleeftijd": leeftijd}
+d["parameters"] = {"volwassenleeftijd": age}
 json.dump(d, open(overlay, "w"), ensure_ascii=False, indent=2)
 PY
 make image TAG="$TAG-h4b" DESCRIPTOR_SRC="$OVERLAY"
@@ -226,11 +226,11 @@ RESP_B=$(curl -fsS -X POST "http://127.0.0.1:$PF_PORT/kenmerktoekenning-persoon-
 echo "H4b respons (volwassenleeftijd 21): $RESP_B"
 RESP="$RESP_B" EXPECTED=true python3 - <<'PY'
 import json, os
-pid, verwacht = "P1", os.environ["VERWACHT"] == "true"
+pid, expected = "P1", os.environ["EXPECTED"] == "true"
 resp = json.loads(os.environ["RESP"])
-inst = next(i for i in resp["instanties"] if i["id"] == pid)
-mind = inst.get("kenmerken", {}).get("minderjarig", False)
-assert bool(mind) == verwacht, f"P1 minderjarig={mind}, verwacht {verwacht}"
+inst = next(i for i in resp["instances"] if i["id"] == pid)
+mind = inst.get("characteristics", {}).get("minderjarig", False)
+assert bool(mind) == expected, f"P1 minderjarig={mind}, verwacht {expected}"
 print(f"H4b OK: P1 minderjarig={mind}")
 PY
 

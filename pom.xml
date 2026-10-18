@@ -171,14 +171,14 @@
              name with its reason, an unpinned one fails the build, and the module's count is held to its floor.
              The sentinel exists because `mvn test` without `clean` leaves reports of an earlier run behind; only
              reports younger than it count. A module takes part by declaring this plugin and setting
-             skippin.poort, its gate name in the script. -->
+             skippin.gate, its gate name in the script. -->
         <plugin>
           <groupId>org.codehaus.mojo</groupId>
           <artifactId>exec-maven-plugin</artifactId>
           <version>3.1.1</version>
           <executions>
             <execution>
-              <id>skip-pin-ijkpunt</id>
+              <id>skip-pin-calibration</id>
               <phase>process-test-classes</phase>
               <goals><goal>exec</goal></goals>
               <configuration>
@@ -187,7 +187,7 @@
                 <arguments>
                   <argument>${project.basedir}/../tools/check-skips.sh</argument>
                   <argument>--sentinel</argument>
-                  <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
+                  <argument>${project.build.directory}/.skip-pin-calibration</argument>
                 </arguments>
               </configuration>
             </execution>
@@ -200,8 +200,8 @@
                 <executable>bash</executable>
                 <arguments>
                   <argument>${project.basedir}/../tools/check-skips.sh</argument>
-                  <argument>${skippin.poort}</argument>
-                  <argument>${project.build.directory}/.skip-pin-ijkpunt</argument>
+                  <argument>${skippin.gate}</argument>
+                  <argument>${project.build.directory}/.skip-pin-calibration</argument>
                   <argument>${project.build.directory}/surefire-reports</argument>
                 </arguments>
               </configuration>

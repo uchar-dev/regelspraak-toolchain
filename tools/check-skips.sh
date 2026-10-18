@@ -96,7 +96,7 @@ if [ "${1:-}" = "--sentinel" ]; then
 fi
 
 [ $# -ge 3 ] || { echo "skip-pin: gebruik <poort> <ijkpunt> <rapportmap>..."; exit 2; }
-PORT=$1; CALIBRATION_POINT=$2; shift 2
+GATE=$1; CALIBRATION_POINT=$2; shift 2
 
 [ -f "$CALIBRATION_POINT" ] \
   || { echo "skip-pin: ijkpunt '$CALIBRATION_POINT' ontbreekt — de stap die het vlak voor de testrun zet, draaide niet"; exit 2; }
@@ -105,14 +105,14 @@ PORT=$1; CALIBRATION_POINT=$2; shift 2
 # aanroep, geen reden om zonder ondergrens door te draaien.
 FLOOR=""
 for line in ${FLOORS[@]+"${FLOORS[@]}"}; do
-  IFS='|' read -r p n _reden _datum <<<"$line"
-  [ "$p" = "$PORT" ] && FLOOR=$n
+  IFS='|' read -r p n _reason _date <<<"$line"
+  [ "$p" = "$GATE" ] && FLOOR=$n
 done
 [ -n "$FLOOR" ] \
-  || { echo "skip-pin: poort '$PORT' heeft geen vloer in VLOEREN (tools/check-skips.sh) — voeg hem toe met reden en meetdatum"; exit 2; }
+  || { echo "skip-pin: poort '$GATE' heeft geen vloer in FLOORS (tools/check-skips.sh) — voeg hem toe met reden en meetdatum"; exit 2; }
 
 echo ""
-echo "=== skip-pin — poort '$PORT' ==================================================="
+echo "=== skip-pin — poort '$GATE' ==================================================="
 
 # Wijzigingstijd in hele seconden; BSD (macOS) en GNU spellen het verschillend.
 if stat -f %m . >/dev/null 2>&1; then mtime() { stat -f %m "$1"; }; else mtime() { stat -c %Y "$1"; }; fi
@@ -120,13 +120,13 @@ if stat -f %m . >/dev/null 2>&1; then mtime() { stat -f %m "$1"; }; else mtime()
 # Vers = NIET OUDER dan het ijkpunt. Bewust >= en niet bash's -nt: dat vergelijkt
 # op hele seconden, dus een rapport dat in dezelfde seconde als het ijkpunt wordt
 # weggeschreven zou als "verouderd" wegvallen en de poort spookrood maken.
-IJK_T=$(mtime "$CALIBRATION_POINT")
+CALIBRATION_T=$(mtime "$CALIBRATION_POINT")
 fresh=0; outdated=0; FRESH_REPORTS=()
 for map in "$@"; do
   [ -d "$map" ] || { echo "skip-pin: rapportmap '$map' bestaat niet — deze poort schreef geen testrapport"; exit 2; }
   while IFS= read -r f; do
     [ -n "$f" ] || continue
-    if [ "$(mtime "$f")" -ge "$IJK_T" ]; then FRESH_REPORTS+=("$f"); fresh=$((fresh + 1)); else outdated=$((outdated + 1)); fi
+    if [ "$(mtime "$f")" -ge "$CALIBRATION_T" ]; then FRESH_REPORTS+=("$f"); fresh=$((fresh + 1)); else outdated=$((outdated + 1)); fi
   done < <(find "$map" -name 'TEST-*.xml' -type f | sort)
 done
 
@@ -139,51 +139,51 @@ done
 read_out=$(awk '
   # Attribuut lezen met een verplichte scheiding ervoor, zodat name="" niet
   # binnen classname="" wordt gevonden wanneer classname als eerste staat.
-  function attr(regel, naam,   s) {
-    if (match(regel, "[ \t]" naam "=\"[^\"]*\"")) {
-      s = substr(regel, RSTART + 1, RLENGTH - 1)
-      return substr(s, length(naam) + 3, length(s) - length(naam) - 3)
+  function attr(line, name,   s) {
+    if (match(line, "[ \t]" name "=\"[^\"]*\"")) {
+      s = substr(line, RSTART + 1, RLENGTH - 1)
+      return substr(s, length(name) + 3, length(s) - length(name) - 3)
     }
     return ""
   }
   # De melding van een <skipped>: uit message="…" of uit de CDATA erachter.
   # Krijgt ALLEEN het stuk vanaf "<skipped", nooit de hele regel.
-  function melding(stuk,   s, p) {
-    if (match(stuk, /message="[^"]*"/)) {
-      s = substr(stuk, RSTART + 9, RLENGTH - 10)
+  function message(piece,   s, p) {
+    if (match(piece, /message="[^"]*"/)) {
+      s = substr(piece, RSTART + 9, RLENGTH - 10)
       if (s != "") return s
     }
-    p = index(stuk, "<![CDATA[")
-    if (p > 0) s = substr(stuk, p + 9); else { p = index(stuk, ">"); s = (p > 0) ? substr(stuk, p + 1) : "" }
+    p = index(piece, "<![CDATA[")
+    if (p > 0) s = substr(piece, p + 9); else { p = index(piece, ">"); s = (p > 0) ? substr(piece, p + 1) : "" }
     sub(/\]\]>.*$/, "", s); sub(/<\/skipped>.*$/, "", s)
     gsub(/^[ \t]+|[ \t\r]+$/, "", s)
     return s
   }
-  function leeg_af() { if (bestand != "") print "SUITE\t" bestand "\t" suite "\t" tests "\t" geteld }
-  function schrijf() { print "CASE\t" klasse "\t" naam "\t" (geskipt ? "SKIP" : "OK") "\t" msg; geteld++ }
+  function flush_suite() { if (file != "") print "SUITE\t" file "\t" suite "\t" tests "\t" counted }
+  function emit() { print "CASE\t" class_name "\t" name "\t" (skipped_flag ? "SKIP" : "OK") "\t" msg; counted++ }
 
-  FNR == 1 { leeg_af(); bestand = FILENAME; suite = ""; tests = -1; geteld = 0; open = 0 }
+  FNR == 1 { flush_suite(); file = FILENAME; suite = ""; tests = -1; counted = 0; open = 0 }
 
   /<testsuite[ \t]/ { suite = attr($0, "name"); t = attr($0, "tests"); tests = (t == "") ? -1 : t + 0 }
 
   /<testcase[ \t]/ {
-    naam = attr($0, "name"); klasse = attr($0, "classname")
-    sub(/\(\)$/, "", naam)                       # de console-schrijver zet er haakjes achter, surefire niet
-    geskipt = 0; msg = ""
-    staart = substr($0, index($0, "<testcase") + 9)
-    p = index(staart, "<skipped")
-    if (p > 0) { geskipt = 1; msg = melding(substr(staart, p)) }
+    name = attr($0, "name"); class_name = attr($0, "classname")
+    sub(/\(\)$/, "", name)                       # de console-schrijver zet er haakjes achter, surefire niet
+    skipped_flag = 0; msg = ""
+    tail = substr($0, index($0, "<testcase") + 9)
+    p = index(tail, "<skipped")
+    if (p > 0) { skipped_flag = 1; msg = message(substr(tail, p)) }
     # Sluit het element op DEZE regel? Twee vormen: <testcase …/> zonder kind, of
     # <testcase …>…</testcase> compleet op één regel (de vorm die anders stil wegviel).
-    if (index(staart, "</testcase>") > 0) { schrijf(); open = 0 }
-    else if (p == 0 && staart ~ /\/>[ \t\r]*$/) { schrijf(); open = 0 }
+    if (index(tail, "</testcase>") > 0) { emit(); open = 0 }
+    else if (p == 0 && tail ~ /\/>[ \t\r]*$/) { emit(); open = 0 }
     else open = 1
     next
   }
-  open && /<skipped[ \t\/>]/ { geskipt = 1; msg = melding(substr($0, index($0, "<skipped"))); next }
-  open && /<\/testcase>/ { schrijf(); open = 0; next }
+  open && /<skipped[ \t\/>]/ { skipped_flag = 1; msg = message(substr($0, index($0, "<skipped"))); next }
+  open && /<\/testcase>/ { emit(); open = 0; next }
 
-  END { leeg_af() }
+  END { flush_suite() }
 ' "${FRESH_REPORTS[@]}")
 
 all_lines=$(printf '%s\n' "$read_out" | awk -F'\t' '$1 == "CASE" { print $2 "\t" $3 "\t" $4 "\t" $5 }' || true)
@@ -201,15 +201,15 @@ echo "testgevallen : $total (vloer $FLOOR), waarvan overgeslagen/afgebroken: $co
 # altijd testgevallen te dragen; een engine-rapport van de console (suitenaam met
 # spatie, "JUnit Vintage") mag legitiem leeg zijn.
 empty_class_report=(); unread=()
-while IFS=$'\t' read -r _merk file suite tests geteld; do
+while IFS=$'\t' read -r _marker file suite tests counted; do
   [ -n "${file:-}" ] || continue
-  if [ "$tests" -ge 0 ] && [ "$tests" -ne "$geteld" ]; then
-    unread+=("$suite ($file): tests=\"$tests\" maar $geteld testgeval(len) gelezen")
+  if [ "$tests" -ge 0 ] && [ "$tests" -ne "$counted" ]; then
+    unread+=("$suite ($file): tests=\"$tests\" maar $counted testgeval(len) gelezen")
     continue
   fi
   case "$suite" in
     *\ *) : ;;                                                            # "JUnit Vintage": een engine-rapport van de console, leeg is normaal
-    *.*)  [ "$geteld" -eq 0 ] && empty_class_report+=("$suite ($file)") ;;
+    *.*)  [ "$counted" -eq 0 ] && empty_class_report+=("$suite ($file)") ;;
   esac
 done <<<"$(printf '%s\n' "$suites" | grep $'\t' || true)"
 
@@ -220,7 +220,7 @@ done <<<"$(printf '%s\n' "$suites" | grep $'\t' || true)"
 PIN_KEYS=(); PIN_REASONS=(); PIN_DATA=()
 for line in ${ALLOWED_SKIPS[@]+"${ALLOWED_SKIPS[@]}"}; do
   IFS='|' read -r p key reason date <<<"$line"
-  [ "$p" = "$PORT" ] || continue
+  [ "$p" = "$GATE" ] || continue
   PIN_KEYS+=("$key"); PIN_REASONS+=("$reason"); PIN_DATA+=("$date")
 done
 
@@ -308,26 +308,26 @@ if [ ${#empty_class_report[@]} -gt 0 ]; then
 fi
 if [ "$total" -lt "$FLOOR" ]; then
   echo ""
-  echo "FAIL: $total testgevallen gemeten, vloer is $FLOOR voor poort '$PORT' — de suite is gekrompen."
+  echo "FAIL: $total testgevallen gemeten, vloer is $FLOOR voor poort '$GATE' — de suite is gekrompen."
   echo "  Een gerichte run (-Dtest=…) zakt hier altijd doorheen; de poort is de VOLLEDIGE run."
-  echo "  Is de krimp bedoeld, verlaag de vloer in dezelfde commit (VLOEREN in tools/check-skips.sh)."
+  echo "  Is de krimp bedoeld, verlaag de vloer in dezelfde commit (FLOORS in tools/check-skips.sh)."
   status=1
 fi
 if [ ${#unpinned[@]} -gt 0 ]; then
   echo ""
-  echo "FAIL: ${#unpinned[@]} ongepinde skip/abort in poort '$PORT':"
+  echo "FAIL: ${#unpinned[@]} ongepinde skip/abort in poort '$GATE':"
   for key in "${unpinned[@]}"; do echo "  $key"; done
-  echo "  Neem de oorzaak weg, of pin hem BEWUST in tools/check-skips.sh (TOEGESTANE_SKIPS: poort, test, reden, datum)."
+  echo "  Neem de oorzaak weg, of pin hem BEWUST in tools/check-skips.sh (ALLOWED_SKIPS: poort, test, reden, datum)."
   status=1
 fi
 if [ ${#outdated_pins[@]} -gt 0 ]; then
   echo ""
-  echo "FAIL: ${#outdated_pins[@]} verouderde pin in poort '$PORT' — de klasse draaide, de gepinde methode bestaat niet meer:"
+  echo "FAIL: ${#outdated_pins[@]} verouderde pin in poort '$GATE' — de klasse draaide, de gepinde methode bestaat niet meer:"
   for key in "${outdated_pins[@]}"; do
     i=$(pin_index "$key")
     echo "  $key  (gepind: ${PIN_REASONS[$i]}, ${PIN_DATA[$i]})"
   done
-  echo "  Haal de regel uit TOEGESTANE_SKIPS in tools/check-skips.sh; een pin mag zijn reden niet overleven."
+  echo "  Haal de regel uit ALLOWED_SKIPS in tools/check-skips.sh; een pin mag zijn reden niet overleven."
   status=1
 fi
 

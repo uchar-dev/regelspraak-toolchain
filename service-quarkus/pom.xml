@@ -29,7 +29,7 @@
     <rest-assured.version>5.5.0</rest-assured.version>
     <project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
     <maven.compiler.parameters>true</maven.compiler.parameters>
-    <skippin.poort>service-quarkus</skippin.poort>
+    <skippin.gate>service-quarkus</skippin.gate>
   </properties>
 
   <dependencyManagement>

@@ -24,7 +24,7 @@
   -->
 
   <properties>
-    <skippin.poort>toolchain</skippin.poort>
+    <skippin.gate>toolchain</skippin.gate>
   </properties>
 
   <dependencies>

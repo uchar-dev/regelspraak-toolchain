@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# run_tests.sh — verify tools/csv_naar_beslistabel.py end-to-end (no pytest needed).
+# run_tests.sh — verify tools/csv_to_beslistabel.py end-to-end (no pytest needed).
 #
 #   V1 ROUND-TRIP DIFFERENTIAL (the real gate): render each spec §12 beslistabel
 #      example as CSV, convert it back with the tool, splice the tool's Beslistabel
@@ -20,7 +20,7 @@
 set -u
 cd "$(dirname "$0")/../.." || exit 2
 ROOT="$(pwd)"
-TOOL="python3 tools/csv_naar_beslistabel.py"
+TOOL="python3 tools/csv_to_beslistabel.py"
 TD="tools/testdata"
 CP_FILE="toolchain/target/runtime-classpath.txt"
 [ -f "$CP_FILE" ] || { echo "FAIL: $CP_FILE ontbreekt — draai eerst make classpath"; exit 2; }

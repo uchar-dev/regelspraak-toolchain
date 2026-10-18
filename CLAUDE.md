@@ -40,17 +40,17 @@ The reactor needs no `mvn install`. The first build on a machine needs the netwo
 (`mvn -B -DskipTests package`), for the plugins and dependencies the local Maven repository lacks, the
 antlr4-maven-plugin among them; after that, build offline.
 
-Green means `make gates` passes (`make poorten` is its first five steps): check-pin, `mvn -B -o verify`, the two service gates and the golden TOKA
+Green means `make gates` passes (`make gates-no-docker` is its first five steps): check-pin, `mvn -B -o verify`, the two service gates and the golden TOKA
 manifest (README, "The gates"). Each own module ends its tests with the skip-pin step (`tools/check-skips.sh`):
 every skipped or aborted test is printed by name and fails the build unless it is pinned with a reason, a test
 class that produced no test case fails, and each module is held to a floor (`VLOEREN` in the script). Floors are
 lower bounds: growth needs no bump; a deliberate removal lowers the floor in the same commit.
 
-The service gates (`scripts/check-tweelingen.sh`, `scripts/check-dienst-replay.sh`) start the JDK service
+The service gates (`scripts/check-twins.sh`, `scripts/check-service-replay.sh`) start the JDK service
 themselves and replay uchar's case files over HTTP; the replay takes its set from uchar's gate 12 and pins the
 number that plays (an equality) beside a reason-carrying list of the goldens that do not, which fails when stale.
 `make scenario-test` runs the golden TOKA manifest; the scenarios uchar's scenario resolver refuses are listed with
-a fragment of the refusal in `scripts/toka-manifest-uitsluitingen.txt`.
+a fragment of the refusal in `scripts/toka-manifest-exclusions.txt`.
 
 Further checks, run when their area changes: `bash tools/testdata/run_tests.sh` after `make classpath` (the CSV →
 Beslistabel converter). `make image` and `make kind-smoke` need Docker and run on the host only.
@@ -61,5 +61,7 @@ Beslistabel converter). `make image` and `make kind-smoke` need Docker and run o
 - Commit messages in Dutch: short, the why, wrapped at 72 columns.
 - Every identifier is English, as in the Conventions of uchar (`uchar/CLAUDE.md`): classes, methods, fields, variables, shell
   variables and the names of files and directories. The RegelSpraak language and the domain content (declared names in test
-  documents, the `jutterswet-*` names) stay Dutch, and so do the parser rules of the grammar. What is visible outside the code
-  also stays: JSON keys, OpenAPI, subcommands and flags, Make targets, environment variables, Helm and Docker configuration, messages.
+  documents, the `jutterswet-*` names) stay Dutch, and so do the parser rules of the grammar. What is visible outside the code is
+  English too: JSON keys, OpenAPI, subcommands and flags, Make targets, environment variables, Helm and Docker configuration. What
+  comes from RegelSpraak stays (the kinds of declarations `ATTRIBUUT`, `FEITTYPE`, `ROL`, the predicates, the global `rekendatum`, names
+  a model declares), and so do the sentences of the messages, until they get a card of their own.

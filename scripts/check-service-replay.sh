@@ -6,12 +6,12 @@
 # gebruikt; hier gaan ze door de dienst zelf: per golden start de JDK-dienst (bin/regelspraak serve, uit de jar die
 # de reactor maakt, op een vrije poort) over de bron.rgs van de golden, of zonder bron over het uchar-ir-v1-document,
 # met één entrypoint dat alle vormen draagt; elk casebestand wordt een verzoek en het antwoord moet elke gepinde
-# verwachting geven (scripts/dienst_replay.py). Zo toont de poort dat verzoekmapping, vuren en antwoord van de dienst
+# verwachting geven (scripts/service_replay.py). Zo toont de poort dat verzoekmapping, vuren en antwoord van de dienst
 # zeggen wat uchars replay zegt.
 #
 # Kanalen, zoals gate 12 ze telt:
 #   PLAYED   de standaard: elke golden die hier niet staat, moet spelen;
-#   EXCLUDE  een vorm die het verzoek of het antwoord van de dienst niet uitdrukt, bij naam in REPLAY_UITGESLOTEN
+#   EXCLUDE  een vorm die het verzoek of het antwoord van de dienst niet uitdrukt, bij naam in REPLAY_EXCLUDED
 #            met de reden; een golden die daar staat en toch speelt, of die niet (meer) in de set zit, faalt de
 #            poort (verouderd), en een golden die niet speelt en er niet staat, faalt ook;
 #   FAIL     een afwijking of een dienst die niet start: faalt altijd.
@@ -22,7 +22,7 @@
 set -u
 cd "$(dirname "$0")/.."
 
-fail() { echo "check-dienst-replay: FAIL — $*" >&2; exit 1; }
+fail() { echo "check-service-replay: FAIL — $*" >&2; exit 1; }
 command -v java >/dev/null 2>&1 || fail "java ontbreekt"
 command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
@@ -101,7 +101,7 @@ EXPECTED_REPLAY_PLAYED=225
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
 # tijdsafhankelijk attribuut (uchars peildatumconventie legt die in de emmer van de peildatum; de dienst weigert elk
 # tijdsafhankelijk attribuut als invoer, UNSUPPORTED).
-REPLAY_UITGESLOTEN=(
+REPLAY_EXCLUDED=(
   "anchor/jutterswet-borgdeel|tijdlijn als invoerwaarde"
   "anchor/jutterswet-dagentelling|kenmerk met perioden"
   "anchor/jutterswet-dubbelwacht|tijdlijn als invoerwaarde"
@@ -134,14 +134,14 @@ REPLAY_UITGESLOTEN=(
   "synth2-prorata-breed|tijdlijn als invoerwaarde"
 )
 
-uitgesloten() { local e; for e in "${REPLAY_UITGESLOTEN[@]}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1; }
+uitgesloten() { local e; for e in "${REPLAY_EXCLUDED[@]}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1; }
 
 # Elke regel een golden en een reden, en geen golden twee keer.
 seen=""
-for e in "${REPLAY_UITGESLOTEN[@]}"; do
+for e in "${REPLAY_EXCLUDED[@]}"; do
   g="${e%%|*}"; r="${e#*|}"
   [ -n "$r" ] && [ "$r" != "$e" ] || fail "uitsluiting zonder reden: '$e'"
-  case " $seen " in *" $g "*) fail "'$g' staat twee keer in REPLAY_UITGESLOTEN" ;; esac
+  case " $seen " in *" $g "*) fail "'$g' staat twee keer in REPLAY_EXCLUDED" ;; esac
   seen="$seen $g"
 done
 
@@ -170,7 +170,7 @@ mvn -B -o -q -DskipTests package -pl service -am >"$log" 2>&1 \
   || { tail -20 "$log" >&2; fail "de dienst bouwt niet"; }
 
 begin=$(date +%s)
-output=$(python3 scripts/dienst_replay.py --corpus uchar/corpus/golden \
+output=$(python3 scripts/service_replay.py --corpus uchar/corpus/golden \
     --workers "${REPLAY_WORKERS:-4}" "${set_goldens[@]}") || fail "de replay-driver faalde"
 duration=$(( $(date +%s) - begin ))
 
@@ -180,7 +180,7 @@ while IFS=$'\t' read -r g status detail; do
   [ -n "$g" ] || continue
   case "$status" in
     PLAYED)
-      uitgesloten "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_UITGESLOTEN")
+      uitgesloten "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_EXCLUDED")
       played=$((played + 1)); cases=$((cases + detail)) ;;
     EXCLUDE)
       uitgesloten "$g" || unnamed+=("$g :: $detail")
@@ -188,28 +188,28 @@ while IFS=$'\t' read -r g status detail; do
     *) deviations+=("$g :: $status $detail") ;;
   esac
 done <<< "$output"
-for e in "${REPLAY_UITGESLOTEN[@]}"; do
+for e in "${REPLAY_EXCLUDED[@]}"; do
   g="${e%%|*}"
-  printf '%s\n' "${set_goldens[@]}" | grep -qxF "$g" || outdated+=("$g staat in REPLAY_UITGESLOTEN maar niet in de set van gate 12")
+  printf '%s\n' "${set_goldens[@]}" | grep -qxF "$g" || outdated+=("$g staat in REPLAY_EXCLUDED maar niet in de set van gate 12")
 done
 
 if [ ${#deviations[@]} -gt 0 ]; then
-  echo "check-dienst-replay: FAIL — ${#deviations[@]} golden(s) wijken af of spelen niet:" >&2
+  echo "check-service-replay: FAIL — ${#deviations[@]} golden(s) wijken af of spelen niet:" >&2
   printf '    %s\n' "${deviations[@]}" >&2; exit 1
 fi
 if [ ${#unnamed[@]} -gt 0 ]; then
-  echo "check-dienst-replay: FAIL — ${#unnamed[@]} golden(s) spelen niet en staan niet in REPLAY_UITGESLOTEN:" >&2
+  echo "check-service-replay: FAIL — ${#unnamed[@]} golden(s) spelen niet en staan niet in REPLAY_EXCLUDED:" >&2
   printf '    %s\n' "${unnamed[@]}" >&2; exit 1
 fi
 if [ ${#outdated[@]} -gt 0 ]; then
-  echo "check-dienst-replay: FAIL — REPLAY_UITGESLOTEN is verouderd:" >&2
+  echo "check-service-replay: FAIL — REPLAY_EXCLUDED is verouderd:" >&2
   printf '    %s\n' "${outdated[@]}" >&2; exit 1
 fi
 [ "$played" -gt 0 ] || fail "geen golden speelde door de dienst (een lege set is een faal)"
 [ "$played" -eq "$EXPECTED_REPLAY_PLAYED" ] \
   || fail "$played goldens speelden, EXPECTED_REPLAY_PLAYED pint $EXPECTED_REPLAY_PLAYED (een nieuwe speler: zet het getal bij)"
 
-echo "check-dienst-replay: PASS"
+echo "check-service-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
 echo "  uitgesloten: $excl, bij naam met reden"

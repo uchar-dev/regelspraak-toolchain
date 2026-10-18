@@ -20,7 +20,7 @@
   -->
 
   <properties>
-    <skippin.poort>service</skippin.poort>
+    <skippin.gate>service</skippin.gate>
   </properties>
 
   <dependencies>

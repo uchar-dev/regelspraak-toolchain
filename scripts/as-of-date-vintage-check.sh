@@ -7,7 +7,7 @@
 # request must carry `peildatum`. The RUNTIME remains the enforcement authority (it 400s a missing peildatum);
 # this only surfaces the mismatch at deploy time so it is not silent.
 #
-# Usage:  peildatum-vintage-check.sh <parametersets.json> <declared-multiVintage: true|false>
+# Usage:  as-of-date-vintage-check.sh <parametersets.json> <declared-multiVintage: true|false>
 # Exit:   always 0 (advisory). A real problem is a WARN on stderr, not a block.
 set -euo pipefail
 
@@ -20,7 +20,7 @@ SETS_FILE="$1"
 DECLARED="$2"
 
 if [ ! -f "$SETS_FILE" ]; then
-  echo "peildatum-vintage-check: geen parametersets-bestand op '$SETS_FILE' — niets te controleren." >&2
+  echo "as-of-date-vintage-check: geen parametersets-bestand op '$SETS_FILE' — niets te controleren." >&2
   exit 0   # no sidecar mounted = the single-value default; nothing to warn about.
 fi
 
@@ -36,7 +36,7 @@ try:
     doc = json.load(open(sets_file))
 except (OSError, ValueError) as e:
     # A malformed sidecar is the runtime's job to reject loudly; here we only note we could not inspect it.
-    print(f"peildatum-vintage-check: kon '{sets_file}' niet lezen als JSON ({e}) — sla advisory over.", file=sys.stderr)
+    print(f"as-of-date-vintage-check: kon '{sets_file}' niet lezen als JSON ({e}) — sla advisory over.", file=sys.stderr)
     sys.exit(0)
 
 multi = {}   # parameter -> vintage count, only where count > 1
@@ -56,10 +56,10 @@ if multi_params and not declared:
     print("  --set parametersets.multiVintage=true zodat de NOTES de operator dit vertellen.", file=sys.stderr)
     print("=========================================================================", file=sys.stderr)
 elif multi_params and declared:
-    print(f"peildatum-vintage-check: multi-vintage bevestigd ({', '.join(multi_params)}) — "
+    print(f"as-of-date-vintage-check: multi-vintage bevestigd ({', '.join(multi_params)}) — "
           "declaratie klopt, geen mismatch.", file=sys.stderr)
 else:
-    print("peildatum-vintage-check: geen multi-vintage parameter gevonden — single-value pad, ok.", file=sys.stderr)
+    print("as-of-date-vintage-check: geen multi-vintage parameter gevonden — single-value pad, ok.", file=sys.stderr)
 PY
 
 exit 0

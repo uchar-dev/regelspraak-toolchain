@@ -37,12 +37,44 @@ and the ANTLR tool among them; after that every build runs offline.
 | `uchar/backends/drools` | uchar's Drools backend, built with uchar's own pom; its test suite runs with every build |
 | `uchar-frontend/` | uchar's RegelSpraak frontend compiled from `uchar/frontends/regelspraak`: the parser generated from uchar's grammar, the resolver and the emitters |
 | `toolchain/` | the CLI (`RegelSpraakCli`), the engine facade (`RegelSpraakEngine`), the scenario runner and its CLI, the verbaliser and the parameterset loader |
-| `service/` | the decision service on the JDK `HttpServer` (`BeslisserKern`, `DienstMain`, OpenAPI emitter, dev-only playground); its build also bundles the distribution into the one jar `bin/regelspraak` runs from |
+| `service/` | the decision service on the JDK `HttpServer` (`DecisionCore`, `ServiceMain`, OpenAPI emitter, dev-only playground); its build also bundles the distribution into the one jar `bin/regelspraak` runs from |
 | `service-quarkus/` | the Quarkus adapter over the same service core |
 
 Own code lives in `dev.uchar.regelspraak.toolchain.*` and uses only uchar's public API; every KieBase is built by
 `DroolsBackend.build(document, branch)` over the document uchar's emitter writes. The engine and the service are
 described in `docs/ENGINE.md`.
+
+## Contract change: English names
+
+Since the card `engelse-namen` (2026-10-18) everything a caller sees is English, except what comes from RegelSpraak
+(the kinds of declarations `ATTRIBUUT`, `FEITTYPE`, `ROL` ..., the predicates, the global `rekendatum`, the names a
+model declares) and the sentences of the messages, which keep their text. The old names no longer work:
+
+- **JSON** of the requests, the answers, `/info`, the playground and the OpenAPI document: `instanties`, `attributen`,
+  `kenmerken`, `rollen`, `relaties`, `feittype`, `peildatum` are `instances`, `attributes`, `characteristics`, `roles`,
+  `relations`, `factType`, `asOfDate`; `fout`, `fouten`, `veld`, `soort`, `schendingen`, `reden` are `error`, `faults`,
+  `field`, `kind`, `violations`, `reason`; `dekking`, `fixpunt`, `uitleg`, `inconsistenties`, `onderwerp`, `waarde`,
+  `eenheid`, `tijdlijn` are `coverage`, `fixpoint`, `explanation`, `inconsistencies`, `subject`, `value`, `unit`,
+  `timeline`; the descriptor's `dienst`, `naam`, `pad`, `invoer`, `uitvoer`, `regelnamen`, `regelgroepen`,
+  `vocabulaire`, `parametersets` are `service`, `name`, `path`, `input`, `output`, `ruleNames`, `ruleGroups`,
+  `vocabulary`, `parameterSets` (the file is `<name>.service.json`); the schemas `Verzoek`, `Antwoord`, `Fout`,
+  `Evaluatiefout`, `GeenFixpunt`, `Dekking`, `Fixpunt` are `Request`, `Answer`, `Error`, `EvaluationFault`,
+  `NoFixpoint`, `Coverage`, `Fixpoint`.
+- **Values**: the statuses `EVALUATIEFOUT` and `GEEN_FIXPUNT` are `EVALUATION_FAULT` and `NO_FIXPOINT`; the violation
+  kinds `ONBEKEND_VELD`, `VERKEERD_TYPE`, `NIET_ONDERSTEUND` ... are `UNKNOWN_FIELD`, `WRONG_TYPE`, `UNSUPPORTED` ...
+  (`Violation.Kind`); the fault kinds `DELING_DOOR_NUL`, `REKENFOUT`, `SCHRIJVERSCONFLICT`, `INVOERVORMFOUT`, `ANDERE`
+  are `DIVISION_BY_ZERO`, `COMPUTE_FAULT`, `WRITERS_CONFLICT`, `INPUT_FORM_FAULT`, `OTHER`; the coverage kinds `GEVUURD`
+  and `NIET_GERAAKT` are `FIRED` and `NOT_FIRED`; the origins `afgeleid`, `invoer`, `creatie` are `derived`, `input`,
+  `creation`; the pseudo vocabulary `canoniek` is `canonical`.
+- **Query parameters**: `uitleg`, `vocabulaire`, `invoervocabulaire`, `dekking`, `fixpunt` are `explanation`,
+  `vocabulary`, `inputVocabulary`, `coverage`, `fixpoint`; `?via=dienst` is `?via=service`.
+- **Environment and Helm**: `POORT`, `BRONNEN_MANIFEST`, `REPLAY_WERKERS` are `PORT`, `SOURCES_MANIFEST`,
+  `REPLAY_WORKERS`; the Helm values `poort`, `bronnenManifest`, `parametersets` are `port`, `sourcesManifest`,
+  `parameterSets`; the chart and the image `beslisservice` are `decision-service`.
+- **CLI and make**: the flags `--poort`, `--uitleg`, `--vocabulaire`, `--uitsluitingen`, `--parametersets`, `--getuige`
+  are `--port`, `--explanation`, `--vocabulary`, `--exclusions`, `--parameter-sets`, `--witness`; the command and target
+  `graaf` is `graph`; the targets `poorten`, `check-tweelingen`, `check-dienst-replay` are `gates-no-docker`,
+  `check-twins`, `check-service-replay`.
 
 ## The pin
 
@@ -53,7 +85,7 @@ move the pin:
 
 ```
 git -C uchar fetch && git -C uchar checkout <commit on uchar's main>
-make poorten
+make gates-no-docker
 git add uchar
 ```
 
@@ -69,41 +101,41 @@ at the first red step, with one summary line per step and a closing line; the fu
 ```
 scripts/check-pin.sh      # the submodule is initialised, clean, on the recorded commit; the versions are uchar's
 mvn -B -o verify          # the reactor; each own module holds its test count to a floor (tools/check-skips.sh)
-make check-tweelingen     # the three dialect twins and the vocabulary twin, over HTTP, with their case expectations
-make check-dienst-replay  # every golden uchar's gate 12 plays, replayed through the service
+make check-twins     # the three dialect twins and the vocabulary twin, over HTTP, with their case expectations
+make check-service-replay  # every golden uchar's gate 12 plays, replayed through the service
 make scenario-test        # the golden TOKA scenario manifest
 make image                # the service image ("The container")
 make kind-smoke           # that image in kind: the golden scenarios over HTTP, the marker, a rollout
 ```
 
 It needs, beside the checked-out submodule and the Maven repository of a first build: Java 21, Maven, python3,
-Docker, kind, kubectl and helm. The first five steps are `make poorten`, which needs no Docker: green there means
+Docker, kind, kubectl and helm. The first five steps are `make gates-no-docker`, which needs no Docker: green there means
 the distribution builds and answers as uchar does. No hosted CI runs the gates; `TAG=`, `DESCRIPTOR_SRC=` and
 `CLUSTER=` pass on to the image and the kind smoke.
 
 The two service gates start the JDK service themselves (`bin/regelspraak serve` on the jar the reactor builds, on a
 free port of 127.0.0.1, removed when done) and turn every uchar case file into a request; the answer must give each
-pinned expectation, compared as uchar's replay compares it (`scripts/dienst_replay.py`). They need `java`, `mvn` and
+pinned expectation, compared as uchar's replay compares it (`scripts/service_replay.py`). They need `java`, `mvn` and
 `python3`.
 
-- `check-tweelingen` serves `ww-herleving-inkomen-rgs`, `jutterswet-uitsluiting-rgs` and
+- `check-twins` serves `ww-herleving-inkomen-rgs`, `jutterswet-uitsluiting-rgs` and
   `jutterswet-nestkenmerk-rgs` from their `bron.rgs` with a descriptor as a user writes one
-  (`scripts/tweelingen/`): named entry points whose scope names the rules and the defaults group. The case count of
+  (`scripts/twins/`): named entry points whose scope names the rules and the defaults group. The case count of
   each twin is pinned (10 + 4 + 4). It then serves the vocabulary twin `jutterswet-vocabulaires`
-  (`scripts/vocabulaire_replay.py`): each case in the canonical spelling, in that of each vocabulary and mixed, each
+  (`scripts/vocabulary_replay.py`): each case in the canonical spelling, in that of each vocabulary and mixed, each
   answer asked canonically and in each vocabulary, beside the pinned input vocabulary, an entry point's default
   vocabulary and `/info`, with the golden's `ir.json` as the table of names (2 cases pinned, at least 34 requests);
-  and an own witness (`scripts/tweelingen/vocabulaire-dubbelzinnig.*`): a name that two vocabularies give to two
+  and an own witness (`scripts/twins/vocabulaire-dubbelzinnig.*`): a name that two vocabularies give to two
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
-- `check-dienst-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
+- `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
   case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (255). Each golden is
   served from its `bron.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 225); every golden that does not play is listed by name with
   its reason (30, each a timeline form the request cannot express); a deviation always fails, and the list fails when
   it goes stale in either direction. About 50 seconds with four services at a time (`REPLAY_WORKERS`).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
-  scenario resolver refuses are listed in `scripts/toka-manifest-uitsluitingen.txt` with a fragment of that refusal,
+  scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
   and a listed scenario uchar accepts fails the run.
 
 ## Everyday use: `bin/regelspraak`
@@ -117,11 +149,11 @@ to the directory the command is given in.
 | `check <bron.rgs...>` | parse and resolve: the model summary and the diagnostics (in a chain of files as `file:line`), exit 1 on an error; then the build on uchar's exec-model branch, exit 3 when uchar does not carry the model |
 | `ir <uit.json> <bron.rgs...>` | the `uchar-ir-v1` document of the model (uchar's emitter) |
 | `cases <map> <bron.rgs...>` | the scenarios of a test document lowered to uchar case files in `<map>`, beside the IR document they run against (`<map>/ir.json`): the layout of uchar's corpus |
-| `scenario [--trace] [--uitleg] [--vocabulaire <naam>] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulaire` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
-| `scenario --manifest <manifest> [--uitsluitingen <lijst>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
-| `serve <descriptor.service.json> <bron.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--port N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?dekking` and `?fixpunt`, and the workbench's `?via=service` |
+| `scenario [--trace] [--explanation] [--vocabulary <naam>] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulary` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
+| `scenario --manifest <manifest> [--exclusions <lijst>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
+| `serve <descriptor.service.json> <bron.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--port N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?coverage` and `?fixpoint`, and the workbench's `?via=service` |
 | `drl <bron.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
-| `graaf [--mmd] <uit> <bron.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
+| `graph [--mmd] <uit> <bron.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
 | `facts <uitmap> <bron.rgs...>` | the fact beans uchar's generator writes for the model |
 
 Exit 2 is a wrong invocation. Every command runs from one jar the reactor builds. In a checkout `bin/regelspraak`
@@ -136,29 +168,29 @@ The make targets of the same name call `bin/regelspraak` and nothing else, with 
 make check FILE="model.rgs regels.rgs"
 make ir FILE="model.rgs regels.rgs"             # out/ir.json (OUT= overrides)
 make cases FILE="model.rgs scenario.rgs"        # out/cases/ (OUT= overrides)
-make scenario FILE="--uitleg model.rgs scenario.rgs"
+make scenario FILE="--explanation model.rgs scenario.rgs"
 make serve FILE="d.service.json model.rgs regels.rgs" PORT=8080
 make drl FILE=model.rgs
-make graaf FILE="model.rgs regels.rgs"          # out/regelgraaf.html (MMD=1 for Mermaid, OUT= overrides)
+make graph FILE="model.rgs regels.rgs"          # out/rule-graph.html (MMD=1 for Mermaid, OUT= overrides)
 make facts                                      # the TOKA model foundation (FILE= another model), javac'd
 make scenario-test                              # the golden TOKA scenario set
 ```
 
 A scenario document runs through uchar's scenario layer: uchar resolves it, lowers the scenarios to case files,
-and uchar's replay reports each one. With `--uitleg` (`FILE="--uitleg a.rgs"`) each played scenario also gets the
+and uchar's replay reports each one. With `--explanation` (`FILE="--explanation a.rgs"`) each played scenario also gets the
 explanation of its outcome: it is played once more, in a session of its own on the same build, through uchar's entry
 with the input as the replay puts it in, and the verbaliser explains the beans with their derived values; the
 explanation is withheld, with the difference, when that session did not fire what uchar's replay reported, counted
 per form of the document as the replay counts it. uchar's scenario resolver refuses three of the 29 golden TOKA
-scenarios (listed with their reasons in `scripts/toka-manifest-uitsluitingen.txt`).
+scenarios (listed with their reasons in `scripts/toka-manifest-exclusions.txt`).
 
 The decision service serves a descriptor over `.rgs` sources or over one `uchar-ir-v1` document; `docs/ENGINE.md`
 describes its routes, its MARKER answer and the dev-only playground. A scope that names a base rule also carries the
 groups uchar makes of the own exceptions of its subtypes (`<basis> voor <subtype>`), and a scope that names such a group
 carries its base. It checks every scope at the start: a rule or a defaults group in the scope that reads an attribute or
 characteristic only forms outside the scope write refuses the start, naming the reader (for a group the default that
-reads, by its text and path), unless the entry point declares that element in `invoerElementen` or sets
-`scopeControleUit`.
+reads, by its text and path), unless the entry point declares that element in `inputElements` or sets
+`scopeCheckOptOut`.
 
 ## Vocabularies
 
@@ -171,21 +203,21 @@ rules are written and computed in the canonical names. The distribution uses the
   case-insensitively, within the scope of the name (the members of an object type with the inherited ones, the roles
   of a fact type, the values of a domain, the rest model-wide). A name that reads as two different declarations is a
   400 `AMBIGUOUS_NAME` whose sentence names both readings; the query parameter `inputVocabulary=<naam>` pins
-  the vocabulary the names are read in (`canoniek` for the canonical names), which resolves it.
+  the vocabulary the names are read in (`canonical` for the canonical names), which resolves it.
 - **Output is chosen.** `vocabulary=<naam>` names the declarations of the answer, its inconsistencies and its
-  uitleg in that vocabulary; without it the entry point's `vocabulaire` from the descriptor applies, else the
+  uitleg in that vocabulary; without it the entry point's `vocabulary` from the descriptor applies, else the
   canonical names. An unknown vocabulary is a 400 `UNKNOWN_VOCABULARY` naming the declared ones.
 - **Complete or not.** A declaration without a designation in the chosen vocabulary keeps its canonical name. uchar
   requires a designation of every declaration only in the default vocabulary; `/info` lists per vocabulary whether it
   is complete and which declarations have none.
-- **One OpenAPI document per vocabulary.** `OpenApiEmitter.emit(descriptor, model, vocabulaire)` writes the contract
+- **One OpenAPI document per vocabulary.** `OpenApiEmitter.emit(descriptor, model, vocabulary)` writes the contract
   in the names of one vocabulary (or canonically); each property, value and entry point lists its other spellings in
   `x-spellingen` / `x-waardespellingen`, which the service accepts as well. A model without vocabularies gets the
   document it always had.
 - **A designation is part of the contract.** Changing a designation changes the names a consumer of that vocabulary
   sends and receives; treat it as a contract change of the service.
 
-The word `canoniek` chooses the canonical names, so a model that declares a vocabulary of that name does not start.
+The word `canonical` chooses the canonical names, so a model that declares a vocabulary of that name does not start.
 The rule text is not renamed: the uitleg quotes it as written. The exception is a rule uchar wrote itself, the rule
 `afwijking opgave X` of the opgave marker: its text is uchar's canonical spelling, not an author's, so the uitleg names
 the attribute an operand reads in the chosen vocabulary (`zijn opgegeven Datum einde recht op uitkering`). uchar's table
@@ -230,7 +262,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 
 ## Known losses
 
-- **A parameter-set file on the scenario route** (`--parametersets`, refused by name). A scenario gets its parameter
+- **A parameter-set file on the scenario route** (`--parameter-sets`, refused by name). A scenario gets its parameter
   set from the scenario document itself: a `Parameterset <naam>:` block, chosen with `met parameterset <naam>`
   (uchar's scenario layer, since the pin on `c70dcad6`). The former runner's JSON file beside the scenario has no
   counterpart.
@@ -241,14 +273,14 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 - **The uitleg** explains characteristic-attribution rules, not defaults groups: a characteristic a defaults group
   decides gets no sentence.
 - **The playground trace** names per fired rule the labels it bound and how often, but no value: uchar's report
-  carries none. The values stand in the scenario's `fixpunt`, read from the case's own session.
+  carries none. The values stand in the scenario's `fixpoint`, read from the case's own session.
 - **The sentence of an expectation.** uchar's scenario resolver gives the line an expectation begins on
-  (`ResolvedScenario.Expectation.line`) and no end; the playground's `regeltekst` is that line, which is the whole
+  (`ResolvedScenario.Expectation.line`) and no end; the playground's `lineText` is that line, which is the whole
   expectation only where one bullet stands on one line. A timeline expectation of several bullets is one entry at
   its first bullet. The name of the parameter set a scenario chose is not in the resolved scenario either; its
   values are, each with its line.
-- **Vocabulary names in the Mermaid graph.** The playground's `graaf` and `bin/regelspraak graaf` are uchar's
-  rendering and stay canonical; the playground's `graafJson` carries the chosen vocabulary.
+- **Vocabulary names in the Mermaid graph.** The playground's `graph` and `bin/regelspraak graph` are uchar's
+  rendering and stay canonical; the playground's `graphJson` carries the chosen vocabulary.
 
 ## The TOKA casus and the specification
 

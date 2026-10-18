@@ -7,48 +7,48 @@
 # (the container sets it) and is never rebuilt. JAVA_OPTS reach the JVM; JAVA_HOME picks the JDK.
 set -euo pipefail
 
-gebruik() {
-  cat <<'TEKST'
+usage() {
+  cat <<'TEXT'
 gebruik: bin/regelspraak <opdracht> [argumenten]
 
   check <bron.rgs...>                 parse and resolve; the diagnostics, then whether uchar carries the model
   ir <uit.json> <bron.rgs...>         the uchar-ir-v1 document of the model (uchar's emitter)
   cases <map> <bron.rgs...>           the scenarios lowered to case files in <map>, beside <map>/ir.json
-  scenario [--trace] [--uitleg] [--vocabulaire <naam>] <bron.rgs...>
-  scenario [--trace] --manifest <manifest> [--uitsluitingen <lijst>]
+  scenario [--trace] [--explanation] [--vocabulary <naam>] <bron.rgs...>
+  scenario [--trace] --manifest <manifest> [--exclusions <lijst>]
                                       lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario;
-                                      --vocabulaire names the rules and declarations of trace and uitleg in a
-                                      vocabulary of the model (canoniek: the canonical names)
+                                      --vocabulary names the rules and declarations of trace and explanation in a
+                                      vocabulary of the model (canonical: the canonical names)
   serve <descriptor.service.json> <bron.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]
                                       the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench;
-                                      --detail or DETAIL=true: ?trace, ?dekking and ?fixpunt, and the
+                                      --detail or DETAIL=true: ?trace, ?coverage and ?fixpoint, and the
                                       workbench's ?via=service)
   drl <bron.rgs...>                   the DRL text of uchar's DRL-text branch
-  graaf [--mmd] <uit> <bron.rgs...>   the rule graph as an HTML page, or with --mmd as Mermaid text
+  graph [--mmd] <uit> <bron.rgs...>   the rule graph as an HTML page, or with --mmd as Mermaid text
   facts <uitmap> <bron.rgs...>        the fact beans uchar's generator writes for the model
 
 Several sources are read as one model, concatenated in the order given; paths are relative to the directory the
 command is given in. Exit codes: 0 done, 1 an error in the model or a failed scenario, 2 a wrong invocation, 3 the
 model resolves but uchar does not carry it (a marker).
-TEKST
+TEXT
 }
 
-fout() { echo "regelspraak: $*" >&2; echo "(bin/regelspraak help geeft het gebruik)" >&2; exit 2; }
+fail() { echo "regelspraak: $*" >&2; echo "(bin/regelspraak help geeft het gebruik)" >&2; exit 2; }
 
 # the checkout this script belongs to, also when it is called through a symbolic link
-zelf=${BASH_SOURCE[0]}
-while [ -L "$zelf" ]; do
-  doel=$(readlink "$zelf")
-  case "$doel" in /*) zelf=$doel ;; *) zelf=$(dirname "$zelf")/$doel ;; esac
+self=${BASH_SOURCE[0]}
+while [ -L "$self" ]; do
+  target=$(readlink "$self")
+  case "$target" in /*) self=$target ;; *) self=$(dirname "$self")/$target ;; esac
 done
-ROOT=$(cd "$(dirname "$zelf")/.." && pwd -P)
+ROOT=$(cd "$(dirname "$self")/.." && pwd -P)
 
 # What the jar is built from: the reactor poms, the own main sources, and uchar's frontend and backend.
-JAR_BRONNEN=(pom.xml uchar-frontend/pom.xml toolchain/pom.xml toolchain/src/main service/pom.xml service/src/main
+JAR_SOURCES=(pom.xml uchar-frontend/pom.xml toolchain/pom.xml toolchain/src/main service/pom.xml service/src/main
   uchar/frontends/regelspraak/grammar uchar/frontends/regelspraak/src/main uchar/backends/drools/pom.xml
   uchar/backends/drools/src/main)
 
-jar_gereed() {
+jar_ready() {
   if [ -n "${REGELSPRAAK_JAR:-}" ]; then
     [ -f "$REGELSPRAAK_JAR" ] || { echo "regelspraak: REGELSPRAAK_JAR noemt geen bestand: $REGELSPRAAK_JAR" >&2; exit 1; }
     JAR=$REGELSPRAAK_JAR
@@ -59,14 +59,14 @@ jar_gereed() {
     echo "regelspraak: de submodule uchar/ is niet uitgecheckt; draai in $ROOT: git submodule update --init --recursive" >&2
     exit 1
   }
-  local nieuwer=""
+  local newer=""
   if [ -f "$JAR" ]; then
-    nieuwer=$(cd "$ROOT" && find "${JAR_BRONNEN[@]}" -newer "$JAR" -print -quit) \
+    newer=$(cd "$ROOT" && find "${JAR_SOURCES[@]}" -newer "$JAR" -print -quit) \
       || { echo "regelspraak: de bronnen van de jar zijn niet te lezen in $ROOT" >&2; exit 1; }
-    [ -z "$nieuwer" ] && return
+    [ -z "$newer" ] && return
   fi
   command -v mvn >/dev/null 2>&1 || { echo "regelspraak: mvn ontbreekt, en de jar moet gebouwd worden" >&2; exit 1; }
-  echo "regelspraak: de jar ${nieuwer:+is ouder dan $nieuwer en }wordt gebouwd (Maven offline, zonder tests)" >&2
+  echo "regelspraak: de jar ${newer:+is ouder dan $newer en }wordt gebouwd (Maven offline, zonder tests)" >&2
   (cd "$ROOT" && mvn -B -q -o -DskipTests package -pl service -am) >&2 || {
     echo "regelspraak: de build faalt; de eerste build op een machine heeft één keer het netwerk nodig:" >&2
     echo "    (cd $ROOT && mvn -B -DskipTests package)" >&2
@@ -76,75 +76,75 @@ jar_gereed() {
 
 # One JVM for the command; exec, so a signal to this script reaches the JVM and its exit code is the command's.
 start() {
-  local klasse=$1; shift
-  jar_gereed
+  local class_name=$1; shift
+  jar_ready
   local java=java
   [ -n "${JAVA_HOME:-}" ] && java=$JAVA_HOME/bin/java
   # shellcheck disable=SC2086  # JAVA_OPTS carries several options on purpose
-  exec "$java" ${JAVA_OPTS:-} -cp "$JAR" "$klasse" "$@"
+  exec "$java" ${JAVA_OPTS:-} -cp "$JAR" "$class_name" "$@"
 }
 
 # The sources of a command: at least one, each an existing file, and no option among them.
-bronnen() {
-  local opdracht=$1; shift
-  [ $# -gt 0 ] || fout "$opdracht: geen bron.rgs opgegeven"
+check_sources() {
+  local command=$1; shift
+  [ $# -gt 0 ] || fail "$command: geen bron.rgs opgegeven"
   local f
   for f in "$@"; do
-    case "$f" in -*) fout "$opdracht: onbekende optie $f" ;; esac
-    [ -f "$f" ] || fout "$opdracht: bestand niet gevonden: $f"
+    case "$f" in -*) fail "$command: onbekende optie $f" ;; esac
+    [ -f "$f" ] || fail "$command: bestand niet gevonden: $f"
   done
 }
 
 CLI=dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli
 RESOLVER=dev.uchar.regelspraak.resolver.Resolver
 SCENARIO=dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli
-DIENST=dev.uchar.regelspraak.toolchain.service.http.ServiceMain
+SERVICE=dev.uchar.regelspraak.toolchain.service.http.ServiceMain
 
-[ $# -gt 0 ] || { gebruik >&2; exit 2; }
-opdracht=$1; shift
-case "$opdracht" in
+[ $# -gt 0 ] || { usage >&2; exit 2; }
+command=$1; shift
+case "$command" in
   help|-h|--help)
-    gebruik ;;
+    usage ;;
   check)
-    bronnen check "$@"
+    check_sources check "$@"
     start "$CLI" "$@" ;;
   ir)
-    [ $# -ge 1 ] || fout "ir: geen uit.json opgegeven"
-    uit=$1; shift
-    case "$uit" in -*) fout "ir: onbekende optie $uit" ;; esac
-    bronnen ir "$@"
-    start "$RESOLVER" --ir "$uit" "$@" ;;
+    [ $# -ge 1 ] || fail "ir: geen uit.json opgegeven"
+    out=$1; shift
+    case "$out" in -*) fail "ir: onbekende optie $out" ;; esac
+    check_sources ir "$@"
+    start "$RESOLVER" --ir "$out" "$@" ;;
   cases)
-    [ $# -ge 1 ] || fout "cases: geen map opgegeven"
-    map=$1; shift
-    case "$map" in -*) fout "cases: onbekende optie $map" ;; esac
-    bronnen cases "$@"
-    start "$RESOLVER" --ir "$map/ir.json" --cases "$map" "$@" ;;
+    [ $# -ge 1 ] || fail "cases: geen map opgegeven"
+    dir=$1; shift
+    case "$dir" in -*) fail "cases: onbekende optie $dir" ;; esac
+    check_sources cases "$@"
+    start "$RESOLVER" --ir "$dir/ir.json" --cases "$dir" "$@" ;;
   scenario)
-    [ $# -gt 0 ] || fout "scenario: geen bron.rgs en geen --manifest opgegeven"
+    [ $# -gt 0 ] || fail "scenario: geen bron.rgs en geen --manifest opgegeven"
     start "$SCENARIO" "$@" ;;
   serve)
-    [ $# -gt 0 ] || fout "serve: geen descriptor en geen bron opgegeven"
-    start "$DIENST" "$@" ;;
+    [ $# -gt 0 ] || fail "serve: geen descriptor en geen bron opgegeven"
+    start "$SERVICE" "$@" ;;
   drl)
-    bronnen drl "$@"
+    check_sources drl "$@"
     start "$CLI" --drl "$@" ;;
-  graaf)
-    modus=--graaf; rest=()
+  graph)
+    mode=--graph; rest=()
     for a in "$@"; do
-      if [ "$a" = --mmd ]; then modus=--graaf-mmd; else rest+=("$a"); fi
+      if [ "$a" = --mmd ]; then mode=--graph-mmd; else rest+=("$a"); fi
     done
-    [ ${#rest[@]} -ge 1 ] || fout "graaf: geen uitvoerbestand opgegeven"
-    uit=${rest[0]}
-    case "$uit" in -*) fout "graaf: onbekende optie $uit" ;; esac
-    bronnen graaf "${rest[@]:1}"
-    start "$CLI" "$modus" "$uit" "${rest[@]:1}" ;;
+    [ ${#rest[@]} -ge 1 ] || fail "graph: geen uitvoerbestand opgegeven"
+    out=${rest[0]}
+    case "$out" in -*) fail "graph: onbekende optie $out" ;; esac
+    check_sources graph "${rest[@]:1}"
+    start "$CLI" "$mode" "$out" "${rest[@]:1}" ;;
   facts)
-    [ $# -ge 1 ] || fout "facts: geen uitmap opgegeven"
-    uitmap=$1; shift
-    case "$uitmap" in -*) fout "facts: onbekende optie $uitmap" ;; esac
-    bronnen facts "$@"
-    start "$CLI" --facts "$uitmap" "$@" ;;
+    [ $# -ge 1 ] || fail "facts: geen uitmap opgegeven"
+    outdir=$1; shift
+    case "$outdir" in -*) fail "facts: onbekende optie $outdir" ;; esac
+    check_sources facts "$@"
+    start "$CLI" --facts "$outdir" "$@" ;;
   *)
-    fout "onbekende opdracht: $opdracht" ;;
+    fail "onbekende opdracht: $command" ;;
 esac
