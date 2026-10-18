@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""csv_naar_beslistabel.py — convert a CSV decision table into the canonical §12
+"""csv_to_beslistabel.py — convert a CSV decision table into the canonical §12
 RegelSpraak `Beslistabel` markdown-pipe-table surface (an .rgs fragment).
 
 Sibling of tools/extract_corpus.py: pure stdlib, python3, no deps. This is an
@@ -53,7 +53,7 @@ emits.
 
 USAGE
 -----
-    csv_naar_beslistabel.py [--out <pad>] [<csv-in>]
+    csv_to_beslistabel.py [--out <pad>] [<csv-in>]
       <csv-in>   input CSV file; omit (or "-") to read stdin
       --out      output .rgs path; omit to write stdout
 
@@ -205,26 +205,26 @@ def convert(text):
     # Drop wholly-empty rows (a trailing blank line, an Excel artefact row).
     rows = [r for r in rows if any(v.strip() for v, _ in r)]
 
-    naam = None
-    geldig = None
+    name = None
+    validity = None
     idx = 0
     # Metadata rows: EXACTLY 2 fields, first cell exactly "naam"/"geldig"
     # (case-sensitive). Metadata values are trimmed regardless of quoting.
     while idx < len(rows):
         r = rows[idx]
         if len(r) == 2 and r[0][0] == "naam":
-            naam = r[1][0].strip()
+            name = r[1][0].strip()
             idx += 1
         elif len(r) == 2 and r[0][0] == "geldig":
-            geldig = r[1][0].strip()
+            validity = r[1][0].strip()
             idx += 1
         else:
             break
 
-    if naam is None:
-        naam = "Beslistabel"  # placeholder; the resolver names the authority
-    if geldig is None:
-        geldig = "geldig altijd"
+    if name is None:
+        name = "Beslistabel"  # placeholder; the resolver names the authority
+    if validity is None:
+        validity = "geldig altijd"
 
     remaining = rows[idx:]
     if not remaining:
@@ -260,16 +260,16 @@ def convert(text):
         cells = [_check_cell(c, row_label, i) for i, c in enumerate(r)]
         out_data.append(cells)
 
-    return _render(naam, geldig, header_cells, out_data)
+    return _render(name, validity, header_cells, out_data)
 
 
-def _render(naam, geldig, header_cells, data_rows):
+def _render(name, validity, header_cells, data_rows):
     """Assemble the markdown pipe-table. Row-number column is prepended: header
     cell empty (`|   |`), data cells the running number (1..N). Separator line
     has one `---` per column INCLUDING the row-number column."""
     lines = []
-    lines.append(f"Beslistabel {naam}")
-    lines.append(f"    {geldig}")
+    lines.append(f"Beslistabel {name}")
+    lines.append(f"    {validity}")
 
     # Header: leading empty row-number cell, then the header sentences.
     hdr = "    |   | " + " | ".join(header_cells) + " |"
@@ -288,7 +288,7 @@ def _render(naam, geldig, header_cells, data_rows):
 
 def main(argv=None):
     p = argparse.ArgumentParser(
-        prog="csv_naar_beslistabel.py",
+        prog="csv_to_beslistabel.py",
         description=(
             "Convert a CSV decision table into the canonical §12 RegelSpraak "
             "Beslistabel markdown-pipe-table .rgs fragment.\n\n"
