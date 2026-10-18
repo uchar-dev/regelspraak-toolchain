@@ -3,7 +3,7 @@
   "request": { "instances": [ { "type": "Jutter", "id": "J1",
                                  "attributes": { "bedrag": "10.00", "premiebedrag": "2.50" } } ] },
   "witnesses": [
-    { "query": "", "status": 400, "kind": "AMBIGUOUS_NAME", "field": "instanties[0].attributen.bedrag",
+    { "query": "", "status": 400, "kind": "AMBIGUOUS_NAME", "field": "instances[0].attributes.bedrag",
       "contains": ["de naam 'bedrag' is dubbelzinnig",
                 "in het vocabulaire 'handboek' het attribuut 'vondstbedrag' van 'Jutter'",
                 "in het vocabulaire 'cgm' het attribuut 'premiebedrag' van 'Jutter'",
