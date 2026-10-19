@@ -23,7 +23,7 @@ sourcesManifest: ""
 # (validity-versioned parameter values, e.g. a rate that changes every 1 January), the
 # service resolves each parameter's vintage against ONE date authority: the request
 # `asOfDate` (which IS the rekendatum global). The runtime already fails a request 400
-# "peildatum verplicht" when multi-vintage sets are loaded and the field is absent, and
+# "asOfDate is verplicht" when multi-vintage sets are loaded and the field is absent, and
 # 400s on a asOfDate/rekendatum mismatch — see /info for the loaded validity ranges.
 #
 # This flag adds NO runtime mechanism. It is an operator-declared hint so a multi-vintage

@@ -263,7 +263,7 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
 carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request
 `asOfDate`, which *is* the rekendatum global. A request without `asOfDate` gets `400 "peildatum verplicht"`, a
 peildatum/rekendatum clash gets 400, and `/info` lists the loaded validity ranges plus `periodWarnings`. The
-advisory `scripts/as-of-date-vintage-check.sh <parametersets.json> <true|false>` WARNs (never blocks) on a
+advisory `scripts/as-of-date-vintage-check.sh <parameter-sets.json> <true|false>` WARNs (never blocks) on a
 declared/actual mismatch.
 
 ## Deploying (container + Helm + kind) — host only

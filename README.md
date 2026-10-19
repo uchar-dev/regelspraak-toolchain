@@ -60,6 +60,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
   `vocabulary`, `parameterSets` (the file is `<name>.service.json`); the schemas `Verzoek`, `Antwoord`, `Fout`,
   `Evaluatiefout`, `GeenFixpunt`, `Dekking`, `Fixpunt` are `Request`, `Answer`, `Error`, `EvaluationFault`,
   `NoFixpoint`, `Coverage`, `Fixpoint`.
+- **Parameter-set sidecar** (`<name>.parameters.json`, named by the descriptor's `parameterSets`, read by
+  `ParameterSetLoader`): `parametersets`, `naam`, `waarden`, `waarde`, `vanaf`, `tot`, `eenheid` are `parameterSets`,
+  `name`, `values`, `value`, `from`, `to`, `unit`. A sidecar in the old shape is refused with the message that
+  `parameterSets` is missing, and `scripts/as-of-date-vintage-check.sh` fails on it instead of reporting a single-value
+  deploy.
 - **Values**: the statuses `EVALUATIEFOUT` and `GEEN_FIXPUNT` are `EVALUATION_FAULT` and `NO_FIXPOINT`; the violation
   kinds `ONBEKEND_VELD`, `VERKEERD_TYPE`, `NIET_ONDERSTEUND` ... are `UNKNOWN_FIELD`, `WRONG_TYPE`, `UNSUPPORTED` ...
   (`Violation.Kind`); the fault kinds `DELING_DOOR_NUL`, `REKENFOUT`, `SCHRIJVERSCONFLICT`, `INVOERVORMFOUT`, `ANDERE`

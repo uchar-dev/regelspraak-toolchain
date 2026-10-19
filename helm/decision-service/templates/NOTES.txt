@@ -19,7 +19,7 @@ peildatum-contract (multiVintage = true):
   Deze deploy is als MULTI-VINTAGE gedeclareerd — de geladen parametersets dragen
   meer dan één geldigheidsversie. ELK verzoek MOET dan een `asOfDate` meesturen:
   de dienst kiest daarmee de geldende vintage én die datum IS de rekendatum-global.
-  Een verzoek zonder `asOfDate` krijgt 400 "peildatum verplicht"; asOfDate en een
+  Een verzoek zonder `asOfDate` krijgt 400 "asOfDate is verplicht"; asOfDate en een
   eventuele rekendatum die botsen krijgen 400. Zie de geladen geldigheidsranges op:
     kubectl port-forward svc/{{ include "decision-service.fullname" . }} 8080:8080
     curl -fsS http://127.0.0.1:8080/info    # → "parameterSets" + "periodWarnings"
