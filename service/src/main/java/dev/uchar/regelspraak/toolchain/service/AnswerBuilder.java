@@ -101,7 +101,7 @@ public final class AnswerBuilder {
         ArrayNode inc = root.putArray("inconsistencies");
         ArrayNode details = NF.arrayNode();
         for (Object o : outcome.inconsistencies()) {
-            Object line = RegelSpraakRuntime.get(o, "regel");
+            Object line = RegelSpraakRuntime.get(o, "rule");
             String name = line == null ? null : naming.form(line.toString());
             inc.add(name);
             ObjectNode d = details.addObject();

@@ -220,7 +220,7 @@ public final class FixpointGivens {
         }
         List<String[]> inconsistencies = new ArrayList<>();
         for (Object o : f.inconsistencies()) {
-            Object line = CaseSession.read(o, "getRegel");
+            Object line = CaseSession.read(o, "getRule");
             Object subject = CaseSession.read(o, "getSubject");
             inconsistencies.add(new String[]{line == null ? null : line.toString(),
                     subject == null ? null : refOf(subject, ref)});
