@@ -43,7 +43,7 @@ antlr4-maven-plugin among them; after that, build offline.
 Green means `make gates` passes (`make gates-no-docker` is its first five steps): check-pin, `mvn -B -o verify`, the two service gates and the golden TOKA
 manifest (README, "The gates"). Each own module ends its tests with the skip-pin step (`tools/check-skips.sh`):
 every skipped or aborted test is printed by name and fails the build unless it is pinned with a reason, a test
-class that produced no test case fails, and each module is held to a floor (`VLOEREN` in the script). Floors are
+class that produced no test case fails, and each module is held to a floor (`FLOORS` in the script). Floors are
 lower bounds: growth needs no bump; a deliberate removal lowers the floor in the same commit.
 
 The service gates (`scripts/check-twins.sh`, `scripts/check-service-replay.sh`) start the JDK service
@@ -64,4 +64,7 @@ Beslistabel converter). `make image` and `make kind-smoke` need Docker and run o
   documents, the `jutterswet-*` names) stay Dutch, and so do the parser rules of the grammar. What is visible outside the code is
   English too: JSON keys, OpenAPI, subcommands and flags, Make targets, environment variables, Helm and Docker configuration. What
   comes from RegelSpraak stays (the kinds of declarations `ATTRIBUUT`, `FEITTYPE`, `ROL`, the predicates, the global `rekendatum`, names
-  a model declares), and so do the sentences of the messages, until they get a card of their own.
+  a model declares). The messages of uchar come from its catalogues (codes `RGS-###`, `DROOLS-###`; Dutch by default, `--language`
+  or `Accept-Language` chooses), and the toolchain's own messages keep their Dutch sentences. A message or OpenAPI description
+  that names a JSON key, query parameter, field or Helm value names the English one the code reads;
+  `ContractNamesInMessagesTest` refuses the old names in the literals.
