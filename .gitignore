@@ -20,3 +20,6 @@ specification/*/_work/
 # Local/internal working notes — never commit
 /alef-comparison/
 ISSUES_*.md
+
+# Python bytecode
+__pycache__/
