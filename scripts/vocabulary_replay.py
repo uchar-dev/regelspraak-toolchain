@@ -284,7 +284,7 @@ def play_golden(golden, map_, descriptor_path):
                 status, text_ = service.ask("POST", path + "?inputVocabulary=" + urllib.parse.quote(fixed),
                                              play_(canonical, table, lambda i: other))
                 violations = json.loads(text_).get("violations", []) if status == 400 else []
-                if not violations or not all(f"invoervocabulaire '{fixed}'" in s["error"] for s in violations):
+                if not violations or not all(f"inputVocabulary '{fixed}'" in s["error"] for s in violations):
                     raise dr.Deviation(f"{name}: spelling {other} onder invoervocabulaire {fixed} gaf {status} "
                                        f"{text_[:500]}, verwacht 400 met elke schending in '{fixed}' gelezen")
             status, text_ = service.ask("GET", "/info")

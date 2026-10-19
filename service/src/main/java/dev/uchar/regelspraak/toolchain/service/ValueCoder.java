@@ -74,13 +74,13 @@ public final class ValueCoder {
             JsonNode e = node.get("unit");
             if (w == null)
                 return Result.error(Violation.of(Violation.Kind.WRONG_TYPE, field,
-                        "eenheid-object mist 'waarde'"));
+                        "eenheid-object mist 'value'"));
             if (declared == null)
                 return Result.error(Violation.of(Violation.Kind.WRONG_UNIT, field,
                         "attribuut heeft geen eenheid, maar de waarde geeft er wel een op"));
             if (e == null || !e.isTextual())
                 return Result.error(Violation.of(Violation.Kind.WRONG_UNIT, field,
-                        "eenheid-object mist een tekstuele 'eenheid'"));
+                        "eenheid-object mist een tekstuele 'unit'"));
             String requested = e.asText();
             if (!requested.equals(declared.rendering()))
                 return Result.error(Violation.of(Violation.Kind.WRONG_UNIT, field,

@@ -144,7 +144,7 @@ final class NameReader {
 
     /** The clause an unknown name's refusal ends with when the input vocabulary is pinned: where the name was read. */
     String pinnedClause() {
-        return pinned == null ? "" : " (invoervocabulaire '" + pinned + "')";
+        return pinned == null ? "" : " (inputVocabulary '" + pinned + "')";
     }
 
     /** The pinned input vocabulary in its declared spelling, {@link Naming#CANONICAL}, or null. */
@@ -233,7 +233,7 @@ final class NameReader {
             for (String source : sources.get(i)) if (!choices.contains(source)) choices.add(source);
         }
         return new Ambiguous("de naam '" + name + "' is dubbelzinnig: " + String.join(", ", reads)
-                + "; zet het vocabulaire erbij met de queryparameter invoervocabulaire (" + enumeration(choices, "of") + ")");
+                + "; zet het vocabulaire erbij met de queryparameter inputVocabulary (" + enumeration(choices, "of") + ")");
     }
 
     /** Where a declaration was read: "als canonieke naam", "in het vocabulaire 'v'", or both. */

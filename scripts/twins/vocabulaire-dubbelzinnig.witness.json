@@ -7,7 +7,7 @@
       "contains": ["de naam 'bedrag' is dubbelzinnig",
                 "in het vocabulaire 'handboek' het attribuut 'vondstbedrag' van 'Jutter'",
                 "in het vocabulaire 'cgm' het attribuut 'premiebedrag' van 'Jutter'",
-                "queryparameter invoervocabulaire (handboek of cgm)"] },
+                "queryparameter inputVocabulary (handboek of cgm)"] },
     { "query": "?inputVocabulary=handboek", "status": 200,
       "attributes": [ { "id": "J1", "attribute": "uitkering", "value": "12.50" } ] },
     { "query": "?inputVocabulary=handboek&vocabulary=cgm", "status": 200,

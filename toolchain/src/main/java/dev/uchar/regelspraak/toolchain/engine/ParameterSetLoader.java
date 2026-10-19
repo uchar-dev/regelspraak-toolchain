@@ -35,7 +35,7 @@ import java.util.List;
  *
  * <p>Fouten worden VERZAMELEND gerapporteerd (alle eerst, dan één {@link ParameterSetError}), house-style: elke fout
  * noemt de overtreder + locatie. Malformed JSON mag direct één throw zijn. Gedekte fouten: onbekende parameternaam,
- * verkeerd getypeerde waarde, verkeerde eenheid, ongeldige/omgekeerde vanaf/tot, en overlap (via
+ * verkeerd getypeerde waarde, verkeerde eenheid, ongeldige/omgekeerde from/to, en overlap (via
  * {@link ParameterSet#overlapErrors}, ná decode).
  *
  * <p>De waarde-decodering spiegelt {@code dev.uchar.regelspraak.toolchain.service.ValueCoder} (Numeriek/Percentage → BigDecimal
@@ -74,7 +74,7 @@ public final class ParameterSetLoader {
      * zonder een model, vóór de typed {@link #load}. De CLI/service heeft deze namen nodig om
      * {@link dev.uchar.regelspraak.resolver.ScenarioResolver#resolve(String, java.util.Set)} met de externe parameters
      * te draaien VÓÓR het model bestaat; daarna volgt de volledige typed laad tegen {@code bundle.model()}. Malformed
-     * JSON of een ontbrekende/ongeldige {@code parametersets}-lijst is een {@link ParameterSetError}. De namen zijn
+     * JSON of een ontbrekende/ongeldige {@code parameterSets}-lijst is een {@link ParameterSetError}. De namen zijn
      * ruw (niet gecanoniseerd — dat kan pas met een model); de resolver normaliseert ze zelf.
      */
     public static List<String> parameterNames(String json) {
@@ -82,15 +82,15 @@ public final class ParameterSetLoader {
         try {
             root = MAPPER.readTree(json);
         } catch (IOException e) {
-            throw new ParameterSetError("parametersets zijn geen geldige JSON", List.of(e.getMessage()));
+            throw new ParameterSetError("parameterSets zijn geen geldige JSON", List.of(e.getMessage()));
         }
         if (root == null || !root.isObject())
-            throw new ParameterSetError("parametersets zijn geen geldige JSON",
-                    List.of("verwacht een JSON-object met sleutel 'parametersets'"));
+            throw new ParameterSetError("parameterSets zijn geen geldige JSON",
+                    List.of("verwacht een JSON-object met sleutel 'parameterSets'"));
         JsonNode arr = root.get("parameterSets");
         if (arr == null || !arr.isArray())
-            throw new ParameterSetError("parametersets valideren niet",
-                    List.of("veld 'parametersets' ontbreekt of is geen lijst"));
+            throw new ParameterSetError("parameterSets valideren niet",
+                    List.of("veld 'parameterSets' ontbreekt of is geen lijst"));
         java.util.LinkedHashSet<String> names = new java.util.LinkedHashSet<>();
         for (JsonNode setNode : arr) {
             JsonNode valuesNode = setNode.get("values");
@@ -113,19 +113,19 @@ public final class ParameterSetLoader {
         try {
             root = MAPPER.readTree(json);
         } catch (IOException e) {
-            throw new ParameterSetError("parametersets zijn geen geldige JSON", List.of(e.getMessage()));
+            throw new ParameterSetError("parameterSets zijn geen geldige JSON", List.of(e.getMessage()));
         }
         if (root == null || !root.isObject())
-            throw new ParameterSetError("parametersets zijn geen geldige JSON",
-                    List.of("verwacht een JSON-object met sleutel 'parametersets'"));
+            throw new ParameterSetError("parameterSets zijn geen geldige JSON",
+                    List.of("verwacht een JSON-object met sleutel 'parameterSets'"));
 
         List<String> errors = new ArrayList<>();
         List<ParameterSet> sets = new ArrayList<>();
 
         JsonNode arr = root.get("parameterSets");
         if (arr == null || !arr.isArray()) {
-            errors.add("veld 'parametersets' ontbreekt of is geen lijst");
-            throw new ParameterSetError("parametersets valideren niet tegen het model", errors);
+            errors.add("veld 'parameterSets' ontbreekt of is geen lijst");
+            throw new ParameterSetError("parameterSets valideren niet tegen het model", errors);
         }
 
         for (int i = 0; i < arr.size(); i++) {
@@ -134,7 +134,7 @@ public final class ParameterSetLoader {
             JsonNode nameNode = setNode.get("name");
             String setName = nameNode != null && nameNode.isTextual() ? nameNode.asText() : ("set#" + i);
             if (nameNode == null || !nameNode.isTextual() || nameNode.asText().isBlank())
-                errors.add(path + ".naam ontbreekt");
+                errors.add(path + ".name ontbreekt");
 
             java.util.Map<String, List<ValueInterval>> values = new java.util.LinkedHashMap<>();
             JsonNode valuesNode = setNode.get("values");
@@ -170,16 +170,16 @@ public final class ParameterSetLoader {
         errors.addAll(ParameterSet.overlapErrors(sets));
 
         if (!errors.isEmpty())
-            throw new ParameterSetError("parametersets valideren niet tegen het model", errors);
+            throw new ParameterSetError("parameterSets valideren niet tegen het model", errors);
         return sets;
     }
 
-    /** Decodeer één {@code {waarde, vanaf?, tot?}}-interval; {@code null} bij een fout (die aan {@code errors} is
+    /** Decodeer één {@code {value, from?, to?}}-interval; {@code null} bij een fout (die aan {@code errors} is
      *  toegevoegd). */
     private static ValueInterval decodeerInterval(JsonNode node, RegelSpraakModel.Parameter param,
                                                    String path, List<String> errors) {
         if (node == null || !node.isObject()) {
-            errors.add(path + ": verwacht een object {waarde, vanaf?, tot?}");
+            errors.add(path + ": verwacht een object {value, from?, to?}");
             return null;
         }
         boolean ok = true;
@@ -189,12 +189,12 @@ public final class ParameterSetLoader {
         LocalDate to = dateOrNull(node.get("to"), path + ".to", errors);
         if (node.has("to") && !node.get("to").isNull() && to == null) ok = false;
         if (from != null && to != null && from.isAfter(to)) {
-            errors.add(path + ": vanaf " + from + " ligt na tot " + to);
+            errors.add(path + ": from " + from + " ligt na to " + to);
             ok = false;
         }
 
         if (!node.has("value")) {
-            errors.add(path + ": veld 'waarde' ontbreekt");
+            errors.add(path + ": veld 'value' ontbreekt");
             ok = false;
         }
         Object value = null;
@@ -244,11 +244,11 @@ public final class ParameterSetLoader {
             JsonNode w = node.get("value");
             JsonNode e = node.get("unit");
             if (w == null)
-                return DecodeResult.error(field + ": eenheid-object mist 'waarde'");
+                return DecodeResult.error(field + ": eenheid-object mist 'value'");
             if (declared == null)
                 return DecodeResult.error(field + ": parameter heeft geen eenheid, maar de waarde geeft er wel een op");
             if (e == null || !e.isTextual())
-                return DecodeResult.error(field + ": eenheid-object mist een tekstuele 'eenheid'");
+                return DecodeResult.error(field + ": eenheid-object mist een tekstuele 'unit'");
             String requested = e.asText();
             if (!requested.equals(declared.rendering()))
                 return DecodeResult.error(field + ": eenheid '" + requested + "' komt niet overeen met de gedeclareerde"

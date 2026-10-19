@@ -161,9 +161,9 @@ public final class OpenApiEmitter {
                     : "De namen in dit document zijn die van het vocabulaire '" + in.choice() + "'.")
                     + " De dienst neemt in een verzoek elke naam aan: canoniek of als benaming in "
                     + (vocabularies.size() == 1 ? "het vocabulaire " : "de vocabulaires ") + enumeration(vocabularies)
-                    + ", ook gemengd; x-spellingen en x-waardespellingen noemen ze."
+                    + ", ook gemengd; x-spellings en x-valueSpellings noemen ze."
                     + " Een naam die zo twee declaraties noemt is een 400 (AMBIGUOUS_NAME), tenzij de queryparameter"
-                    + " invoervocabulaire het vocabulaire vastzet; de queryparameter vocabulaire kiest de namen van het"
+                    + " inputVocabulary het vocabulaire vastzet; de queryparameter vocabulary kiest de namen van het"
                     + " antwoord. Een gewijzigde benaming is een wijziging van dit contract.";
         }
 
@@ -208,13 +208,13 @@ public final class OpenApiEmitter {
                     + " verzoek gelezen worden; zonder wordt elke naam gelezen als canonieke naam of als benaming in"
                     + " elk vocabulaire.", sp.choices()));
         }
-        parameters.add(flagParameter("explanation", "true: het antwoord krijgt uitleg, een zin per toegekend of onthouden"
+        parameters.add(flagParameter("explanation", "true: het antwoord krijgt explanation, een zin per toegekend of onthouden"
                 + " kenmerk van een instantie van het verzoek, met de waarden waarop hij rust."));
         parameters.add(flagParameter("trace", "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de"
                 + " ids van het verzoek die haar regels bonden en hoe vaak ze vuurden." + DETAIL));
-        parameters.add(flagParameter("coverage", "true: het antwoord krijgt dekking (schema Coverage): per vorm van dit"
+        parameters.add(flagParameter("coverage", "true: het antwoord krijgt coverage (schema Coverage): per vorm van dit"
                 + " entrypoint of een regel ervan vuurde." + DETAIL));
-        parameters.add(flagParameter("fixpoint", "true: het antwoord krijgt fixpunt (schema Fixpoint): wat aan het"
+        parameters.add(flagParameter("fixpoint", "true: het antwoord krijgt fixpoint (schema Fixpoint): wat aan het"
                 + " fixpunt staat, met de instanties van het verzoek als invoer." + DETAIL));
         post.set("parameters", parameters);
 
@@ -229,7 +229,7 @@ public final class OpenApiEmitter {
         answer(responses, "404", "onbekend pad", "#/components/schemas/Error");
         ObjectNode unanswered = responses.putObject("422");
         unanswered.put("description", "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout"
-                + " de soort en uchars zin; of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin");
+                + " kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin");
         ArrayNode oneOf = unanswered.putObject("content").putObject("application/json").putObject("schema")
                 .putArray("oneOf");
         oneOf.addObject().put("$ref", "#/components/schemas/EvaluationFault");
@@ -262,7 +262,7 @@ public final class OpenApiEmitter {
         b.append("Invoer-objecttypen: ").append(input.isEmpty() ? "(geen)" : String.join(", ", input)).append(". ");
         List<String> output = output(ep, model, sp.in);
         b.append("Uitvoer-selectoren: ").append(output.isEmpty() ? "(geen)" : String.join(", ", output)).append(".");
-        if (sp.enabled()) b.append(" De dienst neemt ook de spellingen van x-spellingen aan.");
+        if (sp.enabled()) b.append(" De dienst neemt ook de spellingen van x-spellings aan.");
         return b.toString();
     }
 
@@ -290,7 +290,7 @@ public final class OpenApiEmitter {
 
     /** What every detail flag says: the service gives it only when started with detail, and a 422 gets it too. */
     private static final String DETAIL = " De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de"
-            + " vlag een 400 (UNSUPPORTED, met de naam van de vlag als veld). Een 422 krijgt het veld ook.";
+            + " vlag een 400 (UNSUPPORTED, met de naam van de vlag als field). Een 422 krijgt het veld ook.";
 
     /** A query flag: {@code true} (case-insensitive) or the bare name sets it, any other value leaves it off. */
     private static ObjectNode flagParameter(String name, String description) {
@@ -478,7 +478,7 @@ public final class OpenApiEmitter {
         ObjectNode evaluationDate = props.putObject("rekendatum");
         evaluationDate.put("type", "string");
         evaluationDate.put("format", "date");
-        evaluationDate.put("description", "ISO-datum (yyyy-MM-dd); optioneel. Alias van 'peildatum' (dezelfde"
+        evaluationDate.put("description", "ISO-datum (yyyy-MM-dd); optioneel. Alias van 'asOfDate' (dezelfde"
                 + " datumautoriteit).");
 
         ObjectNode parameters = props.putObject("parameters");
@@ -516,8 +516,8 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    /** The generic response schema, honest to {@link AnswerBuilder}: instanties[{id,type,attributen,kenmerken}]
-     *  + inconsistenties[string] + inconsistentieDetails[{regel,onderwerp}]. */
+    /** The generic response schema, honest to {@link AnswerBuilder}: instances[{id,type,attributes,characteristics}]
+     *  + inconsistencies[string] + inconsistencyDetails[{rule,subject}]. */
     private static ObjectNode answerSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
@@ -547,7 +547,7 @@ public final class OpenApiEmitter {
         ObjectNode detailProps = detail.putObject("properties");
         detailProps.putObject("rule").put("type", "string");
         detailProps.putObject("subject").put("type", "string").put("nullable", true);
-        details.put("description", "dezelfde inconsistenties met hun onderwerp: het id van de instantie waarover de"
+        details.put("description", "dezelfde inconsistenties met hun subject: het id van de instantie waarover de"
                 + " toets ging, of null als dat geen instantie van het verzoek is.");
 
         ObjectNode explanation = props.putObject("explanation");
@@ -611,7 +611,7 @@ public final class OpenApiEmitter {
         s.put("type", "object");
         s.put("description", "met de vlag fixpoint: wat aan het fixpunt van de sessie staat. Een instantie van het"
                 + " verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het"
-                + " antwoord; waar de canonieke naam verschilt, staat die ernaast onder <sleutel>Canonical. Een waarde is"
+                + " antwoord; waar de canonieke naam verschilt, staat die ernaast onder <key>Canonical. Een waarde is"
                 + " een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg);"
                 + " een tijdlijn staat onder timeline, een gedimensioneerde waarde onder dimensions.");
         ObjectNode props = s.putObject("properties");
@@ -637,7 +637,7 @@ public final class OpenApiEmitter {
         for (String v : new String[]{"factType", "firstRole", "first", "secondRole", "second"})
             linkProps.putObject(v).put("type", "string");
         ObjectNode errors = list(props, "faults", "de evaluatiefouten die aan het fixpunt staan, elk met de vorm die"
-                + " haar gaf, het object waarover zij gaat, haar soort en uchars zin.");
+                + " haar gaf, het object waarover zij gaat, haar kind en uchars zin.");
         ObjectNode faultProps = errors.putObject("properties");
         faultProps.putObject("rule").put("type", "string");
         faultProps.putObject("subject").put("type", "string");
@@ -646,7 +646,7 @@ public final class OpenApiEmitter {
         ArrayNode kinds = kind.putArray("enum");
         for (EvaluationFault.Kind k : EvaluationFault.Kind.values()) kinds.add(k.name());
         faultProps.putObject("sentence").put("type", "string");
-        ObjectNode inc = list(props, "inconsistencies", "de gefaalde consistentietoetsen met hun regel en onderwerp,"
+        ObjectNode inc = list(props, "inconsistencies", "de gefaalde consistentietoetsen met hun rule en subject,"
                 + " elk null als er geen is.");
         ObjectNode incProps = inc.putObject("properties");
         incProps.putObject("rule").put("type", "string").put("nullable", true);
@@ -664,7 +664,7 @@ public final class OpenApiEmitter {
         return item;
     }
 
-    /** The error schema returned as a 4xx/5xx body: {fout, veld?, schendingen?}. */
+    /** The error schema returned as a 4xx/5xx body: {error, field?, violations?}. */
     private static ObjectNode errorSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
@@ -677,17 +677,17 @@ public final class OpenApiEmitter {
         ObjectNode sch = props.putObject("violations");
         sch.put("type", "array");
         sch.putObject("items").put("type", "object");
-        sch.put("description", "de verzameling schendingen, elk met soort/veld/melding.");
+        sch.put("description", "de verzameling schendingen, elk met kind/field/message.");
         return s;
     }
 
-    /** The 422 body, honest to {@link AnswerBuilder#evaluationFault}: {status, fout, fouten[{soort, fout}]}, with the
+    /** The 422 body, honest to {@link AnswerBuilder#evaluationFault}: {status, error, faults[{kind, error}]}, with the
      *  kinds of {@link EvaluationFault.Kind}. */
     private static ObjectNode evaluationFaultSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer"
-                + " evaluatiefouten, elk met haar soort en uchars zin.");
+                + " evaluatiefouten, elk met haar kind en uchars zin.");
         ArrayNode req = s.putArray("required");
         req.add("status"); req.add("error"); req.add("faults");
         ObjectNode props = s.putObject("properties");
@@ -721,7 +721,7 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    /** The 422 body of a session without a fixpoint, honest to {@link AnswerBuilder#noFixpoint}: {status, fout}, and
+    /** The 422 body of a session without a fixpoint, honest to {@link AnswerBuilder#noFixpoint}: {status, error}, and
      *  the detail a request may ask, where the fixpoint gives way to the reason there is none. */
     private static ObjectNode noFixpointSchema() {
         ObjectNode s = NF.objectNode();
@@ -749,7 +749,7 @@ public final class OpenApiEmitter {
     private static ObjectNode infoSchema(Spellings sp) {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
-        s.put("description", "De dienst-info: identiteit, per-regel Dekking, overgeslagen markers, parameters.");
+        s.put("description", "De dienst-info: identiteit, per-regel coverage, overgeslagen markers, parameters.");
         ObjectNode props = s.putObject("properties");
         props.putObject("service").put("type", "object");
         props.putObject("coverage").put("type", "object");
@@ -766,7 +766,7 @@ public final class OpenApiEmitter {
             ObjectNode v = props.putObject("vocabularies");
             v.put("type", "array");
             v.putObject("items").put("type", "object");
-            v.put("description", "per vocabulaire: naam, standaard, taal, of het volledig is, en de declaraties"
+            v.put("description", "per vocabulaire: name, default, language, complete, en de declaraties"
                     + " zonder benaming (die draagt een antwoord in dat vocabulaire bij hun canonieke naam).");
         }
         return s;

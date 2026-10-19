@@ -139,13 +139,13 @@ public final class DescriptorLoader {
         OutputSelector u = OutputSelector.parse(sel);
         if (u == null) {
             sink.add(Violation.of(Violation.Kind.MALFORMED, field,
-                    "uitvoer '" + sel + "' moet 'Objecttype.attribuut' of 'Objecttype:kenmerk' zijn"));
+                    "output '" + sel + "' moet 'Objecttype.attribuut' of 'Objecttype:kenmerk' zijn"));
             return;
         }
         ObjectType ot = objectType(model, u.objectType());
         if (ot == null) {
             sink.add(Violation.of(Violation.Kind.UNKNOWN_REFERENCE, field,
-                    "onbekend objecttype '" + u.objectType() + "' in uitvoer '" + sel + "'"));
+                    "onbekend objecttype '" + u.objectType() + "' in output '" + sel + "'"));
             return;
         }
         if (u.characteristic()) {

@@ -119,7 +119,7 @@ public final class RegelSpraakEngine {
      */
     public Session newSession(LocalDate asOfDate, List<ParameterSet> parameterSets) {
         if (asOfDate == null)
-            throw new IllegalArgumentException("peildatum is verplicht: de datumautoriteit selecteert de "
+            throw new IllegalArgumentException("asOfDate is verplicht: de datumautoriteit selecteert de "
                     + "parameter-vintage en is tevens de rekendatum — een null-datum kan geen vintage kiezen");
 
         List<ParameterSet> sets = parameterSets == null ? List.of() : parameterSets;
@@ -127,13 +127,13 @@ public final class RegelSpraakEngine {
         // defensieve overlap-hercheck: ook hand-gebouwde sets krijgen nooit last-one-wins (de lader vangt dit al af).
         List<String> overlap = ParameterSet.overlapErrors(sets);
         if (!overlap.isEmpty())
-            throw new IllegalArgumentException("parametersets bevatten overlappende geldigheidsperiodes: "
+            throw new IllegalArgumentException("parameterSets bevatten overlappende geldigheidsperiodes: "
                     + String.join("; ", overlap));
 
         List<String> holes = new ArrayList<>();
         Map<String, Object> resolved = ParameterSet.valuesOn(sets, asOfDate, holes);
         if (!holes.isEmpty())
-            throw new IllegalStateException("geen parameterwaarde geldig op peildatum " + asOfDate + ": "
+            throw new IllegalStateException("geen parameterwaarde geldig op asOfDate " + asOfDate + ": "
                     + String.join("; ", holes));
 
         Session s = newSession();

@@ -153,9 +153,9 @@ public final class DecisionCore {
             try {
                 parameterSetsJson = Files.readString(sidecar);
             } catch (IOException e) {
-                throw new ServiceError("dienst start niet: parametersets-bestand kan niet gelezen worden op dit"
+                throw new ServiceError("dienst start niet: parameterSets-bestand kan niet gelezen worden op dit"
                         + " bouwpad", List.of(Violation.of(Violation.Kind.MALFORMED, "parameterSets",
-                        "kon parametersets-bestand '" + sidecar + "' niet lezen: " + e.getMessage())));
+                        "kon parameterSets-bestand '" + sidecar + "' niet lezen: " + e.getMessage())));
             }
         }
         if (document)
@@ -371,10 +371,10 @@ public final class DecisionCore {
                                                         RegelSpraakModel model) {
         if (descriptor.parameterSets() == null || descriptor.parameterSets().isBlank()) return List.of();
         if (parameterSetsJson == null)
-            throw new ServiceError("dienst start niet: parametersets-bestand kan niet gelezen worden op dit bouwpad",
+            throw new ServiceError("dienst start niet: parameterSets-bestand kan niet gelezen worden op dit bouwpad",
                     List.of(Violation.of(Violation.Kind.MALFORMED, "parameterSets",
-                            "de descriptor noemt parametersets '" + descriptor.parameterSets() + "' maar er is geen"
-                                    + " parametersets-JSON meegegeven op dit bouwpad")));
+                            "de descriptor noemt parameterSets '" + descriptor.parameterSets() + "' maar er is geen"
+                                    + " parameterSets-JSON meegegeven op dit bouwpad")));
         List<ParameterSet> sets;
         try {
             sets = ParameterSetLoader.load(parameterSetsJson, model);
@@ -384,7 +384,7 @@ public final class DecisionCore {
                 sink.add(Violation.of(Violation.Kind.MALFORMED, "parameterSets", error));
             if (sink.isEmpty())   // malformed-JSON single-throw carries the message, not the fouten list
                 sink.add(Violation.of(Violation.Kind.MALFORMED, "parameterSets", f.getMessage()));
-            throw new ServiceError("dienst start niet: parametersets valideren niet tegen het model", sink);
+            throw new ServiceError("dienst start niet: parameterSets valideren niet tegen het model", sink);
         }
 
         // conflict rule: a parameter that is a descriptor default AND a set value has ambiguous authority.
@@ -397,7 +397,7 @@ public final class DecisionCore {
                 if (setNames.contains(canonical))
                     conflict.add(Violation.of(Violation.Kind.MALFORMED, "parameters." + d,
                             "parameter '" + canonical + "' staat ZOWEL in descriptor.parameters (default) ALS in de"
-                                    + " parametersets — ambigue autoriteit; kies er één"));
+                                    + " parameterSets — ambigue autoriteit; kies er één"));
             }
         }
         if (!conflict.isEmpty())
@@ -749,7 +749,7 @@ public final class DecisionCore {
         if (parameterSets.isEmpty()) return Map.of();
         if (date == null && ParameterSet.multiVintage(parameterSets))
             throw new ServiceError("verzoek valideert niet", List.of(Violation.of(Violation.Kind.WRONG_TYPE,
-                    "asOfDate", "peildatum is verplicht: de geladen parametersets dragen meer dan één vintage")));
+                    "asOfDate", "asOfDate is verplicht: de geladen parameterSets dragen meer dan één vintage")));
         LocalDate asOf = date != null ? date : LocalDate.EPOCH;   // degeneraat: datum-onafhankelijk
         List<String> holes = new ArrayList<>();
         Map<String, Object> resolved = ParameterSet.valuesOn(parameterSets, asOf, holes);

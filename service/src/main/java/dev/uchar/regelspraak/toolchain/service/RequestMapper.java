@@ -104,7 +104,7 @@ public final class RequestMapper {
         LocalDate date;
         if (asOfDate != null && evaluationDate != null && !asOfDate.equals(evaluationDate)) {
             s.add(Violation.of(Violation.Kind.WRONG_TYPE, "asOfDate",
-                    "peildatum " + asOfDate + " en rekendatum " + evaluationDate + " zijn dezelfde datumautoriteit"
+                    "asOfDate " + asOfDate + " en rekendatum " + evaluationDate + " zijn dezelfde datumautoriteit"
                             + " maar verschillen — geef er één (of gelijke waarden)"));
             date = asOfDate;
         } else {
@@ -143,9 +143,9 @@ public final class RequestMapper {
         // 3. instanties (case instances + attributen + kenmerken)
         JsonNode insts = request.instances();
         if (insts == null || insts.isNull()) {
-            s.add(Violation.of(Violation.Kind.MALFORMED, "instances", "instanties ontbreekt"));
+            s.add(Violation.of(Violation.Kind.MALFORMED, "instances", "instances ontbreekt"));
         } else if (!insts.isArray()) {
-            s.add(Violation.of(Violation.Kind.MALFORMED, "instances", "instanties moet een array zijn"));
+            s.add(Violation.of(Violation.Kind.MALFORMED, "instances", "instances moet een array zijn"));
         } else {
             for (int i = 0; i < insts.size(); i++) {
                 JsonNode in = insts.get(i);
@@ -300,7 +300,7 @@ public final class RequestMapper {
     private void setAttributes(ObjectType ot, ObjectNode instance, JsonNode attrs, String path,
                                List<String> yearOutsideCaseForm, List<Violation> s) {
         if (attrs == null || attrs.isNull()) return;
-        if (!attrs.isObject()) { s.add(Violation.of(Violation.Kind.MALFORMED, path, "attributen moet een object zijn")); return; }
+        if (!attrs.isObject()) { s.add(Violation.of(Violation.Kind.MALFORMED, path, "attributes moet een object zijn")); return; }
         Duplicate duplicate = new Duplicate("deze instantie");
         attrs.fields().forEachRemaining(e -> {
             String name = e.getKey();
@@ -336,7 +336,7 @@ public final class RequestMapper {
 
     private void setCharacteristics(ObjectType ot, ObjectNode instance, JsonNode characteristics, String path, List<Violation> s) {
         if (characteristics == null || characteristics.isNull()) return;
-        if (!characteristics.isObject()) { s.add(Violation.of(Violation.Kind.MALFORMED, path, "kenmerken moet een object zijn")); return; }
+        if (!characteristics.isObject()) { s.add(Violation.of(Violation.Kind.MALFORMED, path, "characteristics moet een object zijn")); return; }
         Duplicate duplicate = new Duplicate("deze instantie");
         characteristics.fields().forEachRemaining(e -> {
             String name = e.getKey();
@@ -427,7 +427,7 @@ public final class RequestMapper {
         if (reading instanceof NameReader.Found g) return TextNode.valueOf(g.name());
         if (reader.pinnedInVocabulary()) {
             s.add(Violation.of(Violation.Kind.UNKNOWN_ENUM_VALUE, field, "'" + node.asText()
-                    + "' is geen waarde van domein '" + e.domain() + "' (toegestaan in het invoervocabulaire '"
+                    + "' is geen waarde van domein '" + e.domain() + "' (toegestaan met inputVocabulary '"
                     + reader.pinned() + "': " + reader.values(e) + ")"));
             return null;
         }
@@ -445,7 +445,7 @@ public final class RequestMapper {
     private void setRoles(ObjectType ot, String id, Map<String, ObjectType> typePerLabel, JsonNode roles, String path,
                            Map<String, ObjectNode> instances, Map<Link, String> paths, List<Violation> s) {
         if (roles == null || roles.isNull()) return;
-        if (!roles.isObject()) { s.add(Violation.of(Violation.Kind.MALFORMED, path, "rollen moet een object zijn")); return; }
+        if (!roles.isObject()) { s.add(Violation.of(Violation.Kind.MALFORMED, path, "roles moet een object zijn")); return; }
         Duplicate duplicate = new Duplicate("deze instantie");
         roles.fields().forEachRemaining(e -> {
             String role = e.getKey();
@@ -501,14 +501,14 @@ public final class RequestMapper {
     private void setRelations(JsonNode relations, Map<String, ObjectType> typePerLabel, Map<String, ObjectNode> instances,
                              Map<Link, String> paths, List<Violation> s) {
         if (relations == null || relations.isNull()) return;
-        if (!relations.isArray()) { s.add(Violation.of(Violation.Kind.MALFORMED, "relations", "relaties moet een array zijn")); return; }
+        if (!relations.isArray()) { s.add(Violation.of(Violation.Kind.MALFORMED, "relations", "relations moet een array zijn")); return; }
         for (int i = 0; i < relations.size(); i++) {
             JsonNode rel = relations.get(i);
             String path = "relations[" + i + "]";
             JsonNode ftN = rel.get("factType");
             JsonNode rolesN = rel.get("roles");
             if (ftN == null || !ftN.isTextual()) {
-                s.add(Violation.of(Violation.Kind.MALFORMED, path + ".factType", "feittype ontbreekt of is geen tekst"));
+                s.add(Violation.of(Violation.Kind.MALFORMED, path + ".factType", "factType ontbreekt of is geen tekst"));
                 continue;
             }
             Read factType = read(reader.factType(ftN.asText()), ftN.asText(), path + ".factType", null, s);
@@ -520,7 +520,7 @@ public final class RequestMapper {
                 continue;
             }
             if (rolesN == null || !rolesN.isObject()) {
-                s.add(Violation.of(Violation.Kind.MALFORMED, path + ".roles", "rollen ontbreekt of is geen object"));
+                s.add(Violation.of(Violation.Kind.MALFORMED, path + ".roles", "roles ontbreekt of is geen object"));
                 continue;
             }
             rolesN = rolesRead(ft, rolesN, path + ".roles", s);

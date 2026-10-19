@@ -72,7 +72,7 @@ public class DecideResource {
                             @QueryParam("fixpoint") String fixpoint, String body) {
         JsonNode tree;
         if (body == null || body.isEmpty())
-            return response(400, errorBody("leeg verzoek-body: verwacht JSON met een 'instanties'-array", "body"));
+            return response(400, errorBody("leeg verzoek-body: verwacht JSON met een 'instances'-array", "body"));
         try {
             tree = MAPPER.readTree(body);
         } catch (JsonProcessingException malformed) {

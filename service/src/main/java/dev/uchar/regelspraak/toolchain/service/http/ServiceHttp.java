@@ -184,7 +184,7 @@ public final class ServiceHttp {
             byte[] body = ex.getRequestBody().readAllBytes();
             JsonNode tree;
             if (body.length == 0) {
-                send(ex, 400, errorBody("leeg verzoek-body: verwacht JSON met een 'instanties'-array", "body"));
+                send(ex, 400, errorBody("leeg verzoek-body: verwacht JSON met een 'instances'-array", "body"));
                 return;
             }
             try {
