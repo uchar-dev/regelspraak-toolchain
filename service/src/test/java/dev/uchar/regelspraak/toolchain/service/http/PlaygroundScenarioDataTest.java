@@ -79,7 +79,7 @@ class PlaygroundScenarioDataTest {
             Met als verwacht resultaat:
             - de premie van B is 20,00 €
             """;
-        JsonNode s = scenario(Playground.analyseer(source), 0);
+        JsonNode s = scenario(Playground.analyze(source), 0);
         assertEquals("PASS", s.get("status").asText(), s.toString());
         assertEquals(lineOf(source, "Scenario twee helpers"), s.get("line").asInt());
 
@@ -120,7 +120,7 @@ class PlaygroundScenarioDataTest {
      *  and the fixpoint gives the fault as data, with its kind, the form, the object by its label and uchar's sentence. */
     @Test
     void an_evaluation_fault_stands_as_given_in_the_fixpoint() {
-        JsonNode s = scenario(Playground.analyseer(BERGING + """
+        JsonNode s = scenario(Playground.analyze(BERGING + """
             Scenario zonder helpers
             Gegeven is de volgende situatie:
             een Berging B
@@ -156,7 +156,7 @@ class PlaygroundScenarioDataTest {
             Met als verwacht resultaat:
             - de gemelde uitkering van M1 is 10,00
             """;
-        ObjectNode a = Playground.analyseer(source);
+        ObjectNode a = Playground.analyze(source);
         JsonNode s = scenario(a, 0);
         assertEquals("PASS", s.get("status").asText(), s.toString());
         JsonNode f = s.get("fixpoint");
@@ -175,7 +175,7 @@ class PlaygroundScenarioDataTest {
         assertEquals("M1", k.at("/0/first").asText());
         assertEquals("gemeld strandrecht", k.at("/0/secondRole").asText());
         assertEquals("#1", k.at("/0/second").asText());
-        assertEquals(a, Playground.analyseer(source), "twee analyses van één bron geven dezelfde boom");
+        assertEquals(a, Playground.analyze(source), "twee analyses van één bron geven dezelfde boom");
     }
 
     /** uchar's golden {@code jutterswet-opgave-bedrag}: an opgave that differs from the computed value gives an
@@ -193,7 +193,7 @@ class PlaygroundScenarioDataTest {
             Met als verwacht resultaat:
             - de waarde van V is 95,00 €
             """;
-        JsonNode s = scenario(Playground.analyseer(source), 0);
+        JsonNode s = scenario(Playground.analyze(source), 0);
         assertEquals("PASS", s.get("status").asText(), s.toString());
         JsonNode inc = s.at("/fixpoint/inconsistencies");
         assertEquals(1, inc.size(), inc.toString());
@@ -211,7 +211,7 @@ class PlaygroundScenarioDataTest {
     void vocabularies_and_names() throws IOException {
         String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/source.rgs"))
                 + "\n" + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
-        ObjectNode cgm = Playground.analyseer(source, "cgm");
+        ObjectNode cgm = Playground.analyze(source, "cgm");
         JsonNode voc = cgm.get("vocabularies");
         assertEquals("cgm", voc.get("chosen").asText());
         assertEquals(List.of("handboek", "cgm"), names(voc.get("declared"), "name"));
@@ -237,7 +237,7 @@ class PlaygroundScenarioDataTest {
         assertTrue(fv1.toString().contains("\"attribute\":\"PREMIE\",\"attributeCanonical\":\"premie\""), fv1.toString());
         assertTrue(fv1.toString().contains("\"characteristic\":\"WAARDEVOL\""), fv1.toString());
 
-        ObjectNode canonical = Playground.analyseer(source);
+        ObjectNode canonical = Playground.analyze(source);
         assertEquals("canonical", canonical.at("/vocabularies/chosen").asText());
         assertFalse(canonical.at("/scenario/results/0/situation").toString().contains("Canonical\""),
                 "in de canonieke keuze staat er geen tweede naam");
@@ -247,7 +247,7 @@ class PlaygroundScenarioDataTest {
     /** A source without a vocabulary lists none; its declarations are there, each without a designation. */
     @Test
     void without_vocabulary_empty_designations() {
-        JsonNode voc = Playground.analyseer(BERGING).get("vocabularies");
+        JsonNode voc = Playground.analyze(BERGING).get("vocabularies");
         assertEquals("canonical", voc.get("chosen").asText());
         assertEquals(0, voc.get("declared").size());
         assertEquals(9, voc.get("elements").size(), voc.toString());

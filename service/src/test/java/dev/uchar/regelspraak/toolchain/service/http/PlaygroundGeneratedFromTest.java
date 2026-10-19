@@ -126,7 +126,7 @@ class PlaygroundGeneratedFromTest {
     }
 
     @Test void the_elements_of_the_marking_and_the_subtype_group_say_where_they_come_from() {
-        ObjectNode a = Playground.analyseer(HERLEVING);
+        ObjectNode a = Playground.analyze(HERLEVING);
         assertTrue(a.get("resolver").get("ok").asBoolean(), () -> a.get("resolver").toString());
         String maxdatum = "ATTRIBUUT " + ONTSLAG + ".maxdatum (opgave-boven-berekening)";
         String herleving = "ATTRIBUUT RechtOpUitkeringPeriode.herlevingsdatum (opgave-boven-berekening)";
@@ -163,7 +163,7 @@ class PlaygroundGeneratedFromTest {
     }
 
     @Test void a_stack_in_the_coverage_is_in_generated_with_the_member_like_declared() {
-        ObjectNode a = Playground.analyseer(HERLEVING);
+        ObjectNode a = Playground.analyze(HERLEVING);
         assertTrue(a.get("executable").asBoolean(), () -> a.path("refusal").asText());
         assertEquals(Map.of(
                 "defaults A:Recht op uitkering WW.herlevingstermijn",
@@ -199,11 +199,11 @@ class PlaygroundGeneratedFromTest {
                     geldig t/m 31-12-2025
                         Het gewicht van een Jutter moet gesteld worden op 2.
                 """;
-        ObjectNode canonical = Playground.analyseer(source);
+        ObjectNode canonical = Playground.analyze(source);
         assertEquals(Map.of("gewicht #1", "regel <- VORM gewicht (versie)", "gewicht #2",
                 "regel <- VORM gewicht (versie)"), generatedNames(canonical));
         assertNull(canonical.get("generated").get(0).get("nameCanonical"));
-        ObjectNode cgm = Playground.analyseer(source, "cgm");
+        ObjectNode cgm = Playground.analyze(source, "cgm");
         List<String> names = new ArrayList<>(), canonicalNames = new ArrayList<>();
         for (JsonNode g : cgm.get("generated")) {
             names.add(g.get("name").asText());
@@ -280,7 +280,7 @@ class PlaygroundGeneratedFromTest {
     }
 
     @Test void without_generated_names_no_origin() {
-        ObjectNode a = Playground.analyseer(HERLEVING.replace(" (mag opgegeven worden)", "")
+        ObjectNode a = Playground.analyze(HERLEVING.replace(" (mag opgegeven worden)", "")
                 .replace("""
                         Afwijking van herlevingstermijn: herlevingstermijn na zelfstandig werk
                             geldig altijd

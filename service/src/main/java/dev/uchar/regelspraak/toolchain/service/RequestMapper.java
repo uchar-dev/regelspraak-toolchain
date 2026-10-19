@@ -132,7 +132,7 @@ public final class RequestMapper {
                     }
                     JsonNode value = value(e.getValue(), p.datatype(), field, s);
                     if (value == null) return;
-                    ValueCoder.Result r = ValueCoder.decodeer(value, p.datatype(), field);
+                    ValueCoder.Result r = ValueCoder.decode(value, p.datatype(), field);
                     s.addAll(r.violations());
                     if (r.violations().isEmpty())
                         globals.put(globalName(p.name()), r.value());
@@ -326,7 +326,7 @@ public final class RequestMapper {
             }
             JsonNode value = value(e.getValue(), dt, field, s);
             if (value == null) return;
-            ValueCoder.Result r = ValueCoder.decodeer(value, dt, field);
+            ValueCoder.Result r = ValueCoder.decode(value, dt, field);
             s.addAll(r.violations());
             if (!r.violations().isEmpty()) return;
             JsonNode caseValue = caseValue(r.value(), dt, field, yearOutsideCaseForm, s);

@@ -27,75 +27,75 @@ command -v java >/dev/null 2>&1 || fail "java ontbreekt"
 command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 
-# Het aantal goldens dat door de dienst speelt. 2026-09-26, uchar d67f5da1: 188 van de 215 die gate 12 speelt; de
+# Het aantal goldens dat door de dienst speelt. 2026-09-26: 188 van de 215 die gate 12 speelt; de
 # 27 andere staan hieronder, alle met een tijdlijnvorm.
-# 2026-09-27, uchar c70dcad6: 189 — de golden jutterswet-jaarvaststelling (parametersets, scalaire
+# 2026-09-27: 189 — de golden jutterswet-jaarvaststelling (parametersets, scalaire
 # parameters) speelt door de dienst; de 27 uitsluitingen zijn ongewijzigd.
-# 2026-09-27, uchar 43caed71: 190 — de golden jutterswet-vocabulaires (vocabulairezijtafel, geen semantiek)
+# 2026-09-27: 190 — de golden jutterswet-vocabulaires (vocabulairezijtafel, geen semantiek)
 # speelt door de dienst; de 27 uitsluitingen zijn ongewijzigd.
-# 2026-09-28, uchar 68eed2fb: 191 — de golden jutterswet-premierecht (een objecttypenaam met een voorzetsel,
+# 2026-09-28: 191 — de golden jutterswet-premierecht (een objecttypenaam met een voorzetsel,
 # een feittypenaam met een werkwoord; namen die de frontend eerder afkapte) speelt door de dienst; de 27
 # uitsluitingen zijn ongewijzigd.
-# 2026-09-28, uchar ea6695a2: 192 — de golden jutterswet-opgave-datum (de opgave-markering op een Datum in dagen;
+# 2026-09-28: 192 — de golden jutterswet-opgave-datum (de opgave-markering op een Datum in dagen;
 # een datum berekend uit een andere datum, een initialisatie met datumliteral als laagste default) speelt door de
 # dienst; de 27 uitsluitingen zijn ongewijzigd.
-# 2026-09-29, uchar 26ca6b0b: 195 — drie nieuwe spelers: jutterswet-wrakmelding (een subtype-instantie in een rol
+# 2026-09-29: 195 — drie nieuwe spelers: jutterswet-wrakmelding (een subtype-instantie in een rol
 # die het supertype vult; de rolschrijver van de toolchain zoekt de setter sindsdien langs de klasselijn van de
 # waarde), jutterswet-meldingsketen (een voorwaarde op een afgeleide waarde van een genavigeerd object vuurt nu in
 # de exec-tak) en anchor/jutterswet-kustwacht (verliet de weigerlijst van gate 12 om dezelfde reden); de 27
 # uitsluitingen zijn ongewijzigd.
-# 2026-09-30, uchar de809cf7: 197 — twee nieuwe spelers: jutterswet-zinkende-jutter (een kenmerkcontrole onder een
+# 2026-09-30: 197 — twee nieuwe spelers: jutterswet-zinkende-jutter (een kenmerkcontrole onder een
 # kwantor leest 'geen' en een meerwoordige naam heel, zodat "alle … geen X hebben" als ontkenning lowert) en
 # jutterswet-premiestaffel (een rechtvaardiging van een default die telt, een keten van rollen of een numerieke
 # parameter leest, speelt in de exec-tak; de groepen beslissen na hun producenten); de 27 uitsluitingen zijn
 # ongewijzigd.
-# 2026-09-30, uchar 6f8b9d1f: 198 — één nieuwe speler: jutterswet-sluitdag (de operanden van een
+# 2026-09-30: 198 — één nieuwe speler: jutterswet-sluitdag (de operanden van een
 # berekening onder een kwantorvoorwaarde; de exec-tak houdt het onderwerppatroon reactief); de 27
 # uitsluitingen zijn ongewijzigd.
-# 2026-09-30, uchar 6b7ab8a2: 199 — één nieuwe speler: jutterswet-opgave-subtype (de opgave-markering met
+# 2026-09-30: 199 — één nieuwe speler: jutterswet-opgave-subtype (de opgave-markering met
 # schrijvers op subtypen: de groep op het supertype wordt heel geërfd); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-09-30, uchar c16cb4d6: 202 — drie nieuwe spelers: jutterswet-vroegste-vondst (nieuw), jutterswet-vondstvenster
+# 2026-09-30: 202 — drie nieuwe spelers: jutterswet-vroegste-vondst (nieuw), jutterswet-vondstvenster
 # en jutterswet-vondstbereik (een vouw over datums langs een rol speelt in de exec-tak als accumulate over een
 # Comparable; een vouw in een berekening wordt een eigen accumulate); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-09-30, uchar b0aab696: 203 — één nieuwe speler: jutterswet-zwaarste-vondst (een vouw met een subselectie
+# 2026-09-30: 203 — één nieuwe speler: jutterswet-zwaarste-vondst (een vouw met een subselectie
 # op een later afgeleide waarde herziet in de exec-tak); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-10-01, uchar e33b5c8d: 204 — één nieuwe speler: jutterswet-sluitdag-gemeld (een vouw als consequentie van
+# 2026-10-01: 204 — één nieuwe speler: jutterswet-sluitdag-gemeld (een vouw als consequentie van
 # een default speelt in de exec-tak als accumulate op de reduce-regel); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-10-01, uchar 3fc145d1: 205 — één nieuwe speler: jutterswet-havenketen (een voorwaarde die via een keten
+# 2026-10-01: 205 — één nieuwe speler: jutterswet-havenketen (een voorwaarde die via een keten
 # van rollen leest krijgt in de exec-tak een join per object onderweg); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-10-01, uchar b784bd98: 206 — één nieuwe speler: jutterswet-afrekening (een vouw in de toekenning van een
+# 2026-10-01: 206 — één nieuwe speler: jutterswet-afrekening (een vouw in de toekenning van een
 # objectcreatie speelt in de exec-tak als accumulate, zoals in een regelwaarde); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-10-01, uchar 08d70b7e: 207 — één nieuwe speler: jutterswet-melding-naar-aard (twee voorwaardelijke
+# 2026-10-01: 207 — één nieuwe speler: jutterswet-melding-naar-aard (twee voorwaardelijke
 # schrijvers die elkaar uitsluiten spelen; twee die beide gelden falen nu in alle vier uitvoerders benoemd, rode
 # case jutterswet-dubbele-melding); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-10-01, uchar b9d3a5e6: 208 — één nieuwe speler: jutterswet-meldtermijn-strandjutter (een Uitzondering op of
+# 2026-10-01: 208 — één nieuwe speler: jutterswet-meldtermijn-strandjutter (een Uitzondering op of
 # Afwijking van voor een subtype onder de basisregel van het supertype lowert als eigen uitzondering van het
 # subtype, groep-default op het subtype, ch. 7.9/7.10); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-10-01, uchar 921fcc64: 209 — één nieuwe speler: jutterswet-late-vondst (een vouwfilter dat via een rol van
+# 2026-10-01: 209 — één nieuwe speler: jutterswet-late-vondst (een vouwfilter dat via een rol van
 # het element een later afgeleid lid leest, joint in de exec-tak het bereikte object en wordt na die schrijving
 # opnieuw getoetst; de telling-vorm ernaast); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-10-02, uchar da03d480: 212 — drie nieuwe spelers uit de frontend-ronde G4+G5: jutterswet-havengeld (het
+# 2026-10-02: 212 — drie nieuwe spelers uit de frontend-ronde G4+G5: jutterswet-havengeld (het
 # percentage van een genavigeerde grondslag), jutterswet-zwaarste-weging (een vouw over een verzameling gevolgd
 # door to-one stappen, via een gegenereerd lid) en jutterswet-opgave-bedrag (de opgave-markering op een bedrag met
 # één eenheid); de 27 uitsluitingen zijn ongewijzigd.
-# 2026-10-06, uchar 0a378588: 213 — één nieuwe speler: jutterswet-premiepot (een objectcreatie telt de leden van een
+# 2026-10-06: 213 — één nieuwe speler: jutterswet-premiepot (een objectcreatie telt de leden van een
 # rol, een feitcreatie koppelt die bestaande objecten aan het gemaakte object, een rolcheck leest de koppeling; de
 # verifier weigerde zo'n document eerder onder WF-045 door de populatieproxy van de feitcreatie); de 27
 # uitsluitingen zijn ongewijzigd.
-# 2026-10-12, uchar b536bbc9 (kaart sessie-via-de-ingang-van-uchar): 222 — de dienst vult, vuurt en leest via
+# 2026-10-12 (kaart sessie-via-de-ingang-van-uchar): 222 — de dienst vult, vuurt en leest via
 # uchars ingang, en de set van gate 12 groeit met de exec-model-tak op truth maintenance van 240 naar 250 goldens.
 # Negen nieuwe spelers: anchor/jutterswet-erflijn, anchor/jutterswet-penninguitgifte, anchor/jutterswet-vindersloon,
 # jutterswet-afdrachtstapel, jutterswet-vondsttarief en synth2-afrondingscombinaties (de vorige tak weigerde een
 # vorm van elk), en jutterswet-budgetgrens-op, jutterswet-filterwacht en jutterswet-penningbesluit (nieuw in uchars
 # corpus). jutterswet-klipwacht komt ook in de set, maar speelt niet door de dienst (een tijdlijn als invoerwaarde,
 # hieronder); de 27 andere uitsluitingen zijn ongewijzigd.
-# 2026-10-14, uchar a63ef307 (kaart pin-naar-de-drl-teksttak-op-truth-maintenance): 225 — gate 12 heeft één lijst
+# 2026-10-14 (kaart pin-naar-de-drl-teksttak-op-truth-maintenance): 225 — gate 12 heeft één lijst
 # niet-spelers en één pin EXPECTED_PLAYED voor beide takken (de DRL-pin en de DRL-lijst vervallen), en de set groeit
 # van 250 naar 255 met vijf goldens die uchars kaart drl-teksttak-op-truth-maintenance schreef. Drie nieuwe spelers:
 # jutterswet-verdeling-dubbelbezet, jutterswet-uniciteit-drie-bronnen en jutterswet-uitsluiting-gedateerd.
 # jutterswet-aantalfilter-gehele-jaar en jutterswet-aantalfilter-gehele-jaar-creatieguard komen ook in de set, maar
 # spelen niet door de dienst (een kenmerk met perioden, hieronder); de 28 andere uitsluitingen zijn ongewijzigd.
-# 2026-10-19, uchar ec88b2919 (pin-naming-fixes): 230 — de set van gate 12 groeit van 255 naar 260 met de vijf goldens
+# 2026-10-19, uchar's card `zero-division-channel` (pin-naming-fixes): 230 — de set van gate 12 groeit van 255 naar 260 met de vijf goldens
 # van uchars kaart zero-division-channel die Drools speelt (division-by-numeric-zero, division-abs-by-numeric-zero,
 # filled-count-unguarded-division, at-most-reads-until-settled en fold-filter-divides-by-zero); alle vijf spelen ze
 # door de dienst. De zesde, closed-runtime-division-by-zero, vouwt over een lijstparameter en staat niet in de set.
@@ -138,7 +138,7 @@ REPLAY_EXCLUDED=(
   "synth2-prorata-breed|tijdlijn als invoerwaarde"
 )
 
-uitgesloten() { local e; for e in "${REPLAY_EXCLUDED[@]}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1; }
+is_excluded() { local e; for e in "${REPLAY_EXCLUDED[@]}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1; }
 
 # Elke regel een golden en een reden, en geen golden twee keer.
 seen=""
@@ -184,10 +184,10 @@ while IFS=$'\t' read -r g status detail; do
   [ -n "$g" ] || continue
   case "$status" in
     PLAYED)
-      uitgesloten "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_EXCLUDED")
+      is_excluded "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_EXCLUDED")
       played=$((played + 1)); cases=$((cases + detail)) ;;
     EXCLUDE)
-      uitgesloten "$g" || unnamed+=("$g :: $detail")
+      is_excluded "$g" || unnamed+=("$g :: $detail")
       excl=$((excl + 1)) ;;
     *) deviations+=("$g :: $status $detail") ;;
   esac

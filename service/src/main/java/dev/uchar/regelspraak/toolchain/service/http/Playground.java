@@ -92,7 +92,7 @@ import java.util.Set;
  *       ({@link ScenarioData}).</li>
  * </ol>
  *
- * <p><b>Vocabulary.</b> {@link #analyseer(String, String)} names the declarations in {@code graphJson}, the trace, the
+ * <p><b>Vocabulary.</b> {@link #analyze(String, String)} names the declarations in {@code graphJson}, the trace, the
  * per-scenario coverage, the uitleg, the situation and the fixpoint in a vocabulary the source declares
  * ({@link Naming}); the parse and resolver output, the IR, the verdict, the DRL and the Mermaid graph are uchar's
  * and stay as uchar writes them. A vocabulary the source does not declare is a {@link Naming.VocabularyError},
@@ -103,7 +103,7 @@ import java.util.Set;
  * production {@code regelSpraakDocument}. So when a source carries such a block the analyzer parses + resolves it
  * through the scenario front-end ({@link ScenarioResolver}) and runs the scenarios off that same resolved bundle.
  *
- * <p><b>Via the service.</b> {@link #analyseer(String, String, DecisionCore)} with a core gives the same tree, and only
+ * <p><b>Via the service.</b> {@link #analyze(String, String, DecisionCore)} with a core gives the same tree, and only
  * the scenarios are computed by that core instead of uchar's scenario layer ({@link #renderViaService}): each becomes a
  * request of the service ({@link SituationToRequest}) to the entry point its scope maps to
  * ({@link DecisionCore#pathForScope}), and uchar compares the expectations of its case with the session of that
@@ -127,31 +127,31 @@ public final class Playground {
     private static final String SCENARIO_HEAD = "Scenario";
 
     /** Analyze {@code source} and return the answer tree (see the class javadoc for its shape). */
-    public static ObjectNode analyseer(String source) {
-        return analyseer(source, null);
+    public static ObjectNode analyze(String source) {
+        return analyze(source, null);
     }
 
-    /** {@link #analyseer(String)} with the declarations named in {@code vocabulaire} (null or
+    /** {@link #analyze(String)} with the declarations named in {@code vocabulaire} (null or
      *  {@link Naming#CANONICAL}: canonically). */
-    public static ObjectNode analyseer(String source, String vocabulary) {
-        return analyseer(source, vocabulary, null);
+    public static ObjectNode analyze(String source, String vocabulary) {
+        return analyze(source, vocabulary, null);
     }
 
     /**
-     * {@link #analyseer(String, String)} with the scenarios computed by {@code service} (null: by uchar's scenario layer,
+     * {@link #analyze(String, String)} with the scenarios computed by {@code service} (null: by uchar's scenario layer,
      * as above). Each result then also names the {@code path} of the entry point it ran on.
      *
      * @throws ServiceError when the {@code uchar-ir-v1} document of {@code source}, without its scenarios, is not that of
      *                    {@code service}: the service computes with its own sources, so its verdict would be about other
      *                    rules than these
      */
-    public static ObjectNode analyseer(String source, String vocabulary, DecisionCore service) {
-        return analyseer(source, vocabulary, service, null);
+    public static ObjectNode analyze(String source, String vocabulary, DecisionCore service) {
+        return analyze(source, vocabulary, service, null);
     }
 
-    /** {@link #analyseer(String, String, DecisionCore)} with the messages of uchar's resolver and the refusal of its
+    /** {@link #analyze(String, String, DecisionCore)} with the messages of uchar's resolver and the refusal of its
      *  build in {@code locale} (null: the language of the process). */
-    public static ObjectNode analyseer(String source, String vocabulary, DecisionCore service,
+    public static ObjectNode analyze(String source, String vocabulary, DecisionCore service,
                                        java.util.Locale locale) {
         ObjectNode root = NF.objectNode();
         boolean scenario = containsScenario(source);
@@ -513,7 +513,7 @@ public final class Playground {
         Map<Designatable, Declarations.Declaration> declarations = Map.of();
         String declarationError = null;
         try {
-            declarations = Declarations.van(parseResult.document(), parseResult.tokens(), model);
+            declarations = Declarations.of(parseResult.document(), parseResult.tokens(), model);
         } catch (Declarations.Unlinkable o) {
             declarationError = o.getMessage();
         }

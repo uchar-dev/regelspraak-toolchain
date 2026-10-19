@@ -87,7 +87,7 @@ final class Declarations {
      *
      * @throws Onkoppelbaar an element or a declaration that does not couple (see the class comment)
      */
-    static Map<Designatable, Declaration> van(ParserRuleContext document, CommonTokenStream tokens,
+    static Map<Designatable, Declaration> of(ParserRuleContext document, CommonTokenStream tokens,
                                            RegelSpraakModel model) {
         List<Found> found = new ArrayList<>();
         for (ParseTree kind : document.children == null ? List.<ParseTree>of() : document.children) {

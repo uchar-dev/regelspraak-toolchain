@@ -143,10 +143,10 @@ public final class ParameterSetLoader {
                 while (fields.hasNext()) {
                     var entry = fields.next();
                     String paramName = entry.getKey();
-                    String wpad = path + ".values." + paramName;
+                    String valuesPath = path + ".values." + paramName;
                     RegelSpraakModel.Parameter param = parameter(model, paramName);
                     if (param == null) {
-                        errors.add(wpad + ": onbekende parameter '" + paramName + "'");
+                        errors.add(valuesPath + ": onbekende parameter '" + paramName + "'");
                         continue;
                     }
                     String canonical = param.name();   // normaliseer naar de canonieke model-naam
@@ -154,11 +154,11 @@ public final class ParameterSetLoader {
                             values.computeIfAbsent(canonical, k -> new ArrayList<>());
                     JsonNode listNode = entry.getValue();
                     if (listNode == null || !listNode.isArray()) {
-                        errors.add(wpad + ": verwacht een lijst intervallen");
+                        errors.add(valuesPath + ": verwacht een lijst intervallen");
                         continue;
                     }
                     for (int j = 0; j < listNode.size(); j++) {
-                        ValueInterval wi = decodeerInterval(listNode.get(j), param, wpad + "[" + j + "]", errors);
+                        ValueInterval wi = decodeInterval(listNode.get(j), param, valuesPath + "[" + j + "]", errors);
                         if (wi != null) intervals.add(wi);
                     }
                 }
@@ -176,7 +176,7 @@ public final class ParameterSetLoader {
 
     /** Decodeer één {@code {value, from?, to?}}-interval; {@code null} bij een fout (die aan {@code errors} is
      *  toegevoegd). */
-    private static ValueInterval decodeerInterval(JsonNode node, RegelSpraakModel.Parameter param,
+    private static ValueInterval decodeInterval(JsonNode node, RegelSpraakModel.Parameter param,
                                                    String path, List<String> errors) {
         if (node == null || !node.isObject()) {
             errors.add(path + ": verwacht een object {value, from?, to?}");

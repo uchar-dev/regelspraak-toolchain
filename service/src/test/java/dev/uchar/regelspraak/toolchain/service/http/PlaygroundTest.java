@@ -13,7 +13,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The dev-only playground analyzer, exercised for its answer shapes (the payload {@code POST /playground/analyse}
  * returns): a parse error (position + expected tokens), a resolver error (diagnostics and nothing else), a clean
  * model with its IR, the verdict of the branch that fires, the DRL view and the rule graph, a clean model uchar does
- * not carry, and a scenario outcome with its trace and uitleg. These pin the core {@link Playground#analyseer}
+ * not carry, and a scenario outcome with its trace and uitleg. These pin the core {@link Playground#analyze}
  * contract; the wiring over HTTP (env-gated route) is covered by {@link PlaygroundHttpTest}.
  */
 class PlaygroundTest {
@@ -57,7 +57,7 @@ class PlaygroundTest {
     void parse_error_gives_position_and_expected_tokens() {
         // A truncated objecttype header: the closing ')' / member list is missing, so the parser errors with a
         // position and a follow set.
-        ObjectNode a = Playground.analyseer("Objecttype de Persoon (mv:");
+        ObjectNode a = Playground.analyze("Objecttype de Persoon (mv:");
         JsonNode parse = a.get("parse");
         assertFalse(parse.get("ok").asBoolean(), a.toString());
         assertTrue(parse.get("errors").size() >= 1, a.toString());
@@ -82,7 +82,7 @@ class PlaygroundTest {
             geldig altijd
             De leeftijd van een Persoon moet berekend worden als "twaalf".
             """;
-        ObjectNode a = Playground.analyseer(source);
+        ObjectNode a = Playground.analyze(source);
         assertTrue(a.get("parse").get("ok").asBoolean(), "syntactisch geldig: " + a);
         JsonNode resolver = a.get("resolver");
         assertFalse(resolver.get("ok").asBoolean(), "type-mismatch hoort een resolver-fout te zijn: " + a);
@@ -97,7 +97,7 @@ class PlaygroundTest {
         // the scenario's expectation names an attribute the model does not declare: a resolver error, so nothing
         // fires; until the playground ran on uchar, the scenario pane ran anyway and reported the refusal as its own
         String source = WITH_SCENARIO.replace("- de korting van P1 is 25", "- de schoenmaat van P1 is 25");
-        ObjectNode a = Playground.analyseer(source);
+        ObjectNode a = Playground.analyze(source);
         assertFalse(a.get("resolver").get("ok").asBoolean(), a.toString());
         assertTrue(a.get("resolver").get("errors").size() >= 1, a.toString());
         for (String field : new String[]{"ir", "executable", "drl", "graph", "graphJson", "scenario"})
@@ -108,7 +108,7 @@ class PlaygroundTest {
 
     @Test
     void clean_model_yields_drl_text() {
-        ObjectNode a = Playground.analyseer(CLEAN);
+        ObjectNode a = Playground.analyze(CLEAN);
         assertTrue(a.get("parse").get("ok").asBoolean(), a.toString());
         assertTrue(a.get("resolver").get("ok").asBoolean(), a.toString());
         assertTrue(a.has("drl"), "een schoon model hoort DRL te leveren: " + a);
@@ -148,7 +148,7 @@ class PlaygroundTest {
     void a_clean_model_that_uchar_does_not_carry_gets_the_uchar_refusal() {
         // resolves cleanly; uchar's exec-model branch does not lower the rule, so the verdict is 'niet uitvoerbaar'
         // with uchar's sentence (the DRL view is a view, not the verdict)
-        ObjectNode a = Playground.analyseer("""
+        ObjectNode a = Playground.analyze("""
             Objecttype de Vlucht (mv: Vluchten)
                 de heffing Numeriek (niet-negatief geheel getal);
                 is belast kenmerk (bijvoeglijk) voor elke dag;
@@ -166,7 +166,7 @@ class PlaygroundTest {
 
     @Test
     void scenario_block_yields_outcome_per_expectation() {
-        ObjectNode a = Playground.analyseer(WITH_SCENARIO);
+        ObjectNode a = Playground.analyze(WITH_SCENARIO);
         assertTrue(a.get("resolver").get("ok").asBoolean(), a.toString());
         JsonNode scenario = a.get("scenario");
         assertTrue(scenario != null && scenario.has("results"), "scenario-sectie verwacht: " + a);

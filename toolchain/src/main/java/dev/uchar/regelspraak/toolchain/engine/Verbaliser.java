@@ -205,14 +205,14 @@ public final class Verbaliser {
     private String firstFailingConjunct(Condition c, Object bean, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE) {
             for (Condition d : s.components()) {
-                Boolean holds = evalueer(d, bean);
+                Boolean holds = evaluate(d, bean);
                 if (holds == null) return "de voorwaarde \"" + summary(d) + "\" niet is vast te stellen";
                 if (!holds) return "niet geldt: " + verbaliseAtom(d, bean, subject, ucharText);
             }
             // alle conjuncten houden maar het kenmerk staat toch niet aan: een producent buiten deze run.
             return "de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
         }
-        Boolean holds = evalueer(c, bean);
+        Boolean holds = evaluate(c, bean);
         if (Boolean.FALSE.equals(holds)) return "niet geldt: " + verbaliseAtom(c, bean, subject, ucharText);
         if (holds == null) return "de voorwaarde \"" + summary(c) + "\" niet is vast te stellen";
         return "de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
@@ -224,7 +224,7 @@ public final class Verbaliser {
 
     /** Evalueer een conditie tegen de eindtoestand. null = niet vast te stellen (onopgeloste vorm / onleesbaar
      *  operand); geen gok. Alleen de vormen die de "eerste falende conjunct" nodig heeft. */
-    private Boolean evalueer(Condition c, Object bean) {
+    private Boolean evaluate(Condition c, Object bean) {
         if (c instanceof Condition.Comparison vg) {
             Object l = evalExpr(vg.left(), bean);
             Object r = evalExpr(vg.right(), bean);

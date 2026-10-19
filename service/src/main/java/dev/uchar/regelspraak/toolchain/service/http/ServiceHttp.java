@@ -313,7 +313,7 @@ public final class ServiceHttp {
      *  back as JSON. Errors at the RegelSpraak level (parse/resolve/scenario) are part of that tree, not HTTP
      *  errors; only a timeout (503) or an unexpected internal fault (500) map to a status.
      *
-     *  <p>{@code ?via=service} has this service's core compute the scenarios ({@link Playground#analyseer(String,
+     *  <p>{@code ?via=service} has this service's core compute the scenarios ({@link Playground#analyze(String,
      *  String, DecisionCore)}). It shows the session of each, so a core started without detail answers it with a 400
      *  that names {@code DETAIL}, before any analysis; a source that is not the service's own is a 400 as well.
      *  Another value of {@code via} is a 400. */
@@ -344,7 +344,7 @@ public final class ServiceHttp {
             // Compile-per-request under a hard timeout, on a throwaway single-use executor (no shared state).
             ExecutorService exec = Executors.newSingleThreadExecutor();
             try {
-                Future<ObjectNode> f = exec.submit(() -> Playground.analyseer(source, vocabulary, service, locale));
+                Future<ObjectNode> f = exec.submit(() -> Playground.analyze(source, vocabulary, service, locale));
                 send(ex, 200, f.get(PLAYGROUND_TIMEOUT_MS, TimeUnit.MILLISECONDS));
             } catch (TimeoutException timeout) {
                 send(ex, 503, errorBody("analyse overschreed de tijdslimiet ("

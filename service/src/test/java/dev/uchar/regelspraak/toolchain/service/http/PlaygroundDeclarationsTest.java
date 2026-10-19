@@ -84,7 +84,7 @@ class PlaygroundDeclarationsTest {
      *  empty {@code benamingen}. */
     @Test
     void line_and_comment_per_declaration() {
-        JsonNode voc = Playground.analyseer(BERGING).get("vocabularies");
+        JsonNode voc = Playground.analyze(BERGING).get("vocabularies");
         assertNull(voc.get("declarationError"), voc.toString());
         assertEquals(0, voc.get("declared").size());
         assertEquals(14, voc.get("elements").size(), voc.toString());
@@ -121,7 +121,7 @@ class PlaygroundDeclarationsTest {
                     // nieuw
                     het aantal Numeriek (geheel getal);
                 """;
-        JsonNode voc = Playground.analyseer(afterHead).get("vocabularies");
+        JsonNode voc = Playground.analyze(afterHead).get("vocabularies");
         assertNotNull(voc, "uchar aanvaardt de letterlijke herhaling");
         expected(voc, "ATTRIBUUT", "Berging", "opbrengst", 3, "kop");
         expected(voc, "ATTRIBUUT", "Berging", "aantal", 8, "nieuw");
@@ -134,7 +134,7 @@ class PlaygroundDeclarationsTest {
                     // kop
                     de opbrengst Numeriek (geheel getal);
                 """;
-        JsonNode before = Playground.analyseer(beforeHead).get("vocabularies");
+        JsonNode before = Playground.analyze(beforeHead).get("vocabularies");
         assertNotNull(before, "uchar aanvaardt de letterlijke herhaling");
         expected(before, "ATTRIBUUT", "Berging", "opbrengst", 6, "kop");
     }
@@ -145,7 +145,7 @@ class PlaygroundDeclarationsTest {
     @Test
     void what_the_frontend_wrote_has_no_line() throws IOException {
         String source = golden("jutterswet-opgave-bedrag");
-        JsonNode voc = Playground.analyseer(source).get("vocabularies");
+        JsonNode voc = Playground.analyze(source).get("vocabularies");
         assertNull(voc.get("declarationError"), voc.toString());
         expected(voc, "ATTRIBUUT", "Vondst", "waarde", 7);
         expected(voc, "VORM", null, "waarde", 12, "Bron: art. 3k lid 1");
@@ -169,7 +169,7 @@ class PlaygroundDeclarationsTest {
                     de opbrengst Numeriek (geheel getal);
                     de opbrengst Numeriek (geheel getal);
                 """;
-        JsonNode voc = Playground.analyseer(source).get("vocabularies");
+        JsonNode voc = Playground.analyze(source).get("vocabularies");
         assertNotNull(voc, "uchar resolvet de bron");
         assertEquals("Het attribuut 'opbrengst' van 'Berging' heeft declaraties op de regels [2, 3], en uchar geeft"
                 + " niet aan welke daarvan het model draagt", voc.get("declarationError").asText());
@@ -184,7 +184,7 @@ class PlaygroundDeclarationsTest {
     void a_scenario_source_with_vocabularies() throws IOException {
         String source = golden("jutterswet-vocabulaires") + "\n"
                 + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
-        JsonNode voc = Playground.analyseer(source, "cgm").get("vocabularies");
+        JsonNode voc = Playground.analyze(source, "cgm").get("vocabularies");
         assertNull(voc.get("declarationError"), voc.toString());
         JsonNode jutter = expected(voc, "OBJECTTYPE", null, "Jutter", 11);
         assertEquals("JUTTER", jutter.at("/designations/cgm").asText());
@@ -219,7 +219,7 @@ class PlaygroundDeclarationsTest {
             if (!model.isOk()) continue;
             Map<Designatable, Declarations.Declaration> d;
             try {
-                d = Declarations.van(parseResult.document(), parseResult.tokens(), model);
+                d = Declarations.of(parseResult.document(), parseResult.tokens(), model);
             } catch (Declarations.Unlinkable o) {
                 errors.add(p.getParent().getFileName() + ": " + o.getMessage());
                 continue;

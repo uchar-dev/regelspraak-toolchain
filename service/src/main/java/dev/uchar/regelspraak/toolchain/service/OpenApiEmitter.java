@@ -141,7 +141,7 @@ public final class OpenApiEmitter {
         boolean enabled() { return !model.vocabularies.isEmpty(); }
 
         /** {@code {<keuze>: <naam>}} of declaration {@code b} in the other spellings. */
-        ObjectNode van(Designatable b) {
+        ObjectNode of(Designatable b) {
             ObjectNode sink = NF.objectNode();
             for (Naming n : other) sink.put(n.choice(), n.name(b));
             return sink;
@@ -358,7 +358,7 @@ public final class OpenApiEmitter {
             if (!ot.dimensionsOf(e.getKey()).isEmpty()) { rejected.add(name + " (dimensie)"); continue; }
             if (temporalAttribute(ot, e.getKey()))      { rejected.add(name + " (tijdlijn)"); continue; }
             ObjectNode attribute = attributeSchema(e.getValue(), sp);
-            if (sp.enabled()) spellings(attribute, sp.van(Naming.attributeOf(ot, e.getKey())));
+            if (sp.enabled()) spellings(attribute, sp.of(Naming.attributeOf(ot, e.getKey())));
             props.set(name, attribute);
         }
         // kenmerken (own first, then inherited) — boolean properties
@@ -368,13 +368,13 @@ public final class OpenApiEmitter {
             ObjectNode kn = NF.objectNode();
             kn.put("type", "boolean");
             kn.put("description", "characteristic");
-            if (sp.enabled()) spellings(kn, sp.van(Naming.characteristicOf(ot, k)));
+            if (sp.enabled()) spellings(kn, sp.of(Naming.characteristicOf(ot, k)));
             props.set(name, kn);
             characteristics.add(name);
         }
         schema.set("properties", props);
         schema.put("description", objectTypeDescription(ot, sp.in, characteristics, rejected));
-        if (sp.enabled()) spellings(schema, sp.van(Designatable.objectType(ot.name)));
+        if (sp.enabled()) spellings(schema, sp.of(Designatable.objectType(ot.name)));
         return schema;
     }
 
@@ -425,7 +425,7 @@ public final class OpenApiEmitter {
                 if (sp.enabled()) {
                     ObjectNode values = s.putObject("x-valueSpellings");
                     for (String w : e.values())
-                        values.set(sp.in.value(e, w), sp.van(Designatable.enumerationValue(e.domain(), w)));
+                        values.set(sp.in.value(e, w), sp.of(Designatable.enumerationValue(e.domain(), w)));
                 }
             }
             case Datatype.Unknown o -> s.put("type", "string");
@@ -674,10 +674,10 @@ public final class OpenApiEmitter {
         ObjectNode props = s.putObject("properties");
         props.putObject("error").put("type", "string");
         props.putObject("field").put("type", "string");
-        ObjectNode sch = props.putObject("violations");
-        sch.put("type", "array");
-        sch.putObject("items").put("type", "object");
-        sch.put("description", "de verzameling schendingen, elk met kind/field/message.");
+        ObjectNode violationsSchema = props.putObject("violations");
+        violationsSchema.put("type", "array");
+        violationsSchema.putObject("items").put("type", "object");
+        violationsSchema.put("description", "de verzameling schendingen, elk met kind/field/message.");
         return s;
     }
 

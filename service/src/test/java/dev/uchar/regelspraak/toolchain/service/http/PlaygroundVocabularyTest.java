@@ -52,8 +52,8 @@ class PlaygroundVocabularyTest {
 
     @Test
     void graph_trace_and_uitleg_in_the_vocabulary() {
-        ObjectNode cgm = Playground.analyseer(SOURCE, "cgm");
-        ObjectNode canonical = Playground.analyseer(SOURCE);
+        ObjectNode cgm = Playground.analyze(SOURCE, "cgm");
+        ObjectNode canonical = Playground.analyze(SOURCE);
         List<String> labels = labels(cgm);
         assertTrue(labels.contains("R_PREMIE_VONDST"), labels.toString());
         assertTrue(labels.contains("VONDST_BEDRAG · JUTTER"), labels.toString());
@@ -73,7 +73,7 @@ class PlaygroundVocabularyTest {
 
     @Test
     void an_unknown_vocabulary_is_refused() throws Exception {
-        assertThrows(Naming.VocabularyError.class, () -> Playground.analyseer(SOURCE, "wetboek"));
+        assertThrows(Naming.VocabularyError.class, () -> Playground.analyze(SOURCE, "wetboek"));
         String descriptor = """
             { "service": {"name":"playground","version":"1"}, "entrypoints": [ { "name":"premie","path":"premie",
               "scope": {"ruleGroups": ["premieberekening"]}, "input": ["Jutter"], "output": ["Jutter.vondstbedrag"] } ],

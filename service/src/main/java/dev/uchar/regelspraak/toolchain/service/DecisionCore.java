@@ -540,7 +540,7 @@ public final class DecisionCore {
         for (var e : descriptor.parameters().entrySet()) {
             RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, e.getKey());
             if (p == null) continue;   // already reported by descriptor validation
-            ValueCoder.Result r = ValueCoder.decodeer(e.getValue(), p.datatype(), "parameters." + e.getKey());
+            ValueCoder.Result r = ValueCoder.decode(e.getValue(), p.datatype(), "parameters." + e.getKey());
             errors.addAll(r.violations());
             if (r.violations().isEmpty()) globals.put(RequestMapper.globalName(p.name()), r.value());
         }

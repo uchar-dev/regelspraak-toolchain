@@ -206,7 +206,7 @@ class DetailHttpTest {
     @Test
     void the_same_form_as_the_playground() throws Exception {
         String source = BERGING + SITUATION.formatted("2");
-        JsonNode playground = Playground.analyseer(source).at("/scenario/results/0");
+        JsonNode playground = Playground.analyze(source).at("/scenario/results/0");
         JsonNode service = detailOf(withDetail, "berging", source);
         assertEquals(playground.get("fixpoint"), service.get("fixpoint"));
         assertEquals(playground.get("trace"), service.get("trace"));
@@ -218,7 +218,7 @@ class DetailHttpTest {
     @Test
     void the_same_fault_as_the_playground() throws Exception {
         String source = BERGING + SITUATION.formatted("5");
-        JsonNode playground = Playground.analyseer(source).at("/scenario/results/0");
+        JsonNode playground = Playground.analyze(source).at("/scenario/results/0");
         JsonNode service = detailOf(withDetail, "berging", source);
         assertEquals(playground.get("fixpoint"), service.get("fixpoint"));
     }
@@ -228,7 +228,7 @@ class DetailHttpTest {
     @Test
     void made_objects_like_the_playground() throws Exception {
         String source = strandmeldingSource + MELDINGEN;
-        JsonNode playground = Playground.analyseer(source).at("/scenario/results/0");
+        JsonNode playground = Playground.analyze(source).at("/scenario/results/0");
         JsonNode service = detailOf(strandmelding, "melding", source);
         assertEquals(List.of("M2", "M1", "#1", "#2"), text(service.at("/fixpoint/objects"), "object"));
         assertEquals(2, service.at("/fixpoint/links").size(), service.toString());
@@ -241,7 +241,7 @@ class DetailHttpTest {
     @Test
     void the_core_without_http_gives_the_form_of_the_playground() {
         String source = strandmeldingSource + MELDINGEN.replace(" is 20", " is 20,00").replace(" is 10", " is 10,00");
-        JsonNode playground = Playground.analyseer(source).at("/scenario/results/0");
+        JsonNode playground = Playground.analyze(source).at("/scenario/results/0");
         var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
         ObjectNode service = strandmeldingKern.process("melding", SituationToRequest.assemble(bundle.scenarios().get(0)),
                 new RequestOptions(false, null, null, true, true, true));

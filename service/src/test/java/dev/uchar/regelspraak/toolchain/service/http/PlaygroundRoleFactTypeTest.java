@@ -95,7 +95,7 @@ class PlaygroundRoleFactTypeTest {
 
     @Test
     void a_role_name_in_three_fact_types() {
-        ObjectNode a = Playground.analyseer(GRANTED);
+        ObjectNode a = Playground.analyze(GRANTED);
         JsonNode s = a.at("/scenario/results/0");
         assertEquals("PASS", s.get("status").asText(), s.toString());
         JsonNode sit = s.get("situation");
@@ -122,13 +122,13 @@ class PlaygroundRoleFactTypeTest {
     void in_a_vocabulary() throws IOException {
         String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/source.rgs"))
                 + "\n" + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
-        JsonNode cgm = role(Playground.analyseer(source, "cgm").at("/scenario/results/0/situation"), "V1", "AANMELDER");
+        JsonNode cgm = role(Playground.analyze(source, "cgm").at("/scenario/results/0/situation"), "V1", "AANMELDER");
         assertEquals("VONDST_AANMELDING", cgm.get("factType").asText(), cgm.toString());
         assertEquals("vondstaanmelding", cgm.get("factTypeCanonical").asText(), cgm.toString());
-        JsonNode handboek = role(Playground.analyseer(source, "handboek").at("/scenario/results/0/situation"), "V1",
+        JsonNode handboek = role(Playground.analyze(source, "handboek").at("/scenario/results/0/situation"), "V1",
                 "melder");
         assertEquals("aanmelding van een vondst", handboek.get("factType").asText(), handboek.toString());
-        JsonNode canonical = role(Playground.analyseer(source).at("/scenario/results/0/situation"), "V1", "aanmelder");
+        JsonNode canonical = role(Playground.analyze(source).at("/scenario/results/0/situation"), "V1", "aanmelder");
         assertEquals("vondstaanmelding", canonical.get("factType").asText(), canonical.toString());
     }
 
@@ -145,7 +145,7 @@ class PlaygroundRoleFactTypeTest {
         List<String> errors = new ArrayList<>();
         for (Path m : directories) {
             String source = Files.readString(m.resolve("source.rgs")) + "\n" + Files.readString(m.resolve("scenario.rgs"));
-            ObjectNode a = Playground.analyseer(source);
+            ObjectNode a = Playground.analyze(source);
             JsonNode results = a.at("/scenario/results");
             if (results.isEmpty()) {
                 errors.add(m.getFileName() + ": geen scenarioresultaten: " + a.get("resolver"));

@@ -50,7 +50,7 @@ public final class ValueCoder {
     /**
      * Decode {@code node} as a value of {@code dt}. {@code field} is the request field path used in any violation.
      */
-    public static Result decodeer(JsonNode node, Datatype dt, String field) {
+    public static Result decode(JsonNode node, Datatype dt, String field) {
         if (node == null || node.isNull()) return Result.ok(null);   // explicit leegwaarde
 
         if (dt instanceof Datatype.Numeric n)   return numeric(node, field, n.unit());

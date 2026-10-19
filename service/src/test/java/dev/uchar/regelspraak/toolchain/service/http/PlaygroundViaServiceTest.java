@@ -165,8 +165,8 @@ class PlaygroundViaServiceTest {
                 document.append(Files.readString(scenario)).append('\n');
                 DecisionCore core = DecisionCore.assemble(tokaDescriptor(sources), sources,
                         CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
-                ObjectNode ordinary = Playground.analyseer(document.toString(), null);
-                ObjectNode service = Playground.analyseer(document.toString(), null, core);
+                ObjectNode ordinary = Playground.analyze(document.toString(), null);
+                ObjectNode service = Playground.analyze(document.toString(), null, core);
                 JsonNode rg = ordinary.path("scenario").path("results");
                 JsonNode rd = service.path("scenario").path("results");
                 assertTrue(rg.size() > 0, () -> "de gewone route gaf geen scenario: " + ordinary.path("resolver"));
@@ -235,8 +235,8 @@ class PlaygroundViaServiceTest {
     @Test
     void a_fail_has_the_diagnostic_of_the_ordinary_route() {
         String source = BERGING + "\n" + SCENARIO.formatted("4", "30,00");
-        JsonNode g = Playground.analyseer(source, null).path("scenario").path("results").get(0);
-        JsonNode d = Playground.analyseer(source, null, berging).path("scenario").path("results").get(0);
+        JsonNode g = Playground.analyze(source, null).path("scenario").path("results").get(0);
+        JsonNode d = Playground.analyze(source, null, berging).path("scenario").path("results").get(0);
         assertEquals("FAIL", d.path("status").asText());
         assertEquals(g.path("diagnosis"), d.path("diagnosis"));
         assertTrue(d.path("diagnosis").asText().startsWith("case1-berging.json: "), d.path("diagnosis").asText());
@@ -255,8 +255,8 @@ class PlaygroundViaServiceTest {
     @Test
     void an_evaluation_fault_is_a_fail_with_the_diagnostic_of_the_uchar_report() {
         String source = BERGING + "\n" + SCENARIO.formatted("5", "20,00");
-        JsonNode g = Playground.analyseer(source, null).path("scenario").path("results").get(0);
-        JsonNode d = Playground.analyseer(source, null, berging).path("scenario").path("results").get(0);
+        JsonNode g = Playground.analyze(source, null).path("scenario").path("results").get(0);
+        JsonNode d = Playground.analyze(source, null, berging).path("scenario").path("results").get(0);
         assertEquals("FAIL", g.path("status").asText());
         assertEquals("FAIL", d.path("status").asText());
         assertEquals(g.path("diagnosis"), d.path("diagnosis"));
@@ -277,8 +277,8 @@ class PlaygroundViaServiceTest {
         DecisionCore core = DecisionCore.assemble(DAY_COUNT_DESCRIPTOR, Map.of("bron.rgs", rgs),
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
         String source = rgs + "\n" + Files.readString(golden.resolve("scenario.rgs"));
-        JsonNode g = Playground.analyseer(source, null).path("scenario").path("results").get(0);
-        JsonNode d = Playground.analyseer(source, null, core).path("scenario").path("results").get(0);
+        JsonNode g = Playground.analyze(source, null).path("scenario").path("results").get(0);
+        JsonNode d = Playground.analyze(source, null, core).path("scenario").path("results").get(0);
         assertEquals("voorbeeld", d.path("name").asText());
         assertEquals("PASS", g.path("status").asText());
         assertEquals("MARKER", d.path("status").asText());
@@ -294,7 +294,7 @@ class PlaygroundViaServiceTest {
     void without_an_entry_point_a_visible_refusal() {
         DecisionCore premie = DecisionCore.assemble(PREMIE_DESCRIPTOR, Map.of("berging.rgs", BERGING),
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
-        JsonNode d = Playground.analyseer(BERGING + "\n" + SCENARIO.formatted("4", "20,00"), null, premie)
+        JsonNode d = Playground.analyze(BERGING + "\n" + SCENARIO.formatted("4", "20,00"), null, premie)
                 .path("scenario").path("results").get(0);
         assertEquals("MARKER", d.path("status").asText());
         assertTrue(d.path("path").isNull(), d.toString());
@@ -326,7 +326,7 @@ class PlaygroundViaServiceTest {
         assertEquals("berging", result.path("path").asText());
 
         // the core refuses the same, without HTTP
-        ServiceError error = assertThrows(ServiceError.class, () -> Playground.analyseer(different, null, berging));
+        ServiceError error = assertThrows(ServiceError.class, () -> Playground.analyze(different, null, berging));
         assertEquals(Violation.Kind.UNSUPPORTED, error.violations().get(0).kind());
     }
 

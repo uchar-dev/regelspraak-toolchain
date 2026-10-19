@@ -147,8 +147,8 @@ class NoFixpointTest {
     @Test
     void via_service_the_scenario_without_fixpoint_is_a_FAIL_and_the_other_is_a_PASS() {
         String document = source + "\n" + SCENARIO.formatted(1, 2) + "\n" + SCENARIO.formatted(50, 51);
-        JsonNode g = Playground.analyseer(document, null).path("scenario").path("results");
-        JsonNode d = Playground.analyseer(document, null, core).path("scenario").path("results");
+        JsonNode g = Playground.analyze(document, null).path("scenario").path("results");
+        JsonNode d = Playground.analyze(document, null, core).path("scenario").path("results");
         assertEquals(2, d.size(), d.toString());
         assertEquals("FAIL", g.get(0).path("status").asText(), g.toString());
         assertEquals("FAIL", d.get(0).path("status").asText(), d.toString());
