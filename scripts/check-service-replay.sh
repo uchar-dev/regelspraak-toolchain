@@ -95,7 +95,11 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # jutterswet-verdeling-dubbelbezet, jutterswet-uniciteit-drie-bronnen en jutterswet-uitsluiting-gedateerd.
 # jutterswet-aantalfilter-gehele-jaar en jutterswet-aantalfilter-gehele-jaar-creatieguard komen ook in de set, maar
 # spelen niet door de dienst (een kenmerk met perioden, hieronder); de 28 andere uitsluitingen zijn ongewijzigd.
-EXPECTED_REPLAY_PLAYED=225
+# 2026-10-19, uchar ec88b2919 (pin-naming-fixes): 230 — de set van gate 12 groeit van 255 naar 260 met de vijf goldens
+# van uchars kaart zero-division-channel die Drools speelt (division-by-numeric-zero, division-abs-by-numeric-zero,
+# filled-count-unguarded-division, at-most-reads-until-settled en fold-filter-divides-by-zero); alle vijf spelen ze
+# door de dienst. De zesde, closed-runtime-division-by-zero, vouwt over een lijstparameter en staat niet in de set.
+EXPECTED_REPLAY_PLAYED=230
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
