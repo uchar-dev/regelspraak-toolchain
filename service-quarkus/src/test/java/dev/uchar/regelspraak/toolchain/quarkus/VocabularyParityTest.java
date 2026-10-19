@@ -86,7 +86,7 @@ class VocabularyParityTest {
     void the_refusals_of_vocabularies_are_equal() throws Exception {
         assertEquals("UNKNOWN_VOCABULARY", compare("premie", "wetboek", null, 400).at("/violations/0/kind").asText());
         JsonNode fixed = compare("premie", null, "cgm", 400);
-        assertTrue(fixed.get("violations").toString().contains("(invoervocabulaire 'cgm')"), fixed.toString());
+        assertTrue(fixed.get("violations").toString().contains("(inputVocabulary 'cgm')"), fixed.toString());
     }
 
     /** The same POST to both adapters: the same status ({@code verwacht}) and body, which it returns. */

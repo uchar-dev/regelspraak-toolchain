@@ -124,7 +124,7 @@ class VocabularyHttpTest {
         Answer fixed = post(golden, "/premie?inputVocabulary=cgm", REQUEST);
         assertEquals(400, fixed.status(), fixed.body().toString());
         assertTrue(fixed.body().get("violations").toString()
-                .contains("\"onbekend objecttype 'strandjutter' (invoervocabulaire 'cgm')\""), fixed.body().toString());
+                .contains("\"onbekend objecttype 'strandjutter' (inputVocabulary 'cgm')\""), fixed.body().toString());
     }
 
     @Test

@@ -159,6 +159,6 @@ class AsOfDateSessionTest {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(BOUND_FROM_PARAMETER);
         IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
                 () -> engine.newSession(null, twoVintages()));
-        assertTrue(ex.getMessage().contains("peildatum"), () -> "moet de peildatum-eis noemen: " + ex.getMessage());
+        assertTrue(ex.getMessage().contains("asOfDate"), () -> "moet de asOfDate-eis noemen: " + ex.getMessage());
     }
 }
