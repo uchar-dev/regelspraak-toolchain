@@ -136,7 +136,7 @@ public final class ScenarioRunner {
             List<Explained> sink = new ArrayList<>();
             for (int i = 0; i < scenarios.size(); i++) {
                 ScenarioResult r = report.get(i);
-                ScenarioResult named = new ScenarioResult(scenarios.get(i).naam(), r.status(),
+                ScenarioResult named = new ScenarioResult(scenarios.get(i).name(), r.status(),
                         r.expectations(), r.trace(), r.coverage(), r.diagnostic());
                 sink.add(withExplanation ? explanation(build, named, JSON.readTree(Files.readString(cases.get(i))), vocabulary)
                         : new Explained(named, List.of(), null, null, null));
@@ -153,7 +153,7 @@ public final class ScenarioRunner {
     private static List<Explained> markers(List<ResolvedScenario> scenarios, String reason) {
         List<Explained> sink = new ArrayList<>();
         for (ResolvedScenario s : scenarios)
-            sink.add(new Explained(new ScenarioResult(s.naam(), ScenarioResult.Status.MARKER, List.of(),
+            sink.add(new Explained(new ScenarioResult(s.name(), ScenarioResult.Status.MARKER, List.of(),
                     new ScenarioResult.Trace(List.of()), List.of(), reason), List.of(), null, null, null));
         return sink;
     }

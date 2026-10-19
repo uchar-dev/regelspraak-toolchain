@@ -48,7 +48,7 @@ import java.util.List;
  * <p>De parameter-lookup dupliceert bewust de 8-regels case-insensitieve tolerantie van
  * {@code dev.uchar.regelspraak.toolchain.service.DescriptorLoader#parameter(RegelSpraakModel, String)} (exacte voorkeur, dan
  * case-insensitief), omdat de engine de service-module niet mag importeren. Keys worden genormaliseerd naar de
- * CANONIEKE {@link RegelSpraakModel.Parameter#naam()} zodat consumers global-namen kunnen afleiden.
+ * CANONIEKE {@link RegelSpraakModel.Parameter#name()} zodat consumers global-namen kunnen afleiden.
  */
 public final class ParameterSetLoader {
 
@@ -149,7 +149,7 @@ public final class ParameterSetLoader {
                         errors.add(wpad + ": onbekende parameter '" + paramName + "'");
                         continue;
                     }
-                    String canonical = param.naam();   // normaliseer naar de canonieke model-naam
+                    String canonical = param.name();   // normaliseer naar de canonieke model-naam
                     List<ValueInterval> intervals =
                             values.computeIfAbsent(canonical, k -> new ArrayList<>());
                     JsonNode listNode = entry.getValue();
@@ -228,12 +228,12 @@ public final class ParameterSetLoader {
     private static DecodeResult decodeValue(JsonNode node, Datatype dt, String field) {
         if (node == null || node.isNull()) return DecodeResult.ok(null);   // expliciete leegwaarde
 
-        if (dt instanceof Datatype.Numeriek n)   return numeric(node, field, n.eenheid());
-        if (dt instanceof Datatype.Percentage p) return numeric(node, field, p.eenheid());
+        if (dt instanceof Datatype.Numeric n)   return numeric(node, field, n.unit());
+        if (dt instanceof Datatype.Percentage p) return numeric(node, field, p.unit());
         if (dt instanceof Datatype.BooleanType)     return decodeBoolean(node, field);
-        if (dt instanceof Datatype.Tekst)        return text(node, field);
-        if (dt instanceof Datatype.Enumeratie e) return enumeration(node, field, e);
-        if (dt instanceof Datatype.DatumInDagen) return date(node, field);
+        if (dt instanceof Datatype.Text)        return text(node, field);
+        if (dt instanceof Datatype.Enumeration e) return enumeration(node, field, e);
+        if (dt instanceof Datatype.DateInDays) return date(node, field);
         if (dt instanceof Datatype.DateTime)    return dateTime(node, field);
 
         return DecodeResult.error(field + ": datatype " + dt + " wordt niet ondersteund");
@@ -277,13 +277,13 @@ public final class ParameterSetLoader {
         return DecodeResult.error(field + ": verwacht tekst, kreeg " + describe(node));
     }
 
-    private static DecodeResult enumeration(JsonNode node, String field, Datatype.Enumeratie e) {
+    private static DecodeResult enumeration(JsonNode node, String field, Datatype.Enumeration e) {
         if (!node.isTextual())
             return DecodeResult.error(field + ": verwacht een enumeratie-waarde (tekst), kreeg " + describe(node));
         String v = node.asText();
-        if (!e.waarden().contains(v))
+        if (!e.values().contains(v))
             return DecodeResult.error(field + ": '" + v + "' is geen waarde van domein '" + e.domain()
-                    + "' (toegestaan: " + e.waarden() + ")");
+                    + "' (toegestaan: " + e.values() + ")");
         return DecodeResult.ok(v);
     }
 
@@ -320,7 +320,7 @@ public final class ParameterSetLoader {
         RegelSpraakModel.Parameter p = model.parameters.get(name);
         if (p != null) return p;
         for (RegelSpraakModel.Parameter q : model.parameters.values())
-            if (q.naam().equalsIgnoreCase(name)) return q;
+            if (q.name().equalsIgnoreCase(name)) return q;
         return null;
     }
 }

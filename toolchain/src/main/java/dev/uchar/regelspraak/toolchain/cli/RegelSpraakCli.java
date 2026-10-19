@@ -168,11 +168,11 @@ public final class RegelSpraakCli {
             System.exit(0);
         }
         System.out.printf("objecttypen=%d  domeinen=%d  parameters=%d  feittypen=%d  regels=%d  resolved=%d%n",
-                m.objecttypen.size(), m.domeinen.size(), m.parameters.size(), m.feittypen.size(),
-                m.regels.size(), m.resolvedRegels.size());
-        m.resolvedRegels.forEach(r -> {
-            System.out.printf("  [%s] %s := %s :: %s%n", r.category(), r.target().source(), r.value().source(),
-                    r.value().type() == null ? "(geen type)" : r.value().type().naam());
+                m.objectTypes.size(), m.domains.size(), m.parameters.size(), m.factTypes.size(),
+                m.rules.size(), m.resolvedRules.size());
+        m.resolvedRules.forEach(r -> {
+            System.out.printf("  [%s] %s := %s :: %s%n", r.kind(), r.target().source(), r.value().source(),
+                    r.value().type() == null ? "(geen type)" : r.value().type().name());
             if (r.condition() != null) System.out.println("      indien " + r.condition().source());
         });
         m.diagnostics.forEach(d -> System.out.println("  " + chain.message(d)));

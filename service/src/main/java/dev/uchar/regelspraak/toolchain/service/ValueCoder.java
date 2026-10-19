@@ -53,12 +53,12 @@ public final class ValueCoder {
     public static Result decodeer(JsonNode node, Datatype dt, String field) {
         if (node == null || node.isNull()) return Result.ok(null);   // explicit leegwaarde
 
-        if (dt instanceof Datatype.Numeriek n)   return numeric(node, field, n.eenheid());
-        if (dt instanceof Datatype.Percentage p) return numeric(node, field, percentUnit(p.eenheid()));
+        if (dt instanceof Datatype.Numeric n)   return numeric(node, field, n.unit());
+        if (dt instanceof Datatype.Percentage p) return numeric(node, field, percentUnit(p.unit()));
         if (dt instanceof Datatype.BooleanType)     return decodeBoolean(node, field);
-        if (dt instanceof Datatype.Tekst)        return text(node, field);
-        if (dt instanceof Datatype.Enumeratie e) return enumeration(node, field, e);
-        if (dt instanceof Datatype.DatumInDagen) return date(node, field);
+        if (dt instanceof Datatype.Text)        return text(node, field);
+        if (dt instanceof Datatype.Enumeration e) return enumeration(node, field, e);
+        if (dt instanceof Datatype.DateInDays) return date(node, field);
         if (dt instanceof Datatype.DateTime)    return dateTime(node, field);
 
         return Result.error(Violation.van(Violation.Kind.UNSUPPORTED, field,
@@ -119,14 +119,14 @@ public final class ValueCoder {
                 "verwacht tekst, kreeg " + describe(node)));
     }
 
-    private static Result enumeration(JsonNode node, String field, Datatype.Enumeratie e) {
+    private static Result enumeration(JsonNode node, String field, Datatype.Enumeration e) {
         if (!node.isTextual())
             return Result.error(Violation.van(Violation.Kind.WRONG_TYPE, field,
                     "verwacht een enumeratie-waarde (tekst), kreeg " + describe(node)));
         String v = node.asText();
-        if (e.waarden().stream().noneMatch(w -> Namen.norm(w).equals(Namen.norm(v))))
+        if (e.values().stream().noneMatch(w -> Namen.norm(w).equals(Namen.norm(v))))
             return Result.error(Violation.van(Violation.Kind.UNKNOWN_ENUM_VALUE, field,
-                    "'" + v + "' is geen waarde van domein '" + e.domain() + "' (toegestaan: " + e.waarden() + ")"));
+                    "'" + v + "' is geen waarde van domein '" + e.domain() + "' (toegestaan: " + e.values() + ")"));
         return Result.ok(v);
     }
 

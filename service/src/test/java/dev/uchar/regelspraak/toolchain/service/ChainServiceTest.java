@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.toolchain.service.http.ServiceHttp;
 
 import org.junit.jupiter.api.BeforeAll;
@@ -122,7 +122,7 @@ class ChainServiceTest {
         assertTrue(DescriptorLoader.validate(d, MODEL).isEmpty(),
                 () -> "de descriptor hoort schoon te valideren: " + DescriptorLoader.validate(d, MODEL));
 
-        Objecttype wrakstuk = DescriptorLoader.objectType(MODEL, "Wrakstuk");
+        ObjectType wrakstuk = DescriptorLoader.objectType(MODEL, "Wrakstuk");
         assertNotNull(wrakstuk);
         assertTrue(DescriptorLoader.hasCharacteristic(wrakstuk, "aangemeld"),
                 "een geërfd kenmerk is een kenmerk van het subtype");

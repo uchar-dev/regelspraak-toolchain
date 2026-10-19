@@ -4,7 +4,7 @@ import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Vocabulary;
 import dev.uchar.regelspraak.transpiler.core.Namen;
@@ -51,20 +51,20 @@ public final class Naming {
         if (choice == null || choice.equalsIgnoreCase(CANONICAL)) return canonical(model);
         Vocabulary v = model.vocabulary(choice);
         if (v == null) throw new VocabularyError(unknown(choice, model));
-        return new Naming(model, v.naam());
+        return new Naming(model, v.name());
     }
 
     /** The sentence that refuses a model declaring a vocabulary named {@link #CANONICAL}, or null when it declares none:
      *  that word chooses the canonical names, so such a vocabulary could never be chosen. */
     public static String reserved(RegelSpraakModel model) {
         Vocabulary v = model.vocabulary(CANONICAL);
-        return v == null ? null : "het model declareert een vocabulaire '" + v.naam() + "', en '" + CANONICAL
+        return v == null ? null : "het model declareert een vocabulaire '" + v.name() + "', en '" + CANONICAL
                 + "' kiest de canonieke namen; geef het vocabulaire een andere naam";
     }
 
     /** The sentence for a vocabulary {@code choice} the model does not declare, naming the ones it does. */
     private static String unknown(String choice, RegelSpraakModel model) {
-        List<String> names = model.vocabularies.stream().map(v -> "'" + v.naam() + "'").toList();
+        List<String> names = model.vocabularies.stream().map(v -> "'" + v.name() + "'").toList();
         String declared = names.isEmpty() ? "geen vocabulaire"
                 : names.size() == 1 ? names.get(0)
                 : String.join(", ", names.subList(0, names.size() - 1)) + " en " + names.get(names.size() - 1);
@@ -85,13 +85,13 @@ public final class Naming {
 
     /** The name of declaration {@code b}: its designation in the chosen vocabulary, or {@code b.name()}. */
     public String name(Designatable b) {
-        return vocabulary == null ? b.naam() : model.benaming(vocabulary, b).orElse(b.naam());
+        return vocabulary == null ? b.name() : model.designation(vocabulary, b).orElse(b.name());
     }
 
     /** The designation of declaration {@code b} in the chosen vocabulary, or null where it has none there and in the
      *  canonical choice: what tells a designation from a canonical name that {@link #name} gives in its place. */
     public String designation(Designatable b) {
-        return vocabulary == null ? null : model.benaming(vocabulary, b).orElse(null);
+        return vocabulary == null ? null : model.designation(vocabulary, b).orElse(null);
     }
 
     public String objectType(String name) { return designate(Designatable.objectType(name), name); }
@@ -106,93 +106,93 @@ public final class Naming {
     /** The role written {@code written} (its name, declared plural or best-effort plural) that {@code subject}
      *  reaches: the far role of a fact type {@code subject} takes part in. When the written name names no such role,
      *  or more than one, it stays as written. */
-    public String roleFrom(Objecttype subject, String written) {
+    public String roleFrom(ObjectType subject, String written) {
         if (vocabulary == null || subject == null || written == null) return written;
         Designatable found = null;
-        for (FactType ft : model.feittypen.values())
-            for (Role r : ft.rollen)
+        for (FactType ft : model.factTypes.values())
+            for (Role r : ft.roles)
                 if (RegelSpraakModel.roleNameMatches(r, written) && reachable(model, ft, r, subject)) {
                     if (found != null) return written;
-                    found = Designatable.role(ft.naam, r.naam());
+                    found = Designatable.role(ft.name, r.name());
                 }
         return designate(found, written);
     }
 
     /** The role written {@code written} that {@code subject} itself fills (a role check, "is een …"); as written
      *  when it names no such role, or more than one. */
-    public String roleFulfilled(Objecttype subject, String written) {
+    public String roleFulfilled(ObjectType subject, String written) {
         if (vocabulary == null || subject == null || written == null) return written;
         Designatable found = null;
-        for (FactType ft : model.feittypen.values())
-            for (Role r : ft.rollen)
+        for (FactType ft : model.factTypes.values())
+            for (Role r : ft.roles)
                 if (RegelSpraakModel.roleNameMatches(r, written) && fills(model, r, subject)) {
                     if (found != null) return written;
-                    found = Designatable.role(ft.naam, r.naam());
+                    found = Designatable.role(ft.name, r.name());
                 }
         return designate(found, written);
     }
 
     /** Attribute {@code naam} of {@code holder}, looked up on the type of its chain that declares it. */
-    public String attribute(Objecttype holder, String name) { return designate(attributeOf(holder, name), name); }
+    public String attribute(ObjectType holder, String name) { return designate(attributeOf(holder, name), name); }
 
     /** Characteristic {@code naam} of {@code holder}, looked up on the type of its chain that declares it. */
-    public String characteristic(Objecttype holder, String name) { return designate(characteristicOf(holder, name), name); }
+    public String characteristic(ObjectType holder, String name) { return designate(characteristicOf(holder, name), name); }
 
     /** A named form ({@link Benoembaar.Soort#VORM}) by a model entry's name: a version suffix ({@code " #2"}) stays
      *  behind the designation, as it stood behind the form name. */
     public String form(String name) {
         if (vocabulary == null || name == null) return name;
         String base = RegelSpraakModel.formName(name);
-        return model.benaming(vocabulary, Designatable.form(base))
+        return model.designation(vocabulary, Designatable.form(base))
                 .map(b -> b + name.substring(base.length())).orElse(name);
     }
 
     /** A value of enumeration {@code e}, spelled as a request or a rule spells it: the declared value it names, compared
      *  as uchar compares declared names ({@link Namen#norm}), and that value's designation. */
-    public String value(Datatype.Enumeratie e, String value) {
+    public String value(Datatype.Enumeration e, String value) {
         if (vocabulary == null || value == null) return value;
-        for (String w : e.waarden())
+        for (String w : e.values())
             if (Namen.norm(w).equals(Namen.norm(value)))
-                return model.benaming(vocabulary, Designatable.enumerationValue(e.domain(), w)).orElse(value);
+                return model.designation(vocabulary, Designatable.enumerationValue(e.domain(), w)).orElse(value);
         return value;
     }
 
     private String designate(Designatable b, String name) {
         if (vocabulary == null || b == null || name == null) return name;
-        return model.benaming(vocabulary, b).orElse(name);
+        return model.designation(vocabulary, b).orElse(name);
     }
 
     /** Attribute {@code naam} of {@code holder} as a declaration: its declared spelling, owned by the type of the chain
      *  that declares it (IR-SPEC ch. 2.2, the owner a designation is written on), or null when none does. */
-    public static Designatable attributeOf(Objecttype holder, String name) {
+    public static Designatable attributeOf(ObjectType holder, String name) {
         if (holder == null || name == null) return null;
-        for (Objecttype t : holder.chain())
-            for (String a : t.attributen.keySet())
-                if (a.equalsIgnoreCase(name)) return Designatable.attribute(t.naam, a);
+        for (ObjectType t : holder.chain())
+            for (String a : t.attributes.keySet())
+                if (a.equalsIgnoreCase(name)) return Designatable.attribute(t.name, a);
         return null;
     }
 
     /** Whether {@code subject} reaches role {@code r} of {@code ft}: it fills another role of {@code ft}, or, in a
      *  reciprocal fact type, the one role itself. A role's declared filler bounds from above (IR-SPEC ch. 2.6), so a
      *  subtype of it fills the role too. */
-    public static boolean reachable(RegelSpraakModel model, FactType ft, Role r, Objecttype subject) {
+    public static boolean reachable(RegelSpraakModel model, FactType ft, Role r, ObjectType subject) {
         if (ft.reciprocal) return fills(model, r, subject);
-        for (Role other : ft.rollen) if (other != r && fills(model, other, subject)) return true;
+        for (Role other : ft.roles) if (other != r && fills(model, other, subject)) return true;
         return false;
     }
 
     /** Whether {@code ot} fills role {@code r}: it is the role's declared filler or a subtype of it (IR-SPEC ch. 2.6). */
-    public static boolean fills(RegelSpraakModel model, Role r, Objecttype ot) {
-        Objecttype filler = model.objectTypeByName(r.objecttypeNaam());
-        return filler != null ? ot.isA(filler) : r.objecttypeNaam().equalsIgnoreCase(ot.naam);
+    public static boolean fills(RegelSpraakModel model, Role r, ObjectType ot) {
+        ObjectType filler = model.objectTypeByName(r.objectTypeName());
+        return filler != null ? ot.isA(filler) : r.objectTypeName().equalsIgnoreCase(ot.name);
     }
 
     /** The characteristic twin of {@link #attributeOf}. */
-    public static Designatable characteristicOf(Objecttype holder, String name) {
+    public static Designatable characteristicOf(ObjectType holder, String name) {
         if (holder == null || name == null) return null;
-        for (Objecttype t : holder.chain())
-            for (String k : t.kenmerken)
-                if (k.equalsIgnoreCase(name)) return Designatable.characteristic(t.naam, k);
+        for (ObjectType t : holder.chain())
+            for (String k : t.characteristics)
+                if (k.equalsIgnoreCase(name)) return Designatable.characteristic(t.name, k);
         return null;
     }
 }

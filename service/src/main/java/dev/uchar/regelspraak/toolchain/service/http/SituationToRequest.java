@@ -59,7 +59,7 @@ final class SituationToRequest {
         if (!situation.parameters().isEmpty()) {
             ObjectNode params = root.putObject("parameters");
             for (ParameterValue p : situation.parameters()) {
-                if (p.tijdlijn() != null)
+                if (p.timeline() != null)
                     throw new NonPortable("parameter '" + p.parameter() + "' heeft een tijdlijn; het "
                             + "verzoek van de dienst draagt geen tijdlijnwaarde");
                 params.set(p.parameter(), valueToJson(p.value()));
@@ -70,31 +70,31 @@ final class SituationToRequest {
         ArrayNode instances = root.putArray("instances");
         for (Instance i : situation.instances()) {
             ObjectNode inst = instances.addObject();
-            inst.put("type", i.objectType().naam);
+            inst.put("type", i.objectType().name);
             inst.put("id", i.label());
 
-            if (!i.attributen().isEmpty()) {
+            if (!i.attributes().isEmpty()) {
                 ObjectNode attributes = inst.putObject("attributes");
-                for (AttributeValue a : i.attributen()) {
-                    if (a.tijdlijn() != null)
+                for (AttributeValue a : i.attributes()) {
+                    if (a.timeline() != null)
                         throw new NonPortable("attribuut '" + a.attribute() + "' van " + i.label()
                                 + " heeft een tijdlijn; het verzoek van de dienst draagt geen tijdlijnwaarde");
                     attributes.set(a.attribute(), valueToJson(a.value()));
                 }
             }
-            if (!i.kenmerken().isEmpty()) {
+            if (!i.characteristics().isEmpty()) {
                 ObjectNode characteristics = inst.putObject("characteristics");
-                for (CharacteristicValue k : i.kenmerken()) {
+                for (CharacteristicValue k : i.characteristics()) {
                     if (k.periods() != null)
                         throw new NonPortable("kenmerk '" + k.characteristic() + "' van " + i.label()
                                 + " is tijdsafhankelijk; het verzoek van de dienst draagt geen perioden");
                     characteristics.put(k.characteristic(), Boolean.TRUE);   // a situatie only ever ASSERTS a kenmerk
                 }
             }
-            if (!i.rollen().isEmpty()) {
+            if (!i.roles().isEmpty()) {
                 ObjectNode roles = inst.putObject("roles");
-                for (RoleValue r : i.rollen()) {
-                    if (r.meervoudig()) {
+                for (RoleValue r : i.roles()) {
+                    if (r.many()) {
                         ArrayNode targets = roles.putArray(r.key());
                         for (String label : r.targetLabels()) targets.add(label);
                     } else {
@@ -114,7 +114,7 @@ final class SituationToRequest {
         if (w.dateTime() != null) return NF.textNode(w.dateTime().toString());
         if (w.bool() != null) return NF.booleanNode(w.bool());
         if (w.enumValue() != null) return NF.textNode(w.enumValue());  // enum literal
-        return NF.textNode(w.tekst());
+        return NF.textNode(w.text());
     }
 
     /** A case number lexeme as an exact BigDecimal: a decimal with a dot, or a reduced fraction {@code p/q} whose

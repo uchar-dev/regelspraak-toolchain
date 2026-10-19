@@ -54,7 +54,7 @@ class NamingTest {
         assertEquals("aangespoeld voorwerp", handboek.objectType("Strandvondst"));
         assertEquals("wrak", handboek.objectType("Wrakstuk"));
         // the subtype's inherited attribute carries the designation written on its declaring supertype
-        RegelSpraakModel.Objecttype wrakstuk = m.objectTypeByName("Wrakstuk");
+        RegelSpraakModel.ObjectType wrakstuk = m.objectTypeByName("Wrakstuk");
         assertEquals("gewicht in kilogram", handboek.attribute(wrakstuk, "gewicht"));
         assertEquals("diepte", handboek.attribute(wrakstuk, "diepte"), "zonder benaming: de naam zoals gegeven");
         assertEquals("waardevol", handboek.characteristic(wrakstuk, "waardevol"));
@@ -68,7 +68,7 @@ class NamingTest {
         assertEquals("R_WAARDEVOL", cgm.form("waardevolle vondst"));
         assertEquals("R_WAARDEVOL #2", cgm.form("waardevolle vondst #2"));
         assertEquals("een regel van de backend", cgm.form("een regel van de backend"));
-        Datatype.Enumeratie kind = (Datatype.Enumeratie) m.domeinen.get("Vondstsoort");
+        Datatype.Enumeration kind = (Datatype.Enumeration) m.domains.get("Vondstsoort");
         assertEquals("BARNSTEEN", cgm.value(kind, "Barnsteen"));
         assertEquals("amber", Naming.van(m, "handboek").value(kind, "barnsteen"));
         assertEquals("wrakhout", cgm.value(kind, "wrakhout"), "zonder benaming: de waarde zoals gegeven");

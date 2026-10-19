@@ -169,12 +169,12 @@ class ScopeChainTest {
     void producer_and_consumer_key_on_the_declaring_type() {
         RegelSpraakModel m = Resolver.resolve(MODEL_CHAIN + PRODUCER_SUPER + CONSUMER_SUB);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
-        ElementKey expected = ElementKey.van("Persoon", "volwassen", true);
+        ElementKey expected = ElementKey.of("Persoon", "volwassen", true);
         var index = ProducerConsumer.producerIndex(m, m.prioritizedDefaults);
         assertTrue(index.containsKey(expected), () -> "producentsleutel: " + index.keySet());
         boolean found = false;
-        for (var r : m.resolvedRegels)
-            if (ProducerConsumer.baseName(r.naam()).equals("bepaal korting"))
+        for (var r : m.resolvedRules)
+            if (ProducerConsumer.baseName(r.name()).equals("bepaal korting"))
                 found = ProducerConsumer.consumed(r, ProducerConsumer.sourceNavigation(m)).contains(expected);
         assertTrue(found, "de consument op het subtype hoort dezelfde sleutel te dragen");
     }
@@ -192,10 +192,10 @@ class ScopeChainTest {
             """);
         assertTrue(m.errors().isEmpty(), () -> "" + m.errors());
         var student = m.objectTypeByName("Student");
-        assertEquals(ElementKey.van("Persoon", "gekeurd", true),
+        assertEquals(ElementKey.of("Persoon", "gekeurd", true),
                 ProducerConsumer.elementOf(student, "gekeurd", true),
                 "het kenmerk is op Persoon gedeclareerd");
-        assertEquals(ElementKey.van("Student", "gekeurd", false),
+        assertEquals(ElementKey.of("Student", "gekeurd", false),
                 ProducerConsumer.elementOf(student, "gekeurd", false),
                 "het gelijknamige attribuut op Student");
     }

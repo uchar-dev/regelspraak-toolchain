@@ -7,7 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 
@@ -68,7 +68,7 @@ public final class AnswerBuilder {
      * @param uitvoer       the entry point's uitvoer selectors
      * @param typePerLabel  the request's id → objecttype (so a selector matches the right instances)
      */
-    public ObjectNode assemble(Executor.Outcome outcome, List<String> output, Map<String, Objecttype> typePerLabel) {
+    public ObjectNode assemble(Executor.Outcome outcome, List<String> output, Map<String, ObjectType> typePerLabel) {
         ObjectNode root = NF.objectNode();
         ArrayNode instances = root.putArray("instances");
 
@@ -76,7 +76,7 @@ public final class AnswerBuilder {
         for (var e : outcome.beans().entrySet()) {
             String id = e.getKey();
             Object bean = e.getValue();
-            Objecttype ot = typePerLabel.get(id);
+            ObjectType ot = typePerLabel.get(id);
             if (ot == null) continue;
 
             ObjectNode attributes = NF.objectNode();
@@ -92,7 +92,7 @@ public final class AnswerBuilder {
             if (attributes.isEmpty() && characteristics.isEmpty()) continue;
             ObjectNode inst = NF.objectNode();
             inst.put("id", id);
-            inst.put("type", naming.objectType(ot.naam));
+            inst.put("type", naming.objectType(ot.name));
             if (!attributes.isEmpty()) inst.set("attributes", attributes);
             if (!characteristics.isEmpty()) inst.set("characteristics", characteristics);
             instances.add(inst);
@@ -159,7 +159,7 @@ public final class AnswerBuilder {
         if (v instanceof Boolean b) return NF.booleanNode(b);
         if (v instanceof LocalDate d) return NF.textNode(d.toString());
         if (v instanceof LocalDateTime d) return NF.textNode(d.toString());
-        if (v instanceof String s) return NF.textNode(dt instanceof Datatype.Enumeratie e ? naming.value(e, s) : s);
+        if (v instanceof String s) return NF.textNode(dt instanceof Datatype.Enumeration e ? naming.value(e, s) : s);
         return NF.textNode(v.toString());
     }
 
@@ -168,7 +168,7 @@ public final class AnswerBuilder {
     }
 
     /** A stable per-request map (id → objecttype) helper for callers that only kept beans. */
-    public static Map<String, Objecttype> typePerLabel(Map<String, Objecttype> in) {
+    public static Map<String, ObjectType> typePerLabel(Map<String, ObjectType> in) {
         return new LinkedHashMap<>(in);
     }
 }

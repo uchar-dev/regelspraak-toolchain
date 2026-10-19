@@ -4,7 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 
@@ -79,8 +79,8 @@ class ExplanationOriginFromIrTest {
     }
 
     private static List<String> explanation(RegelSpraakModel model, Map<String, Object> beans) {
-        Objecttype vondst = model.objectTypeByName("Vondst");
-        Map<String, Objecttype> types = new LinkedHashMap<>();
+        ObjectType vondst = model.objectTypeByName("Vondst");
+        Map<String, ObjectType> types = new LinkedHashMap<>();
         for (String label : beans.keySet()) types.put(label, vondst);
         return new Verbaliser(model, Map.of(), Naming.van(model, "cgm")).verbalise(beans, types);
     }

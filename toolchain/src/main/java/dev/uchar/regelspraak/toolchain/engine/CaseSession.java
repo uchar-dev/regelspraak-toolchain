@@ -6,7 +6,7 @@ import dev.uchar.regelspraak.cases.CaseInput;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.engine.ScenarioResult;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
@@ -30,7 +30,7 @@ import java.util.Map;
  * derived values, from which the {@link Verbaliser} explains an outcome, and uchar's {@link Fixpoint}, what stands at
  * the fixpoint with or without an expectation on it.
  *
- * <p>The input is read by uchar's own input step ({@link CaseInput#van}), the one the replay reads every case with:
+ * <p>The input is read by uchar's own input step ({@link CaseInput#of}), the one the replay reads every case with:
  * the beans, their attributes, characteristics, timelines and roles, and the {@link CaseInput#invoer()} that puts them
  * in as the replay does (each to-many list in the replay's order, each bucket scalar named). This session sets the
  * parameters as globals under their camelCase name and the evaluation date as {@code evaluationDate}. A caller that uses
@@ -52,7 +52,7 @@ public final class CaseSession {
      *  before the write-back with the labels of the input beans. The beans carry the derived values written back,
      *  unless an evaluation fault stands at the fixpoint ({@code fixpoint.errors()} not empty): the write-back would
      *  throw it, so the beans then hold the input alone and the fault is in the fixpoint as data. */
-    public record Outcome(Map<String, Object> beans, Map<String, Objecttype> typePerLabel,
+    public record Outcome(Map<String, Object> beans, Map<String, ObjectType> typePerLabel,
                            Map<String, Object> globals, List<ScenarioResult.Firing> firings, Fixpoint fixpoint) {}
 
     /** Play case {@code c} on {@code build}, a build of the exec-model branch, whose
@@ -76,7 +76,7 @@ public final class CaseSession {
         Outcome play(JsonNode c) {
             CaseInput input;
             try {
-                input = CaseInput.van(build, c);
+                input = CaseInput.of(build, c);
             } catch (CaseRunner.Excluded e) {
                 throw new NotPlayable(e.getMessage());
             }

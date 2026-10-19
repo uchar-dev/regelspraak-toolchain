@@ -356,7 +356,7 @@ class EntryHttpTest {
         }
 
         DecisionCore.Entrypoint ep = core.entrypoint("bewaargeld");
-        CaseInput inputSection = CaseInput.van(ep.build(), tree("""
+        CaseInput inputSection = CaseInput.of(ep.build(), tree("""
             {"asOfDate":"2026-03-15","input":{"instances":[{"label":"J1","objectType":"Jutter","attributes":
               {"bewaarvergoeding per maand":{"timeline":[{"from":"2026-01-01","to":"2027-01-01","value":{"number":"10"}}]}}}]}}"""));
         EvaluationFault error = assertThrows(EvaluationFault.class, () -> new Executor(ep.build(), ep.defaultGlobals())

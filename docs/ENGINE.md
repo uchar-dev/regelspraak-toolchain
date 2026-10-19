@@ -109,7 +109,7 @@ bin/regelspraak serve <descriptor.service.json> <bron.rgs…> | <document.json> 
   bean itself: `RequestMapper` validates the request (names, types, units; a 400 with the field path) and writes it as
   the input of a `uchar-case-v0` case, `{"asOfDate", "input": {"instances": [...]}}` with the ids of the request as
   labels, the inline `roles` and each relation of `relations` as `roles` (a relation on the end whose role toward the
-  other is to-one). uchar's input step reads that case (`CaseInput.van`), the one its replay reads every case with:
+  other is to-one). uchar's input step reads that case (`CaseInput.of`), the one its replay reads every case with:
   the beans, the role by its written name, the far field of a one-to-one relation, a to-many role through the far
   end, the reverse leg of a reciprocal role (RUNTIME-SEMANTICS ch. 5.7a), and each to-many list in the replay's order
   (`CaseInput.inputData()`), which decides which member a fault of a fold names, so the 422 names the member uchar's

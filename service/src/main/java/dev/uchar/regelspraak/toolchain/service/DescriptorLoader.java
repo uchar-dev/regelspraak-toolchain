@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 
 import java.io.IOException;
@@ -71,7 +71,7 @@ public final class DescriptorLoader {
         if (reserved != null) sink.add(Violation.van(Violation.Kind.MALFORMED, "vocabularies", reserved));
 
         Set<String> groupNames = new java.util.LinkedHashSet<>();
-        for (var g : model.ruleGroups) groupNames.add(g.naam());
+        for (var g : model.ruleGroups) groupNames.add(g.name());
 
         // parameters block
         if (d.parameters() != null)
@@ -142,7 +142,7 @@ public final class DescriptorLoader {
                     "uitvoer '" + sel + "' moet 'Objecttype.attribuut' of 'Objecttype:kenmerk' zijn"));
             return;
         }
-        Objecttype ot = objectType(model, u.objectType());
+        ObjectType ot = objectType(model, u.objectType());
         if (ot == null) {
             sink.add(Violation.van(Violation.Kind.UNKNOWN_REFERENCE, field,
                     "onbekend objecttype '" + u.objectType() + "' in uitvoer '" + sel + "'"));
@@ -161,12 +161,12 @@ public final class DescriptorLoader {
 
     // ---- model lookups (case-insensitive on names, matching the resolver's own tolerance) ----
 
-    static Objecttype objectType(RegelSpraakModel model, String name) {
+    static ObjectType objectType(RegelSpraakModel model, String name) {
         if (name == null) return null;
-        Objecttype ot = model.objecttypen.get(name);
+        ObjectType ot = model.objectTypes.get(name);
         if (ot != null) return ot;
-        for (Objecttype o : model.objecttypen.values())
-            if (o.naam.equalsIgnoreCase(name)) return o;
+        for (ObjectType o : model.objectTypes.values())
+            if (o.name.equalsIgnoreCase(name)) return o;
         return null;
     }
 
@@ -175,7 +175,7 @@ public final class DescriptorLoader {
         RegelSpraakModel.Parameter p = model.parameters.get(name);
         if (p != null) return p;
         for (RegelSpraakModel.Parameter q : model.parameters.values())
-            if (q.naam().equalsIgnoreCase(name)) return q;
+            if (q.name().equalsIgnoreCase(name)) return q;
         return null;
     }
 
@@ -184,7 +184,7 @@ public final class DescriptorLoader {
      *  request may set it — so the own list alone answers "onbekend kenmerk" for a member that exists. The
      *  model's own chain walk ({@link Objecttype#characteristicName}) is the authority; it is case-insensitive exactly
      *  as the old own-list scan was. */
-    static boolean hasCharacteristic(Objecttype ot, String name) {
+    static boolean hasCharacteristic(ObjectType ot, String name) {
         return ot != null && ot.characteristicName(name) != null;
     }
 
@@ -194,11 +194,11 @@ public final class DescriptorLoader {
      *  attribuut side needs no twin because the model already ships {@link Objecttype#attributeMembers} (the
      *  kenmerken are a List, not a member-keyed map, so {@code opKetenKaart} does not cover them). A nearer
      *  declaration wins and a name is listed once, matched case-insensitively like the lookups above. */
-    static List<String> characteristicMembers(Objecttype ot) {
+    static List<String> characteristicMembers(ObjectType ot) {
         List<String> sink = new ArrayList<>();
         if (ot == null) return sink;
-        for (Objecttype t : ot.chain())
-            for (String k : t.kenmerken)
+        for (ObjectType t : ot.chain())
+            for (String k : t.characteristics)
                 if (sink.stream().noneMatch(g -> g.equalsIgnoreCase(k))) sink.add(k);
         return sink;
     }
@@ -215,7 +215,7 @@ public final class DescriptorLoader {
      *  arguments must come from ONE resolved model instance. Every caller today passes the core's own
      *  {@code this.model} and resolves {@code naam} against that same model here, so the condition holds by
      *  construction; a future caller that resolves a second model would have to pass its own, not another's. */
-    static boolean objectMatch(RegelSpraakModel model, Objecttype ot, String name) {
+    static boolean objectMatch(RegelSpraakModel model, ObjectType ot, String name) {
         return ot != null && ot.isA(objectType(model, name));
     }
 }

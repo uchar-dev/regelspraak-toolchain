@@ -110,7 +110,7 @@ final class Declarations {
             sink.put(b, new Declaration(ctx.getStart().getLine(), comment(ctx, tokens)));
         }
         for (Found g : found)
-            if (!linked.contains(g) && g.element().category() != Designatable.Kind.VORM)
+            if (!linked.contains(g) && g.element().kind() != Designatable.Kind.VORM)
                 throw new Unlinkable(description(g.element()) + " op regel " + g.ctx().getStart().getLine()
                         + " is geen element van het model");
         return sink;
@@ -166,7 +166,7 @@ final class Declarations {
     /** The declaration of {@code b} among its {@code candidates}, which are in document order. */
     private static ParserRuleContext choice(Designatable b, List<Found> candidates) {
         if (candidates.size() == 1) return candidates.get(0).ctx();
-        boolean member = b.category() == Designatable.Kind.ATTRIBUUT || b.category() == Designatable.Kind.KENMERK;
+        boolean member = b.kind() == Designatable.Kind.ATTRIBUUT || b.kind() == Designatable.Kind.KENMERK;
         List<Found> inHead = candidates.stream().filter(g -> !g.inExtension()).toList();
         if (member && inHead.size() == 1) return inHead.get(0).ctx();
         if (member && inHead.isEmpty()) return candidates.get(0).ctx();
@@ -210,7 +210,7 @@ final class Declarations {
 
     /** uchar's name identity of two elements: the kind, and owner and name case-insensitively. */
     private static boolean same(Designatable a, Designatable b) {
-        return a.category() == b.category() && a.naam().equalsIgnoreCase(b.naam())
+        return a.kind() == b.kind() && a.name().equalsIgnoreCase(b.name())
                 && (a.owner() == null ? b.owner() == null
                     : b.owner() != null && a.owner().equalsIgnoreCase(b.owner()));
     }
@@ -226,16 +226,16 @@ final class Declarations {
     }
 
     private static String description(Designatable b) {
-        return switch (b.category()) {
-            case OBJECTTYPE -> "het objecttype '" + b.naam() + "'";
-            case ATTRIBUUT -> "het attribuut '" + b.naam() + "' van '" + b.owner() + "'";
-            case KENMERK -> "het kenmerk '" + b.naam() + "' van '" + b.owner() + "'";
-            case FEITTYPE -> "het feittype '" + b.naam() + "'";
-            case ROL -> "de rol '" + b.naam() + "' van '" + b.owner() + "'";
-            case ENUMERATIEWAARDE -> "de enumeratiewaarde '" + b.naam() + "' van '" + b.owner() + "'";
-            case PARAMETER -> "de parameter '" + b.naam() + "'";
-            case VORM -> "de regel '" + b.naam() + "'";
-            case REGELGROEP -> "de regelgroep '" + b.naam() + "'";
+        return switch (b.kind()) {
+            case OBJECTTYPE -> "het objecttype '" + b.name() + "'";
+            case ATTRIBUUT -> "het attribuut '" + b.name() + "' van '" + b.owner() + "'";
+            case KENMERK -> "het kenmerk '" + b.name() + "' van '" + b.owner() + "'";
+            case FEITTYPE -> "het feittype '" + b.name() + "'";
+            case ROL -> "de rol '" + b.name() + "' van '" + b.owner() + "'";
+            case ENUMERATIEWAARDE -> "de enumeratiewaarde '" + b.name() + "' van '" + b.owner() + "'";
+            case PARAMETER -> "de parameter '" + b.name() + "'";
+            case VORM -> "de regel '" + b.name() + "'";
+            case REGELGROEP -> "de regelgroep '" + b.name() + "'";
         };
     }
 

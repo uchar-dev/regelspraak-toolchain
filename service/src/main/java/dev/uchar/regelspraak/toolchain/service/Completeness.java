@@ -23,7 +23,7 @@ public final class Completeness {
 
     /** The declarations of {@code model} without a designation in vocabulary {@code vocabulaire}. */
     public static List<Designatable> withoutDesignation(RegelSpraakModel model, String vocabulary) {
-        return model.designatable().stream().filter(b -> model.benaming(vocabulary, b).isEmpty()).toList();
+        return model.designatable().stream().filter(b -> model.designation(vocabulary, b).isEmpty()).toList();
     }
 
     /** The {@code vocabulaires} block of {@code /info}: per vocabulary its {@code naam}, {@code standaard},
@@ -33,17 +33,17 @@ public final class Completeness {
         ArrayNode sink = NF.arrayNode();
         for (RegelSpraakModel.Vocabulary v : model.vocabularies) {
             ObjectNode vn = sink.addObject();
-            vn.put("name", v.naam());
+            vn.put("name", v.name());
             vn.put("default", v.isDefault());
             if (v.language() != null) vn.put("language", v.language());
-            List<Designatable> without = withoutDesignation(model, v.naam());
+            List<Designatable> without = withoutDesignation(model, v.name());
             vn.put("complete", without.isEmpty());
             ArrayNode list = vn.putArray("withoutDesignation");
             for (Designatable b : without) {
                 ObjectNode bn = list.addObject();
-                bn.put("kind", b.category().name());
+                bn.put("kind", b.kind().name());
                 if (b.owner() != null) bn.put("owner", b.owner());
-                bn.put("name", b.naam());
+                bn.put("name", b.name());
             }
         }
         return sink;

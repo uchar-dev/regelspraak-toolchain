@@ -60,7 +60,7 @@ final class InfoBuilder {
             for (Coverage d : ep.coverage()) {
                 ObjectNode dn = coverage.addObject();
                 dn.put("kind", d.category());
-                dn.put("name", d.naam());
+                dn.put("name", d.name());
                 dn.put("verdict", d.verdict().name());
                 if (d.reason() != null && !d.reason().isEmpty()) dn.put("reason", d.reason());
             }
@@ -82,9 +82,9 @@ final class InfoBuilder {
         ArrayNode parameterSets = root.putArray("parameterSets");
         for (ParameterSet set : core.parameterSets()) {
             ObjectNode sn = parameterSets.addObject();
-            sn.put("name", set.naam());
+            sn.put("name", set.name());
             ObjectNode values = sn.putObject("values");
-            for (var e : set.waarden().entrySet()) {
+            for (var e : set.values().entrySet()) {
                 ArrayNode intervals = values.putArray(e.getKey());
                 for (ValueInterval wi : e.getValue()) {
                     ObjectNode iv = intervals.addObject();

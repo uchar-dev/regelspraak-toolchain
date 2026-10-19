@@ -153,7 +153,7 @@ public final class ScenarioRunnerCli {
         boolean anyFail = false, anyMarker = false;
         for (int n = 0; n < results.size(); n++) {
             ScenarioResult r = results.get(n);
-            System.out.println(r.status() + "  " + r.naam());
+            System.out.println(r.status() + "  " + r.name());
             if (r.status() == Status.FAIL) {
                 anyFail = true;
                 boolean reported = false;
@@ -341,14 +341,14 @@ public final class ScenarioRunnerCli {
     private static void printTrace(ScenarioResult r, Naming naming) {
         System.out.println("    trace (" + r.trace().total() + " vuring(en)):");
         for (Firing v : r.trace().firings())
-            System.out.println("      " + ruleName(v.regel(), naming) + (v.labels().isEmpty() ? "" : " @ " + v.labels())
+            System.out.println("      " + ruleName(v.rule(), naming) + (v.labels().isEmpty() ? "" : " @ " + v.labels())
                     + " x" + v.count());
     }
 
     private static void printCoverage(ScenarioResult r, Naming naming) {
         System.out.println("    dekking:");
         for (CoverageRule d : r.coverage())
-            System.out.println("      " + ruleName(d.regel(), naming) + " : " + d.category());
+            System.out.println("      " + ruleName(d.rule(), naming) + " : " + d.kind());
     }
 
     private static String ruleName(String line, Naming naming) {

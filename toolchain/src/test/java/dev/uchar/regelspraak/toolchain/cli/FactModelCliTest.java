@@ -71,7 +71,7 @@ class FactModelCliTest {
         // The CLI's own write path — generate the beans to disk exactly as `Resolver --facts` does.
         Path src = work.resolve("src");
         int n = RegelSpraakCli.factsToDisk(model, src);
-        assertEquals(model.objecttypen.size() + 2, n, "één bean per objecttype + Segment + Inconsistentie");
+        assertEquals(model.objectTypes.size() + 2, n, "één bean per objecttype + Segment + Inconsistentie");
 
         // Compile the generated sources as pure-JDK beans (no external classpath) and load them.
         Path classes = work.resolve("classes");

@@ -214,7 +214,7 @@ class PlaygroundViaServiceTest {
     /** The entry point whose rule names are the scenario's scope, as {@code GoldenOverHttpTest.pathForScope} finds it. */
     private static String pathForScope(DecisionCore core, String scenarioName, String document) {
         var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(document);
-        var scenario = bundle.scenarios().stream().filter(s -> s.naam().equals(scenarioName)).findFirst().orElseThrow();
+        var scenario = bundle.scenarios().stream().filter(s -> s.name().equals(scenarioName)).findFirst().orElseThrow();
         List<String> names = new ArrayList<>();
         for (String form : scenario.scope().forms()) {
             String name = dev.uchar.regelspraak.emit.CaseEmitter.baseName(form);

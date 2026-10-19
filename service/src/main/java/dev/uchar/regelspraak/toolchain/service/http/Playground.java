@@ -207,7 +207,7 @@ public final class Playground {
             for (Coverage d : build.coverage()) {
                 ObjectNode dn = coverage.addObject();
                 dn.put("kind", d.category());
-                dn.put("name", d.naam());
+                dn.put("name", d.name());
                 dn.put("verdict", d.verdict().name());
             }
             root.set("generated", generated(build, model, naming));
@@ -272,16 +272,16 @@ public final class Playground {
     private static void rendScenario(ObjectNode n, ScenarioRunner.Explained u, ResolvedScenario s,
                                      List<String> sourceLines, RegelSpraakModel model, Naming naming) {
         ScenarioResult r = u.result();
-        if (!r.naam().equals(s.naam()))
-            throw new IllegalStateException("het rapport '" + r.naam() + "' staat op de plaats van het scenario '"
-                    + s.naam() + "'");
+        if (!r.name().equals(s.name()))
+            throw new IllegalStateException("het rapport '" + r.name() + "' staat op de plaats van het scenario '"
+                    + s.name() + "'");
         // an expectation of the report is found by its position in the case, which the lowering writes one per
         // expectation of the resolved scenario, in its order
         int inCase = expectationsInCase(s);
         if (inCase != s.expectations().size())
-            throw new IllegalStateException("de case van het scenario '" + s.naam() + "' telt " + inCase
+            throw new IllegalStateException("de case van het scenario '" + s.name() + "' telt " + inCase
                     + " verwachting(en), het scenario " + s.expectations().size());
-        n.put("name", r.naam());
+        n.put("name", r.name());
         n.put("status", r.status().name());
         if (r.diagnostic() != null && !r.diagnostic().isEmpty()) n.put("diagnosis", r.diagnostic());
         n.put("line", s.line());
@@ -297,14 +297,14 @@ public final class Playground {
         ArrayNode coverage = n.putArray("coverage");
         for (CoverageRule d : r.coverage()) {
             ObjectNode dn = coverage.addObject();
-            dn.put("rule", naming.form(d.regel()));
-            dn.put("kind", d.category().name());
+            dn.put("rule", naming.form(d.rule()));
+            dn.put("kind", d.kind().name());
         }
         // the fired rules in the order they first fired, with the labels of the input instances they bound
         ArrayNode trace = n.putArray("trace");
         for (Firing firing : r.trace().firings()) {
             ObjectNode tn = trace.addObject();
-            tn.put("rule", naming.form(firing.regel()));
+            tn.put("rule", naming.form(firing.rule()));
             ArrayNode labels = tn.putArray("labels");
             for (String l : firing.labels()) labels.add(l);
             tn.put("count", firing.count());
@@ -334,7 +334,7 @@ public final class Playground {
         try {
             return JSON.readTree(CaseEmitter.emit(s)).get("expected");
         } catch (com.fasterxml.jackson.core.JsonProcessingException e) {
-            throw new IllegalStateException("de lowering schreef voor het scenario '" + s.naam()
+            throw new IllegalStateException("de lowering schreef voor het scenario '" + s.name()
                     + "' geen leesbare case: " + e.getOriginalMessage(), e);
         }
     }
@@ -421,7 +421,7 @@ public final class Playground {
         String caseName = CaseEmitter.fileName(i + 1, s);
         com.fasterxml.jackson.databind.JsonNode expected = expectations(s);
         if (expected.size() != s.expectations().size())
-            throw new IllegalStateException("de case van het scenario '" + s.naam() + "' telt " + expected.size()
+            throw new IllegalStateException("de case van het scenario '" + s.name() + "' telt " + expected.size()
                     + " verwachting(en), het scenario " + s.expectations().size());
         String path = null;
         ScenarioResult.Status status;
@@ -466,7 +466,7 @@ public final class Playground {
             session = none.detail();
             explanationError = "de dienst bereikte geen fixpunt (422) en geeft dan geen uitleg";
         }
-        n.put("name", s.naam());
+        n.put("name", s.name());
         n.put("status", status.name());
         if (!diagnostic.isEmpty()) n.put("diagnosis", diagnostic);
         n.put("line", s.line());
@@ -505,10 +505,10 @@ public final class Playground {
         List<Naming> per = new ArrayList<>();
         for (Vocabulary v : model.vocabularies) {
             ObjectNode vn = declared.addObject();
-            vn.put("name", v.naam());
+            vn.put("name", v.name());
             vn.put("default", v.isDefault());
             if (v.language() == null) vn.putNull("language"); else vn.put("language", v.language());
-            per.add(Naming.van(model, v.naam()));
+            per.add(Naming.van(model, v.name()));
         }
         Map<Designatable, Declarations.Declaration> declarations = Map.of();
         String declarationError = null;
@@ -520,9 +520,9 @@ public final class Playground {
         ArrayNode elements = n.putArray("elements");
         for (Designatable b : model.designatable()) {
             ObjectNode enumArray = elements.addObject();
-            enumArray.put("kind", b.category().name());
+            enumArray.put("kind", b.kind().name());
             if (b.owner() == null) enumArray.putNull("owner"); else enumArray.put("owner", b.owner());
-            enumArray.put("canonical", b.naam());
+            enumArray.put("canonical", b.name());
             ObjectNode designations = enumArray.putObject("designations");
             for (Naming g : per) {
                 String t = g.designation(b);
@@ -545,9 +545,9 @@ public final class Playground {
      *  of the form that made it. */
     private static ObjectNode generatedFrom(GeneratedFrom g) {
         ObjectNode n = NF.objectNode();
-        n.put("kind", g.source().category().name());
+        n.put("kind", g.source().kind().name());
         if (g.source().owner() == null) n.putNull("owner"); else n.put("owner", g.source().owner());
-        n.put("name", g.source().naam());
+        n.put("name", g.source().name());
         n.put("form", g.form().key());
         return n;
     }
@@ -560,21 +560,21 @@ public final class Playground {
      *  no form of the model and has no origin in uchar's table is a fault of the analysis, not an answer. */
     static ArrayNode generated(DroolsBackend.Build build, RegelSpraakModel model, Naming naming) {
         Set<String> forms = new HashSet<>();
-        for (Designatable b : model.designatable()) if (b.category() == Designatable.Kind.VORM) forms.add(b.naam());
+        for (Designatable b : model.designatable()) if (b.kind() == Designatable.Kind.VORM) forms.add(b.name());
         Map<String, GeneratedFrom> table = build.execModelTranspiler().generated();
         ArrayNode sink = NF.arrayNode();
         for (Coverage d : build.coverage()) {
-            GeneratedFrom g = table.get(d.naam());
+            GeneratedFrom g = table.get(d.name());
             if (g == null) {
-                if (!forms.contains(d.naam()))
-                    throw new IllegalStateException("de dekking noemt " + d.category() + " '" + d.naam() + "', geen "
+                if (!forms.contains(d.name()))
+                    throw new IllegalStateException("de dekking noemt " + d.category() + " '" + d.name() + "', geen "
                             + "vorm van het model, en uchar noemt de naam niet gegenereerd");
                 continue;
             }
             ObjectNode n = sink.addObject();
-            String chosen = naming.form(d.naam());
+            String chosen = naming.form(d.name());
             n.put("name", chosen);
-            if (!chosen.equals(d.naam())) n.put("nameCanonical", d.naam());
+            if (!chosen.equals(d.name())) n.put("nameCanonical", d.name());
             n.put("kind", d.category());
             n.set("generatedFrom", generatedFrom(g));
         }
@@ -597,7 +597,7 @@ public final class Playground {
         ArrayNode edges = g.putArray("edges");
         for (RuleGraph.Edge e : graph.edges()) {
             ObjectNode enumArray = edges.addObject();
-            enumArray.put("from", e.van());
+            enumArray.put("from", e.from());
             enumArray.put("to", e.destination());
         }
         return g;
@@ -618,7 +618,7 @@ public final class Playground {
         if (kn.kind() == RuleGraph.NodeKind.RULE) return naming.form(kn.label());
         List<String> names = new ArrayList<>();
         for (Designatable b : members.getOrDefault(kn.label(), List.of())) {
-            boolean characteristic = b.category() == Designatable.Kind.KENMERK;
+            boolean characteristic = b.kind() == Designatable.Kind.KENMERK;
             if (kn.kind() == RuleGraph.NodeKind.ATTRIBUTE && characteristic) continue;
             if (kn.kind() == RuleGraph.NodeKind.CHARACTERISTIC && !characteristic) continue;
             String name = naming.name(b) + " · " + naming.objectType(b.owner());
@@ -635,8 +635,8 @@ public final class Playground {
     private static Map<String, List<Designatable>> membersPerLabel(RegelSpraakModel model) {
         Map<String, List<Designatable>> sink = new LinkedHashMap<>();
         for (Designatable b : model.designatable())
-            if (b.category() == Designatable.Kind.ATTRIBUUT || b.category() == Designatable.Kind.KENMERK)
-                sink.computeIfAbsent(Namen.norm(b.naam()) + " · " + Namen.norm(b.owner()), k -> new ArrayList<>()).add(b);
+            if (b.kind() == Designatable.Kind.ATTRIBUUT || b.kind() == Designatable.Kind.KENMERK)
+                sink.computeIfAbsent(Namen.norm(b.name()) + " · " + Namen.norm(b.owner()), k -> new ArrayList<>()).add(b);
         return sink;
     }
 

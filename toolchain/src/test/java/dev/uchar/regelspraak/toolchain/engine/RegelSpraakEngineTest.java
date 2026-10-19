@@ -89,11 +89,11 @@ class RegelSpraakEngineTest {
             s.fire();
             s.restore();
         }
-        assertEquals(List.of(new BigDecimal(17)), first.waarden().stream()
+        assertEquals(List.of(new BigDecimal(17)), first.values().stream()
                 .filter(w -> w.object() == p && w.attribute().equals("toekomstige leeftijd"))
-                .map(Fixpoint.DerivedValue::value).toList(), first.waarden()::toString);
-        assertTrue(first.kenmerken().stream().anyMatch(k -> k.object() == p && k.characteristic().equals("minderjarig")),
-                first.kenmerken()::toString);
+                .map(Fixpoint.DerivedValue::value).toList(), first.values()::toString);
+        assertTrue(first.characteristics().stream().anyMatch(k -> k.object() == p && k.characteristic().equals("minderjarig")),
+                first.characteristics()::toString);
 
         Object fresh = persoon(engine, 40);
         try (RegelSpraakEngine.Session s = engine.newSession()) {

@@ -4,7 +4,7 @@ import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.transpiler.core.Namen;
@@ -62,24 +62,24 @@ final class NameReader {
     Reading objectType(String name) {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead()) {
-            Objecttype ot = DescriptorLoader.objectType(model, name);
-            if (ot != null) t.add(new Hit(Designatable.objectType(ot.naam), CANONICAL));
+            ObjectType ot = DescriptorLoader.objectType(model, name);
+            if (ot != null) t.add(new Hit(Designatable.objectType(ot.name), CANONICAL));
         }
         vocabularies(t, v -> model.namedElement(v, Designatable.Kind.OBJECTTYPE, null, name));
         return verdict(name, t);
     }
 
-    Reading attribute(Objecttype ot, String name) {
+    Reading attribute(ObjectType ot, String name) {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead()) canonical(t, Naming.attributeOf(ot, name));
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ATTRIBUUT, ot.naam, name));
+        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ATTRIBUUT, ot.name, name));
         return verdict(name, t);
     }
 
-    Reading characteristic(Objecttype ot, String name) {
+    Reading characteristic(ObjectType ot, String name) {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead()) canonical(t, Naming.characteristicOf(ot, name));
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.KENMERK, ot.naam, name));
+        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.KENMERK, ot.name, name));
         return verdict(name, t);
     }
 
@@ -87,7 +87,7 @@ final class NameReader {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead()) {
             RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, name);
-            if (p != null) t.add(new Hit(Designatable.parameter(p.naam()), CANONICAL));
+            if (p != null) t.add(new Hit(Designatable.parameter(p.name()), CANONICAL));
         }
         vocabularies(t, v -> model.namedElement(v, Designatable.Kind.PARAMETER, null, name));
         return verdict(name, t);
@@ -96,10 +96,10 @@ final class NameReader {
     Reading factType(String name) {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead()) {
-            FactType ft = model.feittypen.get(name);
+            FactType ft = model.factTypes.get(name);
             if (ft == null)
-                for (FactType f : model.feittypen.values()) if (f.naam.equalsIgnoreCase(name)) { ft = f; break; }
-            if (ft != null) t.add(new Hit(Designatable.factType(ft.naam), CANONICAL));
+                for (FactType f : model.factTypes.values()) if (f.name.equalsIgnoreCase(name)) { ft = f; break; }
+            if (ft != null) t.add(new Hit(Designatable.factType(ft.name), CANONICAL));
         }
         vocabularies(t, v -> model.namedElement(v, Designatable.Kind.FEITTYPE, null, name));
         return verdict(name, t);
@@ -109,33 +109,33 @@ final class NameReader {
     Reading roleIn(FactType ft, String name) {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead())
-            for (Role r : ft.rollen)
-                if (r.naam().equalsIgnoreCase(name)) t.add(new Hit(Designatable.role(ft.naam, r.naam()), CANONICAL));
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ROL, ft.naam, name));
+            for (Role r : ft.roles)
+                if (r.name().equalsIgnoreCase(name)) t.add(new Hit(Designatable.role(ft.name, r.name()), CANONICAL));
+        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ROL, ft.name, name));
         return verdict(name, t);
     }
 
     /** A role written at an instance of {@code ot}: a far role of a fact type {@code ot} takes part in, canonically by
      *  its name, declared plural or best-effort plural, as uchar reads a written role. */
-    Reading roleFrom(Objecttype ot, String name) {
+    Reading roleFrom(ObjectType ot, String name) {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead())
-            for (FactType ft : model.feittypen.values())
-                for (Role r : ft.rollen)
+            for (FactType ft : model.factTypes.values())
+                for (Role r : ft.roles)
                     if (RegelSpraakModel.roleNameMatches(r, name) && Naming.reachable(model, ft, r, ot)
-                            && model.objectTypeByName(r.objecttypeNaam()) != null)
-                        t.add(new Hit(Designatable.role(ft.naam, r.naam()), CANONICAL));
-        for (FactType ft : model.feittypen.values())
-            vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ROL, ft.naam, name)
-                    .filter(b -> reachable(ft, b.naam(), ot)));
+                            && model.objectTypeByName(r.objectTypeName()) != null)
+                        t.add(new Hit(Designatable.role(ft.name, r.name()), CANONICAL));
+        for (FactType ft : model.factTypes.values())
+            vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ROL, ft.name, name)
+                    .filter(b -> reachable(ft, b.name(), ot)));
         return verdict(name, t);
     }
 
     /** A value of enumeration {@code e}: canonically compared as uchar compares declared names ({@link Namen#norm}). */
-    Reading value(Datatype.Enumeratie e, String name) {
+    Reading value(Datatype.Enumeration e, String name) {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead())
-            for (String w : e.waarden())
+            for (String w : e.values())
                 if (Namen.norm(w).equals(Namen.norm(name)))
                     t.add(new Hit(Designatable.enumerationValue(e.domain(), w), CANONICAL));
         vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ENUMERATIEWAARDE, e.domain(), name));
@@ -156,29 +156,29 @@ final class NameReader {
     }
 
     /** The values of {@code e} as the pinned vocabulary names them (only meaningful with {@link #pinnedInVocabulary}). */
-    List<String> values(Datatype.Enumeratie e) {
+    List<String> values(Datatype.Enumeration e) {
         Naming n = Naming.van(model, pinned);
-        return e.waarden().stream().map(w -> n.value(e, w)).toList();
+        return e.values().stream().map(w -> n.value(e, w)).toList();
     }
 
     /** A description of declaration {@code b} for a sentence, by its canonical name. */
     static String description(Designatable b) {
-        return switch (b.category()) {
-            case OBJECTTYPE -> "het objecttype '" + b.naam() + "'";
-            case ATTRIBUUT -> "het attribuut '" + b.naam() + "' van '" + b.owner() + "'";
-            case KENMERK -> "het kenmerk '" + b.naam() + "' van '" + b.owner() + "'";
-            case FEITTYPE -> "het feittype '" + b.naam() + "'";
-            case ROL -> "de rol '" + b.naam() + "' van feittype '" + b.owner() + "'";
-            case ENUMERATIEWAARDE -> "de waarde '" + b.naam() + "' van domein '" + b.owner() + "'";
-            case PARAMETER -> "de parameter '" + b.naam() + "'";
-            case VORM -> "de regel '" + b.naam() + "'";
-            case REGELGROEP -> "de regelgroep '" + b.naam() + "'";
+        return switch (b.kind()) {
+            case OBJECTTYPE -> "het objecttype '" + b.name() + "'";
+            case ATTRIBUUT -> "het attribuut '" + b.name() + "' van '" + b.owner() + "'";
+            case KENMERK -> "het kenmerk '" + b.name() + "' van '" + b.owner() + "'";
+            case FEITTYPE -> "het feittype '" + b.name() + "'";
+            case ROL -> "de rol '" + b.name() + "' van feittype '" + b.owner() + "'";
+            case ENUMERATIEWAARDE -> "de waarde '" + b.name() + "' van domein '" + b.owner() + "'";
+            case PARAMETER -> "de parameter '" + b.name() + "'";
+            case VORM -> "de regel '" + b.name() + "'";
+            case REGELGROEP -> "de regelgroep '" + b.name() + "'";
         };
     }
 
     /** Whether two elements name one declaration: the same kind, owner and name under uchar's name identity. */
     static boolean same(Designatable a, Designatable b) {
-        return a.category() == b.category() && a.naam().equalsIgnoreCase(b.naam())
+        return a.kind() == b.kind() && a.name().equalsIgnoreCase(b.name())
                 && (a.owner() == null ? b.owner() == null
                     : b.owner() != null && a.owner().equalsIgnoreCase(b.owner()));
     }
@@ -200,12 +200,12 @@ final class NameReader {
     private void vocabularies(List<Hit> t, Function<String, Optional<Designatable>> read) {
         if (pinned != null && pinned.equals(CANONICAL)) return;
         for (RegelSpraakModel.Vocabulary v : model.vocabularies)
-            if (pinned == null || v.naam().equals(pinned))
-                read.apply(v.naam()).ifPresent(b -> t.add(new Hit(b, v.naam())));
+            if (pinned == null || v.name().equals(pinned))
+                read.apply(v.name()).ifPresent(b -> t.add(new Hit(b, v.name())));
     }
 
-    private boolean reachable(FactType ft, String role, Objecttype ot) {
-        for (Role r : ft.rollen) if (r.naam().equals(role)) return Naming.reachable(model, ft, r, ot);
+    private boolean reachable(FactType ft, String role, ObjectType ot) {
+        for (Role r : ft.roles) if (r.name().equals(role)) return Naming.reachable(model, ft, r, ot);
         return false;
     }
 
@@ -223,7 +223,7 @@ final class NameReader {
         if (declarations.isEmpty()) return new Unknown();
         if (declarations.size() == 1) {
             Designatable b = declarations.get(0);
-            return new Found(b, sources.get(0).contains(CANONICAL) ? name : b.naam());
+            return new Found(b, sources.get(0).contains(CANONICAL) ? name : b.name());
         }
         if (hits.stream().allMatch(t -> t.source().equals(CANONICAL))) return new Unknown();
         List<String> reads = new ArrayList<>();

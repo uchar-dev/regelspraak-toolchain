@@ -61,7 +61,7 @@ class ScenarioRunnerSessionTest {
         Fixpoint f = s.session().fixpoint();
         assertTrue(f.faults().isEmpty(), f.faults()::toString);
         Object b = s.session().beans().get("B");
-        List<String> derived = f.waarden().stream().filter(w -> w.object() == b)
+        List<String> derived = f.values().stream().filter(w -> w.object() == b)
                 .map(w -> w.attribute() + "=" + w.value()).sorted().toList();
         assertEquals(List.of("helpersdeel=50", "premie=20"), derived, "het helpersdeel heeft geen verwachting");
     }
@@ -86,8 +86,8 @@ class ScenarioRunnerSessionTest {
         assertNull(s.sessionError(), s::sessionError);
         List<Fault> errors = s.session().fixpoint().faults();
         assertEquals(1, errors.size(), errors::toString);
-        assertEquals("helpersdeel van een berging", errors.get(0).regel());
-        assertSame(s.session().beans().get("B"), errors.get(0).onderwerp());
+        assertEquals("helpersdeel van een berging", errors.get(0).rule());
+        assertSame(s.session().beans().get("B"), errors.get(0).subject());
         assertTrue(errors.get(0).message().contains("deling door nul"), errors.get(0)::message);
         assertNull(CaseSession.read(s.session().beans().get("B"), "getPremie"),
                 "met een staande fout zet de sessie niets terug: de bean houdt de invoer");

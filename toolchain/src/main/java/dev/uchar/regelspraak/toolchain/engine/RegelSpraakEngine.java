@@ -6,7 +6,7 @@ import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
 import dev.uchar.regelspraak.model.ParameterSet;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Severity;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
@@ -77,9 +77,9 @@ public final class RegelSpraakEngine {
 
     /** A fresh instance of the generated bean for objecttype {@code objectType} (its declared name). */
     public Object newInstance(String objectType) {
-        Objecttype ot = model.objectTypeByName(objectType);
+        ObjectType ot = model.objectTypeByName(objectType);
         if (ot == null) throw new IllegalArgumentException("onbekend objecttype '" + objectType + "'");
-        String clazz = FactModelGenerator.PACKAGE + "." + Namen.ident(ot.naam, true);
+        String clazz = FactModelGenerator.PACKAGE + "." + Namen.ident(ot.name, true);
         try {
             return Class.forName(clazz, true, build.beanLoader()).getConstructor().newInstance();
         } catch (ReflectiveOperationException e) {

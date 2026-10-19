@@ -147,7 +147,7 @@ class ScenarioRunnerTest {
         ScenarioResult r = u.get(0).result();
         assertEquals(Status.PASS, r.status(), r::diagnostic);
         assertEquals(List.of("retourafstandregel", "belastregel"),
-                r.trace().firings().stream().map(ScenarioResult.Firing::regel).toList(), r.trace()::toString);
+                r.trace().firings().stream().map(ScenarioResult.Firing::rule).toList(), r.trace()::toString);
         assertNull(u.get(0).explanationError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).explanationError());
         assertEquals(List.of("V1 is belast, omdat de retourafstand van de Vlucht (400) is groter dan 300"),
                 u.get(0).explanation());

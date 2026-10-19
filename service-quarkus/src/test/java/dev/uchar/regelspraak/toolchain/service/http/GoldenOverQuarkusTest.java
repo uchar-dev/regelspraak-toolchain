@@ -141,7 +141,7 @@ class GoldenOverQuarkusTest {
         ResolvedScenario scenario = bundle.scenarios().get(0);
 
         String path = pathForScope(scenario);
-        assertNotNull(path, () -> "geen descriptor-entrypoint scoped de regel(s) van scenario '" + scenario.naam()
+        assertNotNull(path, () -> "geen descriptor-entrypoint scoped de regel(s) van scenario '" + scenario.name()
                 + "' (" + scopeNames(scenario) + ")");
 
         ObjectNode request = deriveRequest(scenario);
@@ -180,9 +180,9 @@ class GoldenOverQuarkusTest {
     // ---------------- verwachting comparison (mirrors GoldenOverHttpTest.compare exactly) ----------------
 
     private void compare(Expectation v, JsonNode answer, String path, JsonNode request) {
-        String ctx = "\nscope-pad /" + path + "\nverwachting op regel " + v.line() + " (" + v.category() + ")"
+        String ctx = "\nscope-pad /" + path + "\nverwachting op regel " + v.line() + " (" + v.kind() + ")"
                 + "\nverzoek: " + request + "\nantwoord: " + answer;
-        switch (v.category()) {
+        switch (v.kind()) {
             case ATTRIBUTE_VALUE -> {
                 JsonNode w = attribute(answer, v.label(), v.attribute());
                 assertNotNull(w, () -> "geen attribuut '" + v.attribute() + "' op instantie '" + v.label() + "'" + ctx);
@@ -202,7 +202,7 @@ class GoldenOverQuarkusTest {
             case INCONSISTENT -> {
                 List<String> inc = inconsistencies(answer);
                 assertTrue(!inc.isEmpty(), () -> "verwacht inconsistent (niet-lege inconsistenties)" + ctx);
-                String line = v.regel();
+                String line = v.rule();
                 if (line != null && !line.isBlank())
                     assertTrue(inc.contains(line),
                             () -> "verwacht dat regel '" + line + "' in de inconsistenties staat, kreeg " + inc + ctx);
@@ -224,8 +224,8 @@ class GoldenOverQuarkusTest {
             return actual.isBoolean() && expected.bool() == actual.booleanValue();
         if (expected.enumValue() != null)
             return actual.isTextual() && expected.enumValue().equals(actual.asText());
-        if (expected.tekst() != null)
-            return actual.isTextual() && expected.tekst().equals(actual.asText());
+        if (expected.text() != null)
+            return actual.isTextual() && expected.text().equals(actual.asText());
         return actual.isNull();
     }
 
@@ -244,7 +244,7 @@ class GoldenOverQuarkusTest {
         if (w.dateTime() != null) return w.dateTime().toString();
         if (w.bool() != null) return w.bool().toString();
         if (w.enumValue() != null) return "'" + w.enumValue() + "'";
-        return "\"" + w.tekst() + "\"";
+        return "\"" + w.text() + "\"";
     }
 
     // ---------------- response readers ----------------

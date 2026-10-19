@@ -393,7 +393,7 @@ public final class DecisionCore {
             java.util.Set<String> setNames = ParameterSet.pool(sets).keySet();
             for (String d : descriptor.parameters().keySet()) {
                 RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, d);
-                String canonical = p == null ? d : p.naam();
+                String canonical = p == null ? d : p.name();
                 if (setNames.contains(canonical))
                     conflict.add(Violation.van(Violation.Kind.MALFORMED, "parameters." + d,
                             "parameter '" + canonical + "' staat ZOWEL in descriptor.parameters (default) ALS in de"
@@ -445,10 +445,10 @@ public final class DecisionCore {
                 navigation);
         Map<String, PrioritizedDefaults> groups = new java.util.HashMap<>();
         for (PrioritizedDefaults p : scoped.prioritizedDefaults)
-            if (p.naam() != null) groups.put(ProducerConsumer.baseName(p.naam()), p);
+            if (p.name() != null) groups.put(ProducerConsumer.baseName(p.name()), p);
         // the writers in the scope, under the names the producer index keys them on
         java.util.Set<String> scope = new java.util.LinkedHashSet<>();
-        for (ProducerConsumer.Form v : carried) scope.add(v.naam());
+        for (ProducerConsumer.Form v : carried) scope.add(v.name());
         // The opt-out keys through the SAME element identity the consumption does ({@link
         // ProducerConsumer#elementOf}), so the declaration binds on the member's declarant: a caller that
         // declares the element on the type that DECLARES it silences a consumption on any subtype, and one that
@@ -457,27 +457,27 @@ public final class DecisionCore {
         for (String sel : ep.inputElementsOrEmpty()) {
             OutputSelector u = OutputSelector.parse(sel);
             if (u == null) continue;
-            RegelSpraakModel.Objecttype holder = DescriptorLoader.objectType(model, u.objectType());
-            inputElements.add(holder == null ? ElementKey.van(u.objectType(), u.member(), u.characteristic())
+            RegelSpraakModel.ObjectType holder = DescriptorLoader.objectType(model, u.objectType());
+            inputElements.add(holder == null ? ElementKey.of(u.objectType(), u.member(), u.characteristic())
                     : ProducerConsumer.elementOf(holder, u.member(), u.characteristic()));
         }
         // A tree of exceptions is lowered to one group named after its base rule, an unordered block without a
         // carrier to one group per member; the opgave marker and a subtype's own exceptions get a group whose name
         // uchar makes up. The author knows the first two by a rule they wrote, the last two only by that name.
         java.util.Set<String> written = new java.util.HashSet<>();
-        for (var r : model.regels) if (r.naam() != null) written.add(CaseEmitter.norm(r.naam()));
+        for (var r : model.rules) if (r.name() != null) written.add(CaseEmitter.norm(r.name()));
 
         List<Violation> sink = new ArrayList<>();
         java.util.Set<ElementKey> reported = new java.util.LinkedHashSet<>();
         for (ProducerConsumer.Form v : carried) {
-            String reader = switch (v.category()) {
-                case REGEL -> "regel '" + v.naam() + "'";
-                case DEFAULTSGROEP -> written.contains(CaseEmitter.norm(v.naam()))
-                        ? "defaults-groep van regel '" + v.naam() + "'"
-                        : "gegenereerde defaults-groep '" + v.naam() + "'";
+            String reader = switch (v.kind()) {
+                case REGEL -> "regel '" + v.name() + "'";
+                case DEFAULTS_GROUP -> written.contains(CaseEmitter.norm(v.name()))
+                        ? "defaults-groep van regel '" + v.name() + "'"
+                        : "gegenereerde defaults-groep '" + v.name() + "'";
                 // The other forms read as well, but are not held to it: five entry points of
                 // examples/toka/toka.service.json scope an allocation without the writers of what it reads.
-                case OBJECTCREATIE, VERDELING, CONSISTENTIE, UNICITEIT, FEITCREATIE -> null;
+                case OBJECT_CREATION, ALLOCATION, CONSISTENCY, UNIQUENESS, FACT_CREATION -> null;
             };
             if (reader == null) continue;
             List<ProducerConsumer.DefaultRead> reads = null;
@@ -488,15 +488,15 @@ public final class DecisionCore {
                 if (inputElements.contains(consumed)) continue;            // element-level caller input: opt-out
                 if (!reported.add(consumed)) continue;
                 String where = "";
-                if (v.category() == ProducerConsumer.FormKind.DEFAULTSGROEP) {
-                    PrioritizedDefaults group = java.util.Objects.requireNonNull(groups.get(v.naam()),
-                            () -> "geen defaultsgroep '" + v.naam() + "' in de scope");
+                if (v.kind() == ProducerConsumer.FormKind.DEFAULTS_GROUP) {
+                    PrioritizedDefaults group = java.util.Objects.requireNonNull(groups.get(v.name()),
+                            () -> "geen defaultsgroep '" + v.name() + "' in de scope");
                     if (reads == null) reads = ProducerConsumer.readings(scoped, group, navigation);
-                    where = " " + whereRead(reads, consumed, v.naam());
+                    where = " " + whereRead(reads, consumed, v.name());
                 }
                 sink.add(Violation.van(Violation.Kind.INCOMPLETE_SCOPE, "entrypoint:" + ep.path(),
                         reader + " in entrypoint '" + ep.name() + "' leest "
-                                + (consumed.characteristic() ? "kenmerk" : "attribuut") + " '" + consumed.naam() + "'"
+                                + (consumed.characteristic() ? "kenmerk" : "attribuut") + " '" + consumed.name() + "'"
                                 + (consumed.objectType().isEmpty() ? "" : " van '" + consumed.objectType() + "'")
                                 + where + ", maar de enige producent(en) " + writers + " vallen buiten de scope"
                                 + " en het element is niet als invoerElement gedeclareerd"));
@@ -520,7 +520,7 @@ public final class DecisionCore {
         // uchar takes a group's reads from these, so an element no default reads is a broken promise of uchar's
         if (sites.isEmpty())
             throw new IllegalStateException("uchars wandeling per default van defaults-groep '" + group
-                    + "' leest '" + element.naam() + "' niet, maar die van de groep wel");
+                    + "' leest '" + element.name() + "' niet, maar die van de groep wel");
         return String.join(" en ", sites);
     }
 
@@ -542,7 +542,7 @@ public final class DecisionCore {
             if (p == null) continue;   // already reported by descriptor validation
             ValueCoder.Result r = ValueCoder.decodeer(e.getValue(), p.datatype(), "parameters." + e.getKey());
             errors.addAll(r.violations());
-            if (r.violations().isEmpty()) globals.put(RequestMapper.globalName(p.naam()), r.value());
+            if (r.violations().isEmpty()) globals.put(RequestMapper.globalName(p.name()), r.value());
         }
         if (!errors.isEmpty()) throw new ServiceError("descriptor parameter-default ongeldig", errors);
         return globals;
@@ -674,7 +674,7 @@ public final class DecisionCore {
             ArrayNode trace = n.putArray("trace");
             for (ScenarioResult.Firing v : observer.firings()) {
                 ObjectNode tn = trace.addObject();
-                tn.put("rule", naming.form(v.regel()));
+                tn.put("rule", naming.form(v.rule()));
                 ArrayNode labels = tn.putArray("labels");
                 for (String l : v.labels()) labels.add(l);
                 tn.put("count", v.count());
@@ -684,8 +684,8 @@ public final class DecisionCore {
             ArrayNode coverage = n.putArray("coverage");
             for (ScenarioResult.CoverageRule d : DroolsBackend.coverage(ep.build(), observer.forms())) {
                 ObjectNode dn = coverage.addObject();
-                dn.put("rule", naming.form(d.regel()));
-                dn.put("kind", d.category().name());
+                dn.put("rule", naming.form(d.rule()));
+                dn.put("kind", d.kind().name());
             }
         }
         if (options.fixpoint() && withoutFixpoint != null) {
@@ -778,13 +778,13 @@ public final class DecisionCore {
      * the previous name equality.
      */
     private static List<Violation> missingInput(Entrypoint ep,
-            Map<String, RegelSpraakModel.Objecttype> typePerLabel, RegelSpraakModel model) {
+            Map<String, RegelSpraakModel.ObjectType> typePerLabel, RegelSpraakModel model) {
         List<Violation> sink = new ArrayList<>();
         List<String> input = ep.descriptor().input();
         if (input == null) return sink;
         for (String required : input) {
             boolean present = false;
-            for (RegelSpraakModel.Objecttype ot : typePerLabel.values())
+            for (RegelSpraakModel.ObjectType ot : typePerLabel.values())
                 if (DescriptorLoader.objectMatch(model, ot, required)) { present = true; break; }
             if (!present)
                 sink.add(Violation.van(Violation.Kind.MISSING_INSTANCE, "instances",

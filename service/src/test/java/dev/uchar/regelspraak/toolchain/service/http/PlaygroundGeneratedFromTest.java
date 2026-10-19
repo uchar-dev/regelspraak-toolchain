@@ -262,9 +262,9 @@ class PlaygroundGeneratedFromTest {
                 if (g.get("kind").asText().equals("defaults")) stacks++;
             }
             for (var d : build.coverage())
-                if (forms.contains(d.naam()) == named.contains(d.naam()))
-                    errors.add(golden + ": de dekkingnaam '" + d.naam() + "' is "
-                            + (forms.contains(d.naam()) ? "een element en gegenereerd" : "geen element en niet gegenereerd"));
+                if (forms.contains(d.name()) == named.contains(d.name()))
+                    errors.add(golden + ": de dekkingnaam '" + d.name() + "' is "
+                            + (forms.contains(d.name()) ? "een element en gegenereerd" : "geen element en niet gegenereerd"));
         }
         assertEquals(List.of(), errors);
         int n = elements, g = generated, b = built, s = stacks;

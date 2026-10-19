@@ -5,7 +5,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -147,7 +147,7 @@ class OpenApiEmitterTest {
         for (ServiceDescriptor.Entrypoint ep : DESCRIPTOR.entrypoints()) {
             // every invoer objecttype has a component schema
             for (String inv : ep.input() == null ? java.util.List.<String>of() : ep.input()) {
-                Objecttype ot = DescriptorLoader.objectType(MODEL, inv);
+                ObjectType ot = DescriptorLoader.objectType(MODEL, inv);
                 assertNotNull(ot, "onbekend invoer-objecttype '" + inv + "'");
                 assertTrue(schemas.has(component(ot)),
                         "geen schema voor invoer-objecttype '" + inv + "' (component '" + component(ot) + "')");
@@ -156,7 +156,7 @@ class OpenApiEmitterTest {
             for (String sel : ep.output() == null ? java.util.List.<String>of() : ep.output()) {
                 OutputSelector u = OutputSelector.parse(sel);
                 assertNotNull(u, "onontleedbare uitvoer-selector '" + sel + "'");
-                Objecttype ot = DescriptorLoader.objectType(MODEL, u.objectType());
+                ObjectType ot = DescriptorLoader.objectType(MODEL, u.objectType());
                 assertNotNull(ot, "onbekend uitvoer-objecttype in '" + sel + "'");
                 JsonNode props = schemas.get(component(ot)).get("properties");
                 assertNotNull(props, "geen properties op schema '" + component(ot) + "'");
@@ -169,10 +169,10 @@ class OpenApiEmitterTest {
     @Test
     void every_enumeration_lists_all_its_values() {
         JsonNode schemas = DOC.get("components").get("schemas");
-        for (Objecttype ot : MODEL.objecttypen.values()) {
+        for (ObjectType ot : MODEL.objectTypes.values()) {
             JsonNode props = schemas.get(component(ot)).get("properties");
-            for (var e : ot.attributen.entrySet()) {
-                if (!(e.getValue() instanceof Datatype.Enumeratie enm)) continue;
+            for (var e : ot.attributes.entrySet()) {
+                if (!(e.getValue() instanceof Datatype.Enumeration enm)) continue;
                 if (!ot.dimensionsOf(e.getKey()).isEmpty()) continue;   // dimensie: not emitted (rejected)
                 JsonNode prop = property(props, e.getKey());
                 assertNotNull(prop, "geen eigenschap voor enumeratie-attribuut '" + e.getKey() + "'");
@@ -180,7 +180,7 @@ class OpenApiEmitterTest {
                 assertNotNull(enumN, "geen enum-lijst op '" + e.getKey() + "'");
                 java.util.List<String> found = new java.util.ArrayList<>();
                 enumN.forEach(w -> found.add(w.asText()));
-                assertEquals(enm.waarden(), found,
+                assertEquals(enm.values(), found,
                         "enum-waarden van '" + e.getKey() + "' (" + enm.domain() + ") onvolledig/afwijkend");
             }
         }
@@ -189,33 +189,33 @@ class OpenApiEmitterTest {
     @Test
     void each_unit_carrying_attribute_of_input_output_carries_x_unit() {
         JsonNode schemas = DOC.get("components").get("schemas");
-        java.util.Set<Objecttype> relevant = new java.util.LinkedHashSet<>();
+        java.util.Set<ObjectType> relevant = new java.util.LinkedHashSet<>();
         for (ServiceDescriptor.Entrypoint ep : DESCRIPTOR.entrypoints()) {
             for (String inv : ep.input() == null ? java.util.List.<String>of() : ep.input()) {
-                Objecttype ot = DescriptorLoader.objectType(MODEL, inv);
+                ObjectType ot = DescriptorLoader.objectType(MODEL, inv);
                 if (ot != null) relevant.add(ot);
             }
             for (String sel : ep.output() == null ? java.util.List.<String>of() : ep.output()) {
                 OutputSelector u = OutputSelector.parse(sel);
                 if (u == null) continue;
-                Objecttype ot = DescriptorLoader.objectType(MODEL, u.objectType());
+                ObjectType ot = DescriptorLoader.objectType(MODEL, u.objectType());
                 if (ot != null) relevant.add(ot);
             }
         }
-        for (Objecttype ot : relevant) {
+        for (ObjectType ot : relevant) {
             JsonNode props = schemas.get(component(ot)).get("properties");
-            for (var e : ot.attributen.entrySet()) {
+            for (var e : ot.attributes.entrySet()) {
                 Datatype dt = e.getValue();
                 var unit = dt.unitOf();
                 if (unit == null) continue;
                 if (!ot.dimensionsOf(e.getKey()).isEmpty()) continue;
-                if (ot.attribuutGranulariteit.containsKey(e.getKey())
-                        || ot.attribuutTijdlijnAantal.containsKey(e.getKey())) continue;
+                if (ot.attributeGranularity.containsKey(e.getKey())
+                        || ot.attributeTimelineCount.containsKey(e.getKey())) continue;
                 // A bare Percentage's implicit '%' unit still documents as x-eenheid "%".
                 JsonNode prop = property(props, e.getKey());
                 assertNotNull(prop, "geen eigenschap voor eenheid-dragend attribuut '" + e.getKey() + "'");
                 assertTrue(prop.has("x-unit"),
-                        "geen x-eenheid op eenheid-dragend attribuut '" + e.getKey() + "' van '" + ot.naam + "'");
+                        "geen x-eenheid op eenheid-dragend attribuut '" + e.getKey() + "' van '" + ot.name + "'");
                 assertEquals(unit.rendering(), prop.get("x-unit").asText(),
                         "x-eenheid van '" + e.getKey() + "' wijkt af");
             }
@@ -243,8 +243,8 @@ class OpenApiEmitterTest {
 
     // ------------------------------------------------------------------ helpers
 
-    private static String component(Objecttype ot) {
-        return dev.uchar.regelspraak.transpiler.core.Namen.ident(ot.naam, true);
+    private static String component(ObjectType ot) {
+        return dev.uchar.regelspraak.transpiler.core.Namen.ident(ot.name, true);
     }
 
     /** A property lookup tolerant of the resolver's case-insensitive attribuut/kenmerk naming. */

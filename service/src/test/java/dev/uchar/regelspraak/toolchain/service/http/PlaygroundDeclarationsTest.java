@@ -228,13 +228,13 @@ class PlaygroundDeclarationsTest {
             for (Designatable b : model.designatable()) {
                 Declarations.Declaration x = d.get(b);
                 if (x == null) {
-                    if (always.contains(b.category()))
+                    if (always.contains(b.kind()))
                         errors.add(p.getParent().getFileName() + ": " + b + " heeft geen declaratie");
                     continue;
                 }
                 linked++;
                 String text = lines.get(x.line() - 1).replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
-                if (!text.contains(b.naam().toLowerCase(Locale.ROOT)))
+                if (!text.contains(b.name().toLowerCase(Locale.ROOT)))
                     errors.add(p.getParent().getFileName() + ": " + b + " op regel " + x.line() + ": " + text);
             }
         }

@@ -8,7 +8,7 @@ import dev.uchar.regelspraak.model.Unit;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.OriginForm;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.math.BigDecimal;
@@ -26,7 +26,7 @@ import java.util.regex.Pattern;
 /**
  * De UITLEG-generator: verantwoordt een gedraaide beslissing in helder Nederlands, voor de jurist en de burger —
  * niet de programmeur. Uit de gedraaide fact-toestand (de grondwaarheid: een kenmerk staat AAN of niet) plus de
- * getypeerde IR ({@link RegelSpraakModel#resolvedRegels}) bouwt hij per gelabelde instantie een verhaal:
+ * getypeerde IR ({@link RegelSpraakModel#resolvedRules}) bouwt hij per gelabelde instantie een verhaal:
  *
  * <ul>
  *   <li>welke kenmerken zijn TOEGEKEND en WAAROM — de voorwaarden met hun geëvalueerde operandwaarden
@@ -92,15 +92,15 @@ public final class Verbaliser {
      * Het resultaat is één regel per uitlegzin, in een stabiele volgorde (per label, in modeldeclaratie-volgorde
      * van de regels). Een lege lijst betekent: geen kenmerktoekenning raakte een van deze instanties.
      */
-    public List<String> verbalise(Map<String, Object> instances, Map<String, Objecttype> typePerLabel) {
+    public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
         List<String> sink = new ArrayList<>();
         for (Map.Entry<String, Object> e : instances.entrySet()) {
             String label = e.getKey();
             Object bean = e.getValue();
-            Objecttype ot = typePerLabel.get(label);
+            ObjectType ot = typePerLabel.get(label);
             if (ot == null || bean == null) continue;
-            for (ResolvedRule r : model.resolvedRegels) {
-                if (r.category() != ResolvedRule.Kind.KENMERKTOEKENNING) continue;
+            for (ResolvedRule r : model.resolvedRules) {
+                if (r.kind() != ResolvedRule.Kind.KENMERKTOEKENNING) continue;
                 if (!(r.target() instanceof Expr.AttributeReference ref) || ref.objectType() == null) continue;
                 // IR-SPEC ch. 2.2: de regel geldt voor elk objecttype dat het doeltype IS (⊑), niet alleen voor
                 // het doeltype zelf — de gegenereerde bean erft native, dus een kenmerktoekenning op het
@@ -121,13 +121,13 @@ public final class Verbaliser {
         String characteristic = ref.attribute();
         boolean present = readBoolean(bean, characteristic);
         Condition v = r.condition();
-        Objecttype subject = ref.objectType();
+        ObjectType subject = ref.objectType();
         if (!present && v == null) return null;   // onvoorwaardelijk maar afwezig: niets te verantwoorden
         // de conclusie van de regel ("Een … heeft de uitkeringsduur verstreken") draagt het lidwoord
         Predicate predicate = predicate(subject, characteristic, present, ref.source() == null ? null : ref.source().snippet());
         if (predicate == null)
-            throw new IllegalStateException("de kenmerktoekenning '" + r.naam() + "' kent '" + characteristic + "' toe, en "
-                    + subject.naam + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
+            throw new IllegalStateException("de kenmerktoekenning '" + r.name() + "' kent '" + characteristic + "' toe, en "
+                    + subject.name + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
         boolean ucharText = writtenByUchar(r);
         StringBuilder b = new StringBuilder(label).append(' ').append(predicate.mainClause());
         if (present) {
@@ -145,7 +145,7 @@ public final class Verbaliser {
      *  herkomst. Een beslistabelrij maakte uchar ook, maar uit de kolomkoppen en cellen van de auteur; die tekst is van
      *  de auteur. */
     private boolean writtenByUchar(ResolvedRule r) {
-        return model.generatedFrom(Designatable.form(RegelSpraakModel.formName(r.naam())))
+        return model.generatedFrom(Designatable.form(RegelSpraakModel.formName(r.name())))
                 .map(g -> g.form() == OriginForm.OPGAVE_BOVEN_BEREKENING).orElse(false);
     }
 
@@ -154,7 +154,7 @@ public final class Verbaliser {
     /** Een voorwaarde in proza, met de geëvalueerde operandwaarden: WAAROM ze geldt (het toegekende geval); de
      *  niet-toegekende tak gaat via {@link #firstFailingConjunct}. {@code subject} is het objecttype van de regel,
      *  vanwaar een kenmerk- of rolnaam in de voorwaarde gelezen wordt; {@code ucharText} of uchar de regel schreef. */
-    private String verbaliseCondition(Condition c, Object bean, Objecttype subject, boolean ucharText) {
+    private String verbaliseCondition(Condition c, Object bean, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Compound s) {
             List<String> parts = new ArrayList<>();
             for (Condition d : s.components()) parts.add(verbaliseCondition(d, bean, subject, ucharText));
@@ -169,13 +169,13 @@ public final class Verbaliser {
     }
 
     /** Een enkele (niet-samengestelde) conditie als proza met geëvalueerde operanden. */
-    private String verbaliseAtom(Condition c, Object bean, Objecttype subject, boolean ucharText) {
+    private String verbaliseAtom(Condition c, Object bean, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Comparison vg) {
             return operandProse(vg.left(), bean, ucharText) + " " + operatorWords(vg.op()) + " "
                     + operandProse(vg.right(), bean, ucharText);
         }
         if (c instanceof Condition.CharacteristicCheck k) {
-            Objecttype holder = k.navigation() == null ? subject
+            ObjectType holder = k.navigation() == null ? subject
                     : model.roleTargetTypeToSubject(subject, k.navigation());
             Predicate predicate = predicate(holder, k.characteristic(), !k.negation(), summary(c));
             // zonder soort geen werkwoord: dan de voorwaarde zoals de regel haar schrijft, zoals hieronder
@@ -187,10 +187,10 @@ public final class Verbaliser {
             return "het onderwerp " + (rl.negation() ? "geen " : "een ") + naming.roleFulfilled(subject, rl.role())
                     + " is";
         if (c instanceof Condition.Predicate p) {
-            String core = switch (p.category()) {
+            String core = switch (p.kind()) {
                 case LEEG -> "leeg is";
                 case GEVULD -> "gevuld is";
-                default -> "voldoet aan " + p.category().name().toLowerCase(Locale.ROOT);
+                default -> "voldoet aan " + p.kind().name().toLowerCase(Locale.ROOT);
             };
             return operandProse(p.operand(), bean, ucharText) + " " + core;
         }
@@ -202,7 +202,7 @@ public final class Verbaliser {
      *  operanden tegen de eindtoestand) niet houdt — de reden dat de toekenning uitbleef. Voor een niet-
      *  samengestelde voorwaarde is dat de voorwaarde zelf. Kan een conjunct niet worden geëvalueerd (een
      *  onopgeloste vorm, een niet-leesbaar operand), dan noemt hij die eerlijk als "niet vast te stellen". */
-    private String firstFailingConjunct(Condition c, Object bean, Objecttype subject, boolean ucharText) {
+    private String firstFailingConjunct(Condition c, Object bean, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE) {
             for (Condition d : s.components()) {
                 Boolean holds = evalueer(d, bean);
@@ -238,7 +238,7 @@ public final class Verbaliser {
         }
         if (c instanceof Condition.Predicate p) {
             Object v = evalExpr(p.operand(), bean);
-            return switch (p.category()) {
+            return switch (p.kind()) {
                 case LEEG -> v == null;
                 case GEVULD -> v != null;
                 default -> null;
@@ -274,9 +274,9 @@ public final class Verbaliser {
     private Object evalExpr(Expr e, Object bean) {
         if (e == null) return null;
         if (e instanceof Expr.Literal lit) return literalValue(lit);
-        if (e instanceof Expr.ParameterRef pr) return globals.get(Namen.ident(pr.parameter().naam(), false));
+        if (e instanceof Expr.ParameterRef pr) return globals.get(Namen.ident(pr.parameter().name(), false));
         if (e instanceof Expr.Constant ct) {
-            if ("Rekendatum".equals(ct.naam())) return globals.get("rekendatum");
+            if ("Rekendatum".equals(ct.name())) return globals.get("rekendatum");
             return null;
         }
         if (e instanceof Expr.AttributeReference ref && ref.navigationRole() == null)
@@ -289,7 +289,7 @@ public final class Verbaliser {
         }
         if (e instanceof Expr.Rounding rounded) {
             Object base = evalExpr(rounded.base(), bean);
-            if (base instanceof BigDecimal a) return a.setScale(rounded.decimalen(), roundingMode(rounded.mode()));
+            if (base instanceof BigDecimal a) return a.setScale(rounded.decimals(), roundingMode(rounded.mode()));
             return null;
         }
         if (e instanceof Expr.Clamp bg) {
@@ -332,7 +332,7 @@ public final class Verbaliser {
         try {
             if (t.isNumberLike()) return parseNumber(w);
             if (t instanceof Datatype.BooleanType) return "waar".equalsIgnoreCase(w) || Boolean.parseBoolean(w);
-            if (t instanceof Datatype.DatumInDagen) return LocalDate.parse(w);
+            if (t instanceof Datatype.DateInDays) return LocalDate.parse(w);
             if (t instanceof Datatype.DateTime) return LocalDateTime.parse(w);
         } catch (RuntimeException unparsable) { /* val terug op de ruwe tekst */ }
         return w;
@@ -353,22 +353,22 @@ public final class Verbaliser {
     private String renderOperand(Expr e, Object bean) {
         Object v = evalExpr(e, bean);
         if (v == null) return "onbekend";
-        Datatype.Enumeratie enumArray = enumerationOf(e);
+        Datatype.Enumeration enumArray = enumerationOf(e);
         return enumArray != null ? render(v, enumArray) : renderValue(v, e.type());
     }
 
     /** {@link #renderValue}, met een enumeratiewaarde in het gekozen vocabulaire: een waarde is een declaratie. */
     private String render(Object v, Datatype type) {
-        if (v instanceof String s && type instanceof Datatype.Enumeratie e) return enumerationValue(e, s);
+        if (v instanceof String s && type instanceof Datatype.Enumeration e) return enumerationValue(e, s);
         return renderValue(v, type);
     }
 
     /** Een enumeratiewaarde in het gekozen vocabulaire. Wijkt haar benaming daar af van de gedeclareerde waarde,
      *  zoals een code ("01"), dan volgt die waarde erachter: de code alleen zegt de lezer niet waar ze voor staat.
      *  Gelijk zoals uchar gedeclareerde namen vergelijkt ({@link Namen#norm}), of zonder benaming: de naam alleen. */
-    private String enumerationValue(Datatype.Enumeratie e, String value) {
+    private String enumerationValue(Datatype.Enumeration e, String value) {
         String named = naming.value(e, value);
-        for (String w : e.waarden())
+        for (String w : e.values())
             if (Namen.norm(w).equals(Namen.norm(value)) && !Namen.norm(named).equals(Namen.norm(w)))
                 return named + " · " + w;
         return named;
@@ -376,11 +376,11 @@ public final class Verbaliser {
 
     /** Het enumeratietype van een operand: dat van de expressie, of voor een attribuut- of parameterread dat van de
      *  declaratie (een read uit uchars lader draagt zelf geen type); null voor elk ander operand. */
-    private static Datatype.Enumeratie enumerationOf(Expr e) {
-        if (e.type() instanceof Datatype.Enumeratie enumArray) return enumArray;
+    private static Datatype.Enumeration enumerationOf(Expr e) {
+        if (e.type() instanceof Datatype.Enumeration enumArray) return enumArray;
         if (e instanceof Expr.AttributeReference ref && ref.objectType() != null
-                && ref.objectType().attribute(ref.attribute()) instanceof Datatype.Enumeratie enumArray) return enumArray;
-        if (e instanceof Expr.ParameterRef pr && pr.parameter().datatype() instanceof Datatype.Enumeratie enumArray) return enumArray;
+                && ref.objectType().attribute(ref.attribute()) instanceof Datatype.Enumeration enumArray) return enumArray;
+        if (e instanceof Expr.ParameterRef pr && pr.parameter().datatype() instanceof Datatype.Enumeration enumArray) return enumArray;
         return null;
     }
 
@@ -415,9 +415,9 @@ public final class Verbaliser {
     private static String nlNumber(BigDecimal b, Datatype type) {
         BigDecimal w = b;
         int decimals = -1;
-        if (type instanceof Datatype.Numeriek n && !n.geheel()) decimals = n.decimalen();
-        else if (type instanceof Datatype.Percentage p && !p.geheel()) decimals = p.decimalen();
-        else if (type instanceof Datatype.Numeriek n && n.geheel()) decimals = 0;
+        if (type instanceof Datatype.Numeric n && !n.wholeNumber()) decimals = n.decimals();
+        else if (type instanceof Datatype.Percentage p && !p.wholeNumber()) decimals = p.decimals();
+        else if (type instanceof Datatype.Numeric n && n.wholeNumber()) decimals = 0;
         if (decimals >= 0) w = w.setScale(decimals, java.math.RoundingMode.HALF_UP);
         String plain = w.abs().toPlainString();
         String whole = plain, fraction = "";
@@ -437,7 +437,7 @@ public final class Verbaliser {
     private static String unitWord(Datatype type) {
         if (type instanceof Datatype.Percentage) return "%";
         Unit e = type == null ? null : type.unitOf();
-        return e == null ? null : e.afkorting();
+        return e == null ? null : e.abbreviation();
     }
 
     /** Een korte omschrijving van WAT een operand is, uit zijn brontekst (bv. "de maandloon nieuw van EOver"); die is
@@ -451,7 +451,7 @@ public final class Verbaliser {
             return source.trim();
         }
         if (e instanceof Expr.AttributeReference ref) return "de " + naming.attribute(ref.objectType(), ref.attribute());
-        if (e instanceof Expr.ParameterRef pr) return "de " + naming.parameter(pr.parameter().naam());
+        if (e instanceof Expr.ParameterRef pr) return "de " + naming.parameter(pr.parameter().name());
         return "de waarde";
     }
 
@@ -483,8 +483,8 @@ public final class Verbaliser {
      *  vocabulaire; de naam is die van {@link Naming}. Het model draagt het lidwoord van een declaratie niet, dus
      *  komt het bij een aanwezig bezittelijk kenmerk uit {@code ruleText}, de tekst van de regel die het kenmerk
      *  noemt. Null wanneer {@code holder} geen kenmerk {@code characteristic} kent. */
-    private Predicate predicate(Objecttype holder, String characteristic, boolean present, String ruleText) {
-        Objecttype.CharacteristicKind kind = holder == null ? null : holder.characteristicKind(characteristic);
+    private Predicate predicate(ObjectType holder, String characteristic, boolean present, String ruleText) {
+        ObjectType.CharacteristicKind kind = holder == null ? null : holder.characteristicKind(characteristic);
         if (kind == null) return null;
         String name = naming.characteristic(holder, characteristic);
         return switch (kind) {
@@ -565,14 +565,14 @@ public final class Verbaliser {
         List<String> sink = new ArrayList<>();
         Map<String, RegelSpraakModel.Parameter> perGlobal = new LinkedHashMap<>();
         for (RegelSpraakModel.Parameter p : model.parameters.values())
-            perGlobal.put(Namen.ident(p.naam(), false), p);
+            perGlobal.put(Namen.ident(p.name(), false), p);
         for (Map.Entry<String, Object> g : globals.entrySet()) {
             if ("rekendatum".equals(g.getKey())) {
-                sink.add("rekendatum: " + renderValue(g.getValue(), new Datatype.DatumInDagen()));
+                sink.add("rekendatum: " + renderValue(g.getValue(), new Datatype.DateInDays()));
                 continue;
             }
             RegelSpraakModel.Parameter p = perGlobal.get(g.getKey());
-            if (p != null) sink.add("de " + naming.parameter(p.naam()) + ": " + render(g.getValue(), p.datatype()));
+            if (p != null) sink.add("de " + naming.parameter(p.name()) + ": " + render(g.getValue(), p.datatype()));
         }
         return sink;
     }

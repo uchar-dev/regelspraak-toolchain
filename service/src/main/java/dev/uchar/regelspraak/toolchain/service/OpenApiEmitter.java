@@ -15,7 +15,7 @@ import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.Unit;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Objecttype;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 
@@ -103,7 +103,7 @@ public final class OpenApiEmitter {
         // components.schemas — one per objecttype (declared order), then the generic request/response/fout
         ObjectNode components = doc.putObject("components");
         ObjectNode schemas = components.putObject("schemas");
-        for (Objecttype ot : model.objecttypen.values())
+        for (ObjectType ot : model.objectTypes.values())
             schemas.set(componentName(ot, sp.in), objectTypeSchema(ot, sp));
         schemas.set("Request", requestSchema());
         schemas.set("Answer", answerSchema());
@@ -134,7 +134,7 @@ public final class OpenApiEmitter {
             if (model.vocabularies.isEmpty()) return;
             if (!in.isCanonical()) other.add(Naming.canonical(model));
             for (RegelSpraakModel.Vocabulary v : model.vocabularies)
-                if (!v.naam().equals(in.choice())) other.add(Naming.van(model, v.naam()));
+                if (!v.name().equals(in.choice())) other.add(Naming.van(model, v.name()));
         }
 
         /** Whether the document lists other spellings: the model declares vocabularies. */
@@ -156,7 +156,7 @@ public final class OpenApiEmitter {
 
         /** The info block's description: whose names the document carries, and what else the service reads. */
         String documentDescription() {
-            List<String> vocabularies = model.vocabularies.stream().map(v -> "'" + v.naam() + "'").toList();
+            List<String> vocabularies = model.vocabularies.stream().map(v -> "'" + v.name() + "'").toList();
             return (in.isCanonical() ? "De namen in dit document zijn de canonieke namen."
                     : "De namen in dit document zijn die van het vocabulaire '" + in.choice() + "'.")
                     + " De dienst neemt in een verzoek elke naam aan: canoniek of als benaming in "
@@ -176,7 +176,7 @@ public final class OpenApiEmitter {
         List<String> choices() {
             List<String> sink = new ArrayList<>();
             sink.add(Naming.CANONICAL);
-            for (RegelSpraakModel.Vocabulary v : model.vocabularies) sink.add(v.naam());
+            for (RegelSpraakModel.Vocabulary v : model.vocabularies) sink.add(v.name());
             return sink;
         }
     }
@@ -270,8 +270,8 @@ public final class OpenApiEmitter {
     private static List<String> input(ServiceDescriptor.Entrypoint ep, RegelSpraakModel model, Naming n) {
         List<String> sink = new ArrayList<>();
         for (String inv : ep.input() == null ? List.<String>of() : ep.input()) {
-            Objecttype ot = DescriptorLoader.objectType(model, inv);
-            sink.add(n.isCanonical() || ot == null ? inv : n.objectType(ot.naam));
+            ObjectType ot = DescriptorLoader.objectType(model, inv);
+            sink.add(n.isCanonical() || ot == null ? inv : n.objectType(ot.name));
         }
         return sink;
     }
@@ -281,9 +281,9 @@ public final class OpenApiEmitter {
         List<String> sink = new ArrayList<>();
         for (String sel : ep.output() == null ? List.<String>of() : ep.output()) {
             OutputSelector u = OutputSelector.parse(sel);
-            Objecttype ot = u == null ? null : DescriptorLoader.objectType(model, u.objectType());
+            ObjectType ot = u == null ? null : DescriptorLoader.objectType(model, u.objectType());
             if (n.isCanonical() || ot == null) { sink.add(sel); continue; }
-            sink.add(n.objectType(ot.naam) + (u.characteristic() ? ":" + n.characteristic(ot, u.member()) : "." + n.attribute(ot, u.member())));
+            sink.add(n.objectType(ot.name) + (u.characteristic() ? ":" + n.characteristic(ot, u.member()) : "." + n.attribute(ot, u.member())));
         }
         return sink;
     }
@@ -344,7 +344,7 @@ public final class OpenApiEmitter {
      *  choice from {@link dev.uchar.regelspraak.schema.FactModelGenerator}, which stays per
      *  declaring type BECAUSE the generated bean {@code extends} its supertype's and would hide the
      *  parent's field by redeclaring it; a JSON schema property set has no such mechanism. */
-    private static ObjectNode objectTypeSchema(Objecttype ot, Spellings sp) {
+    private static ObjectNode objectTypeSchema(ObjectType ot, Spellings sp) {
         ObjectNode schema = NF.objectNode();
         schema.put("type", "object");
 
@@ -374,7 +374,7 @@ public final class OpenApiEmitter {
         }
         schema.set("properties", props);
         schema.put("description", objectTypeDescription(ot, sp.in, characteristics, rejected));
-        if (sp.enabled()) spellings(schema, sp.van(Designatable.objectType(ot.naam)));
+        if (sp.enabled()) spellings(schema, sp.van(Designatable.objectType(ot.name)));
         return schema;
     }
 
@@ -387,10 +387,10 @@ public final class OpenApiEmitter {
         node.set("x-spellings", spellings);
     }
 
-    private static String objectTypeDescription(Objecttype ot, Naming in, List<String> characteristics,
+    private static String objectTypeDescription(ObjectType ot, Naming in, List<String> characteristics,
                                                  List<String> rejected) {
         StringBuilder b = new StringBuilder();
-        b.append("Objecttype '").append(in.objectType(ot.naam)).append("'.");
+        b.append("Objecttype '").append(in.objectType(ot.name)).append("'.");
         if (!characteristics.isEmpty())
             b.append(" Kenmerken (boolean-eigenschappen): ").append(String.join(", ", characteristics)).append(".");
         if (!rejected.isEmpty())
@@ -406,25 +406,25 @@ public final class OpenApiEmitter {
         ObjectNode s = NF.objectNode();
         Unit unit = null;
         switch (dt) {
-            case Datatype.Numeriek n -> {
-                s.put("type", n.geheel() ? "integer" : "number");
-                unit = n.eenheid();
+            case Datatype.Numeric n -> {
+                s.put("type", n.wholeNumber() ? "integer" : "number");
+                unit = n.unit();
             }
             case Datatype.Percentage p -> {
-                s.put("type", p.geheel() ? "integer" : "number");
-                unit = p.eenheid();
+                s.put("type", p.wholeNumber() ? "integer" : "number");
+                unit = p.unit();
             }
-            case Datatype.Tekst t -> s.put("type", "string");
+            case Datatype.Text t -> s.put("type", "string");
             case Datatype.BooleanType b -> s.put("type", "boolean");
-            case Datatype.DatumInDagen d -> { s.put("type", "string"); s.put("format", "date"); }
+            case Datatype.DateInDays d -> { s.put("type", "string"); s.put("format", "date"); }
             case Datatype.DateTime d -> { s.put("type", "string"); s.put("format", "date-time"); }
-            case Datatype.Enumeratie e -> {
+            case Datatype.Enumeration e -> {
                 s.put("type", "string");
                 ArrayNode enumArray = s.putArray("enum");
-                for (String w : e.waarden()) enumArray.add(sp.in.value(e, w));
+                for (String w : e.values()) enumArray.add(sp.in.value(e, w));
                 if (sp.enabled()) {
                     ObjectNode values = s.putObject("x-valueSpellings");
-                    for (String w : e.waarden())
+                    for (String w : e.values())
                         values.set(sp.in.value(e, w), sp.van(Designatable.enumerationValue(e.domain(), w)));
                 }
             }
@@ -439,17 +439,17 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    private static String componentName(Objecttype ot, Naming in) { return Namen.ident(in.objectType(ot.naam), true); }
+    private static String componentName(ObjectType ot, Naming in) { return Namen.ident(in.objectType(ot.name), true); }
 
     /** §13.3.6 whether attribuut {@code naam} rides a tijdlijn ANYWHERE on {@code ot}'s chain. Reading the own
      *  maps would call an INHERITED timeline scalar and emit a plain property for it — a contract the service
      *  then refuses at request time ({@link RequestMapper} UNSUPPORTED). */
-    private static boolean temporalAttribute(Objecttype ot, String name) {
+    private static boolean temporalAttribute(ObjectType ot, String name) {
         return ot.granularityOf(name) != null || ot.timelineCountOf(name) != null;
     }
 
     /** The kenmerk twin of {@link #temporalAttribute}, chain-closed for the same reason. */
-    private static boolean temporalCharacteristic(Objecttype ot, String name) {
+    private static boolean temporalCharacteristic(ObjectType ot, String name) {
         return ot.characteristicGranularityOf(name) != null || ot.characteristicTimelineCountOf(name) != null;
     }
 

@@ -52,10 +52,10 @@ class ParameterSetLoaderTest {
             """;
         List<ParameterSet> sets = ParameterSetLoader.load(json, model());
         assertEquals(2, sets.size());
-        assertEquals("2025", sets.get(0).naam());
+        assertEquals("2025", sets.get(0).name());
 
         // canonieke key: "volwassenleeftijd" (niet "Volwassenleeftijd"); tarief open (ALTIJD) is degenererend.
-        assertTrue(sets.get(0).waarden().containsKey("volwassenleeftijd"), () -> sets.get(0).waarden().keySet().toString());
+        assertTrue(sets.get(0).values().containsKey("volwassenleeftijd"), () -> sets.get(0).values().keySet().toString());
 
         // vintage-selectie over de UNIE: 2025 -> 18, 2026 -> 21.
         List<String> errors = new ArrayList<>();

@@ -119,6 +119,6 @@ public final class UcharBuild {
     private static String allocationName(RegelSpraakModel model) {
         return model.allocations.stream()
                 .filter(v -> v.method() == dev.uchar.regelspraak.ir.ResolvedAllocation.Method.COMPLEX)
-                .map(v -> ProducerConsumer.baseName(v.naam())).findFirst().orElseThrow();
+                .map(v -> ProducerConsumer.baseName(v.name())).findFirst().orElseThrow();
     }
 }
