@@ -69,9 +69,10 @@ class NoFixpointTest {
     @BeforeAll
     static void start() throws IOException {
         source = Files.readString(RED.resolve("source.rgs"));
-        fragment = ServiceHttp.MAPPER.readTree(Files.readString(RED.resolve("case1.json")))
-                .at("/expectedFault/drools").asText();
-        assertTrue(fragment.startsWith("creation budget exhausted: "), fragment);
+        // uchar pins the code of the fault, no longer its sentence; the sentence leads with the same words in both languages
+        assertEquals("EF-015", ServiceHttp.MAPPER.readTree(Files.readString(RED.resolve("case1.json")))
+                .at("/expectedFault/drools/code").asText());
+        fragment = "creation budget exhausted: ";
         core = DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", source), CoreConfig.strict().withDetail(),
                 Thread.currentThread().getContextClassLoader());
         service = ServiceHttp.bindWith(core, core::process, "127.0.0.1", 0, true).start();

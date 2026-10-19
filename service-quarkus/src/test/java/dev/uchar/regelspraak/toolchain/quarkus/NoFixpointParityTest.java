@@ -60,7 +60,10 @@ class NoFixpointParityTest {
         core = DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", Files.readString(RED.resolve("source.rgs"))),
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
         service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
-        fragment = MAPPER.readTree(Files.readString(RED.resolve("case1.json"))).at("/expectedFault/drools").asText();
+        // uchar pins the code of the fault, no longer its sentence; the sentence leads with the same words in both languages
+        assertEquals("EF-015", MAPPER.readTree(Files.readString(RED.resolve("case1.json")))
+                .at("/expectedFault/drools/code").asText());
+        fragment = "creation budget exhausted: ";
     }
 
     @AfterAll
