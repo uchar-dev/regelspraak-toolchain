@@ -152,7 +152,7 @@ class EntryHttpTest {
             "input": ["Jutter"], "output": ["Jutter.zware vondsten"] } ],
           "parameters": {} }""";
 
-    /** The model of uchar's witness of a second filling ({@code TmsCreatieWitnessTest}, document D): the fact creation
+    /** The model of uchar's witness of a second filling ({@code TmsCreationWitnessTest}, document D): the fact creation
      *  makes every geworven jutter of the kustwacht of a Haven a havenjutter of that Haven, and a Jutter has one haven.
      *  The ligplaatsdeel of a Haven without ligplaatsen reads the rekenjaar, which the request has no evaluation date
      *  for: the other fault of the mixed request. */
@@ -220,7 +220,7 @@ class EntryHttpTest {
           {"type":"Haven","id":"H1","attributes":{"ligplaatsen":0}},
           {"type":"Haven","id":"H2","attributes":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""";
 
-    /** The model of uchar's {@code SubtypeRolvullerWitnessTest.de_wederkerige_rol_spiegelt_ook_voor_een_subtype},
+    /** The model of uchar's {@code SubtypeRoleFillerWitnessTest.the_reciprocal_role_also_mirrors_for_a_subtype},
      *  without the rest of its golden: a reciprocal role filled by Vondst, and Wrakvondst a subtype of Vondst. */
     private static final String MAAT_SOURCE = """
         Objecttype de Vondst (mv: Vondsten)
@@ -377,7 +377,7 @@ class EntryHttpTest {
 
     // ---------------- a fault at the fixpoint of another type: OTHER ----------------
 
-    /** uchar's case D2 ({@code TmsCreatieWitnessTest.een_tweede_vulling_van_een_naar_een_rol_is_een_fout}): the fact
+    /** uchar's case D2 ({@code TmsCreationWitnessTest.a_second_filling_of_a_to_one_role_is_a_fault}): the fact
      *  creation gives J1 two havens, and uchar puts that fault at the fixpoint with a plain
      *  {@code IllegalStateException}, outside the four types its README names. It is an evaluation fault by its place
      *  there, so the 422 gives it as OTHER, with the sentence uchar's replay gives on the same input. */

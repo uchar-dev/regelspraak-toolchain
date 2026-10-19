@@ -153,7 +153,7 @@ class ScenarioRunnerTest {
                 u.get(0).explanation());
     }
 
-    /** The model of uchar's {@code SubtypeRolvullerWitnessTest.de_wederkerige_rol_spiegelt_ook_voor_een_subtype}: W, a
+    /** The model of uchar's {@code SubtypeRoleFillerWitnessTest.the_reciprocal_role_also_mirrors_for_a_subtype}: W, a
      *  Wrakvondst, writes the one link of a reciprocal role filled by Vondst. uchar's replay mirrors it along the chain
      *  of W's types, and so does the explanation's session, which shares the role writer with the service: it reads
      *  V's maatwaarde as 5 and gives its explanation. Asked of W's own type alone, the session read V's maatwaarde

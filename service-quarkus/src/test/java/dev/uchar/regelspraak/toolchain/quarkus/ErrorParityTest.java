@@ -149,7 +149,7 @@ class ErrorParityTest {
           "parameters": {} }""";
 
     /** Own material for a fault at the fixpoint of another type than the four uchar's README names: the model of
-     *  uchar's witness of a second filling ({@code TmsCreatieWitnessTest}, document D), in which a fact creation gives
+     *  uchar's witness of a second filling ({@code TmsCreationWitnessTest}, document D), in which a fact creation gives
      *  a to-one role two different fillers, with a read of the rekenjaar without an evaluation date beside it. */
     private static final String FILLING_SOURCE = """
         Objecttype de Kustwacht (mv: Kustwachten)
