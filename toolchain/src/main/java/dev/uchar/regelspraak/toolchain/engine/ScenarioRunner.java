@@ -79,7 +79,7 @@ public final class ScenarioRunner {
     }
 
     /** {@link #runWithExplanation(ScenarioBundle)} with the explanation in vocabulary {@code vocabulaire}
-     *  ({@link Naming#van}; null or {@link Naming#CANONICAL} for the canonical names). */
+     *  ({@link Naming#of}; null or {@link Naming#CANONICAL} for the canonical names). */
     public static List<Explained> runWithExplanation(ScenarioBundle bundle, String vocabulary) {
         return play(bundle, true, vocabulary);
     }
@@ -187,7 +187,7 @@ public final class ScenarioRunner {
         String difference = valueDifference(session, r, c);
         if (difference != null) return new Explained(r, List.of(), difference, null, difference);
         return new Explained(r, new Verbaliser(build.model(), session.globals(),
-                Naming.van(build.model(), vocabulary))
+                Naming.of(build.model(), vocabulary))
                 .verbalise(session.beans(), session.typePerLabel()), null, session, null);
     }
 

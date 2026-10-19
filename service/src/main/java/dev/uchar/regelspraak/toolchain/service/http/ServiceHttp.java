@@ -328,12 +328,12 @@ public final class ServiceHttp {
             String vocabulary = queryValue(ex.getRequestURI().getRawQuery(), "vocabulary");
             String via = queryValue(ex.getRequestURI().getRawQuery(), "via");
             if (via != null && !"service".equalsIgnoreCase(via)) {
-                send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(Violation.van(
+                send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(Violation.of(
                         Violation.Kind.MALFORMED, "via", "via kent alleen de waarde 'service', niet '" + via + "'")))));
                 return;
             }
             if (via != null && !core.detail()) {
-                send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(Violation.van(
+                send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(Violation.of(
                         Violation.Kind.UNSUPPORTED, "via", "de dienst is zonder DETAIL gestart en rekent geen"
                                 + " scenario's via de dienst; start hem met DETAIL=true of --detail")))));
                 return;
@@ -358,7 +358,7 @@ public final class ServiceHttp {
                 if (ee.getCause() instanceof Naming.VocabularyError vf) {
                     // the source's model declares no such vocabulary: the request asked what cannot be answered
                     send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(
-                            Violation.van(Violation.Kind.UNKNOWN_VOCABULARY, "vocabulary", vf.getMessage())))));
+                            Violation.of(Violation.Kind.UNKNOWN_VOCABULARY, "vocabulary", vf.getMessage())))));
                     return;
                 }
                 ee.getCause().printStackTrace(System.err);

@@ -82,7 +82,7 @@ public final class OpenApiEmitter {
     /** Build the document in {@code vocabulaire}: one the model declares, or null or {@link Naming#CANONICAL} for the
      *  canonical names. Another vocabulary is a {@link Naming.VocabularyError}. */
     public static ObjectNode emit(ServiceDescriptor descriptor, RegelSpraakModel model, String vocabulary) {
-        Spellings sp = new Spellings(model, Naming.van(model, vocabulary));
+        Spellings sp = new Spellings(model, Naming.of(model, vocabulary));
         ObjectNode doc = NF.objectNode();
         doc.put("openapi", "3.0.3");
 
@@ -134,7 +134,7 @@ public final class OpenApiEmitter {
             if (model.vocabularies.isEmpty()) return;
             if (!in.isCanonical()) other.add(Naming.canonical(model));
             for (RegelSpraakModel.Vocabulary v : model.vocabularies)
-                if (!v.name().equals(in.choice())) other.add(Naming.van(model, v.name()));
+                if (!v.name().equals(in.choice())) other.add(Naming.of(model, v.name()));
         }
 
         /** Whether the document lists other spellings: the model declares vocabularies. */

@@ -49,7 +49,7 @@ public record Violation(Kind kind, String field, String message) {
         MALFORMED
     }
 
-    public static Violation van(Kind kind, String field, String message) {
+    public static Violation of(Kind kind, String field, String message) {
         return new Violation(kind, field == null ? "" : field, message);
     }
 

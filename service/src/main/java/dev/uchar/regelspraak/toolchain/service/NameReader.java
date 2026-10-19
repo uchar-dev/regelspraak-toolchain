@@ -39,10 +39,10 @@ final class NameReader {
     private final String pinned;
 
     /** @param vastgezet the input vocabulary the request pins, already checked against the model
-     *                   ({@link Naming#van}), or null to read every name liberally */
+     *                   ({@link Naming#of}), or null to read every name liberally */
     NameReader(RegelSpraakModel model, String pinned) {
         this.model = model;
-        this.pinned = pinned == null ? null : Naming.van(model, pinned).choice();
+        this.pinned = pinned == null ? null : Naming.of(model, pinned).choice();
     }
 
     /** The outcome of reading one name. */
@@ -157,7 +157,7 @@ final class NameReader {
 
     /** The values of {@code e} as the pinned vocabulary names them (only meaningful with {@link #pinnedInVocabulary}). */
     List<String> values(Datatype.Enumeration e) {
-        Naming n = Naming.van(model, pinned);
+        Naming n = Naming.of(model, pinned);
         return e.values().stream().map(w -> n.value(e, w)).toList();
     }
 

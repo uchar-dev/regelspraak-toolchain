@@ -52,13 +52,13 @@ class FormIndexTest {
     private static FormIndex klein() {
         RegelSpraakModel m = Resolver.resolve(KLEIN);
         assertTrue(m.isOk(), m.errors().toString());
-        return FormIndex.van(m, m.prioritizedDefaults);
+        return FormIndex.of(m, m.prioritizedDefaults);
     }
 
     @Test
     void toka_rules_carry_their_form() {
         RegelSpraakModel m = TokaSource.model();
-        FormIndex index = FormIndex.van(m, m.prioritizedDefaults);
+        FormIndex index = FormIndex.of(m, m.prioritizedDefaults);
         assertEquals(1, index.formsOf("bepaal leeftijd").size(), index.all().toString());
         assertEquals(1, index.formsOf("Totaal te betalen belasting").size(), index.all().toString());
         // toka-45 is NOT in the served set since besluit 16Y (see TokaSource), so its rule is not nameable

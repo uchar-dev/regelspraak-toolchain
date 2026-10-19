@@ -186,7 +186,7 @@ public final class Playground {
             n.put("message", locale == null ? d.message() : d.message(locale));
         }
         if (!model.isOk()) return root;
-        Naming naming = Naming.van(model, vocabulary);
+        Naming naming = Naming.of(model, vocabulary);
         root.set("vocabularies", vocabularies(model, naming, parseResult));
 
         // 3. IR and the verdict of the branch that fires
@@ -360,7 +360,7 @@ public final class Playground {
             reason = "het uchar-ir-v1-document van de geposte bronnen is niet dat van de dienst; eerste verschil "
                     + difference(ir, own, "");
         }
-        throw new ServiceError("verzoek valideert niet", List.of(Violation.van(Violation.Kind.UNSUPPORTED, "source",
+        throw new ServiceError("verzoek valideert niet", List.of(Violation.of(Violation.Kind.UNSUPPORTED, "source",
                 "via=service rekent met de bronnen waarmee de dienst gestart is, en " + reason)));
     }
 
@@ -508,7 +508,7 @@ public final class Playground {
             vn.put("name", v.name());
             vn.put("default", v.isDefault());
             if (v.language() == null) vn.putNull("language"); else vn.put("language", v.language());
-            per.add(Naming.van(model, v.name()));
+            per.add(Naming.of(model, v.name()));
         }
         Map<Designatable, Declarations.Declaration> declarations = Map.of();
         String declarationError = null;

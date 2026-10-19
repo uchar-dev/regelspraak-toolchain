@@ -139,7 +139,7 @@ public final class DecisionCore {
         boolean document = sourceFiles.stream().anyMatch(DecisionCore::isDocument);
         if (document && sourceFiles.size() != 1)
             throw new ServiceError("dienst start niet: een uchar-ir-v1-document is de enige bron van een dienst",
-                    List.of(Violation.van(Violation.Kind.MALFORMED, "sources",
+                    List.of(Violation.of(Violation.Kind.MALFORMED, "sources",
                             "de bronnen mengen een .json-document met andere bestanden: " + sourceFiles)));
         Map<String, String> text = new LinkedHashMap<>();
         for (Path p : sourceFiles) text.put(p.toString(), Files.readString(p));
@@ -154,7 +154,7 @@ public final class DecisionCore {
                 parameterSetsJson = Files.readString(sidecar);
             } catch (IOException e) {
                 throw new ServiceError("dienst start niet: parametersets-bestand kan niet gelezen worden op dit"
-                        + " bouwpad", List.of(Violation.van(Violation.Kind.MALFORMED, "parameterSets",
+                        + " bouwpad", List.of(Violation.of(Violation.Kind.MALFORMED, "parameterSets",
                         "kon parametersets-bestand '" + sidecar + "' niet lezen: " + e.getMessage())));
             }
         }
@@ -200,13 +200,13 @@ public final class DecisionCore {
         RegelSpraakModel model = Resolver.resolve(full.toString());
         List<Violation> startErrors = new ArrayList<>();
         for (var d : model.errors())
-            startErrors.add(Violation.van(Violation.Kind.MALFORMED, "bron:regel" + d.line(),
+            startErrors.add(Violation.of(Violation.Kind.MALFORMED, "bron:regel" + d.line(),
                     "resolve-fout: " + d.message()));
 
         // 2. descriptor validation against the shared model (collect all)
         ServiceDescriptor descriptor = readDescriptor(descriptorJson);
         // only validate the descriptor against a well-formed model — a resolve failure already dominates
-        FormIndex forms = FormIndex.van(model, model.prioritizedDefaults);
+        FormIndex forms = FormIndex.of(model, model.prioritizedDefaults);
         if (startErrors.isEmpty()) startErrors.addAll(DescriptorLoader.validate(descriptor, model, forms));
         if (!startErrors.isEmpty())
             throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
@@ -276,19 +276,19 @@ public final class DecisionCore {
             document = DescriptorLoader.MAPPER.readTree(documentJson);
         } catch (IOException e) {
             throw new ServiceError("dienst start niet: het document is geen JSON", List.of(
-                    Violation.van(Violation.Kind.MALFORMED, "source", e.getMessage())));
+                    Violation.of(Violation.Kind.MALFORMED, "source", e.getMessage())));
         }
         IrLoader.Loaded loaded;
         try {
             loaded = IrLoader.loadAll(document);
         } catch (IrLoader.Refusal | IrLoader.DocumentError e) {
             throw new ServiceError("dienst start niet: uchar draagt het document niet", List.of(
-                    Violation.van(Violation.Kind.MARKER, "source", (e instanceof IrLoader.Refusal ? "loader: "
+                    Violation.of(Violation.Kind.MARKER, "source", (e instanceof IrLoader.Refusal ? "loader: "
                             : "document: ") + e.getMessage())));
         }
         RegelSpraakModel model = loaded.model();
         ServiceDescriptor descriptor = readDescriptor(descriptorJson);
-        FormIndex forms = FormIndex.van(model, loaded.prioritizedDefaults());
+        FormIndex forms = FormIndex.of(model, loaded.prioritizedDefaults());
         List<Violation> startErrors = DescriptorLoader.validate(descriptor, model, forms);
         if (!startErrors.isEmpty())
             throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
@@ -308,7 +308,7 @@ public final class DecisionCore {
             List<String> absent = new ArrayList<>(forms.all());
             absent.removeAll(forms.scope(ep.scope()).forms());
             if (!absent.isEmpty()) {
-                scopeErrors.add(Violation.van(Violation.Kind.MALFORMED, "entrypoint:" + ep.path(),
+                scopeErrors.add(Violation.of(Violation.Kind.MALFORMED, "entrypoint:" + ep.path(),
                         "een uchar-ir-v1-document wordt heel gediend, maar de scope van entrypoint '" + ep.name()
                                 + "' draagt niet: " + absent));
                 continue;
@@ -334,7 +334,7 @@ public final class DecisionCore {
             return DescriptorLoader.MAPPER.readValue(descriptorJson, ServiceDescriptor.class);
         } catch (IOException e) {
             throw new ServiceError("descriptor is geen geldige JSON", List.of(
-                    Violation.van(Violation.Kind.MALFORMED, "", e.getMessage())));
+                    Violation.of(Violation.Kind.MALFORMED, "", e.getMessage())));
         }
     }
 
@@ -349,7 +349,7 @@ public final class DecisionCore {
                     defaults, reason));
             return;
         }
-        markerErrors.add(Violation.van(Violation.Kind.MARKER, "entrypoint:" + ep.path(), construct == null
+        markerErrors.add(Violation.of(Violation.Kind.MARKER, "entrypoint:" + ep.path(), construct == null
                 ? "entrypoint '" + ep.name() + "' wordt niet gedragen door uchar: " + reason
                 : "regel '" + construct + "' in de scope van entrypoint '" + ep.name()
                         + "' is een marker (niet gedragen): " + reason));
@@ -372,7 +372,7 @@ public final class DecisionCore {
         if (descriptor.parameterSets() == null || descriptor.parameterSets().isBlank()) return List.of();
         if (parameterSetsJson == null)
             throw new ServiceError("dienst start niet: parametersets-bestand kan niet gelezen worden op dit bouwpad",
-                    List.of(Violation.van(Violation.Kind.MALFORMED, "parameterSets",
+                    List.of(Violation.of(Violation.Kind.MALFORMED, "parameterSets",
                             "de descriptor noemt parametersets '" + descriptor.parameterSets() + "' maar er is geen"
                                     + " parametersets-JSON meegegeven op dit bouwpad")));
         List<ParameterSet> sets;
@@ -381,9 +381,9 @@ public final class DecisionCore {
         } catch (ParameterSetError f) {
             List<Violation> sink = new ArrayList<>();
             for (String error : f.errors())
-                sink.add(Violation.van(Violation.Kind.MALFORMED, "parameterSets", error));
+                sink.add(Violation.of(Violation.Kind.MALFORMED, "parameterSets", error));
             if (sink.isEmpty())   // malformed-JSON single-throw carries the message, not the fouten list
-                sink.add(Violation.van(Violation.Kind.MALFORMED, "parameterSets", f.getMessage()));
+                sink.add(Violation.of(Violation.Kind.MALFORMED, "parameterSets", f.getMessage()));
             throw new ServiceError("dienst start niet: parametersets valideren niet tegen het model", sink);
         }
 
@@ -395,7 +395,7 @@ public final class DecisionCore {
                 RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, d);
                 String canonical = p == null ? d : p.name();
                 if (setNames.contains(canonical))
-                    conflict.add(Violation.van(Violation.Kind.MALFORMED, "parameters." + d,
+                    conflict.add(Violation.of(Violation.Kind.MALFORMED, "parameters." + d,
                             "parameter '" + canonical + "' staat ZOWEL in descriptor.parameters (default) ALS in de"
                                     + " parametersets — ambigue autoriteit; kies er één"));
             }
@@ -494,7 +494,7 @@ public final class DecisionCore {
                     if (reads == null) reads = ProducerConsumer.readings(scoped, group, navigation);
                     where = " " + whereRead(reads, consumed, v.name());
                 }
-                sink.add(Violation.van(Violation.Kind.INCOMPLETE_SCOPE, "entrypoint:" + ep.path(),
+                sink.add(Violation.of(Violation.Kind.INCOMPLETE_SCOPE, "entrypoint:" + ep.path(),
                         reader + " in entrypoint '" + ep.name() + "' leest "
                                 + (consumed.characteristic() ? "kenmerk" : "attribuut") + " '" + consumed.name() + "'"
                                 + (consumed.objectType().isEmpty() ? "" : " van '" + consumed.objectType() + "'")
@@ -609,7 +609,7 @@ public final class DecisionCore {
         if (options.inputVocabulary() != null) naming(options.inputVocabulary(), "inputVocabulary", choices);
         if (!detail)
             for (String flag : options.detailFlags())
-                choices.add(Violation.van(Violation.Kind.UNSUPPORTED, flag, "de dienst is zonder DETAIL gestart"
+                choices.add(Violation.of(Violation.Kind.UNSUPPORTED, flag, "de dienst is zonder DETAIL gestart"
                         + " en geeft geen " + flag + "; start hem met DETAIL=true of --detail"));
         if (!choices.isEmpty()) throw new ServiceError("verzoek valideert niet", choices);
         RequestMapper mapper = new RequestMapper(model, ep.build(), new NameReader(model, options.inputVocabulary()));
@@ -704,9 +704,9 @@ public final class DecisionCore {
      *  not declare to {@code errors}, on the query parameter {@code field}. */
     private Naming naming(String choice, String field, List<Violation> errors) {
         try {
-            return Naming.van(model, choice);
+            return Naming.of(model, choice);
         } catch (Naming.VocabularyError f) {
-            errors.add(Violation.van(Violation.Kind.UNKNOWN_VOCABULARY, field, f.getMessage()));
+            errors.add(Violation.of(Violation.Kind.UNKNOWN_VOCABULARY, field, f.getMessage()));
             return Naming.canonical(model);
         }
     }
@@ -748,7 +748,7 @@ public final class DecisionCore {
     private Map<String, Object> vintageGlobals(LocalDate date) {
         if (parameterSets.isEmpty()) return Map.of();
         if (date == null && ParameterSet.multiVintage(parameterSets))
-            throw new ServiceError("verzoek valideert niet", List.of(Violation.van(Violation.Kind.WRONG_TYPE,
+            throw new ServiceError("verzoek valideert niet", List.of(Violation.of(Violation.Kind.WRONG_TYPE,
                     "asOfDate", "peildatum is verplicht: de geladen parametersets dragen meer dan één vintage")));
         LocalDate asOf = date != null ? date : LocalDate.EPOCH;   // degeneraat: datum-onafhankelijk
         List<String> holes = new ArrayList<>();
@@ -756,7 +756,7 @@ public final class DecisionCore {
         if (!holes.isEmpty()) {
             List<Violation> errors = new ArrayList<>();
             for (String gap : holes)
-                errors.add(Violation.van(Violation.Kind.WRONG_TYPE, "asOfDate", gap));
+                errors.add(Violation.of(Violation.Kind.WRONG_TYPE, "asOfDate", gap));
             throw new ServiceError("verzoek valideert niet", errors);
         }
         Map<String, Object> globals = new LinkedHashMap<>();
@@ -787,7 +787,7 @@ public final class DecisionCore {
             for (RegelSpraakModel.ObjectType ot : typePerLabel.values())
                 if (DescriptorLoader.objectMatch(model, ot, required)) { present = true; break; }
             if (!present)
-                sink.add(Violation.van(Violation.Kind.MISSING_INSTANCE, "instances",
+                sink.add(Violation.of(Violation.Kind.MISSING_INSTANCE, "instances",
                         "entrypoint '" + ep.descriptor().name() + "' vereist minstens één instantie van objecttype '"
                                 + required + "', maar het verzoek levert er geen"));
         }

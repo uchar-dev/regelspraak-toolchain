@@ -65,7 +65,7 @@ class ServiceMainTest {
     @Test
     void a_non_marker_startup_error_classifies_as_exit_1() {
         ServiceError other = new ServiceError("descriptor valideert niet", List.of(
-                Violation.van(Violation.Kind.UNKNOWN_REFERENCE, "entrypoints[0].scope.ruleNames[0]",
+                Violation.of(Violation.Kind.UNKNOWN_REFERENCE, "entrypoints[0].scope.ruleNames[0]",
                         "onbekende regel 'nergens'")));
         assertEquals(ServiceMain.EXIT_OTHER, ServiceMain.exitCodeFor(other));
     }
@@ -73,8 +73,8 @@ class ServiceMainTest {
     @Test
     void mixed_violations_are_no_pure_marker_so_exit_1() {
         ServiceError mixed = new ServiceError("gemengd", List.of(
-                Violation.van(Violation.Kind.MARKER, "entrypoint:x", "marker 'a'"),
-                Violation.van(Violation.Kind.UNKNOWN_REFERENCE, "y", "onbekend 'b'")));
+                Violation.of(Violation.Kind.MARKER, "entrypoint:x", "marker 'a'"),
+                Violation.of(Violation.Kind.UNKNOWN_REFERENCE, "y", "onbekend 'b'")));
         assertEquals(ServiceMain.EXIT_OTHER, ServiceMain.exitCodeFor(mixed));
     }
 

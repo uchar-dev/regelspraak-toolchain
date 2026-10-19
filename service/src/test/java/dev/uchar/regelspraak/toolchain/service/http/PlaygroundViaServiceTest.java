@@ -199,7 +199,7 @@ class PlaygroundViaServiceTest {
         StringBuilder text = new StringBuilder();
         for (String t : sources.values()) text.append(t).append('\n');
         RegelSpraakModel model = Resolver.resolve(text.toString());
-        FormIndex forms = FormIndex.van(model, model.prioritizedDefaults);
+        FormIndex forms = FormIndex.of(model, model.prioritizedDefaults);
         ObjectNode descriptor = (ObjectNode) ServiceHttp.MAPPER.readTree(TokaSource.descriptorJson());
         ArrayNode kept = ServiceHttp.MAPPER.createArrayNode();
         for (JsonNode ep : descriptor.get("entrypoints")) {

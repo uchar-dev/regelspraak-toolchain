@@ -49,7 +49,7 @@ public final class EvaluationFault extends RuntimeException {
     /** The faults that stand at {@code fixpunt}, one element per fault in the order of its {@code errors}, which is
      *  uchar's: by the name of the form, then by the sentence. {@code cause} is what uchar's write-back threw for
      *  them. */
-    static EvaluationFault van(Fixpoint fixpoint, RuntimeException cause) {
+    static EvaluationFault of(Fixpoint fixpoint, RuntimeException cause) {
         List<Fault> sink = new ArrayList<>();
         for (dev.uchar.regelspraak.transpiler.tms.Fault f : fixpoint.faults()) sink.add(new Fault(kind(f.fault()), f.message()));
         return new EvaluationFault(sink, cause, fixpoint, null);

@@ -45,7 +45,7 @@ public final class Naming {
     /** The naming {@code choice} names: {@link #CANONICAL} (and null) for the canonical names, otherwise a vocabulary the
      *  model declares, compared case-insensitively as uchar compares vocabulary names (WF-116). A vocabulary the model
      *  does not declare, and a model that declares one named {@link #CANONICAL}, is a {@link VocabularyError}. */
-    public static Naming van(RegelSpraakModel model, String choice) {
+    public static Naming of(RegelSpraakModel model, String choice) {
         String reserved = reserved(model);
         if (reserved != null) throw new VocabularyError(reserved);
         if (choice == null || choice.equalsIgnoreCase(CANONICAL)) return canonical(model);

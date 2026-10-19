@@ -80,10 +80,10 @@ class RoleTargetTypeTest {
                 { "type": "Jutter", "id": "J2", "roles": { "leermeester": "P1" } },
                 { "type": "Strandpaal", "id": "P1" } ] }""");
         assertEquals(List.of(
-                Violation.van(Violation.Kind.WRONG_TYPE, "instances[0].roles.leerling",
+                Violation.of(Violation.Kind.WRONG_TYPE, "instances[0].roles.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'P1' is van"
                                 + " objecttype 'Strandpaal'"),
-                Violation.van(Violation.Kind.WRONG_TYPE, "instances[1].roles.leermeester",
+                Violation.of(Violation.Kind.WRONG_TYPE, "instances[1].roles.leermeester",
                         "rol 'leermeester' verwacht een instantie van objecttype 'Jutter', maar id 'P1' is van"
                                 + " objecttype 'Strandpaal'")),
                 r.violations());
@@ -97,7 +97,7 @@ class RoleTargetTypeTest {
             { "instances": [
                 { "type": "Jutter", "id": "J1", "roles": { "leerling": ["S1"] } },
                 { "type": "Strandvondst", "id": "S1" } ] }""");
-        assertEquals(List.of(Violation.van(Violation.Kind.WRONG_TYPE, "instances[0].roles.leerling",
+        assertEquals(List.of(Violation.of(Violation.Kind.WRONG_TYPE, "instances[0].roles.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'S1' is van"
                                 + " objecttype 'Strandvondst'")),
                 r.violations());
@@ -111,7 +111,7 @@ class RoleTargetTypeTest {
             { "instances": [ { "type": "Jutter", "id": "J1" }, { "type": "Strandvondst", "id": "S1" } ],
               "relations": [ { "factType": "leerlingschap",
                               "roles": { "leermeester": "J1", "leerling": "S1" } } ] }""");
-        assertEquals(List.of(Violation.van(Violation.Kind.WRONG_TYPE, "relations[0].roles.leerling",
+        assertEquals(List.of(Violation.of(Violation.Kind.WRONG_TYPE, "relations[0].roles.leerling",
                         "rol 'leerling' verwacht een instantie van objecttype 'Jutter', maar id 'S1' is van"
                                 + " objecttype 'Strandvondst'")),
                 r.violations());

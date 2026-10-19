@@ -118,7 +118,7 @@ public final class Executor {
             // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
             // it as one exception among those the entry throws itself, so the faults are read as data first
             Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, label::get);
-            if (!fixpoint.faults().isEmpty()) throw EvaluationFault.van(fixpoint, rethrown(session, label, fixpoint));
+            if (!fixpoint.faults().isEmpty()) throw EvaluationFault.of(fixpoint, rethrown(session, label, fixpoint));
             DroolsBackend.setDerivedValues(build, session, label::get);
             List<Object> inc = readInconsistencies(session);
             DroolsBackend.Comparison comparison = expectations == null ? null

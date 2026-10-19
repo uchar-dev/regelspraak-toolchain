@@ -49,7 +49,7 @@ class NamingTest {
     @Test
     void a_vocabulary_names_the_designation_and_falls_back_on_the_name() {
         RegelSpraakModel m = model();
-        Naming handboek = Naming.van(m, "Handboek");
+        Naming handboek = Naming.of(m, "Handboek");
         assertEquals("handboek", handboek.choice(), "de gedeclareerde spelling van het vocabulaire");
         assertEquals("aangespoeld voorwerp", handboek.objectType("Strandvondst"));
         assertEquals("wrak", handboek.objectType("Wrakstuk"));
@@ -64,36 +64,36 @@ class NamingTest {
     @Test
     void a_form_keeps_its_version_suffix_and_a_value_is_found_normalised() {
         RegelSpraakModel m = model();
-        Naming cgm = Naming.van(m, "cgm");
+        Naming cgm = Naming.of(m, "cgm");
         assertEquals("R_WAARDEVOL", cgm.form("waardevolle vondst"));
         assertEquals("R_WAARDEVOL #2", cgm.form("waardevolle vondst #2"));
         assertEquals("een regel van de backend", cgm.form("een regel van de backend"));
         Datatype.Enumeration kind = (Datatype.Enumeration) m.domains.get("Vondstsoort");
         assertEquals("BARNSTEEN", cgm.value(kind, "Barnsteen"));
-        assertEquals("amber", Naming.van(m, "handboek").value(kind, "barnsteen"));
+        assertEquals("amber", Naming.of(m, "handboek").value(kind, "barnsteen"));
         assertEquals("wrakhout", cgm.value(kind, "wrakhout"), "zonder benaming: de waarde zoals gegeven");
     }
 
     @Test
     void canonical_lets_every_name_be_as_given() {
         RegelSpraakModel m = model();
-        Naming canonical = Naming.van(m, "canonical");
+        Naming canonical = Naming.of(m, "canonical");
         assertTrue(canonical.isCanonical());
         assertEquals("canonical", canonical.choice());
         assertEquals("strandvondst", canonical.objectType("strandvondst"));
         assertEquals("waardevolle vondst #2", canonical.form("waardevolle vondst #2"));
-        assertTrue(Naming.van(m, null).isCanonical());
-        assertFalse(Naming.van(m, "cgm").isCanonical());
+        assertTrue(Naming.of(m, null).isCanonical());
+        assertFalse(Naming.of(m, "cgm").isCanonical());
     }
 
     @Test
     void an_unknown_vocabulary_names_the_declared_one() {
         Naming.VocabularyError f = assertThrows(Naming.VocabularyError.class,
-                () -> Naming.van(model(), "wetboek"));
+                () -> Naming.of(model(), "wetboek"));
         assertEquals("het vocabulaire 'wetboek' is niet gedeclareerd; het model declareert 'handboek' en 'cgm', en"
                 + " 'canonical' kiest de canonieke namen", f.getMessage());
         Naming.VocabularyError without = assertThrows(Naming.VocabularyError.class,
-                () -> Naming.van(Resolver.resolve("Objecttype de Jutter (mv: Jutters)\n    de naam Tekst;\n"), "cgm"));
+                () -> Naming.of(Resolver.resolve("Objecttype de Jutter (mv: Jutters)\n    de naam Tekst;\n"), "cgm"));
         assertEquals("het vocabulaire 'cgm' is niet gedeclareerd; het model declareert geen vocabulaire, en"
                 + " 'canonical' kiest de canonieke namen", without.getMessage());
     }
@@ -107,7 +107,7 @@ class NamingTest {
                 """);
         assertTrue(m.isOk(), () -> m.errors().toString());
         Naming.VocabularyError f = assertThrows(Naming.VocabularyError.class,
-                () -> Naming.van(m, "canonical"));
+                () -> Naming.of(m, "canonical"));
         assertEquals("het model declareert een vocabulaire 'Canonical', en 'canonical' kiest de canonieke namen;"
                 + " geef het vocabulaire een andere naam", f.getMessage());
         assertEquals(f.getMessage(), Naming.reserved(m));

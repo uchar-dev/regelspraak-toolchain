@@ -237,7 +237,7 @@ class PlaygroundGeneratedFromTest {
             boolean scenario = Playground.containsScenario(source);
             RegelSpraakModel model = scenario ? ScenarioResolver.resolve(source).model() : Resolver.resolve(source);
             if (!model.isOk()) continue;
-            Naming naming = Naming.van(model, null);
+            Naming naming = Naming.of(model, null);
             JsonNode voc = Playground.vocabularies(model, naming, Playground.parse(source, scenario));
             if (voc.has("declarationError")) errors.add(golden + ": " + voc.get("declarationError").asText());
             Set<String> forms = new HashSet<>();

@@ -55,7 +55,7 @@ public final class FormIndex {
     /** The forms of {@code model}, with {@code defaults} its defaults groups: a resolver's model holds them
      *  ({@code model.prioritizedDefaults}), a model uchar's loader rebuilt carries them beside it. A form is listed
      *  under its name without a version suffix, once. */
-    public static FormIndex van(RegelSpraakModel model, List<PrioritizedDefaults> defaults) {
+    public static FormIndex of(RegelSpraakModel model, List<PrioritizedDefaults> defaults) {
         LinkedHashSet<String> names = new LinkedHashSet<>();
         for (var r : model.resolvedRules) add(names, r.name());
         for (var x : model.objectCreations) add(names, x.name());

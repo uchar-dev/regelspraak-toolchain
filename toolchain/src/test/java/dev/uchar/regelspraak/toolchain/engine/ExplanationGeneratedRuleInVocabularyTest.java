@@ -170,7 +170,7 @@ class ExplanationGeneratedRuleInVocabularyTest {
                 "V2 is niet zelf gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is"),
-                new Verbaliser(engine.model(), Map.of(), Naming.van(engine.model(), "cgm"))
+                new Verbaliser(engine.model(), Map.of(), Naming.of(engine.model(), "cgm"))
                         .verbalise(Map.of("V2", v2), Map.of("V2", engine.model().objectTypeByName("Vondst"))));
     }
 }

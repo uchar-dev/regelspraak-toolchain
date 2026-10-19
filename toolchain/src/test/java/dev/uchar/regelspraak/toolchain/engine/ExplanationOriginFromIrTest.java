@@ -82,6 +82,6 @@ class ExplanationOriginFromIrTest {
         ObjectType vondst = model.objectTypeByName("Vondst");
         Map<String, ObjectType> types = new LinkedHashMap<>();
         for (String label : beans.keySet()) types.put(label, vondst);
-        return new Verbaliser(model, Map.of(), Naming.van(model, "cgm")).verbalise(beans, types);
+        return new Verbaliser(model, Map.of(), Naming.of(model, "cgm")).verbalise(beans, types);
     }
 }

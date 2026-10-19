@@ -119,7 +119,7 @@ public final class ScenarioRunnerCli {
             // the vocabulary is the model's: known only once the source resolves, and asked before anything runs
             if (vocabulary != null && bundle.isOk()) {
                 try {
-                    naming = Naming.van(bundle.model(), vocabulary);
+                    naming = Naming.of(bundle.model(), vocabulary);
                 } catch (Naming.VocabularyError f) {
                     System.err.println("--vocabulary: " + f.getMessage());
                     return 2;
