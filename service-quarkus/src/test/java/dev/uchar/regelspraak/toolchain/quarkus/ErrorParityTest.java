@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * 503 MARKER answer of an entry point uchar does not carry, and the 422 of a request on which the rules give an
  * evaluation fault. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
  * 422s include a fault at the fixpoint of another type than the four uchar's README names, {@code OTHER}, alone and
- * beside a division by zero. {@link DecideResource} builds the first bodies by hand, as {@code ServiceHttp}'s builders
+ * beside a read of the rekenjaar without an evaluation date. {@link DecideResource} builds the first bodies by hand, as {@code ServiceHttp}'s builders
  * are package-private in the service module, and the 422 body with the service core's builder, as {@code ServiceHttp}
  * does; this test catches a drift in either adapter, as {@link InfoParityTest} does for {@code /info}.
  *
@@ -85,14 +85,15 @@ class ErrorParityTest {
             "input": ["Jutter"], "output": ["Jutter.leerlingaantal"] } ],
           "parameters": {} }""";
 
-    /** Own material for two evaluation faults at once: a division by a numeric zero, and two writers of one attribute
-     *  whose conditions both hold. */
+    /** Own material for two evaluation faults at once: a read of the rekenjaar in a request without an evaluation
+     *  date, and two writers of one attribute whose conditions both hold. */
     private static final String EVALUATION_SOURCE = """
         Objecttype de Vondst (mv: Vondsten)
             het gewicht Numeriek (getal met 2 decimalen);
             het aantal delen Numeriek (geheel getal);
             het deelgewicht Numeriek (getal met 2 decimalen);
             het vindersloon Numeriek (getal met 2 decimalen);
+            het vondstjaar Numeriek (geheel getal);
 
         Regel deelgewicht van een vondst
             geldig altijd
@@ -107,13 +108,17 @@ class ErrorParityTest {
             geldig altijd
                 Het vindersloon van een Vondst moet gesteld worden op 10,00
                 indien zijn gewicht groter is dan 3,00.
+
+        Regel vondstjaar van een vondst
+            geldig altijd
+                Het vondstjaar van een Vondst moet gesteld worden op Rekenjaar.
         """;
     private static final String EVALUATION_DESCRIPTOR = """
         { "service": {"name":"vondsten","version":"1"},
           "entrypoints": [ { "name":"vondst","path":"vondst",
             "scope": {"ruleNames": ["deelgewicht van een vondst", "loon voor een zware vondst",
-                                     "loon voor een grote vondst"]},
-            "input": ["Vondst"], "output": ["Vondst.deelgewicht", "Vondst.vindersloon"] } ],
+                                     "loon voor een grote vondst", "vondstjaar van een vondst"]},
+            "input": ["Vondst"], "output": ["Vondst.deelgewicht", "Vondst.vindersloon", "Vondst.vondstjaar"] } ],
           "parameters": {} }""";
 
     /** Own material for a second, different target on a to-one role: a Vondst has one aanmelder, which a request can
@@ -145,7 +150,7 @@ class ErrorParityTest {
 
     /** Own material for a fault at the fixpoint of another type than the four uchar's README names: the model of
      *  uchar's witness of a second filling ({@code TmsCreatieWitnessTest}, document D), in which a fact creation gives
-     *  a to-one role two different fillers, with a division by a numeric zero beside it. */
+     *  a to-one role two different fillers, with a read of the rekenjaar without an evaluation date beside it. */
     private static final String FILLING_SOURCE = """
         Objecttype de Kustwacht (mv: Kustwachten)
 
@@ -181,7 +186,8 @@ class ErrorParityTest {
 
         Regel ligplaatsdeel van een haven
             geldig altijd
-                Het ligplaatsdeel van een Haven moet berekend worden als 100 gedeeld door zijn ligplaatsen.
+                Het ligplaatsdeel van een Haven moet gesteld worden op Rekenjaar
+                indien zijn ligplaatsen gelijk is aan 0.
         """;
     private static final String FILLING_DESCRIPTOR = """
         { "service": {"name":"vulling","version":"1"},
@@ -309,13 +315,13 @@ class ErrorParityTest {
     }
 
     @Test
-    void second_filling_beside_a_division_by_zero_422_in_uchar_order() throws Exception {
+    void second_filling_beside_a_compute_fault_422_in_uchar_order() throws Exception {
         JsonNode body = compare(filling, fillingService, "mengsel", """
             {"instances":[{"type":"Kustwacht","id":"K1",
               "roles":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
               {"type":"Haven","id":"H1","attributes":{"ligplaatsen":0}},
               {"type":"Haven","id":"H2","attributes":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""", 422);
-        assertEquals(List.of("OTHER", "DIVISION_BY_ZERO"), kinds(body), body.toString());
+        assertEquals(List.of("OTHER", "COMPUTE_FAULT"), kinds(body), body.toString());
     }
 
     private static List<String> kinds(JsonNode body) {

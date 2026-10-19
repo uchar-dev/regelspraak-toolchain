@@ -32,6 +32,9 @@ class ScenarioRunnerSessionTest {
             Regel premie van een berging
             geldig altijd
             De premie van een Berging moet berekend worden als 20% van de opbrengst van de Berging.
+            Regel premie met veel helpers
+            geldig altijd
+            De premie van een Berging moet berekend worden als 30% van de opbrengst van de Berging indien het helpersaantal van de Berging groter is dan 3.
             Regel helpersdeel van een berging
             geldig altijd
             Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
@@ -66,15 +69,16 @@ class ScenarioRunnerSessionTest {
         assertEquals(List.of("helpersdeel=50", "premie=20"), derived, "het helpersdeel heeft geen verwachting");
     }
 
-    /** A division by zero stands at the fixpoint: uchar's replay throws it at the write-back and does not play the case
+    /** Two writers of one attribute that disagree stand as a fault at the fixpoint (a division by zero no longer does: uchar
+     *  answers it with an empty value and a §9.5 fact): uchar's replay throws it at the write-back and does not play the case
      *  out, so there is no explanation; the session reads the fault as data and does not write back. */
     @Test void a_standing_evaluation_fault_stands_as_given_in_the_fixpoint() {
         List<ScenarioRunner.Explained> u = play(BERGING + """
-            Scenario zonder helpers
+            Scenario met veel helpers
             Gegeven is de volgende situatie:
             een Berging B
             - de opbrengst is 100
-            - het helpersaantal is 0
+            - het helpersaantal is 5
             Met als verwacht resultaat:
             - de premie van B is 20,00
             """);
@@ -86,9 +90,9 @@ class ScenarioRunnerSessionTest {
         assertNull(s.sessionError(), s::sessionError);
         List<Fault> errors = s.session().fixpoint().faults();
         assertEquals(1, errors.size(), errors::toString);
-        assertEquals("helpersdeel van een berging", errors.get(0).rule());
+        assertEquals("premie van een berging", errors.get(0).rule());
         assertSame(s.session().beans().get("B"), errors.get(0).subject());
-        assertTrue(errors.get(0).message().contains("deling door nul"), errors.get(0)::message);
+        assertTrue(errors.get(0).message().contains("premie met veel helpers"), errors.get(0)::message);
         assertNull(CaseSession.read(s.session().beans().get("B"), "getPremie"),
                 "met een staande fout zet de sessie niets terug: de bean houdt de invoer");
     }

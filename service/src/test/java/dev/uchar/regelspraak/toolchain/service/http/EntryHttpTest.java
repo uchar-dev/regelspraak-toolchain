@@ -9,7 +9,7 @@ import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
-import dev.uchar.regelspraak.runtime.Breuk;
+import dev.uchar.regelspraak.transpiler.tms.ComputeFault;
 import dev.uchar.regelspraak.toolchain.service.AnswerBuilder;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
@@ -122,15 +122,17 @@ class EntryHttpTest {
             "input": ["Jutter"], "output": ["Jutter.bewaargeld"] } ],
           "parameters": {} }""";
 
-    /** A fold over a to-many role whose filter divides by a member's deelnemers: where it divides by 0 for two
-     *  members, the evaluation stops at the first in the order of the list (RUNTIME-SEMANTICS ch. 5.11). */
+    /** A fold over a to-many role whose filter adds a member's wachtdagen to its meldtijdstip: where the step is out of
+     *  range for two members, the evaluation stops at the first in the order of the list (RUNTIME-SEMANTICS ch. 5.11).
+     *  A division by zero no longer serves: uchar answers it with an empty value and a §9.5 fact, not a fault. */
     private static final String FOLD_SOURCE = """
         Objecttype de Jutter (mv: Jutters) (bezield)
             de zware vondsten Numeriek (geheel getal);
 
         Objecttype de Vondst (mv: Vondsten)
-            het gewicht Numeriek (geheel getal);
-            de deelnemers Numeriek (geheel getal);
+            het meldtijdstip Datum en tijd in millisecondes;
+            de grens Datum en tijd in millisecondes;
+            de wachtdagen Numeriek (geheel getal) met eenheid dagen;
 
         Feittype aanmelding
             de aanmelder Jutter
@@ -140,7 +142,7 @@ class EntryHttpTest {
         Regel zware vondsten
             geldig altijd
                 De zware vondsten van een Jutter moet berekend worden als het aantal vondsten van de Jutter
-                die aan de volgende voorwaarde voldoen: zijn gewicht gedeeld door zijn deelnemers is groter dan 2.
+                die aan de volgende voorwaarde voldoen: zijn meldtijdstip plus zijn wachtdagen is later dan zijn grens.
         """;
 
     private static final String FOLD_DESCRIPTOR = """
@@ -152,7 +154,8 @@ class EntryHttpTest {
 
     /** The model of uchar's witness of a second filling ({@code TmsCreatieWitnessTest}, document D): the fact creation
      *  makes every geworven jutter of the kustwacht of a Haven a havenjutter of that Haven, and a Jutter has one haven.
-     *  The division of ligplaatsdeel is the other fault of the mixed request. */
+     *  The ligplaatsdeel of a Haven without ligplaatsen reads the rekenjaar, which the request has no evaluation date
+     *  for: the other fault of the mixed request. */
     private static final String FILLING_SOURCE = """
         Objecttype de Kustwacht (mv: Kustwachten)
 
@@ -188,7 +191,8 @@ class EntryHttpTest {
 
         Regel ligplaatsdeel van een haven
             geldig altijd
-                Het ligplaatsdeel van een Haven moet berekend worden als 100 gedeeld door zijn ligplaatsen.
+                Het ligplaatsdeel van een Haven moet gesteld worden op Rekenjaar
+                indien zijn ligplaatsen gelijk is aan 0.
         """;
 
     private static final String FILLING_DESCRIPTOR = """
@@ -293,15 +297,18 @@ class EntryHttpTest {
 
     // ---------------- (d) an evaluation fault per kind: 422 ----------------
 
+    /** A division by a numeric zero is no evaluation fault: uchar gives an empty value and a §9.5 fact of kind EF-005
+     *  (RUNTIME-SEMANTICS ch. 1.4, point 4), so the answer is a 200 with the value null and the rule among the
+     *  inconsistencies. */
     @Test
-    void a_division_by_zero_is_422_division_by_zero() throws Exception {
-        JsonNode body = evaluationFault(post("/deelgewicht", """
-            {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00,"aantal delen":0}}]}"""));
-        assertEquals("de regels geven op deze invoer een evaluatiefout", body.get("error").asText(), body.toString());
-        assertEquals(List.of("DIVISION_BY_ZERO"), kinds(body), body.toString());
-        assertEquals("deling door nul in de regel \"deelgewicht van een vondst\": 6 gedeeld door 0 — een numerieke nul"
-                + " als deler is een fout, geen leeg (RUNTIME-SEMANTICS ch. 1.4, punt 4)",
-                body.at("/faults/0/error").asText(), body.toString());
+    void a_division_by_zero_is_200_with_an_empty_value_and_an_inconsistency() throws Exception {
+        HttpResponse<String> resp = post("/deelgewicht", """
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00,"aantal delen":0}}]}""");
+        assertEquals(200, resp.statusCode(), resp.body());
+        JsonNode answer = tree(resp.body());
+        assertTrue(find(answer, "V1", "deelgewicht").isNull(), resp.body());
+        assertEquals("deelgewicht van een vondst", answer.at("/inconsistencies/0").asText(), resp.body());
+        assertEquals(1, answer.get("inconsistencies").size(), resp.body());
     }
 
     @Test
@@ -326,13 +333,12 @@ class EntryHttpTest {
     @Test
     void two_errors_at_once_are_a_422_with_one_element_per_error() throws Exception {
         JsonNode body = evaluationFault(post("/alles", """
-            {"asOfDate":"2026-03-15",
-             "instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00,"aantal delen":0}}]}"""));
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00,"aantal delen":3}}]}"""));
         assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("error").asText(), body.toString());
-        assertEquals(List.of("DIVISION_BY_ZERO", "WRITERS_CONFLICT"), kinds(body), body.toString());
-        assertTrue(body.at("/faults/0/error").asText().startsWith("deling door nul in de regel \"deelgewicht van een"
-                + " vondst\""), body.toString());
-        assertTrue(body.at("/faults/1/error").asText().contains("van V1, een Vondst"), body.toString());
+        assertEquals(List.of("WRITERS_CONFLICT", "COMPUTE_FAULT"), kinds(body), body.toString());
+        assertTrue(body.at("/faults/0/error").asText().contains("van V1, een Vondst"), body.toString());
+        assertTrue(body.at("/faults/1/error").asText().startsWith("fout in de regel \"vondstjaar van een vondst\""),
+                body.toString());
     }
 
     /** No request reaches an {@code InputFormFault}: the HTTP route answers a request with a timeline with 400
@@ -387,64 +393,64 @@ class EntryHttpTest {
         assertEquals(replay, sentences(body), body.toString());
     }
 
-    /** The second filling of D2 beside a division by a numeric zero (H1 has 0 ligplaatsen): the 422 has an element
-     *  for each, in the order of uchar's faults, which is by the name of the form ("havenlid", the fact type of the
-     *  filling, before "ligplaatsdeel van een haven") and not by kind. */
+    /** The second filling of D2 beside a read of the rekenjaar without an evaluation date (H1 has 0 ligplaatsen): the
+     *  422 has an element for each, in the order of uchar's faults, which is by the name of the form ("havenlid", the
+     *  fact type of the filling, before "ligplaatsdeel van een haven") and not by kind. */
     @Test
-    void a_second_filling_beside_a_division_by_zero_is_a_422_with_both_in_the_uchar_order(@TempDir Path map)
+    void a_second_filling_beside_a_compute_fault_is_a_422_with_both_in_the_uchar_order(@TempDir Path map)
             throws Exception {
         List<String> replay = replayFaults(map, FILLING_SOURCE, MENGSEL);
         assertEquals(2, replay.size(), replay::toString);
         JsonNode body = evaluationFault(post(fillingService, "/mengsel", MENGSEL));
         assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("error").asText(), body.toString());
-        assertEquals(List.of("OTHER", "DIVISION_BY_ZERO"), kinds(body), body.toString());
+        assertEquals(List.of("OTHER", "COMPUTE_FAULT"), kinds(body), body.toString());
         assertEquals(replay, sentences(body), body.toString());
     }
 
     // ---------------- the order of a to-many list: the member a fault of a fold names ----------------
 
-    /** J1 writes its vondsten as V1, V3, V2, while the instances come as V1, V2, V3; the filter divides 9 by 0 for V3
-     *  and 4 by 0 for V2. uchar's replay of that input stops at V3, the first in the written order, and so does the
-     *  service; the order of the instances would name V2's 4. */
+    /** J1 writes its vondsten as V1, V3, V2, while the instances come as V1, V2, V3; the date step is out of range for V3
+     *  (18446744073709551618 days) and for V2 (18446744073709551617). uchar's replay of that input stops at V3, the first in the written order, and so does
+     *  the service; the order of the instances would name V2's count. */
     @Test
     void a_list_under_the_houder_names_the_failing_member_in_the_order_of_the_request(@TempDir Path map)
             throws Exception {
         assertFoldFaultAsReplay(map, """
             {"instances":[{"type":"Jutter","id":"J1","roles":{"vondsten":["V1","V3","V2"]}},
-              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2}},
-              {"type":"Vondst","id":"V2","attributes":{"gewicht":4,"deelnemers":0}},
-              {"type":"Vondst","id":"V3","attributes":{"gewicht":9,"deelnemers":0}}]}""", null);
+              {"type":"Vondst","id":"V1","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":2}},
+              {"type":"Vondst","id":"V2","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":18446744073709551617}},
+              {"type":"Vondst","id":"V3","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":18446744073709551618}}]}""", null);
     }
 
-    /** V9 (4 by 0) and V10 (9 by 0) each name J1 as their aanmelder, in that order: the replay mirrors those links into
-     *  J1's list by label in byte order (RUNTIME-SEMANTICS ch. 5.7a), V10 before V9, so 9, where the order of the
-     *  instances gives 4. */
+    /** V9 (18446744073709551617 days) and V10 (18446744073709551618) each name J1 as their aanmelder, in that order: the replay mirrors those links into
+     *  J1's list by label in byte order (RUNTIME-SEMANTICS ch. 5.7a), V10 before V9, so the count of V10, where the
+     *  order of the instances gives V9's. */
     @Test
     void a_mirrored_list_names_the_failing_member_in_the_order_of_the_ids(@TempDir Path map) throws Exception {
         assertFoldFaultAsReplay(map, """
             {"instances":[{"type":"Jutter","id":"J1"},
-              {"type":"Vondst","id":"V9","attributes":{"gewicht":4,"deelnemers":0},"roles":{"aanmelder":"J1"}},
-              {"type":"Vondst","id":"V10","attributes":{"gewicht":9,"deelnemers":0},"roles":{"aanmelder":"J1"}}]}""",
+              {"type":"Vondst","id":"V9","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":18446744073709551617},"roles":{"aanmelder":"J1"}},
+              {"type":"Vondst","id":"V10","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":18446744073709551618},"roles":{"aanmelder":"J1"}}]}""",
                 null);
     }
 
     /** A relation of {@code relaties} sets the member's own field toward the holder, as a role the member writes does,
-     *  so its member joins the list as a mirrored one: J1 writes V1, and the relations link V9 (4 by 0) and V10 (9 by
-     *  0), which gives the order V1, V10, V9 and 9, as the replay gives on the case where V9 and V10 each write their
+     *  so its member joins the list as a mirrored one: J1 writes V1, and the relations link V9 (18446744073709551617 days) and V10 (18446744073709551618),
+     *  which gives the order V1, V10, V9 and V10's count, as the replay gives on the case where V9 and V10 each write their
      *  aanmelder. A list of the written members alone would leave V9 and V10 out, which uchar's entry refuses. */
     @Test
     void a_member_from_relations_is_in_the_list_as_a_mirrored_member(@TempDir Path map) throws Exception {
         assertFoldFaultAsReplay(map, """
             {"instances":[{"type":"Jutter","id":"J1","roles":{"vondsten":["V1"]}},
-              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2}},
-              {"type":"Vondst","id":"V9","attributes":{"gewicht":4,"deelnemers":0}},
-              {"type":"Vondst","id":"V10","attributes":{"gewicht":9,"deelnemers":0}}],
+              {"type":"Vondst","id":"V1","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":2}},
+              {"type":"Vondst","id":"V9","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":18446744073709551617}},
+              {"type":"Vondst","id":"V10","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":18446744073709551618}}],
              "relations":[{"factType":"aanmelding","roles":{"aanmelder":"J1","vondst":"V9"}},
                          {"factType":"aanmelding","roles":{"aanmelder":"J1","vondst":"V10"}}]}""", """
             {"instances":[{"type":"Jutter","id":"J1","roles":{"vondsten":["V1"]}},
-              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2}},
-              {"type":"Vondst","id":"V9","attributes":{"gewicht":4,"deelnemers":0},"roles":{"aanmelder":"J1"}},
-              {"type":"Vondst","id":"V10","attributes":{"gewicht":9,"deelnemers":0},"roles":{"aanmelder":"J1"}}]}""");
+              {"type":"Vondst","id":"V1","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":2}},
+              {"type":"Vondst","id":"V9","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":18446744073709551617},"roles":{"aanmelder":"J1"}},
+              {"type":"Vondst","id":"V10","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":18446744073709551618},"roles":{"aanmelder":"J1"}}]}""");
     }
 
     /** V1 names J1 as its aanmelder by its own role, and a relation of {@code relaties} links it to J2: the to-one field
@@ -455,7 +461,7 @@ class EntryHttpTest {
     void a_second_other_target_via_relations_is_400_wrong_type() throws Exception {
         HttpResponse<String> resp = post(foldService, "/zware-vondsten", """
             {"instances":[{"type":"Jutter","id":"J1"},{"type":"Jutter","id":"J2"},
-              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2},"roles":{"aanmelder":"J1"}}],
+              {"type":"Vondst","id":"V1","attributes":{"meldtijdstip":"2024-01-01T00:00:00","grens":"2024-06-01T00:00:00","wachtdagen":2},"roles":{"aanmelder":"J1"}}],
              "relations":[{"factType":"aanmelding","roles":{"aanmelder":"J2","vondst":"V1"}}]}""");
         assertEquals(400, resp.statusCode(), resp.body());
         JsonNode body = tree(resp.body());
@@ -503,12 +509,12 @@ class EntryHttpTest {
 
     /** The 422 of {@code verzoek} on the fold names the fault uchar's replay names on the same input written as a case
      *  ({@code asCase} where the request carries {@code relaties}, which a case does not have; else {@code verzoek}),
-     *  and that fault is the division of 9: the replay names the member the order of its list puts first. */
+     *  and that fault is the date step of V10 (or V3): the replay names the member the order of its list puts first. */
     private static void assertFoldFaultAsReplay(Path map, String request, String asCase) throws Exception {
         String replay = replayFault(map, asCase != null ? asCase : request);
-        assertTrue(replay.contains("\"zware vondsten\": 9 gedeeld door 0"), replay);
+        assertTrue(replay.contains("\"zware vondsten\"") && replay.contains("18446744073709551618"), replay);
         JsonNode body = evaluationFault(post(foldService, "/zware-vondsten", request));
-        assertEquals(List.of("DIVISION_BY_ZERO"), kinds(body), body.toString());
+        assertEquals(List.of("COMPUTE_FAULT"), kinds(body), body.toString());
         assertEquals(replay, body.at("/faults/0/error").asText(), body.toString());
     }
 
@@ -516,7 +522,7 @@ class EntryHttpTest {
      *  fold's document. */
     private static String replayFault(Path map, String request) throws Exception {
         RuntimeException error = replay(map, FOLD_SOURCE, request);
-        assertInstanceOf(Breuk.DelingDoorNul.class, error, error::toString);
+        assertInstanceOf(ComputeFault.class, error, error::toString);
         return error.getMessage();
     }
 
@@ -547,7 +553,8 @@ class EntryHttpTest {
             instance.put("objectType", i.get("type").asText());
             ObjectNode attributes = instance.putObject("attributes");
             for (Map.Entry<String, JsonNode> a : i.path("attributes").properties())
-                attributes.putObject(a.getKey()).put("number", a.getValue().asText());
+                if (a.getValue().isTextual()) attributes.putObject(a.getKey()).put("dateTime", a.getValue().asText());
+                else attributes.putObject(a.getKey()).put("number", a.getValue().asText());
             ObjectNode roles = instance.putObject("roles");
             for (Map.Entry<String, JsonNode> r : i.path("roles").properties()) {
                 ArrayNode targets = roles.putArray(r.getKey());

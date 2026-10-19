@@ -41,6 +41,9 @@ class PlaygroundScenarioDataTest {
             Regel helpersdeel van een berging
             geldig altijd
             Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
+            Regel helpersdeel bij veel helpers
+            geldig altijd
+            Het helpersdeel van een Berging moet gesteld worden op 7 € indien het helpersaantal van de Berging groter is dan 4.
             """;
 
     private static JsonNode scenario(ObjectNode a, int i) {
@@ -113,7 +116,7 @@ class PlaygroundScenarioDataTest {
             assertEquals(0, f.get(list).size(), list + ": " + f);
     }
 
-    /** A division by zero: uchar's replay does not play the case out, the explanation stays withheld with its sentence,
+    /** Two writers of the helpersdeel that disagree: uchar's replay does not play the case out, the explanation stays withheld with its sentence,
      *  and the fixpoint gives the fault as data, with its kind, the form, the object by its label and uchar's sentence. */
     @Test
     void an_evaluation_fault_stands_as_given_in_the_fixpoint() {
@@ -122,7 +125,7 @@ class PlaygroundScenarioDataTest {
             Gegeven is de volgende situatie:
             een Berging B
             - de opbrengst is 100 €
-            - het helpersaantal is 0
+            - het helpersaantal is 5
             de parameter het premiepercentage is 20 %
             Met als verwacht resultaat:
             - de premie van B is 20,00 €
@@ -130,10 +133,10 @@ class PlaygroundScenarioDataTest {
         assertEquals("FAIL", s.get("status").asText(), s.toString());
         assertTrue(s.get("explanationError").asText().startsWith("uchars replay speelde de case niet uit: "), s.toString());
         JsonNode error = s.at("/fixpoint/faults/0");
-        assertEquals("DIVISION_BY_ZERO", error.get("kind").asText(), s.toString());
+        assertEquals("WRITERS_CONFLICT", error.get("kind").asText(), s.toString());
         assertEquals("helpersdeel van een berging", error.get("rule").asText());
         assertEquals("B", error.get("subject").asText());
-        assertTrue(error.get("sentence").asText().contains("deling door nul"), error.toString());
+        assertTrue(error.get("sentence").asText().contains("helpersdeel bij veel helpers"), error.toString());
         assertEquals(1, s.at("/fixpoint/faults").size());
     }
 
@@ -247,7 +250,7 @@ class PlaygroundScenarioDataTest {
         JsonNode voc = Playground.analyseer(BERGING).get("vocabularies");
         assertEquals("canonical", voc.get("chosen").asText());
         assertEquals(0, voc.get("declared").size());
-        assertEquals(8, voc.get("elements").size(), voc.toString());
+        assertEquals(9, voc.get("elements").size(), voc.toString());
         for (JsonNode e : voc.get("elements")) assertEquals(0, e.get("designations").size(), e.toString());
     }
 }

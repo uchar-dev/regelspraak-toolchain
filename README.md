@@ -75,6 +75,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
   are `--port`, `--explanation`, `--vocabulary`, `--exclusions`, `--parameter-sets`, `--witness`; the command and target
   `graaf` is `graph`; the targets `poorten`, `check-tweelingen`, `check-dienst-replay` are `gates-no-docker`,
   `check-twins`, `check-service-replay`.
+- **Division by zero** (pin `ec88b2919`, uchar's card `zero-division-channel`): a filled dividend divided by a numeric
+  zero is no evaluation fault any more. uchar's entry gives an empty value and a §9.5 fact of kind EF-005, so the
+  service answers 200 with the attribute `null` and the rule among the `inconsistencies` (and the playground shows
+  the scenario as an inconsistency), where it answered 422 `EVALUATION_FAULT` with the kind `DIVISION_BY_ZERO`. That
+  kind is left for what uchar's runtime itself still raises; the code EF-005 is not in the JSON of the answer.
 
 ## The pin
 

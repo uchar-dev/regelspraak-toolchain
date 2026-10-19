@@ -38,8 +38,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class DetailHttpTest {
 
-    /** The playground's own material ({@code PlaygroundScenarioDataTest}): a division by the helpers that is a
-     *  fault at zero. */
+    /** The playground's own material ({@code PlaygroundScenarioDataTest}): a division by the helpers, and a second
+     *  writer of the helpersdeel that disagrees with it from five helpers on. */
     private static final String BERGING = """
             Eenheidsysteem Valuta
                 de euro (mv: euros) EUR €
@@ -55,11 +55,14 @@ class DetailHttpTest {
             Regel helpersdeel van een berging
             geldig altijd
             Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
+            Regel helpersdeel bij veel helpers
+            geldig altijd
+            Het helpersdeel van een Berging moet gesteld worden op 7 € indien het helpersaantal van de Berging groter is dan 4.
             """;
     private static final String BERGING_DESCRIPTOR = """
             { "service": {"name":"berging","version":"1"},
               "entrypoints": [ { "name":"berging","path":"berging",
-                "scope": {"ruleNames": ["premie van een berging", "helpersdeel van een berging"]},
+                "scope": {"ruleNames": ["premie van een berging", "helpersdeel van een berging", "helpersdeel bij veel helpers"]},
                 "input": ["Berging"], "output": ["Berging.premie"] } ],
               "parameters": {} }""";
     private static final String SITUATION = """
@@ -151,9 +154,9 @@ class DetailHttpTest {
             assertEquals(1, t.get("count").asInt(), t.toString());
         }
         JsonNode coverage = a.get("coverage");
-        assertEquals(Set.of("premie van een berging", "helpersdeel van een berging"),
+        assertEquals(Set.of("premie van een berging", "helpersdeel van een berging", "helpersdeel bij veel helpers"),
                 Set.copyOf(text(coverage, "rule")));
-        assertEquals(List.of("FIRED", "FIRED"), text(coverage, "kind"));
+        assertEquals(List.of("FIRED", "FIRED", "NOT_FIRED"), text(coverage, "kind"));
 
         JsonNode b = a.at("/fixpoint/objects/0");
         assertEquals("B7", b.get("object").asText());
@@ -175,11 +178,11 @@ class DetailHttpTest {
                 fields(ServiceHttp.MAPPER.readTree(r.body())));
     }
 
-    /** A division by zero: the 422 keeps its faults and gets the asked detail beside them, the fault as data in the
-     *  fixpoint with the object by its id. */
+    /** Two writers that disagree: the 422 keeps its faults and gets the asked detail beside them, the fault as data in
+     *  the fixpoint with the object by its id. */
     @Test
     void a_422_gets_the_fixpoint() throws Exception {
-        String request = bergingRequest("B", 0);
+        String request = bergingRequest("B", 5);
         HttpResponse<String> without = post(withDetail, "berging", "", request);
         HttpResponse<String> extended = post(withDetail, "berging", "fixpoint=true&trace=true", request);
         assertEquals(422, extended.statusCode(), extended.body());
@@ -189,7 +192,7 @@ class DetailHttpTest {
         bare.remove(List.of("trace", "fixpoint"));
         assertEquals(ServiceHttp.MAPPER.readTree(without.body()), bare, "de fouten blijven gelijk");
         JsonNode error = a.at("/fixpoint/faults/0");
-        assertEquals("DIVISION_BY_ZERO", error.get("kind").asText(), a.toString());
+        assertEquals("WRITERS_CONFLICT", error.get("kind").asText(), a.toString());
         assertEquals("helpersdeel van een berging", error.get("rule").asText());
         assertEquals("B", error.get("subject").asText());
         assertEquals(a.at("/faults/0/error").asText(), error.get("sentence").asText());
@@ -214,7 +217,7 @@ class DetailHttpTest {
      *  its 422, are the same. */
     @Test
     void the_same_fault_as_the_playground() throws Exception {
-        String source = BERGING + SITUATION.formatted("0");
+        String source = BERGING + SITUATION.formatted("5");
         JsonNode playground = Playground.analyseer(source).at("/scenario/results/0");
         JsonNode service = detailOf(withDetail, "berging", source);
         assertEquals(playground.get("fixpoint"), service.get("fixpoint"));
@@ -271,7 +274,7 @@ class DetailHttpTest {
      *  answer and for a 422. */
     @Test
     void without_flag_byte_equal() throws Exception {
-        for (String request : List.of(bergingRequest("B", 2), bergingRequest("B", 0))) {
+        for (String request : List.of(bergingRequest("B", 2), bergingRequest("B", 5))) {
             HttpResponse<String> extended = post(withDetail, "berging", "", request);
             HttpResponse<String> without = post(withoutDetail, "berging", "", request);
             assertEquals(without.statusCode(), extended.statusCode(), extended.body());

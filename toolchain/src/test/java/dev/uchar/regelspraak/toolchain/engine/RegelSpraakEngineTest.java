@@ -3,10 +3,10 @@ package dev.uchar.regelspraak.toolchain.engine;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.engine.RegelSpraakCompileException;
-import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.core.Coverage;
+import dev.uchar.regelspraak.transpiler.tms.ComputeFault;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.InputFormFault;
 import org.junit.jupiter.api.Test;
@@ -17,6 +17,7 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.LocalDate;
+import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
@@ -229,14 +230,15 @@ class RegelSpraakEngineTest {
                 () -> "bewaargeld " + RegelSpraakRuntime.get(extended, "bewaargeld"));
     }
 
-    /** A fold over a to-many role whose filter divides by a member's deelnemers. */
+    /** A fold over a to-many role whose filter adds a member's wachtdagen to its meldtijdstip. */
     static final String FOLD = """
             Objecttype de Jutter (mv: Jutters) (bezield)
                 de zware vondsten Numeriek (geheel getal);
 
             Objecttype de Vondst (mv: Vondsten)
-                het gewicht Numeriek (geheel getal);
-                de deelnemers Numeriek (geheel getal);
+                het meldtijdstip Datum en tijd in millisecondes;
+                de grens Datum en tijd in millisecondes;
+                de wachtdagen Numeriek (geheel getal) met eenheid dagen;
 
             Feittype aanmelding
                 de aanmelder Jutter
@@ -246,20 +248,21 @@ class RegelSpraakEngineTest {
             Regel zware vondsten
                 geldig altijd
                     De zware vondsten van een Jutter moet berekend worden als het aantal vondsten van de Jutter
-                    die aan de volgende voorwaarde voldoen: zijn gewicht gedeeld door zijn deelnemers is groter dan 2.
+                    die aan de volgende voorwaarde voldoen: zijn meldtijdstip plus zijn wachtdagen is later dan zijn grens.
             """;
 
-    /** J1's vondsten V1 (10 by 2), V2 (4 by 0) and V3 (9 by 0), inserted in that order: the evaluation of the fold stops
-     *  at the first member whose filter divides by 0, in the order of the list. Without a statement the list keeps the
-     *  order of the inserts, V2's 4; with {@link RegelSpraakEngine.Session#list} as V1, V3, V2 the session faults on
-     *  V3's 9, as uchar's replay does on the case where J1 writes its vondsten in that order. */
+    /** J1's vondsten V1 (2 days), V2 (2^64 + 1 days) and V3 (2^64 + 2 days), inserted in that order: the evaluation of the
+     *  fold stops at the first member whose date step is out of range, in the order of the list. Without a statement the
+     *  list keeps the order of the inserts, V2's count; with {@link RegelSpraakEngine.Session#list} as V1, V3, V2 the
+     *  session faults on V3's, as uchar's replay does on the case where J1 writes its vondsten in that order. A division
+     *  by zero no longer serves: uchar answers it with an empty value and a §9.5 fact, not a fault. */
     @Test
     void the_order_of_a_list_goes_with_the_first_fire_to_the_uchar_entry(@TempDir Path map) throws Exception {
         RegelSpraakEngine engine = RegelSpraakEngine.compile(FOLD);
         try (RegelSpraakEngine.Session s = engine.newSession()) {
             List<Object> j1v1v2v3 = vondsten(engine);
             s.insertAll(j1v1v2v3.toArray()).fire();
-            assertTrue(assertThrows(Breuk.DelingDoorNul.class, s::restore).getMessage().contains("4 gedeeld door 0"));
+            assertTrue(assertThrows(ComputeFault.class, s::restore).getMessage().contains(DAYS_V2));
         }
         String sentence;
         try (RegelSpraakEngine.Session s = engine.newSession()) {
@@ -268,7 +271,7 @@ class RegelSpraakEngineTest {
             s.insertAll(j1v1v2v3.toArray())
                     .list(j1, "aanmelder", List.of(j1v1v2v3.get(1), j1v1v2v3.get(3), j1v1v2v3.get(2))).fire();
             assertThrows(IllegalStateException.class, () -> s.list(j1, "aanmelder", j1v1v2v3.subList(1, 4)));
-            sentence = assertThrows(Breuk.DelingDoorNul.class, s::restore).getMessage();
+            sentence = assertThrows(ComputeFault.class, s::restore).getMessage();
         }
         Path ir = map.resolve("ir.json");
         Files.writeString(ir, IrEmitter.emit(engine.model()), StandardCharsets.UTF_8);
@@ -278,17 +281,17 @@ class RegelSpraakEngineTest {
              "input":{"instances":[
                {"label":"J1","objectType":"Jutter","attributes":{},"roles":{"vondsten":["V1","V3","V2"]},
                 "characteristics":[]},
-               {"label":"V1","objectType":"Vondst","attributes":{"gewicht":{"number":"10"},"deelnemers":{"number":"2"}},
+               {"label":"V1","objectType":"Vondst","attributes":{"meldtijdstip":{"dateTime":"2024-01-01T00:00:00"},"grens":{"dateTime":"2024-06-01T00:00:00"},"wachtdagen":{"number":"2"}},
                 "roles":{},"characteristics":[]},
-               {"label":"V2","objectType":"Vondst","attributes":{"gewicht":{"number":"4"},"deelnemers":{"number":"0"}},
+               {"label":"V2","objectType":"Vondst","attributes":{"meldtijdstip":{"dateTime":"2024-01-01T00:00:00"},"grens":{"dateTime":"2024-06-01T00:00:00"},"wachtdagen":{"number":"%s"}},
                 "roles":{},"characteristics":[]},
-               {"label":"V3","objectType":"Vondst","attributes":{"gewicht":{"number":"9"},"deelnemers":{"number":"0"}},
+               {"label":"V3","objectType":"Vondst","attributes":{"meldtijdstip":{"dateTime":"2024-01-01T00:00:00"},"grens":{"dateTime":"2024-06-01T00:00:00"},"wachtdagen":{"number":"%s"}},
                 "roles":{},"characteristics":[]}],
               "parameters":{}},
-             "expected":[{"kind":"consistent"}]}""", StandardCharsets.UTF_8);
-        String replay = assertThrows(Breuk.DelingDoorNul.class, () -> CaseRunner.runGolden(ir, List.of(testCase)))
+             "expected":[{"kind":"consistent"}]}""".formatted(DAYS_V2, DAYS_V3), StandardCharsets.UTF_8);
+        String replay = assertThrows(ComputeFault.class, () -> CaseRunner.runGolden(ir, List.of(testCase)))
                 .getMessage();
-        assertTrue(replay.contains("9 gedeeld door 0"), replay);
+        assertTrue(replay.contains(DAYS_V3), replay);
         assertEquals(replay, sentence);
     }
 
@@ -312,14 +315,18 @@ class RegelSpraakEngineTest {
         return j;
     }
 
-    /** J1 and its vondsten V1 (10 by 2), V2 (4 by 0) and V3 (9 by 0), each holding J1 as its aanmelder, in that order. */
+    /** The counts of days of V2 and V3 in {@link #FOLD}: beyond what a duration holds, each in a sentence of its own. */
+    static final String DAYS_V2 = "18446744073709551617", DAYS_V3 = "18446744073709551618";
+
+    /** J1 and its vondsten V1, V2 and V3 of {@link #FOLD}, each holding J1 as its aanmelder, in that order. */
     static List<Object> vondsten(RegelSpraakEngine engine) {
         Object j1 = engine.newInstance("Jutter");
         List<Object> sink = new ArrayList<>(List.of(j1));
-        for (int[] gd : new int[][]{{10, 2}, {4, 0}, {9, 0}}) {
+        for (String days : new String[]{"2", DAYS_V2, DAYS_V3}) {
             Object v = engine.newInstance("Vondst");
-            RegelSpraakRuntime.set(v, "gewicht", new BigDecimal(gd[0]));
-            RegelSpraakRuntime.set(v, "deelnemers", new BigDecimal(gd[1]));
+            RegelSpraakRuntime.set(v, "meldtijdstip", LocalDateTime.of(2024, 1, 1, 0, 0));
+            RegelSpraakRuntime.set(v, "grens", LocalDateTime.of(2024, 6, 1, 0, 0));
+            RegelSpraakRuntime.set(v, "wachtdagen", new BigDecimal(days));
             RegelSpraakRuntime.set(v, "aanmelder", j1);
             sink.add(v);
         }

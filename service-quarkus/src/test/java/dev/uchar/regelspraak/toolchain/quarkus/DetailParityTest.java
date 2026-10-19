@@ -40,7 +40,7 @@ class DetailParityTest {
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true);
 
-    /** A division by the helpers, a fault at zero. */
+    /** A division by the helpers, and a second writer of the helpersdeel that disagrees with it from five helpers on. */
     private static final String BERGING = """
             Objecttype de Berging (mv: Bergingen)
                 de opbrengst Numeriek (geheel getal);
@@ -49,11 +49,14 @@ class DetailParityTest {
             Regel helpersdeel van een berging
             geldig altijd
             Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
+            Regel helpersdeel bij veel helpers
+            geldig altijd
+            Het helpersdeel van een Berging moet gesteld worden op 7 indien het helpersaantal van de Berging groter is dan 4.
             """;
     private static final String BERGING_DESCRIPTOR = """
             { "service": {"name":"berging","version":"1"},
               "entrypoints": [ { "name":"berging","path":"berging",
-                "scope": {"ruleNames": ["helpersdeel van een berging"]},
+                "scope": {"ruleNames": ["helpersdeel van een berging", "helpersdeel bij veel helpers"]},
                 "input": ["Berging"], "output": ["Berging.helpersdeel"] } ],
               "parameters": {} }""";
     private static final String VOCABULARY_DESCRIPTOR = """
@@ -108,8 +111,8 @@ class DetailParityTest {
 
     @Test
     void a_422_with_the_fixpoint_is_equal() throws Exception {
-        JsonNode body = compare(berging, "berging", "fixpoint", request(0), 422);
-        assertEquals("DIVISION_BY_ZERO", body.at("/fixpoint/faults/0/kind").asText(), body.toString());
+        JsonNode body = compare(berging, "berging", "fixpoint", request(5), 422);
+        assertEquals("WRITERS_CONFLICT", body.at("/fixpoint/faults/0/kind").asText(), body.toString());
     }
 
     @Test

@@ -143,7 +143,9 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"kind": …, "error": <uchar's sentence>}, …]}`, one element per
   fault in uchar's order. Every fault at the fixpoint is such an element, whatever its type: the core reads them from
   uchar's entry (`DroolsBackend.fixpointOf`) before the write-back, so an exception of the entry itself stays a 500.
-  `kind` is `DIVISION_BY_ZERO` (a division by a numeric zero), `COMPUTE_FAULT` (a fault of a computation or of the
+  `kind` is `DIVISION_BY_ZERO` (a division by zero that uchar's runtime itself raises; a division by a numeric zero in
+  the rules gives an empty value and a §9.5 fact EF-005, so a 200 with the rule among the `inconsistencies`),
+  `COMPUTE_FAULT` (a fault of a computation or of the
   evaluation date), `WRITERS_CONFLICT` (two writers of one attribute that disagree), `INPUT_FORM_FAULT` (a timeline
   input in the other convention, which no request reaches, since a request carries no timeline) or `OTHER` (a fault
   of another type, such as a fact creation that gives a to-one role a second filling). Where uchar's sentence names

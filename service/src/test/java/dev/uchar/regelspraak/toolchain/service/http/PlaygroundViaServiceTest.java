@@ -52,7 +52,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class PlaygroundViaServiceTest {
 
-    /** The playground's own material ({@code DetailHttpTest}): a division by the helpers that is a fault at zero. */
+    /** The playground's own material ({@code DetailHttpTest}): a division by the helpers, and a second writer of the
+     *  helpersdeel that disagrees with it from five helpers on. */
     private static final String BERGING = """
             Eenheidsysteem Valuta
                 de euro (mv: euros) EUR €
@@ -68,11 +69,14 @@ class PlaygroundViaServiceTest {
             Regel helpersdeel van een berging
             geldig altijd
             Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
+            Regel helpersdeel bij veel helpers
+            geldig altijd
+            Het helpersdeel van een Berging moet gesteld worden op 7 € indien het helpersaantal van de Berging groter is dan 4.
             """;
     private static final String BERGING_DESCRIPTOR = """
             { "service": {"name":"berging","version":"1"},
               "entrypoints": [ { "name":"berging","path":"berging",
-                "scope": {"ruleNames": ["premie van een berging", "helpersdeel van een berging"]},
+                "scope": {"ruleNames": ["premie van een berging", "helpersdeel van een berging", "helpersdeel bij veel helpers"]},
                 "input": ["Berging"], "output": ["Berging.premie"] } ],
               "parameters": {} }""";
     /** An entry point that carries one of the two rules: a scenario without a scope runs on both. */
@@ -246,17 +250,17 @@ class PlaygroundViaServiceTest {
 
     // ---------------- what the service does not compute ----------------
 
-    /** A division by zero is the service's 422: FAIL with the line of uchar's report, the line the ordinary route gives,
+    /** Two writers that disagree are the service's 422: FAIL with the line of uchar's report, the line the ordinary route gives,
      *  and the faults as data in the fixpoint of the 422, beside its trace. */
     @Test
     void an_evaluation_fault_is_a_fail_with_the_diagnostic_of_the_uchar_report() {
-        String source = BERGING + "\n" + SCENARIO.formatted("0", "20,00");
+        String source = BERGING + "\n" + SCENARIO.formatted("5", "20,00");
         JsonNode g = Playground.analyseer(source, null).path("scenario").path("results").get(0);
         JsonNode d = Playground.analyseer(source, null, berging).path("scenario").path("results").get(0);
         assertEquals("FAIL", g.path("status").asText());
         assertEquals("FAIL", d.path("status").asText());
         assertEquals(g.path("diagnosis"), d.path("diagnosis"));
-        assertTrue(d.path("diagnosis").asText().startsWith("case1-berging.json: ERROR DelingDoorNul: "),
+        assertTrue(d.path("diagnosis").asText().startsWith("case1-berging.json: ERROR WritersConflict: "),
                 d.path("diagnosis").asText());
         assertEquals(0, d.path("expectations").size());
         assertEquals(1, d.path("fixpoint").path("faults").size(), d.toString());
@@ -294,8 +298,8 @@ class PlaygroundViaServiceTest {
                 .path("scenario").path("results").get(0);
         assertEquals("MARKER", d.path("status").asText());
         assertTrue(d.path("path").isNull(), d.toString());
-        assertEquals("het scenario noemt geen scope en rekent dus met alle 2 vormen van het model; geen ingangspunt van"
-                + " de dienst draagt ze alle: 'premie' mist [helpersdeel van een berging]", d.path("diagnosis").asText());
+        assertEquals("het scenario noemt geen scope en rekent dus met alle 3 vormen van het model; geen ingangspunt van"
+                + " de dienst draagt ze alle: 'premie' mist [helpersdeel van een berging, helpersdeel bij veel helpers]", d.path("diagnosis").asText());
         assertTrue(d.has("situation"));
     }
 
