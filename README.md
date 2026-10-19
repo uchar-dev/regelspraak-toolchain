@@ -140,25 +140,25 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
 
 ## Everyday use: `bin/regelspraak`
 
-`bin/regelspraak <opdracht>` is the one entry for a user, a script or another repository: it takes no class name
+`bin/regelspraak <command>` is the one entry for a user, a script or another repository: it takes no class name
 and no build path. Several sources are read as one model, concatenated in the order given, and paths are relative
 to the directory the command is given in.
 
-The messages of uchar are Dutch unless asked otherwise: `bin/regelspraak --language en <opdracht>` renders them in
+The messages of uchar are Dutch unless asked otherwise: `bin/regelspraak --language en <command>` renders them in
 English, and the playground of the service does so per request for an `Accept-Language` that names `en`
 (`MessageLanguage`). The messages the service itself writes stay Dutch.
 
 | Command | What it does |
 |---------|--------------|
-| `check <bron.rgs...>` | parse and resolve: the model summary and the diagnostics (in a chain of files as `file:line`), exit 1 on an error; then the build on uchar's exec-model branch, exit 3 when uchar does not carry the model |
-| `ir <uit.json> <bron.rgs...>` | the `uchar-ir-v1` document of the model (uchar's emitter) |
-| `cases <map> <bron.rgs...>` | the scenarios of a test document lowered to uchar case files in `<map>`, beside the IR document they run against (`<map>/ir.json`): the layout of uchar's corpus |
-| `scenario [--trace] [--explanation] [--vocabulary <naam>] <bron.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulary` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
-| `scenario --manifest <manifest> [--exclusions <lijst>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
-| `serve <descriptor.service.json> <bron.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--port N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?coverage` and `?fixpoint`, and the workbench's `?via=service` |
-| `drl <bron.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
-| `graph [--mmd] <uit> <bron.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
-| `facts <uitmap> <bron.rgs...>` | the fact beans uchar's generator writes for the model |
+| `check <source.rgs...>` | parse and resolve: the model summary and the diagnostics (in a chain of files as `file:line`), exit 1 on an error; then the build on uchar's exec-model branch, exit 3 when uchar does not carry the model |
+| `ir <out.json> <source.rgs...>` | the `uchar-ir-v1` document of the model (uchar's emitter) |
+| `cases <dir> <source.rgs...>` | the scenarios of a test document lowered to uchar case files in `<dir>`, beside the IR document they run against (`<dir>/ir.json`): the layout of uchar's corpus |
+| `scenario [--trace] [--explanation] [--vocabulary <name>] <source.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulary` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
+| `scenario --manifest <manifest> [--exclusions <list>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
+| `serve <descriptor.service.json> <source.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--port N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?coverage` and `?fixpoint`, and the workbench's `?via=service` |
+| `drl <source.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
+| `graph [--mmd] <out> <source.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
+| `facts <outdir> <source.rgs...>` | the fact beans uchar's generator writes for the model |
 
 Exit 2 is a wrong invocation. Every command runs from one jar the reactor builds. In a checkout `bin/regelspraak`
 first rebuilds that jar when it is missing or older than one of its sources (the poms, the own main sources, uchar's
@@ -206,10 +206,10 @@ rules are written and computed in the canonical names. The distribution uses the
   parameter, enumeration value — canonically or as its designation in any vocabulary, mixed within one request,
   case-insensitively, within the scope of the name (the members of an object type with the inherited ones, the roles
   of a fact type, the values of a domain, the rest model-wide). A name that reads as two different declarations is a
-  400 `AMBIGUOUS_NAME` whose sentence names both readings; the query parameter `inputVocabulary=<naam>` pins
+  400 `AMBIGUOUS_NAME` whose sentence names both readings; the query parameter `inputVocabulary=<name>` pins
   the vocabulary the names are read in (`canonical` for the canonical names), which resolves it.
-- **Output is chosen.** `vocabulary=<naam>` names the declarations of the answer, its inconsistencies and its
-  uitleg in that vocabulary; without it the entry point's `vocabulary` from the descriptor applies, else the
+- **Output is chosen.** `vocabulary=<name>` names the declarations of the answer, its inconsistencies and its
+  explanation in that vocabulary; without it the entry point's `vocabulary` from the descriptor applies, else the
   canonical names. An unknown vocabulary is a 400 `UNKNOWN_VOCABULARY` naming the declared ones.
 - **Complete or not.** A declaration without a designation in the chosen vocabulary keeps its canonical name. uchar
   requires a designation of every declaration only in the default vocabulary; `/info` lists per vocabulary whether it
@@ -222,16 +222,16 @@ rules are written and computed in the canonical names. The distribution uses the
   sends and receives; treat it as a contract change of the service.
 
 The word `canonical` chooses the canonical names, so a model that declares a vocabulary of that name does not start.
-The rule text is not renamed: the uitleg quotes it as written. The exception is a rule uchar wrote itself, the rule
-`afwijking opgave X` of the opgave marker: its text is uchar's canonical spelling, not an author's, so the uitleg names
+The rule text is not renamed: the explanation quotes it as written. The exception is a rule uchar wrote itself, the rule
+`afwijking opgave X` of the opgave marker: its text is uchar's canonical spelling, not an author's, so the explanation names
 the attribute an operand reads in the chosen vocabulary (`zijn opgegeven Datum einde recht op uitkering`). uchar's table
 of origins (`RegelSpraakModel.generatedFrom`) says which rule that is; the IR document carries that table (`origin`,
 IR-SPEC ch. 2.13), so a service started from an IR document explains these rules the same way. The row of a decision
 table is generated too, but its text is the author's column header and cell, and stays as written.
-In the uitleg, an enumeration value whose designation
+In the explanation, an enumeration value whose designation
 differs from the declared value is written as both, `<designation> · <value>` (`01 · Hoogte inkomsten uit verzekerde
 arbeid`), because a code alone does not say what it stands for; the answer carries the designation alone. A
-characteristic stands in the uitleg with the verb of its declared kind (§3.5), in every vocabulary and also in a
+characteristic stands in the explanation with the verb of its declared kind (§3.5), in every vocabulary and also in a
 condition: adjectival `is waardevol` / `is niet waardevol`, possessive `heeft de uitkeringsduur verstreken` / `heeft
 geen uitkeringsduur verstreken`, nominal `is een recht op grond-van-de-wia` / `is geen recht op grond-van-de-wia`.
 The model does not carry the article of a declaration, so a present possessive characteristic takes the article the
@@ -267,14 +267,14 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 ## Known losses
 
 - **A parameter-set file on the scenario route** (`--parameter-sets`, refused by name). A scenario gets its parameter
-  set from the scenario document itself: a `Parameterset <naam>:` block, chosen with `met parameterset <naam>`
+  set from the scenario document itself: a `Parameterset <name>:` block, chosen with `met parameterset <name>`
   (uchar's scenario layer, since the pin on `c70dcad6`). The former runner's JSON file beside the scenario has no
   counterpart.
 - **Timelines in a service request.** The request has no timeline value, no characteristic with periods, and no
   scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service
   refuses them as `UNSUPPORTED`. 30 of the goldens gate 12 plays need one; the replay gate lists them.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
-- **The uitleg** explains characteristic-attribution rules, not defaults groups: a characteristic a defaults group
+- **The explanation** explains characteristic-attribution rules, not defaults groups: a characteristic a defaults group
   decides gets no sentence.
 - **The playground trace** names per fired rule the labels it bound and how often, but no value: uchar's report
   carries none. The values stand in the scenario's `fixpoint`, read from the case's own session.

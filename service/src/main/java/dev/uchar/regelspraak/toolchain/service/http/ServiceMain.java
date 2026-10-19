@@ -21,7 +21,7 @@ import java.util.List;
  * {@code PLAYGROUND}, since they show every intermediate value.
  *
  * <pre>{@code
- *   ServiceMain <descriptor.service.json> <bron.rgs...> | <document.json> [--allow-markers] [--detail] [--host H]
+ *   ServiceMain <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H]
  *              [--port N]
  * }</pre>
  *
@@ -59,7 +59,7 @@ public final class ServiceMain {
             args = parseArgs(rawArgs);
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
-            System.err.println("gebruik: DienstMain <descriptor.service.json> <bron.rgs...> | <document.json> "
+            System.err.println("usage: ServiceMain <descriptor.service.json> <source.rgs...> | <document.json> "
                     + "[--allow-markers] [--detail] [--host H] [--port N]");
             System.exit(2);
             return;
@@ -108,7 +108,7 @@ public final class ServiceMain {
         return EXIT_OTHER;
     }
 
-    /** {@code MARKER: regel '<naam>' in entrypoint '<ep>'} per marker schending. The naam+ep are recovered from
+    /** {@code MARKER: regel '<name>' in entrypoint '<ep>'} per marker schending. The naam+ep are recovered from
      *  the schending's message and field ({@code entrypoint:<pad>}); the message already names both. */
     static void printMarkers(ServiceError error) {
         for (Violation s : error.violations()) {
@@ -140,7 +140,7 @@ public final class ServiceMain {
         return core.descriptor().service() == null ? "?" : core.descriptor().service().name();
     }
 
-    /** Parse {@code <descriptor> <bron...> [--allow-markers] [--detail] [--host H] [--port N]}. */
+    /** Parse {@code <descriptor> <source...> [--allow-markers] [--detail] [--host H] [--port N]}. */
     static Args parseArgs(String[] raw) {
         Path descriptor = null;
         List<Path> sources = new ArrayList<>();

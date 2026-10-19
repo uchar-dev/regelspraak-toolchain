@@ -11,12 +11,12 @@ spelling het vastgezette invoervocabulaire (?inputVocabulary=), de weigering van
 vastgezet vocabulaire, het standaardvocabulaire van het tweede entrypoint, en /info: per vocabulaire de declaraties
 zonder benaming. De vertaaltafel is het ir.json van de golden (uchars emitter), dus niet de code van de dienst.
 
-Per getuige (--witness <naam>=<bron.rgs>,<descriptor>,<getuige.json>): een eigen bron en een lijst getuigenissen,
+Per getuige (--witness <name>=<source.rgs>,<descriptor>,<witness.json>): een eigen bron en een lijst getuigenissen,
 elk een verzoek met een query en het verwachte antwoord (status, soort en veld van de schending en fragmenten van
 haar zin, of attribuutwaarden).
 
-Uitvoer: per golden "<golden>\\tPLAYED\\t<cases>\\t<verzoeken>", per getuige "<naam>\\tPLAYED\\t<getuigenissen>", of
-"<naam>\\tFAIL\\t<wat>" / "<naam>\\tEXCLUDE\\t<vorm>". Het oordeel over de set is aan check-twins.sh.
+Uitvoer: per golden "<golden>\\tPLAYED\\t<cases>\\t<verzoeken>", per getuige "<name>\\tPLAYED\\t<getuigenissen>", of
+"<name>\\tFAIL\\t<wat>" / "<name>\\tEXCLUDE\\t<vorm>". Het oordeel over de set is aan check-twins.sh.
 """
 import argparse
 import copy
@@ -329,7 +329,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--corpus", required=True, help="de map met de goldens (uchar/corpus/golden)")
     ap.add_argument("--golden", action="append", default=[], help="<golden>=<descriptor>")
-    ap.add_argument("--witness", action="append", default=[], help="<naam>=<bron.rgs>,<descriptor>,<getuige.json>")
+    ap.add_argument("--witness", action="append", default=[], help="<name>=<source.rgs>,<descriptor>,<witness.json>")
     a = ap.parse_args()
     for g in a.golden:
         golden, descriptor = g.split("=", 1)

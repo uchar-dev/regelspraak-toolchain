@@ -9,25 +9,25 @@ set -euo pipefail
 
 usage() {
   cat <<'TEXT'
-gebruik: bin/regelspraak [--language nl|en] <opdracht> [argumenten]
+usage: bin/regelspraak [--language nl|en] <command> [arguments]
 
   --language   the language of uchar's messages (nl by default)
 
-  check <bron.rgs...>                 parse and resolve; the diagnostics, then whether uchar carries the model
-  ir <uit.json> <bron.rgs...>         the uchar-ir-v1 document of the model (uchar's emitter)
-  cases <map> <bron.rgs...>           the scenarios lowered to case files in <map>, beside <map>/ir.json
-  scenario [--trace] [--explanation] [--vocabulary <naam>] <bron.rgs...>
-  scenario [--trace] --manifest <manifest> [--exclusions <lijst>]
-                                      lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario;
-                                      --vocabulary names the rules and declarations of trace and explanation in a
-                                      vocabulary of the model (canonical: the canonical names)
-  serve <descriptor.service.json> <bron.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]
-                                      the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench;
-                                      --detail or DETAIL=true: ?trace, ?coverage and ?fixpoint, and the
-                                      workbench's ?via=service)
-  drl <bron.rgs...>                   the DRL text of uchar's DRL-text branch
-  graph [--mmd] <uit> <bron.rgs...>   the rule graph as an HTML page, or with --mmd as Mermaid text
-  facts <uitmap> <bron.rgs...>        the fact beans uchar's generator writes for the model
+  check <source.rgs...>                 parse and resolve; the diagnostics, then whether uchar carries the model
+  ir <out.json> <source.rgs...>         the uchar-ir-v1 document of the model (uchar's emitter)
+  cases <dir> <source.rgs...>           the scenarios lowered to case files in <dir>, beside <dir>/ir.json
+  scenario [--trace] [--explanation] [--vocabulary <name>] <source.rgs...>
+  scenario [--trace] --manifest <manifest> [--exclusions <list>]
+                                        lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario;
+                                        --vocabulary names the rules and declarations of trace and explanation in a
+                                        vocabulary of the model (canonical: the canonical names)
+  serve <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]
+                                        the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench;
+                                        --detail or DETAIL=true: ?trace, ?coverage and ?fixpoint, and the
+                                        workbench's ?via=service)
+  drl <source.rgs...>                   the DRL text of uchar's DRL-text branch
+  graph [--mmd] <out> <source.rgs...>   the rule graph as an HTML page, or with --mmd as Mermaid text
+  facts <outdir> <source.rgs...>        the fact beans uchar's generator writes for the model
 
 Several sources are read as one model, concatenated in the order given; paths are relative to the directory the
 command is given in. Exit codes: 0 done, 1 an error in the model or a failed scenario, 2 a wrong invocation, 3 the

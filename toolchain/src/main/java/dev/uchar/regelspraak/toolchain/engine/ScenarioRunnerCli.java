@@ -20,8 +20,8 @@ import java.util.stream.Collectors;
  * CLI for the {@link ScenarioRunner}. Usage:
  *
  * <pre>{@code
- *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] [--explanation] [--vocabulary <naam>] <file.rgs> [<file.rgs> ...]
- *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] --manifest <manifest> [--exclusions <lijst>]
+ *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] [--explanation] [--vocabulary <name>] <file.rgs> [<file.rgs> ...]
+ *   dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli [--trace] --manifest <manifest> [--exclusions <list>]
  * }</pre>
  *
  * Multiple files are CONCATENATED in argument order (objectmodel + rules + scenario file). Per scenario one line

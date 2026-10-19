@@ -53,8 +53,8 @@ The facts are instances of the generated beans (`nieuw`, `beanLoader()`), in uch
 `dev.uchar.regelspraak.facts`: the KieBase is built against those classes, so an object of a same-named class from
 another class loader never matches a rule. `newSession(asOfDate)` sets the `rekendatum` global;
 `newSession(asOfDate, parameterSets)` also selects each parameter's vintage on that one date. `compile` throws
-`RegelSpraakCompileException` for resolver errors and for a model uchar refuses. `bin/regelspraak facts <uitmap>
-<bron.rgs...>` (or `make facts` for the TOKA casus) writes the beans a model implies as source, for a consumer that
+`RegelSpraakCompileException` for resolver errors and for a model uchar refuses. `bin/regelspraak facts <outdir>
+<source.rgs...>` (or `make facts` for the TOKA casus) writes the beans a model implies as source, for a consumer that
 wants to see them.
 
 ## Building
@@ -101,7 +101,7 @@ other forms a scope can carry (object creations, allocations, consistencies, uni
 checked.
 
 ```
-bin/regelspraak serve <descriptor.service.json> <bron.rgs…> | <document.json> [--allow-markers] [--detail] [--host H]
+bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json> [--allow-markers] [--detail] [--host H]
                       [--port N]
 ```
 
@@ -125,9 +125,9 @@ bin/regelspraak serve <descriptor.service.json> <bron.rgs…> | <document.json> 
 - Names and vocabularies (README, "Vocabularies"). `NameReader` reads every name of a request canonically or as a
   designation in any vocabulary of the model (uchar's `RegelSpraakModel.namedElement`), within the scope of its kind,
   case-insensitively and mixed; a name that reads as two declarations is a 400 `AMBIGUOUS_NAME` naming both
-  readings, and `?inputVocabulary=<naam>` (or `canonical`) pins the vocabulary names are read in. A designation is
+  readings, and `?inputVocabulary=<name>` (or `canonical`) pins the vocabulary names are read in. A designation is
   read as the declaration's canonical name, an enumeration value as the declared value it names. Two names of one
-  object that read as one declaration are a 400 `MALFORMED`. `?vocabulary=<naam>` chooses the names of the answer,
+  object that read as one declaration are a 400 `MALFORMED`. `?vocabulary=<name>` chooses the names of the answer,
   its `inconsistencies` and its `explanation` (`Naming`), else the entry point's `vocabulary` from the descriptor,
   else the canonical names; an unknown vocabulary is a 400 `UNKNOWN_VOCABULARY`, and a descriptor naming one does
   not start. A declaration without a designation in the chosen vocabulary keeps its canonical name. The Quarkus
@@ -221,8 +221,8 @@ bin/regelspraak serve <descriptor.service.json> <bron.rgs…> | <document.json> 
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in), and the `fixpoint`
   of the case's own session as uchar reads it (`DroolsBackend.fixpointOf`): per object every value and characteristic with
   its origin, the made objects, the links, the evaluation faults as data and the inconsistencies, each list sorted, or
-  `fixpointError` with the reason there is none. `?vocabulary=<naam>` names `graphJson`, the trace, the per-scenario
-  coverage, the uitleg, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
+  `fixpointError` with the reason there is none. `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
+  coverage, the explanation, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
   that differs (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
 - `POST /playground/analyse?via=service` gives the same answer, except that the service the process runs computes the
   scenarios, so that a PASS says: this service gives this answer. It shows the session of each scenario, so a service
