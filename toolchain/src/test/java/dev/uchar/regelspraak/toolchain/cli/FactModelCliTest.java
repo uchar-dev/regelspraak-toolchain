@@ -93,7 +93,7 @@ class FactModelCliTest {
         // it resolves java.* but knows nothing of dev.uchar.regelspraak.facts, so the fresh classes win.
         try (URLClassLoader cl = new URLClassLoader(new URL[]{classes.toUri().toURL()},
                 ClassLoader.getPlatformClassLoader())) {
-            List<String> violations = ContractValidator.validate(model, cl);
+            List<dev.uchar.regelspraak.refusal.Reason> violations = ContractValidator.validate(model, cl);
             assertTrue(violations.isEmpty(),
                     () -> "gegenereerde facts moeten de eigen contract-validator leeg laten: " + violations);
         }
