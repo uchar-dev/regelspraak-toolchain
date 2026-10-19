@@ -80,7 +80,7 @@ model declares) and the sentences of the messages, which keep their text. The ol
   are `--port`, `--explanation`, `--vocabulary`, `--exclusions`, `--parameter-sets`, `--witness`; the command and target
   `graaf` is `graph`; the targets `poorten`, `check-tweelingen`, `check-dienst-replay` are `gates-no-docker`,
   `check-twins`, `check-service-replay`.
-- **Division by zero** (pin `ec88b2919`, uchar's card `zero-division-channel`): a filled dividend divided by a numeric
+- **Division by zero** (uchar's card `zero-division-channel`): a filled dividend divided by a numeric
   zero is no evaluation fault any more. uchar's entry gives an empty value and a §9.5 fact of kind EF-005, so the
   service answers 200 with the attribute `null` and the rule among the `inconsistencies` (and the playground shows
   the scenario as an inconsistency), where it answered 422 `EVALUATION_FAULT` with the kind `DIVISION_BY_ZERO`. That
@@ -129,7 +129,7 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
 `python3`.
 
 - `check-twins` serves `ww-herleving-inkomen-rgs`, `jutterswet-uitsluiting-rgs` and
-  `jutterswet-nestkenmerk-rgs` from their `bron.rgs` with a descriptor as a user writes one
+  `jutterswet-nestkenmerk-rgs` from their `source.rgs` with a descriptor as a user writes one
   (`scripts/twins/`): named entry points whose scope names the rules and the defaults group. The case count of
   each twin is pinned (10 + 4 + 4). It then serves the vocabulary twin `jutterswet-vocabulaires`
   (`scripts/vocabulary_replay.py`): each case in the canonical spelling, in that of each vocabulary and mixed, each
@@ -140,7 +140,7 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
   case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (255). Each golden is
-  served from its `bron.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
+  served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 230); every golden that does not play is listed by name with
   its reason (30, each a timeline form the request cannot express); a deviation always fails, and the list fails when
   it goes stale in either direction. About 50 seconds with four services at a time (`REPLAY_WORKERS`).
@@ -163,7 +163,7 @@ English, and the playground of the service does so per request for an `Accept-La
 | `check <source.rgs...>` | parse and resolve: the model summary and the diagnostics (in a chain of files as `file:line`), exit 1 on an error; then the build on uchar's exec-model branch, exit 3 when uchar does not carry the model |
 | `ir <out.json> <source.rgs...>` | the `uchar-ir-v1` document of the model (uchar's emitter) |
 | `cases <dir> <source.rgs...>` | the scenarios of a test document lowered to uchar case files in `<dir>`, beside the IR document they run against (`<dir>/ir.json`): the layout of uchar's corpus |
-| `scenario [--trace] [--explanation] [--vocabulary <name>] <source.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulary` names the rules of the trace and the declarations of the uitleg in a vocabulary of the model |
+| `scenario [--trace] [--explanation] [--vocabulary <name>] <source.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulary` names the rules of the trace and the declarations of the explanation in a vocabulary of the model |
 | `scenario --manifest <manifest> [--exclusions <list>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
 | `serve <descriptor.service.json> <source.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--port N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?coverage` and `?fixpoint`, and the workbench's `?via=service` |
 | `drl <source.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
@@ -278,7 +278,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 
 - **A parameter-set file on the scenario route** (`--parameter-sets`, refused by name). A scenario gets its parameter
   set from the scenario document itself: a `Parameterset <name>:` block, chosen with `met parameterset <name>`
-  (uchar's scenario layer, since the pin on `c70dcad6`). The former runner's JSON file beside the scenario has no
+  (uchar's scenario layer, since uchar's card `scenariolaag-in-uchar`). The former runner's JSON file beside the scenario has no
   counterpart.
 - **Timelines in a service request.** The request has no timeline value, no characteristic with periods, and no
   scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service

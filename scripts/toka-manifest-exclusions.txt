@@ -1,4 +1,4 @@
-# De gouden TOKA-scenario's die uchars scenarioresolver weigert (uchar d67f5da1), voor
+# De gouden TOKA-scenario's die uchars scenarioresolver weigert, voor
 # `make scenario-test`: <scenario-pad>|<fragment van uchars weigering>|<reden>.
 # Een scenario hier moet door uchar geweigerd worden met dat fragment; neemt uchar het aan,
 # of draagt het manifest het niet meer, dan faalt de manifestrun op deze regel.

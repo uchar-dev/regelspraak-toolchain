@@ -11,7 +11,7 @@
 # casebestand wordt een verzoek; het antwoord moet elke gepinde verwachting geven (scripts/service_replay.py, dat de
 # dienst ook opruimt). Uitkomst per tweeling: PLAYED met het aantal cases, anders faalt de poort.
 #
-# Vloer: het aantal cases per tweeling is gepind (een gelijkheid): 10 + 4 + 4, gemeten 2026-09-26 op uchar d67f5da1.
+# Vloer: het aantal cases per tweeling is gepind (een gelijkheid): 10 + 4 + 4, gemeten 2026-09-26.
 # Een tweeling die een case verliest of wint, faalt hier bij naam; een pin-bump die het corpus verandert, zet dit
 # getal bewust bij. Een lege set faalt.
 #
@@ -39,7 +39,7 @@ TWINS=(
 EXPECTED_CASES=18   # 2026-09-26: 10 + 4 + 4, de som van de pins hierboven
 
 VOCABULARY_TWIN="jutterswet-vocabulaires|2"
-# 2026-09-27, uchar 43caed71: 2 cases × (4 spellingen × 3 uitvoervocabulaires + 3 vastgezet + 1 standaard + 1 weigering)
+# 2026-09-27: 2 cases × (4 spellingen × 3 uitvoervocabulaires + 3 vastgezet + 1 standaard + 1 weigering)
 EXPECTED_MIN_VOCABULARY_REQUESTS=34
 # 2026-09-27: dubbelzinnig, vastgezet in twee uitvoervocabulaires, onbekend vocabulaire
 EXPECTED_MIN_WITNESSES=4
