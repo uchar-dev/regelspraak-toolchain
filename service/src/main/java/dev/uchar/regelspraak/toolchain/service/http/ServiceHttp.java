@@ -339,10 +339,12 @@ public final class ServiceHttp {
                 return;
             }
             DecisionCore service = via == null ? null : core;
+            java.util.Locale locale = dev.uchar.regelspraak.toolchain.engine.MessageLanguage
+                    .ofAcceptLanguage(ex.getRequestHeaders().getFirst("Accept-Language"));
             // Compile-per-request under a hard timeout, on a throwaway single-use executor (no shared state).
             ExecutorService exec = Executors.newSingleThreadExecutor();
             try {
-                Future<ObjectNode> f = exec.submit(() -> Playground.analyseer(source, vocabulary, service));
+                Future<ObjectNode> f = exec.submit(() -> Playground.analyseer(source, vocabulary, service, locale));
                 send(ex, 200, f.get(PLAYGROUND_TIMEOUT_MS, TimeUnit.MILLISECONDS));
             } catch (TimeoutException timeout) {
                 send(ex, 503, errorBody("analyse overschreed de tijdslimiet ("

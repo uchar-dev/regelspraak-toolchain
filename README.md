@@ -144,6 +144,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
 and no build path. Several sources are read as one model, concatenated in the order given, and paths are relative
 to the directory the command is given in.
 
+The messages of uchar are Dutch unless asked otherwise: `bin/regelspraak --language en <opdracht>` renders them in
+English, and the playground of the service does so per request for an `Accept-Language` that names `en`
+(`MessageLanguage`). The messages the service itself writes stay Dutch.
+
 | Command | What it does |
 |---------|--------------|
 | `check <bron.rgs...>` | parse and resolve: the model summary and the diagnostics (in a chain of files as `file:line`), exit 1 on an error; then the build on uchar's exec-model branch, exit 3 when uchar does not carry the model |

@@ -131,6 +131,7 @@ public final class RegelSpraakCli {
      *  With --ir &lt;out.json&gt; over one-or-more source files, delegate to uchar's {@link Resolver#irMode} to emit
      *  the FAITHFUL {@code uchar-ir-v1} JSON dump. The output modes are mutually exclusive. */
     public static void main(String[] args) throws java.io.IOException {
+        dev.uchar.regelspraak.toolchain.engine.MessageLanguage.apply(null);
         var rest = new java.util.ArrayList<>(java.util.List.of(args));
         boolean drl = rest.remove("--drl");
         if (rest.contains("--allow-markers")) {

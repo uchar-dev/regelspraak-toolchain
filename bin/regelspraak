@@ -9,7 +9,9 @@ set -euo pipefail
 
 usage() {
   cat <<'TEXT'
-gebruik: bin/regelspraak <opdracht> [argumenten]
+gebruik: bin/regelspraak [--language nl|en] <opdracht> [argumenten]
+
+  --language   the language of uchar's messages (nl by default)
 
   check <bron.rgs...>                 parse and resolve; the diagnostics, then whether uchar carries the model
   ir <uit.json> <bron.rgs...>         the uchar-ir-v1 document of the model (uchar's emitter)
@@ -81,7 +83,7 @@ start() {
   local java=java
   [ -n "${JAVA_HOME:-}" ] && java=$JAVA_HOME/bin/java
   # shellcheck disable=SC2086  # JAVA_OPTS carries several options on purpose
-  exec "$java" ${JAVA_OPTS:-} -cp "$JAR" "$class_name" "$@"
+  exec "$java" ${language:+-Duchar.messages.locale=$language} ${JAVA_OPTS:-} -cp "$JAR" "$class_name" "$@"
 }
 
 # The sources of a command: at least one, each an existing file, and no option among them.
@@ -99,6 +101,13 @@ CLI=dev.uchar.regelspraak.toolchain.cli.RegelSpraakCli
 RESOLVER=dev.uchar.regelspraak.resolver.Resolver
 SCENARIO=dev.uchar.regelspraak.toolchain.engine.ScenarioRunnerCli
 SERVICE=dev.uchar.regelspraak.toolchain.service.http.ServiceMain
+
+# Dutch is the language of the messages unless --language says en; the default itself is made in the Java code
+# (MessageLanguage), so a start without this script reads the same.
+language=
+if [ "${1:-}" = --language ]; then
+  case "${2:-}" in nl|en) language=$2; shift 2 ;; *) fail "--language verwacht nl of en" ;; esac
+fi
 
 [ $# -gt 0 ] || { usage >&2; exit 2; }
 command=$1; shift

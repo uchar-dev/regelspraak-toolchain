@@ -48,6 +48,7 @@ public final class ScenarioRunnerCli {
     private ScenarioRunnerCli() {}
 
     public static void main(String[] args) {
+        MessageLanguage.apply(null);
         System.exit(run(args));
     }
 

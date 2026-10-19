@@ -40,6 +40,8 @@ public final class UcharBuild {
     private static final Pattern NOT_LOWERED =
             Pattern.compile("^transpiler (?:MARKER|SKIP): [^:]+: (.*?)(?: — .*)?$", Pattern.DOTALL);
 
+    static { MessageLanguage.apply(null); }
+
     private UcharBuild() {}
 
     /** A model this distribution cannot run because uchar refused it. {@link #construct()} names the construct the
@@ -54,6 +56,14 @@ public final class UcharBuild {
         }
 
         public String construct() { return construct; }
+
+        /** The sentence in {@code locale}, for the refusals of uchar that render per call. */
+        public String message(java.util.Locale locale) {
+            Throwable cause = getCause();
+            if (cause instanceof IrLoader.Refusal r) return "loader: " + r.message(locale);
+            if (cause instanceof CaseRunner.Excluded x) return x.message(locale);
+            return getMessage();
+        }
     }
 
     /** Emit {@code model} and build it on {@code branch}. The model must resolve without errors: an emitter writes no

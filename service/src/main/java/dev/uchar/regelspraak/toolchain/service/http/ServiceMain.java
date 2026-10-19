@@ -53,6 +53,7 @@ public final class ServiceMain {
     static final int EXIT_OTHER = 1;
 
     public static void main(String[] rawArgs) {
+        dev.uchar.regelspraak.toolchain.engine.MessageLanguage.apply(null);
         Args args;
         try {
             args = parseArgs(rawArgs);

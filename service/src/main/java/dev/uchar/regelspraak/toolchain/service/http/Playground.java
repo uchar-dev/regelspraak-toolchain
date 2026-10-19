@@ -146,6 +146,13 @@ public final class Playground {
      *                    rules than these
      */
     public static ObjectNode analyseer(String source, String vocabulary, DecisionCore service) {
+        return analyseer(source, vocabulary, service, null);
+    }
+
+    /** {@link #analyseer(String, String, DecisionCore)} with the messages of uchar's resolver and the refusal of its
+     *  build in {@code locale} (null: the language of the process). */
+    public static ObjectNode analyseer(String source, String vocabulary, DecisionCore service,
+                                       java.util.Locale locale) {
         ObjectNode root = NF.objectNode();
         boolean scenario = containsScenario(source);
 
@@ -176,7 +183,7 @@ public final class Playground {
         for (Diagnostic d : model.diagnostics) {
             ObjectNode n = (d.severity() == Severity.ERROR ? errors : warnings).addObject();
             n.put("line", d.line());
-            n.put("message", d.message());
+            n.put("message", locale == null ? d.message() : d.message(locale));
         }
         if (!model.isOk()) return root;
         Naming naming = Naming.van(model, vocabulary);
@@ -206,7 +213,7 @@ public final class Playground {
             root.set("generated", generated(build, model, naming));
         } catch (UcharBuild.NotCarried e) {
             root.put("executable", false);
-            root.put("refusal", e.getMessage());
+            root.put("refusal", locale == null ? e.getMessage() : e.message(locale));
         }
 
         // 4. DRL — a view of the DRL-text branch, never the verdict. uchar's build of that branch throws an
