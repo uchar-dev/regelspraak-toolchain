@@ -71,7 +71,7 @@ class NoFixpointTest {
         source = Files.readString(RED.resolve("source.rgs"));
         // uchar pins the code of the fault, no longer its sentence; the sentence leads with the same words in both languages
         assertEquals("EF-015", ServiceHttp.MAPPER.readTree(Files.readString(RED.resolve("case1.json")))
-                .at("/expectedFault/drools/code").asText());
+                .at("/expectedFault/code").asText());
         fragment = "creation budget exhausted: ";
         core = DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", source), CoreConfig.strict().withDetail(),
                 Thread.currentThread().getContextClassLoader());

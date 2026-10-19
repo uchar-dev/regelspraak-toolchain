@@ -62,7 +62,7 @@ class NoFixpointParityTest {
         service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
         // uchar pins the code of the fault, no longer its sentence; the sentence leads with the same words in both languages
         assertEquals("EF-015", MAPPER.readTree(Files.readString(RED.resolve("case1.json")))
-                .at("/expectedFault/drools/code").asText());
+                .at("/expectedFault/code").asText());
         fragment = "creation budget exhausted: ";
     }
 
