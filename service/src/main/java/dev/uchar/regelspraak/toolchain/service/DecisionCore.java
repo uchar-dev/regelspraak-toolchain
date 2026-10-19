@@ -406,7 +406,7 @@ public final class DecisionCore {
     }
 
     /** The rendered {@link PeriodCoverage} WARNING lines for the regel-geldigheid × parameter-geldigheid gaps
-     *  (fase 5, gate G3). {@link PeriodCoverage#controleer} is pure; {@link PeriodCoverage#reportAll} renders each
+     *  (fase 5, gate G3). {@link PeriodCoverage#check} is pure; {@link PeriodCoverage#reportAll} renders each
      *  finding onto a throw-away model so we can lift the WARNING message text out verbatim (the SAME text the
      *  engine surfaces), without polluting the real service model's diagnostics. Empty when no gap / no sets. */
     private static List<String> periodWarnings(RegelSpraakModel model, List<ParameterSet> sets) {
@@ -423,7 +423,7 @@ public final class DecisionCore {
 
     // The producer/consumer analysis — the producer index, the walk over what a form reads, and the ElementKey
     // identity — is the SHARED {@link ProducerConsumer} core (jar-only, no Drools). This class is one of its two
-    // consumers (uchar's rule graph is the other); both read the same walk ({@link ProducerConsumer#vormen}), so
+    // consumers (uchar's rule graph is the other); both read the same walk ({@link ProducerConsumer#forms}), so
     // this scope-completeness gate and the graph never diverge.
 
     /**
@@ -435,7 +435,7 @@ public final class DecisionCore {
      * point's scope, and (c) the element is not a declared {@code inputElements} (the caller then supplies the
      * value, so the missing producer is intentional). Elements with no producer at all are genuine request inputs,
      * not violations. The violation of a group also names the defaults that read the element, from uchar's walk per
-     * default ({@link ProducerConsumer#lezingen}), of which the group's reads are the union.
+     * default ({@link ProducerConsumer#readings}), of which the group's reads are the union.
      */
     private static List<Violation> scopeCompleteness(ServiceDescriptor.Entrypoint ep, RegelSpraakModel model,
             RegelSpraakModel scoped, Map<ElementKey, java.util.Set<String>> producers) {
@@ -662,7 +662,7 @@ public final class DecisionCore {
      * {@code naming}: {@code trace}, per form that fired, in the order a rule of it first fired, the ids of the
      * request its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's
      * {@code observer} recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
-     * ({@link DroolsBackend#dekking}: {@code FIRED} or {@code NOT_FIRED}); and {@code fixpunt}, what stands at the
+     * ({@link DroolsBackend#coverage}: {@code FIRED} or {@code NOT_FIRED}); and {@code fixpunt}, what stands at the
      * fixpoint with the instances of the request as its input ({@link FixpointGivens}), or {@code fixpointError} with the
      * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no fixpoint
      * (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.

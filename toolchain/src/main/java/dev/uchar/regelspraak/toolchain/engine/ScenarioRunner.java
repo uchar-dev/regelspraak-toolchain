@@ -30,7 +30,7 @@ import java.util.stream.Stream;
  * The scenario runner: the scenariotoetsen of a RegelSpraak test document, run through uchar's scenario layer.
  * uchar's {@link ScenarioResolver} resolves the document; its lowering ({@link CaseEmitter}) writes the IR document
  * the scenarios run against — with a scope, only the forms the scope names — and one case file per scenario; the
- * backend's {@link CaseRunner#rapport} replays those case files through the same build a consumer gets and reports
+ * backend's {@link CaseRunner#report} replays those case files through the same build a consumer gets and reports
  * each one. This class writes the lowering to a scratch directory, hands it to the report and names each report
  * after its scenario. It compares nothing itself: a verdict here is uchar's replay verdict.
  *

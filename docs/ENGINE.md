@@ -123,7 +123,7 @@ bin/regelspraak serve <descriptor.service.json> <bron.rgs…> | <document.json> 
   sentence. An enumeration value names a declared value as uchar compares declared names (case and spacing aside),
   and keeps its own spelling.
 - Names and vocabularies (README, "Vocabularies"). `NameReader` reads every name of a request canonically or as a
-  designation in any vocabulary of the model (uchar's `RegelSpraakModel.benoemd`), within the scope of its kind,
+  designation in any vocabulary of the model (uchar's `RegelSpraakModel.namedElement`), within the scope of its kind,
   case-insensitively and mixed; a name that reads as two declarations is a 400 `AMBIGUOUS_NAME` naming both
   readings, and `?inputVocabulary=<naam>` (or `canonical`) pins the vocabulary names are read in. A designation is
   read as the declaration's canonical name, an enumeration value as the declared value it names. Two names of one
@@ -142,7 +142,7 @@ bin/regelspraak serve <descriptor.service.json> <bron.rgs…> | <document.json> 
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
   `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"kind": …, "error": <uchar's sentence>}, …]}`, one element per
   fault in uchar's order. Every fault at the fixpoint is such an element, whatever its type: the core reads them from
-  uchar's entry (`DroolsBackend.lees`) before the write-back, so an exception of the entry itself stays a 500.
+  uchar's entry (`DroolsBackend.fixpointOf`) before the write-back, so an exception of the entry itself stays a 500.
   `kind` is `DIVISION_BY_ZERO` (a division by a numeric zero), `COMPUTE_FAULT` (a fault of a computation or of the
   evaluation date), `WRITERS_CONFLICT` (two writers of one attribute that disagree), `INPUT_FORM_FAULT` (a timeline
   input in the other convention, which no request reaches, since a request carries no timeline) or `OTHER` (a fault
@@ -219,7 +219,7 @@ bin/regelspraak serve <descriptor.service.json> <bron.rgs…> | <document.json> 
   `trace` and `explanation`. Beside the report stand the source line of the scenario and of each expectation (`rule`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in), and the `fixpoint`
-  of the case's own session as uchar reads it (`DroolsBackend.lees`): per object every value and characteristic with
+  of the case's own session as uchar reads it (`DroolsBackend.fixpointOf`): per object every value and characteristic with
   its origin, the made objects, the links, the evaluation faults as data and the inconsistencies, each list sorted, or
   `fixpointError` with the reason there is none. `?vocabulary=<naam>` names `graphJson`, the trace, the per-scenario
   coverage, the uitleg, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
@@ -242,7 +242,7 @@ bin/regelspraak serve <descriptor.service.json> <bron.rgs…> | <document.json> 
     canonical, read with `inputVocabulary=canonical`), and the core answers it with `explanation`, `trace`, `coverage` and
     `fixpoint`, in the vocabulary of `?vocabulary=` (canonical without it). uchar compares the `expected` of the case
     its frontend writes for the scenario with the written-back session of that request, the ids of the request as
-    labels (`DecisionCore.assess`, `DroolsBackend.vergelijk`): PASS or FAIL, the `expectations` and the `diagnosis`
+    labels (`DecisionCore.assess`, `DroolsBackend.compare`): PASS or FAIL, the `expectations` and the `diagnosis`
     as uchar's report gives them, prefixed with the name of the case file as the report prefixes it;
   - an evaluation fault (the service's 422) is a FAIL with no `expectations` and the line of uchar's report,
     `<case file>: ERROR <exception>: <sentence>`, the exception uchar's write-back throws for the faults; `trace`,

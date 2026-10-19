@@ -33,7 +33,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * An element uchar made itself carries {@code generatedFrom} in {@code vocabularies.elements}, and a name of the
  * coverage that is no element stands in {@code generated} with its origin: uchar's tables
- * ({@code RegelSpraakModel.gegenereerd}, {@code TmsTranspiler.gegenereerd}), never a reading of the name. The source
+ * ({@code RegelSpraakModel.generated}, {@code TmsTranspiler.generated}), never a reading of the name. The source
  * below has the shapes of herleving-ww v2: the opgave marker on {@code maxdatum} of a subtype of a subtype and on
  * {@code herlevingsdatum}, a second {@code maxdatum} without one, a base rule on the middle type with a deviation for
  * its subtype, and a written name that begins with "berekende".

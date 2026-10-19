@@ -491,7 +491,7 @@ public final class Playground {
     /** The vocabularies of {@code model}: {@code gekozen}, the choice of {@code naming}
      *  ({@link Naming#CANONICAL} or a vocabulary), {@code declared}, each declared vocabulary with whether it
      *  is the default one and its language, and {@code elements}, every declaration a vocabulary can name in the
-     *  model's order ({@link RegelSpraakModel#benoembaar}) with its kind, its owner and canonical name as declared, its
+     *  model's order ({@link RegelSpraakModel#designatable}) with its kind, its owner and canonical name as declared, its
      *  {@code designations}: per declared vocabulary its designation there, or null where it has none and goes by its
      *  canonical name (an empty object without a declared vocabulary), and, where it has a declaration in the source,
      *  its {@code position} and the {@code comment} directly above it, read from the parse in {@code parseResult}
@@ -552,9 +552,9 @@ public final class Playground {
         return n;
     }
 
-    /** The names of the coverage of {@code build} that name no element of {@link RegelSpraakModel#benoembaar}, each as
+    /** The names of the coverage of {@code build} that name no element of {@link RegelSpraakModel#designatable}, each as
      *  {@code {naam, soort, generatedFrom}} in the order of the coverage, with uchar's origin of it
-     *  ({@code TmsTranspiler.gegenereerd}): an effective defaults stack, a version of a form. {@code naam} is spelled
+     *  ({@code TmsTranspiler.generated}): an effective defaults stack, a version of a form. {@code naam} is spelled
      *  as the coverage and trace of a scenario spell it ({@link Naming#form}), with {@code naamCanoniek} beside it
      *  where that differs from uchar's name; {@code soort} is the kind of the coverage. A name of the coverage that is
      *  no form of the model and has no origin in uchar's table is a fault of the analysis, not an answer. */

@@ -16,7 +16,7 @@ import java.math.BigDecimal;
 
 /**
  * MECHANICALLY derive the request body of the service from a resolved scenario's merged
- * {@link ResolvedScenario.Situatie}. Nothing here is hand-typed — every value, label, type, rol target,
+ * {@link ResolvedScenario.Situation}. Nothing here is hand-typed — every value, label, type, rol target,
  * parameter and the peildatum is read straight off uchar's scenario resolver, so the "one truth, two transports"
  * guarantee holds: the same {@link dev.uchar.regelspraak.resolver.ScenarioResolver} output that the scenario
  * runner lowers to a case file is the request the golden harness posts and the playground's {@code via=service}

@@ -13,7 +13,7 @@ import java.util.List;
  * Per vocabulary of a model, whether it is complete and which declarations have no designation in it: the
  * declarations an answer in that vocabulary names by their canonical name. uchar's WF-119 makes only the default
  * vocabulary complete, so for every other one a consumer reads the fallback here instead of guessing it. The
- * declarations are those uchar can designate ({@link RegelSpraakModel#benoembaar}), in its order.
+ * declarations are those uchar can designate ({@link RegelSpraakModel#designatable}), in its order.
  */
 public final class Completeness {
 

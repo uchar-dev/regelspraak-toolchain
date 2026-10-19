@@ -22,7 +22,7 @@ import java.util.function.Function;
  * with the ones it inherits, the roles of a fact type, the values of the enumeration's domain, the other kinds
  * model-wide. A role written at an instance names no fact type, so it is read among the roles of the fact types the
  * instance's type takes part in. The canonical reading is the one the service always had; a designation is read
- * through uchar's reading entrance ({@link RegelSpraakModel#benoemd}).
+ * through uchar's reading entrance ({@link RegelSpraakModel#namedElement}).
  *
  * <p>One declaration found is the reading. Two different ones — in two vocabularies, or a designation in one against a
  * canonical name — is {@link Ambiguous}: the service does not guess, and its sentence names both readings and asks

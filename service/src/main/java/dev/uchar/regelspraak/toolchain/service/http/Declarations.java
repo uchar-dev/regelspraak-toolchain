@@ -40,7 +40,7 @@ import java.util.Set;
  * declaration and the comment written directly above it. uchar's lexer puts a line comment on the HIDDEN channel
  * ({@code RegelSpraakLexer.g4}, {@code LINE_COMMENT}), so the model carries no comment; the token stream of uchar's
  * parser does, and the comment above a declaration is read with {@code getHiddenTokensToLeft} at its first token, as
- * uchar's rule checker reads the {@code // Bron:} annotations above a rule ({@code RuleChecker.bronAnnotaties}).
+ * uchar's rule checker reads the {@code // Bron:} annotations above a rule ({@code RuleChecker.currentSourceAnnotations}).
  *
  * <p><b>The declarations</b> are the ones uchar's designation pass reads ({@code resolver/Benamingen}, pass 1): an
  * object type's head, the attributes and characteristics of a head and of an extension, the values of an enumeration
@@ -50,14 +50,14 @@ import java.util.Set;
  * ({@code DefinitionResolver.src}, which is not public in uchar and is one line here). Keys compare under uchar's name
  * identity: the kind, and owner and name case-insensitively.
  *
- * <p><b>Coupling</b> an element of {@link RegelSpraakModel#benoembaar()} to its declarations:
+ * <p><b>Coupling</b> an element of {@link RegelSpraakModel#designatable()} to its declarations:
  * <ul>
  *   <li>no declaration: uchar's frontend wrote the element itself (a row of a decision table, a defaults group, the
  *       attributes, the characteristic and the forms an opgave marker adds, an object type that only an extension
  *       names); it has no line and no comment of its own;</li>
  *   <li>one: that one;</li>
  *   <li>an attribute or characteristic declared more than once: the declaration the type carries, as uchar chooses it
- *       ({@code DefinitionResolver.bestaande}): the one in the head, else the first in document order. An extension
+ *       ({@code DefinitionResolver.existing}): the one in the head, else the first in document order. An extension
  *       repeats a member the type carries only word for word, which uchar checks (WF-002, dialect §7);</li>
  *   <li>any other element with more than one, or a member with more than one in a head: {@link Unlinkable}.</li>
  * </ul>

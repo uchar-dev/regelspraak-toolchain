@@ -26,7 +26,7 @@ import java.util.Map;
  * put in, fired to the fixpoint, read and written back through uchar's entry ({@link DroolsBackend#insert},
  * {@link DroolsBackend#fire}, {@link DroolsBackend#fixpointOf}, {@link DroolsBackend#setDerivedValues}), the firings
  * recorded by uchar's {@link DroolsBackend.Observer} with the labels of the input instances, as uchar's replay records
- * them, so the trace has one definition. It exists for what uchar's replay ({@code CaseRunner.rapport}) does not return: the beans with their
+ * them, so the trace has one definition. It exists for what uchar's replay ({@code CaseRunner.report}) does not return: the beans with their
  * derived values, from which the {@link Verbaliser} explains an outcome, and uchar's {@link Fixpoint}, what stands at
  * the fixpoint with or without an expectation on it.
  *
@@ -57,7 +57,7 @@ public final class CaseSession {
 
     /** Play case {@code c} on {@code build}, a build of the exec-model branch, whose
      *  {@link DroolsBackend.Build#model()} names the types. The branch is required because the caller compares the
-     *  firings with the trace of uchar's report ({@code CaseRunner.rapport}), which plays the exec-model branch: the
+     *  firings with the trace of uchar's report ({@code CaseRunner.report}), which plays the exec-model branch: the
      *  DRL-text branch reaches the same fixpoint, but at an accumulate it can fire in another order and number. */
     public static Outcome play(DroolsBackend.Build build, JsonNode c) {
         if (build.branch() != DroolsBackend.Branch.EXEC_MODEL)

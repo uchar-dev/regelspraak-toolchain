@@ -72,7 +72,7 @@ public final class RegelSpraakEngine {
     /** The resolved model the engine was compiled from (what a {@link Verbaliser} explains a decision with). */
     public RegelSpraakModel model() { return model; }
 
-    /** The class loader the generated fact beans live in ({@link FactModelGenerator#PAKKET}). */
+    /** The class loader the generated fact beans live in ({@link FactModelGenerator#PACKAGE}). */
     public ClassLoader beanLoader() { return build.beanLoader(); }
 
     /** A fresh instance of the generated bean for objecttype {@code objectType} (its declared name). */
@@ -233,7 +233,7 @@ public final class RegelSpraakEngine {
         private void beforeFirstFire(String what, String surplus) {
             if (filled)
                 throw new IllegalStateException(what + " na de eerste fire: de sessie is gevuld via uchars ingang"
-                        + " (DroolsBackend.voegIn), die alleen een verse sessie vult; " + surplus + " vraagt een verse"
+                        + " (DroolsBackend.insert), die alleen een verse sessie vult; " + surplus + " vraagt een verse"
                         + " sessie");
         }
 
@@ -306,7 +306,7 @@ public final class RegelSpraakEngine {
         }
 
         /** All facts in working memory that are instances of the generated class {@code clazz} (its simple name in
-         *  {@link FactModelGenerator#PAKKET}), e.g. {@code "Inconsistentie"} for the §9.5 inconsistency facts. */
+         *  {@link FactModelGenerator#PACKAGE}), e.g. {@code "Inconsistentie"} for the §9.5 inconsistency facts. */
         public Collection<?> facts(String clazz) {
             try {
                 Class<?> type = Class.forName(FactModelGenerator.PACKAGE + "." + clazz, true, build.beanLoader());
