@@ -29,15 +29,15 @@ help:
 	@echo "  make cases FILE=\"a.rgs …\" [OUT=…]    The scenarios lowered to case files beside ir.json (default out/cases/)"
 	@echo "  make scenario FILE=\"[--trace] [--explanation] a.rgs …\"   PASS / FAIL / MARKER per scenario"
 	@echo "  make serve FILE=\"d.service.json a.rgs …\" [PORT=…]   The decision service on the JDK HttpServer;"
-	@echo "                                       POST /<pad>?explanation=true adds the uitleg-verhaal to the answer,"
-	@echo "                                       DETAIL=true answers ?trace, ?dekking and ?fixpunt,"
+	@echo "                                       POST /<path>?explanation=true adds the explanation to the answer,"
+	@echo "                                       DETAIL=true answers ?trace, ?coverage and ?fixpoint,"
 	@echo "                                       PLAYGROUND=true binds the dev-only /playground workbench routes,"
 	@echo "                                       with DETAIL=true also /playground/analyse?via=service"
 	@echo "  make drl FILE=\"a.rgs …\"             The DRL text of uchar's DRL-text branch on stdout (exit 3 if uchar refuses)"
 	@echo "  make graph FILE=\"a.rgs …\" [OUT=… MMD=1]  The rule graph as HTML (or bare Mermaid with MMD=1)"
 	@echo "  make facts [FILE=\"a.rgs …\"]         The fact beans, javac'd (out/facts/); no FILE: the TOKA model foundation"
 	@echo ""
-	@echo "  make csv-beslistabel FILE=<csv> [OUT=<pad>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
+	@echo "  make csv-beslistabel FILE=<csv> [OUT=<path>]  Convert a CSV decision table to a §12 Beslistabel .rgs fragment"
 	@echo "  make clean                           Remove the CLI outputs (out/)"
 	@echo ""
 	@echo "  make image  [TAG=… DESCRIPTOR_SRC=…] (host only) Build the decision-service service image"
@@ -88,7 +88,7 @@ drl:
 # Convert a CSV decision table into the canonical §12 Beslistabel markdown-pipe-table
 # .rgs fragment. Pure-python, no deps. CSV in -> Beslistabel block on stdout:
 #   make csv-beslistabel FILE=tools/testdata/woonregio-factor.csv
-# Add OUT=<pad> to write a file instead of stdout. Exit 1 (with row+column on stderr)
+# Add OUT=<path> to write a file instead of stdout. Exit 1 (with row+column on stderr)
 # on a bad cell / wrong column count / missing header; the resolver remains the sole
 # authority on RegelSpraak content — this target only SHAPES the table.
 csv-beslistabel:

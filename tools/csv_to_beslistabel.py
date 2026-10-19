@@ -53,7 +53,7 @@ emits.
 
 USAGE
 -----
-    csv_to_beslistabel.py [--out <pad>] [<csv-in>]
+    csv_to_beslistabel.py [--out <path>] [<csv-in>]
       <csv-in>   input CSV file; omit (or "-") to read stdin
       --out      output .rgs path; omit to write stdout
 

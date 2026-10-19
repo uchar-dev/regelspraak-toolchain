@@ -32,7 +32,7 @@
 #       plaats van een te kleine telling voor waar aan te nemen.
 #
 # Gebruik:
-#   tools/check-skips.sh --sentinel <pad>                      (ijkpunt zetten)
+#   tools/check-skips.sh --sentinel <path>                      (ijkpunt zetten)
 #   tools/check-skips.sh <poort> <ijkpunt> <rapportmap>...      (natellen)
 #
 # Het ijkpunt is een leeg bestand dat vlak VOOR de testrun wordt aangeraakt.
@@ -89,7 +89,7 @@ FLOORS=(
 # ---------------------------------------------------------------------------
 
 if [ "${1:-}" = "--sentinel" ]; then
-  [ $# -eq 2 ] || { echo "skip-pin: gebruik --sentinel <pad>"; exit 2; }
+  [ $# -eq 2 ] || { echo "skip-pin: gebruik --sentinel <path>"; exit 2; }
   mkdir -p "$(dirname "$2")" || exit 2
   : > "$2" || exit 2
   exit 0

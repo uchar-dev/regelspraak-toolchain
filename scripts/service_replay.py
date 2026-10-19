@@ -338,7 +338,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--corpus", required=True, help="de map met de goldens (uchar/corpus/golden)")
     ap.add_argument("--workers", type=int, default=4)
-    ap.add_argument("--descriptor", action="append", default=[], help="<golden>=<pad>: een eigen descriptor")
+    ap.add_argument("--descriptor", action="append", default=[], help="<golden>=<path>: een eigen descriptor")
     ap.add_argument("goldens", nargs="+", help="goldens, als pad relatief aan --corpus")
     a = ap.parse_args()
     own = dict(d.split("=", 1) for d in a.descriptor)
