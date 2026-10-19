@@ -1878,7 +1878,7 @@ not spec-declared, and our `casus-omissies.rgs` supplies the attribute TAIL-FREE
 matching the written §9.9 reference form. Every one of the former ten
 scoreboard markers reduced to exactly these unresolved references — the distribution/aggregation/compound
 machinery lowers and fires as soon as they bind (empirically isolated per rule). Reconciliation:
-`examples/toka-reconciliatie/casus-omissies.rgs` supplements precisely these members via the casus's own
+`examples/toka-reconciliation/casus-omissies.rgs` supplements precisely these members via the casus's own
 Extensie construct. It deliberately lives OUTSIDE `examples/toka/` (which stays the faithful spec extraction
 that `make verify-corpus` parses); TokaDekkingTest and the TokaVuurTest end-to-end firing test load it
 additionally, while CasusTest deliberately keeps the pure extraction. Scoreboard effect: 19/29 → 28/29

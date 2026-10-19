@@ -135,7 +135,7 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   (`scripts/vocabulary_replay.py`): each case in the canonical spelling, in that of each vocabulary and mixed, each
   answer asked canonically and in each vocabulary, beside the pinned input vocabulary, an entry point's default
   vocabulary and `/info`, with the golden's `ir.json` as the table of names (2 cases pinned, at least 34 requests);
-  and an own witness (`scripts/twins/vocabulaire-dubbelzinnig.*`): a name that two vocabularies give to two
+  and an own witness (`scripts/twins/ambiguous-vocabulary.*`): a name that two vocabularies give to two
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
@@ -312,7 +312,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 Copied verbatim from the casus: the 47 definition fragments `examples/toka/*.rgs`, byte-identical to uchar's
 `toka/casus/*.rgs`; they are not edited, so that the two stay in parity. Derived from the casus or this project's own
 work: the rest of `examples/toka*` (the README and the service descriptor `toka.service.json` in `examples/toka/`, the
-scenarios in `examples/toka-scenarios/`, the reconciliation in `examples/toka-reconciliatie/`), the decision-table
+scenarios in `examples/toka-scenarios/`, the reconciliation in `examples/toka-reconciliation/`), the decision-table
 examples `examples/beslistabel/spec12-*.rgs`, and the tests and test resources that load the casus.
 
 The RegelSpraak v2.3.0 specification itself is not in this repository; `NOTICE` says where it is published.

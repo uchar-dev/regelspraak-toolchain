@@ -42,7 +42,7 @@ COPY bin/regelspraak /app/bin/regelspraak
 # The served rule set: the TOKA rule files, the two model companions, and the self-contained marker source (used by
 # the fail-fast / --allow-markers gate of the kind smoke).
 COPY examples/toka/ /app/rules/toka/
-COPY examples/toka-reconciliatie/casus-omissies.rgs /app/rules/companions/casus-omissies.rgs
+COPY examples/toka-reconciliation/casus-omissies.rgs /app/rules/companions/casus-omissies.rgs
 COPY examples/toka-scenarios/scenario-model-extensie.rgs /app/rules/companions/scenario-model-extensie.rgs
 COPY docker/marker/ /app/rules/marker/
 

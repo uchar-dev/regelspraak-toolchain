@@ -20,7 +20,7 @@
 # canonieke spelling, in die van elk vocabulaire en gemengd, en vraagt zijn antwoord canoniek en in elk vocabulaire;
 # daarbij het vastgezette invoervocabulaire, de weigering van een andere spelling daaronder, het standaardvocabulaire
 # van een entrypoint en /info. De vertaaltafel is het ir.json van de golden. Gepind: het aantal cases (een gelijkheid,
-# 2) en een vloer op het aantal verzoeken. De getuige (scripts/twins/vocabulaire-dubbelzinnig.*, eigen materiaal):
+# 2) en een vloer op het aantal verzoeken. De getuige (scripts/twins/ambiguous-vocabulary.*, eigen materiaal):
 # een naam die in twee vocabulaires naar verschillende declaraties wijst, is een 400 die beide lezingen noemt; met het
 # invoervocabulaire vastgezet speelt hetzelfde verzoek; een onbekend vocabulaire is een 400 die de gedeclareerde noemt.
 set -u
@@ -76,10 +76,10 @@ done
 
 vg="${VOCABULARY_TWIN%%|*}"; vpin="${VOCABULARY_TWIN#*|}"
 [ -f "uchar/corpus/golden/$vg/source.rgs" ] || fail "vocabulairetweeling '$vg' heeft geen source.rgs in uchars corpus"
-witness=scripts/twins/vocabulaire-dubbelzinnig
+witness=scripts/twins/ambiguous-vocabulary
 output=$(python3 scripts/vocabulary_replay.py --corpus uchar/corpus/golden \
     --golden "$vg=scripts/twins/$vg.service.json" \
-    --witness "vocabulaire-dubbelzinnig=$witness.rgs,$witness.service.json,$witness.witness.json") \
+    --witness "ambiguous-vocabulary=$witness.rgs,$witness.service.json,$witness.witness.json") \
   || fail "de vocabulaire-driver faalde"
 echo "$output" | sed 's/^/  /'
 line=$(printf '%s\n' "$output" | awk -F'\t' -v g="$vg" '$1 == g')
@@ -89,7 +89,7 @@ vcases=$(printf '%s' "$line" | cut -f3); vrequests=$(printf '%s' "$line" | cut -
 [ "$vcases" -eq "$vpin" ] || fail "'$vg' speelde $vcases cases, gepind zijn er $vpin"
 [ "$vrequests" -ge "$EXPECTED_MIN_VOCABULARY_REQUESTS" ] \
   || fail "'$vg' deed $vrequests verzoeken, de vloer EXPECTED_MIN_VOCABULARY_REQUESTS is $EXPECTED_MIN_VOCABULARY_REQUESTS"
-line=$(printf '%s\n' "$output" | awk -F'\t' '$1 == "vocabulaire-dubbelzinnig"')
+line=$(printf '%s\n' "$output" | awk -F'\t' '$1 == "ambiguous-vocabulary"')
 [ -n "$line" ] || fail "de getuige kreeg geen uitkomst"
 [ "$(printf '%s' "$line" | cut -f2)" = PLAYED ] || fail "de getuige getuigt niet: $(printf '%s' "$line" | cut -f2-)"
 witnesses=$(printf '%s' "$line" | cut -f3)

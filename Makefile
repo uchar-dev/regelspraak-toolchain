@@ -104,7 +104,7 @@ csv-beslistabel:
 TOKA_MODEL_FOUNDATION := \
 	$(wildcard examples/toka/toka-0[1-9]-*.rgs) \
 	$(wildcard examples/toka/toka-1[0-6]-*.rgs) \
-	examples/toka-reconciliatie/casus-omissies.rgs \
+	examples/toka-reconciliation/casus-omissies.rgs \
 	examples/toka-scenarios/scenario-model-extensie.rgs
 FACTS_DIR := $(OUT_DIR)/facts
 facts:

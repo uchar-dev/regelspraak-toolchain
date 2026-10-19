@@ -33,6 +33,6 @@ examples/toka/*.rgs, byte-identical to uchar's toka/casus/*.rgs. Derived from
 the casus or this project's own work: the rest of examples/toka* (the README
 and the service descriptor toka.service.json in examples/toka/, the scenarios
 in examples/toka-scenarios/, the reconciliation in
-examples/toka-reconciliatie/), the decision-table examples
+examples/toka-reconciliation/), the decision-table examples
 examples/beslistabel/spec12-*.rgs, and the tests and test resources that load
 the casus.

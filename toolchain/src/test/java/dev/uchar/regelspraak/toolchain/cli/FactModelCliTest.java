@@ -54,7 +54,7 @@ class FactModelCliTest {
                     "toka-15-dagsoort-de-kerstdag-mv-kerstdagen",
                     "toka-16-tijdlijn-de-variabele-periode-van-3")
                     .map(n -> "examples/toka/" + n + ".rgs"),
-            Stream.of("examples/toka-reconciliatie/casus-omissies.rgs",
+            Stream.of("examples/toka-reconciliation/casus-omissies.rgs",
                     "examples/toka-scenarios/scenario-model-extensie.rgs"))
             .collect(Collectors.toList());
 

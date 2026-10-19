@@ -61,7 +61,7 @@ public final class TokaSource {
                   .sorted().forEach(sink::add);
             } catch (IOException e) { throw new UncheckedIOException(e); }
         }
-        sink.add(REPO.resolve("examples/toka-reconciliatie/casus-omissies.rgs"));
+        sink.add(REPO.resolve("examples/toka-reconciliation/casus-omissies.rgs"));
         sink.add(REPO.resolve("examples/toka-scenarios/scenario-model-extensie.rgs"));
         // served rule files toka-17..47 except the two quirk files that do not resolve (see the class javadoc)
         try (Stream<Path> st = Files.list(toka)) {

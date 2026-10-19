@@ -28,6 +28,6 @@ Copied verbatim from the casus: the 47 `.rgs` files in this directory,
 byte-identical to uchar's `toka/casus/*.rgs`; they are not edited, so that the
 two stay in parity. Derived from the casus or this project's own work: this
 README, the service descriptor `toka.service.json`, the scenarios in
-`../toka-scenarios/`, the reconciliation in `../toka-reconciliatie/`, the
+`../toka-scenarios/`, the reconciliation in `../toka-reconciliation/`, the
 decision-table examples `../beslistabel/spec12-*.rgs`, and the tests and test
 resources that load the casus.
