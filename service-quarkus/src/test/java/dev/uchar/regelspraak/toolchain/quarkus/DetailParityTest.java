@@ -82,7 +82,7 @@ class DetailParityTest {
                 CoreConfig.strict().withDetail(), cl));
         withoutDetail = pair(DecisionCore.assemble(BERGING_DESCRIPTOR, Map.of("berging.rgs", BERGING),
                 CoreConfig.strict(), cl));
-        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs"));
+        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/source.rgs"));
         vocabularies = pair(DecisionCore.assemble(VOCABULARY_DESCRIPTOR, Map.of("bron.rgs", source),
                 CoreConfig.strict().withDetail(), cl));
     }

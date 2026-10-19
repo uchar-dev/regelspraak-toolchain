@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Replay van een uchar-golden met vocabulaires door de JDK-dienst: elke spelling in, elk vocabulaire uit.
 
-Per golden (--golden <golden>=<descriptor>): de dienst start over de bron.rgs van de golden met de descriptor. Het
+Per golden (--golden <golden>=<descriptor>): de dienst start over de source.rgs van de golden met de descriptor. Het
 eerste entrypoint van de descriptor draagt geen standaardvocabulaire, het tweede wel. Elk casebestand wordt een
 verzoek in de canonieke spelling, in de spelling van elk vocabulaire van het document en in een gemengde spelling
 (per naam om en om canoniek en elk vocabulaire), en elk van die verzoeken vraagt zijn antwoord canoniek en in elk
@@ -250,7 +250,7 @@ def play_golden(golden, map_, descriptor_path):
     choices = [CANONICAL] + table.vocabularies
     spellings = [(k, (lambda k: lambda i: k)(k)) for k in choices] + [("gemengd", lambda i: choices[i % len(choices)])]
     requests = echo = 0
-    source = os.path.join(map_, "bron.rgs")
+    source = os.path.join(map_, "source.rgs")
     with tempfile.TemporaryDirectory(prefix="vocabulaire-replay-") as workdir:
         with dr.Service(descriptor_path, source, workdir) as service:
             def ask(pad_, query, body, place):

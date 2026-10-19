@@ -2,7 +2,7 @@
 """Replay van uchar-goldens door de JDK-dienst van deze distributie.
 
 Per golden: de dienst start op een vrije poort (bin/regelspraak serve ... --port 0) over de RegelSpraak-bron van de
-golden (bron.rgs) of, zonder bron, over het uchar-ir-v1-document zelf (ir.json); elk casebestand wordt een verzoek,
+golden (source.rgs) of, zonder bron, over het uchar-ir-v1-document zelf (ir.json); elk casebestand wordt een verzoek,
 het antwoord wordt vergeleken met de gepinde verwachtingen, zoals uchars replay (CaseRunner) vergelijkt: getallen op
 waarde, een enumeratie op genormaliseerde naam, een inconsistentie op regel en onderwerp. De descriptor maakt dit
 script zelf, of neemt hem aan (--descriptor): één entrypoint 'replay' dat alle vormen van het document draagt en
@@ -301,7 +301,7 @@ def play(golden, map_, descriptor_path=None):
         if not cases:
             return golden, "EXCLUDE", "geen casebestand"
         requests = [(name, request_body(c), c) for name, c in cases]
-        source = os.path.join(map_, "bron.rgs")
+        source = os.path.join(map_, "source.rgs")
         if not os.path.exists(source):
             source = os.path.join(map_, "ir.json")
         with tempfile.TemporaryDirectory(prefix="dienst-replay-") as workdir:

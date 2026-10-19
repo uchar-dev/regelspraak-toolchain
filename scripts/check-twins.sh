@@ -6,7 +6,7 @@
 # van hand geschreven uchar-goldens in het uitzonderingsdialect: hun basisregels met uitzonderingen worden
 # defaultsgroepen (uchars IR-SPEC ch. 7), een vorm die een build zonder de zijtafels van uchars lader stil weglaat.
 # Deze poort start per tweeling de JDK-dienst (bin/regelspraak serve, uit de jar die de reactor maakt, op een vrije
-# poort) over de bron.rgs van de golden met een handgeschreven descriptor (scripts/twins/), zoals een gebruiker
+# poort) over de source.rgs van de golden met een handgeschreven descriptor (scripts/twins/), zoals een gebruiker
 # de dienst inzet: benoemde entrypoints, een scope die de regels en de defaultsgroep bij naam noemt. Elk
 # casebestand wordt een verzoek; het antwoord moet elke gepinde verwachting geven (scripts/service_replay.py, dat de
 # dienst ook opruimt). Uitkomst per tweeling: PLAYED met het aantal cases, anders faalt de poort.
@@ -54,7 +54,7 @@ mvn -B -o -q -DskipTests package -pl service -am >"$log" 2>&1 \
 goldens=(); descriptors=()
 for t in "${TWINS[@]}"; do
   g="${t%%|*}"
-  [ -f "uchar/corpus/golden/$g/bron.rgs" ] || fail "tweeling '$g' heeft geen bron.rgs in uchars corpus"
+  [ -f "uchar/corpus/golden/$g/source.rgs" ] || fail "tweeling '$g' heeft geen source.rgs in uchars corpus"
   goldens+=("$g"); descriptors+=(--descriptor "$g=scripts/twins/$g.service.json")
 done
 
@@ -75,7 +75,7 @@ done
 [ "$total" -eq "$EXPECTED_CASES" ] || fail "$total cases gespeeld, EXPECTED_CASES pint $EXPECTED_CASES"
 
 vg="${VOCABULARY_TWIN%%|*}"; vpin="${VOCABULARY_TWIN#*|}"
-[ -f "uchar/corpus/golden/$vg/bron.rgs" ] || fail "vocabulairetweeling '$vg' heeft geen bron.rgs in uchars corpus"
+[ -f "uchar/corpus/golden/$vg/source.rgs" ] || fail "vocabulairetweeling '$vg' heeft geen source.rgs in uchars corpus"
 witness=scripts/twins/vocabulaire-dubbelzinnig
 output=$(python3 scripts/vocabulary_replay.py --corpus uchar/corpus/golden \
     --golden "$vg=scripts/twins/$vg.service.json" \

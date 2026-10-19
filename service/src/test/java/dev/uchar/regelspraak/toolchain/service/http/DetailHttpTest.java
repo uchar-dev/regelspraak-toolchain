@@ -112,7 +112,7 @@ class DetailHttpTest {
         withoutDetail = ServiceHttp.bind(DecisionCore.assemble(BERGING_DESCRIPTOR, Map.of("berging.rgs", BERGING),
                 CoreConfig.strict(), cl), "127.0.0.1", 0).start();
         strandmeldingSource = Files.readString(
-                TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-strandmelding/bron.rgs"));
+                TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-strandmelding/source.rgs"));
         strandmeldingKern = DecisionCore.assemble(STRANDMELDING_DESCRIPTOR, Map.of("bron.rgs", strandmeldingSource),
                 CoreConfig.strict().withDetail(), cl);
         strandmelding = ServiceHttp.bind(strandmeldingKern, "127.0.0.1", 0).start();

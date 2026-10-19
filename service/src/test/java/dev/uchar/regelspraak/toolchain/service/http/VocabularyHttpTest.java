@@ -59,7 +59,7 @@ class VocabularyHttpTest {
     @BeforeAll
     static void start() throws Exception {
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
-        golden = ServiceHttp.bind(DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", Files.readString(GOLDEN.resolve("bron.rgs"))),
+        golden = ServiceHttp.bind(DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", Files.readString(GOLDEN.resolve("source.rgs"))),
                 CoreConfig.strict(), cl), "127.0.0.1", 0).start();
         incomplete = ServiceHttp.bind(DecisionCore.assemble("""
                 { "service": {"name":"onvolledig","version":"1"}, "entrypoints": [ { "name":"premie","path":"premie",

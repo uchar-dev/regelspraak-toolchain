@@ -142,7 +142,7 @@ class PlaygroundScenarioDataTest {
      *  links name them by that place. */
     @Test
     void made_objects_and_links() throws IOException {
-        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-strandmelding/bron.rgs")) + """
+        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-strandmelding/source.rgs")) + """
 
             Scenario twee meldingen
             Gegeven is de volgende situatie:
@@ -179,7 +179,7 @@ class PlaygroundScenarioDataTest {
      *  inconsistency on its object, and the characteristics derived beside it. */
     @Test
     void inconsistencies_and_derived_characteristics() throws IOException {
-        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-opgave-bedrag/bron.rgs")) + """
+        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-opgave-bedrag/source.rgs")) + """
 
             Scenario opgave wijkt af
             Gegeven is de volgende situatie:
@@ -206,7 +206,7 @@ class PlaygroundScenarioDataTest {
      *  canonical choice no {@code …Canoniek} key appears. */
     @Test
     void vocabularies_and_names() throws IOException {
-        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs"))
+        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/source.rgs"))
                 + "\n" + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
         ObjectNode cgm = Playground.analyseer(source, "cgm");
         JsonNode voc = cgm.get("vocabularies");

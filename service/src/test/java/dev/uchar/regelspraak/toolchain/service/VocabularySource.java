@@ -65,7 +65,7 @@ final class VocabularySource {
 
     static String source() {
         try {
-            return Files.readString(GOLDEN.resolve("bron.rgs"));
+            return Files.readString(GOLDEN.resolve("source.rgs"));
         } catch (IOException e) {
             throw new UncheckedIOException(e);
         }

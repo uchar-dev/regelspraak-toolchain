@@ -39,7 +39,7 @@ class NoFixpointParityTest {
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true);
 
-    private static final Path RED = TokaSource.REPO.resolve("uchar/corpus/rood/jutterswet-budgetgrens-over");
+    private static final Path RED = TokaSource.REPO.resolve("uchar/corpus/red/jutterswet-budgetgrens-over");
     private static final String DESCRIPTOR = """
             { "service": {"name":"estafette","version":"1"},
               "entrypoints": [ { "name":"estafette","path":"estafette",
@@ -57,7 +57,7 @@ class NoFixpointParityTest {
 
     @BeforeAll
     static void assemble() throws Exception {
-        core = DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", Files.readString(RED.resolve("bron.rgs"))),
+        core = DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", Files.readString(RED.resolve("source.rgs"))),
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
         service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
         fragment = MAPPER.readTree(Files.readString(RED.resolve("case1.json"))).at("/expectedFault/drools").asText();

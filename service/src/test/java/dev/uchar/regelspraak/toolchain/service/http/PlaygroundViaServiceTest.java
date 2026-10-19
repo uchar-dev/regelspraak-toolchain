@@ -269,7 +269,7 @@ class PlaygroundViaServiceTest {
     @Test
     void a_timeline_in_the_situation_is_a_marker() throws IOException {
         Path golden = TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-dagentelling-rgs");
-        String rgs = Files.readString(golden.resolve("bron.rgs"));
+        String rgs = Files.readString(golden.resolve("source.rgs"));
         DecisionCore core = DecisionCore.assemble(DAY_COUNT_DESCRIPTOR, Map.of("bron.rgs", rgs),
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
         String source = rgs + "\n" + Files.readString(golden.resolve("scenario.rgs"));

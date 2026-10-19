@@ -40,7 +40,7 @@ class PlaygroundVocabularyTest {
 
     @BeforeAll
     static void read() throws IOException {
-        SOURCE = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs"))
+        SOURCE = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/source.rgs"))
                 + "\n" + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
     }
 

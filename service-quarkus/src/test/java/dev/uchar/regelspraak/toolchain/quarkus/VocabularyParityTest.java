@@ -54,7 +54,7 @@ class VocabularyParityTest {
 
     @BeforeAll
     static void assemble() throws Exception {
-        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs"));
+        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/source.rgs"));
         core = DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", source), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader());
         service = ServiceHttp.bind(core, "127.0.0.1", 0).start();

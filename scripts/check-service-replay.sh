@@ -4,7 +4,7 @@
 # De set is die van uchars gate 12 (uchar/scripts/check-drools.sh): elke golden met een casebestand die niet in
 # EXPECTED_CHANNEL staat, EXPECTED_PLAYED stuks. Die goldens spelen in uchar door dezelfde facade die de dienst
 # gebruikt; hier gaan ze door de dienst zelf: per golden start de JDK-dienst (bin/regelspraak serve, uit de jar die
-# de reactor maakt, op een vrije poort) over de bron.rgs van de golden, of zonder bron over het uchar-ir-v1-document,
+# de reactor maakt, op een vrije poort) over de source.rgs van de golden, of zonder bron over het uchar-ir-v1-document,
 # met één entrypoint dat alle vormen draagt; elk casebestand wordt een verzoek en het antwoord moet elke gepinde
 # verwachting geven (scripts/service_replay.py). Zo toont de poort dat verzoekmapping, vuren en antwoord van de dienst
 # zeggen wat uchars replay zegt.

@@ -120,7 +120,7 @@ class PlaygroundRoleFactTypeTest {
     /** In a vocabulary the fact type goes by its designation there, the canonical name beside it. */
     @Test
     void in_a_vocabulary() throws IOException {
-        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs"))
+        String source = Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-vocabulaires/source.rgs"))
                 + "\n" + Files.readString(Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs"));
         JsonNode cgm = role(Playground.analyseer(source, "cgm").at("/scenario/results/0/situation"), "V1", "AANMELDER");
         assertEquals("VONDST_AANMELDING", cgm.get("factType").asText(), cgm.toString());
@@ -144,7 +144,7 @@ class PlaygroundRoleFactTypeTest {
         int roles = 0;
         List<String> errors = new ArrayList<>();
         for (Path m : directories) {
-            String source = Files.readString(m.resolve("bron.rgs")) + "\n" + Files.readString(m.resolve("scenario.rgs"));
+            String source = Files.readString(m.resolve("source.rgs")) + "\n" + Files.readString(m.resolve("scenario.rgs"));
             ObjectNode a = Playground.analyseer(source);
             JsonNode results = a.at("/scenario/results");
             if (results.isEmpty()) {

@@ -227,7 +227,7 @@ class PlaygroundGeneratedFromTest {
     @Test void every_golden_has_per_element_a_declaration_or_an_origin() throws IOException {
         List<Path> sources;
         try (Stream<Path> s = Files.list(TokaSource.REPO.resolve("uchar/corpus/golden"))) {
-            sources = s.map(p -> p.resolve("bron.rgs")).filter(Files::isRegularFile).sorted().toList();
+            sources = s.map(p -> p.resolve("source.rgs")).filter(Files::isRegularFile).sorted().toList();
         }
         List<String> errors = new ArrayList<>();
         int elements = 0, generated = 0, built = 0, stacks = 0;

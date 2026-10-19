@@ -39,7 +39,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class NoFixpointTest {
 
-    private static final Path RED = TokaSource.REPO.resolve("uchar/corpus/rood/jutterswet-budgetgrens-over");
+    private static final Path RED = TokaSource.REPO.resolve("uchar/corpus/red/jutterswet-budgetgrens-over");
     private static final String DESCRIPTOR = """
             { "service": {"name":"estafette","version":"1"},
               "entrypoints": [ { "name":"estafette","path":"estafette",
@@ -68,7 +68,7 @@ class NoFixpointTest {
 
     @BeforeAll
     static void start() throws IOException {
-        source = Files.readString(RED.resolve("bron.rgs"));
+        source = Files.readString(RED.resolve("source.rgs"));
         fragment = ServiceHttp.MAPPER.readTree(Files.readString(RED.resolve("case1.json")))
                 .at("/expectedFault/drools").asText();
         assertTrue(fragment.startsWith("creation budget exhausted: "), fragment);

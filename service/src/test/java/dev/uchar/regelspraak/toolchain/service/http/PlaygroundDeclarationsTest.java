@@ -205,7 +205,7 @@ class PlaygroundDeclarationsTest {
                 Designatable.Kind.REGELGROEP);
         List<Path> sources;
         try (Stream<Path> s = Files.list(TokaSource.REPO.resolve("uchar/corpus/golden"))) {
-            sources = s.map(p -> p.resolve("bron.rgs")).filter(Files::isRegularFile).sorted().toList();
+            sources = s.map(p -> p.resolve("source.rgs")).filter(Files::isRegularFile).sorted().toList();
         }
         assertTrue(sources.size() > 100, "het corpus telt " + sources.size() + " bronnen");
         int linked = 0;
@@ -245,7 +245,7 @@ class PlaygroundDeclarationsTest {
     // ---------------- helpers ----------------
 
     private static String golden(String name) throws IOException {
-        return Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/" + name + "/bron.rgs"));
+        return Files.readString(TokaSource.REPO.resolve("uchar/corpus/golden/" + name + "/source.rgs"));
     }
 
     /** The 1-based line of {@code source} that begins, after its indentation, with {@code begin}. */

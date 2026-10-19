@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 class VocabularyScenarioTest {
 
-    private static final Path SOURCE = Path.of("../uchar/corpus/golden/jutterswet-vocabulaires/bron.rgs");
+    private static final Path SOURCE = Path.of("../uchar/corpus/golden/jutterswet-vocabulaires/source.rgs");
     private static final Path SCENARIO = Path.of("src/test/resources/vocabularies/jutterswet-vocabulaires.scenario.rgs");
 
     private static String document() throws IOException {
