@@ -59,7 +59,8 @@ model declares) and the sentences of the messages, which keep their text. The ol
   `vocabulaire`, `parametersets` are `service`, `name`, `path`, `input`, `output`, `ruleNames`, `ruleGroups`,
   `vocabulary`, `parameterSets` (the file is `<name>.service.json`); the schemas `Verzoek`, `Antwoord`, `Fout`,
   `Evaluatiefout`, `GeenFixpunt`, `Dekking`, `Fixpunt` are `Request`, `Answer`, `Error`, `EvaluationFault`,
-  `NoFixpoint`, `Coverage`, `Fixpoint`.
+  `NoFixpoint`, `Coverage`, `Fixpoint`; the OpenAPI extensions `x-spellingen` and `x-waardespellingen` are
+  `x-spellings` and `x-valueSpellings`.
 - **Parameter-set sidecar** (`<name>.parameters.json`, named by the descriptor's `parameterSets`, read by
   `ParameterSetLoader`): `parametersets`, `naam`, `waarden`, `waarde`, `vanaf`, `tot`, `eenheid` are `parameterSets`,
   `name`, `values`, `value`, `from`, `to`, `unit`. A sidecar in the old shape is refused with the message that
@@ -226,7 +227,7 @@ rules are written and computed in the canonical names. The distribution uses the
   is complete and which declarations have none.
 - **One OpenAPI document per vocabulary.** `OpenApiEmitter.emit(descriptor, model, vocabulary)` writes the contract
   in the names of one vocabulary (or canonically); each property, value and entry point lists its other spellings in
-  `x-spellingen` / `x-waardespellingen`, which the service accepts as well. A model without vocabularies gets the
+  `x-spellings` / `x-valueSpellings`, which the service accepts as well. A model without vocabularies gets the
   document it always had.
 - **A designation is part of the contract.** Changing a designation changes the names a consumer of that vocabulary
   sends and receives; treat it as a contract change of the service.

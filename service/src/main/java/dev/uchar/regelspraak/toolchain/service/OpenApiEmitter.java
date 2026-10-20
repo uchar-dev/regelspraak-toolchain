@@ -52,8 +52,8 @@ import java.util.List;
  * vocabulary the model declares, or of the canonical names: the object types, properties, enumeration values and
  * selectors go by their names in it ({@link Naming}). The service reads every other spelling too
  * ({@link NameReader}), so for a model with vocabularies each object type, property and entry point lists its other
- * spellings — the canonical one and those of the other vocabularies — in {@code x-spellingen}, each enumeration its
- * values' in {@code x-waardespellingen}, and says in its description that the service accepts them; the operations
+ * spellings — the canonical one and those of the other vocabularies — in {@code x-spellings}, each enumeration its
+ * values' in {@code x-valueSpellings}, and says in its description that the service accepts them; the operations
  * document the query parameters {@code vocabulaire} and {@code inputVocabulary}, and the info block names the
  * document's vocabulary in {@code x-vocabulaire}. A model without vocabularies gets none of this, so its document is
  * the one it always was.
@@ -378,7 +378,7 @@ public final class OpenApiEmitter {
         return schema;
     }
 
-    /** {@code node} lists {@code spellings} in {@code x-spellingen}, and its description says the service accepts
+    /** {@code node} lists {@code spellings} in {@code x-spellings}, and its description says the service accepts
      *  them (a description of its own is kept in front). */
     private static void spellings(ObjectNode node, ObjectNode spellings) {
         String sentence = Spellings.sentence(spellings);
@@ -401,7 +401,7 @@ public final class OpenApiEmitter {
 
     /** Map a scalar attribuut's datatype onto its JSON-schema fragment, documenting an eenheid via
      *  {@code x-eenheid} + a description mention; an enumeration's values in the document's names, and for a model
-     *  with vocabularies their other spellings in {@code x-waardespellingen}. */
+     *  with vocabularies their other spellings in {@code x-valueSpellings}. */
     private static ObjectNode attributeSchema(Datatype dt, Spellings sp) {
         ObjectNode s = NF.objectNode();
         Unit unit = null;

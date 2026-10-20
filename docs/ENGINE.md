@@ -187,8 +187,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   complete.
 - The OpenAPI contract (`OpenApiEmitter`) is written per vocabulary: `emit(descriptor, model, vocabulary)` names the
   object types, properties, enumeration values and selectors in that vocabulary (null or `canonical`: canonically). For
-  a model with vocabularies every object type, property and entry point lists its other spellings in `x-spellingen`,
-  every enumeration its values' in `x-waardespellingen`, the descriptions say the service accepts them, the
+  a model with vocabularies every object type, property and entry point lists its other spellings in `x-spellings`,
+  every enumeration its values' in `x-valueSpellings`, the descriptions say the service accepts them, the
   operations document `vocabulary` and `inputVocabulary`, and `info.x-vocabulary` names the document's
   vocabulary. A model without vocabularies gets none of it. Every operation documents the flags `explanation`, `trace`,
   `coverage` and `fixpoint`; `Answer` has the fields they add, `EvaluationFault` those of the detail, with the
