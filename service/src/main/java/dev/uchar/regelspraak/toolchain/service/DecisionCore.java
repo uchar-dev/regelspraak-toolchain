@@ -85,12 +85,17 @@ public final class DecisionCore {
     /** The {@code uchar-ir-v1} document of the source: the one the service was given, or, for {@code .rgs} sources,
      *  the one uchar's emitter writes of the model, emitted on the first ask ({@link #document()}). */
     private volatile String document;
+    /** The walk over roles of a read of {@link #model}, which the explanation reads an operand along: on the read of a
+     *  model the frontend resolved, beside it in the loader's table for a model read from a document. */
+    private final Verbaliser.Walks walks;
 
     private DecisionCore(ServiceDescriptor descriptor, RegelSpraakModel model,
                           Map<String, Entrypoint> perPath, List<ParameterSet> parameterSets,
-                          List<String> periodWarnings, boolean detail, FormIndex forms, String document) {
+                          List<String> periodWarnings, boolean detail, FormIndex forms, String document,
+                          Verbaliser.Walks walks) {
         this.descriptor = descriptor;
         this.model = model;
+        this.walks = walks;
         this.perPath = perPath;
         this.parameterSets = parameterSets;
         this.periodWarnings = periodWarnings;
@@ -256,7 +261,8 @@ public final class DecisionCore {
         List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
         List<String> warnings = periodWarnings(model, sets);
 
-        return new DecisionCore(descriptor, model, perPath, sets, warnings, config.detail(), forms, null);
+        return new DecisionCore(descriptor, model, perPath, sets, warnings, config.detail(), forms, null,
+                Verbaliser.Walks.written(model));
     }
 
     /**
@@ -326,7 +332,8 @@ public final class DecisionCore {
             throw new ServiceError("dienst start niet: uchar draagt een entrypoint niet", markerErrors);
         List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
         return new DecisionCore(descriptor, model, perPath, sets, periodWarnings(model, sets), config.detail(),
-                forms, documentJson);
+                forms, documentJson,
+                (subject, read) -> loaded.navigationBindings().getOrDefault(read, List.of()));
     }
 
     private static ServiceDescriptor readDescriptor(String descriptorJson) {
@@ -724,7 +731,7 @@ public final class DecisionCore {
         globals.putAll(setGlobals);
         globals.putAll(mr.world().globals());
         if (mr.world().evaluationDate() != null) globals.put("rekendatum", mr.world().evaluationDate());
-        List<String> sentences = new Verbaliser(model, globals, naming)
+        List<String> sentences = new Verbaliser(model, globals, naming, walks)
                 .verbalise(outcome.beans(), mr.typePerLabel());
         var arr = answer.putArray("explanation");
         for (String sentence : sentences) arr.add(sentence);

@@ -194,7 +194,9 @@ make scenario-test                              # the golden TOKA scenario set
 A scenario document runs through uchar's scenario layer: uchar resolves it, lowers the scenarios to case files,
 and uchar's replay reports each one. With `--explanation` (`FILE="--explanation a.rgs"`) each played scenario also gets the
 explanation of its outcome: it is played once more, in a session of its own on the same build, through uchar's entry
-with the input as the replay puts it in, and the verbaliser explains the beans with their derived values; the
+with the input as the replay puts it in, and the verbaliser explains the beans with their derived values. An operand
+that reads over a role is read on the object uchar's walk of the read reaches (`DroolsBackend.reached`), here and in the
+service's `?explanation=true`; where that object or its value is absent, the operand stands as "(onbekend)". The
 explanation is withheld, with the difference, when that session did not fire what uchar's replay reported, counted
 per form of the document as the replay counts it. uchar's scenario resolver refuses three of the 29 golden TOKA
 scenarios (listed with their reasons in `scripts/toka-manifest-exclusions.txt`).

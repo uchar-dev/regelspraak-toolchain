@@ -161,7 +161,8 @@ public final class ScenarioRunner {
     /** The explanation of report {@code r}, whose case is {@code c}: the case played in a session of its own on
      *  {@code build}, checked against what uchar's replay reported, then verbalised in {@code vocabulaire}. The build's
      *  model is the one uchar's loader read from the IR document; the document carries uchar's table of origins
-     *  (IR-SPEC ch. 2.13), so that model tells the rules uchar wrote. */
+     *  (IR-SPEC ch. 2.13), so that model tells the rules uchar wrote. A read of that model carries its walk over roles
+     *  beside it, in the build ({@code TmsTranspiler.navigationBindings}), not on it. */
     private static Explained explanation(DroolsBackend.Build build, ScenarioResult r, JsonNode c, String vocabulary) {
         if (r.status() == ScenarioResult.Status.MARKER) return new Explained(r, List.of(), null, null, null);
         if (r.expectations().isEmpty() && r.status() == ScenarioResult.Status.FAIL)
@@ -187,7 +188,8 @@ public final class ScenarioRunner {
         String difference = valueDifference(session, r, c);
         if (difference != null) return new Explained(r, List.of(), difference, null, difference);
         return new Explained(r, new Verbaliser(build.model(), session.globals(),
-                Naming.of(build.model(), vocabulary))
+                Naming.of(build.model(), vocabulary),
+                (subject, read) -> build.execModelTranspiler().navigationBindings(read))
                 .verbalise(session.beans(), session.typePerLabel()), null, session, null);
     }
 
