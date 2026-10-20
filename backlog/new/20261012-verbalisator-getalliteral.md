@@ -38,11 +38,11 @@ De uitleg:
 Verwacht: "… (60,00 EUR) is groter dan 30,00 EUR".
 - Op de oude pin (uchar `0a378588`) en de nieuwe (`b536bbc9`) is de uitvoer gelijk. Het is dus geen gevolg van de
   pinbump.
-- `Verbalisator.parseGetal` (`toolchain/src/main/java/dev/uchar/regelspraak/toolchain/engine/Verbalisator.java`
+- `Verbaliser.parseNumber` (`toolchain/src/main/java/dev/uchar/regelspraak/toolchain/engine/Verbaliser.java`
   r. 314–318) leest de tekst van de literal als Nederlandse notatie: een punt is een duizendtal, een komma een decimaal.
   Het model draagt "30.00", en dat wordt 3000. De eenheid verschijnt in kleine letters ("eur").
 - Een afgeleide waarde met eenheid verschijnt zonder eenheid ("(60,00)", "(400)"), terwijl een invoerattribuut met
-  eenheid km wel "(200 km)" geeft (`VerbalisatorTest`).
+  eenheid km wel "(200 km)" geeft (`VerbaliserTest`).
 
 ## Wat er gebeurt
 
@@ -57,4 +57,4 @@ waarde weer met de eenheid zoals de declaratie die schrijft.
 
 ## Omvang
 
-Klein. May touch: `toolchain/src/main/java/dev/uchar/regelspraak/toolchain/engine/Verbalisator.java` en zijn tests.
+Klein. May touch: `toolchain/src/main/java/dev/uchar/regelspraak/toolchain/engine/Verbaliser.java` en zijn tests.

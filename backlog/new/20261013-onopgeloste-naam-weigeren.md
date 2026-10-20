@@ -12,7 +12,7 @@ minderjarig" hoort.
   (MARKER), en `serve` startte niet in strikte modus.
 - **Sinds die pin** draagt de tak met truth maintenance de regel en faalt die pas bij de evaluatie (WF-044), net als
   ref. `check` geeft exit 0 met een WARNING, de dienst start, en elk verzoek dat de regel bereikt, krijgt een 422
-  `REKENFOUT`. Een tikfout in een regel merkt de afnemer zo pas bij een verzoek.
+  `COMPUTE_FAULT`. Een tikfout in een regel merkt de afnemer zo pas bij een verzoek.
 
 ## Wat er gebeurt
 
@@ -30,10 +30,10 @@ Dit is een poort van de distributie.
 
 - (a) Rood eerst: `check` en `serve` op een bron met de een-vorm hierboven, en op een IR-document met een
   `Unresolved`-knoop. Eerst exit 0 en een start, daarna een weigering met de naam.
-- (b) De getuige in `ScenarioOrakelTest` die de fout bij de evaluatie pint (sinds `ac4c3ac`), en de docs, volgen.
+- (b) De getuige in `ScenarioOracleTest` die de fout bij de evaluatie pint (sinds `ac4c3ac`), en de docs, volgen.
 - (c) `make gates` groen.
 
 ## Omvang
 
-Klein. May touch: `toolchain/` (CLI `check`, `UcharBouw` of een eigen IR-toets), `service/` (de start van de dienst),
+Klein. May touch: `toolchain/` (CLI `check`, `UcharBuild` of een eigen IR-toets), `service/` (de start van de dienst),
 `service-quarkus/` voor de start, de tests, `README.md` en `docs/ENGINE.md`.
