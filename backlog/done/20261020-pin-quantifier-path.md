@@ -26,3 +26,16 @@ het regelset-interne feittype `startperiode` uit de v2-regelset te halen (haar s
 ## Omvang
 
 May touch: de pin, `scripts/check-service-replay.sh` (pins), de kaart.
+
+## Result (2026-10-20)
+
+- Pin `78bae4e3` → `d9c0b9a5` (`644a47dd`); `make check-pin` groen.
+- De replay-poort telde 231 spelers tegen de pin 230: de set van uchars gate 12 groeide van 260 naar 261 met
+  `jutterswet-dringende-melding`, en die golden speelt ook door de dienst (de lijst van uitgesloten goldens sloeg niet
+  aan). `EXPECTED_REPLAY_PLAYED` naar 231, met reden (`526c88d5`). `jutterswet-ketenkwantor` speelt in uchar nog niet
+  (gate 12 pint haar nu op DROOLS-067) en zit dus niet in de set.
+- Geen andere verschuiving: reactor 1632/143/334/53 tests (gelijk aan de vorige pin), tweelingen, manifest en image
+  ongewijzigd.
+- `make gates` met `TAG=pin-quantifier-path CLUSTER=pin-quantifier-path` op `526c88d5`: groen, 7 stappen in 9m08s
+  (pin, reactor 5m49s, tweelingen, replay 231 goldens en 610 cases, manifest 29 ok en 3 uitgesloten, image, kind-smoke
+  H2/H3/H4 PASS). Cluster weg na de run; de images met deze tag daarna verwijderd.
