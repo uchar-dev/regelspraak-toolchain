@@ -99,7 +99,9 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # van uchars kaart zero-division-channel die Drools speelt (division-by-numeric-zero, division-abs-by-numeric-zero,
 # filled-count-unguarded-division, at-most-reads-until-settled en fold-filter-divides-by-zero); alle vijf spelen ze
 # door de dienst. De zesde, closed-runtime-division-by-zero, vouwt over een lijstparameter en staat niet in de set.
-EXPECTED_REPLAY_PLAYED=230
+# 2026-10-20, uchar's card `frontend-kwantor-over-een-pad` (pin-quantifier-path): 231 — de set van gate 12 groeit van
+# 260 naar 261 met jutterswet-dringende-melding, een kwantor over een pad in vijf vormen; zij speelt ook door de dienst.
+EXPECTED_REPLAY_PLAYED=231
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
