@@ -93,11 +93,11 @@ import java.util.regex.Pattern;
  * {@code Uitzondering op} en {@code Afwijking van} daar gelijk vast, en een geneste variant met de keten van haar
  * lagen.
  *
- * <p><b>Bronverwijzing.</b> Kaart-fase (1) vroeg de {@code // Bron:}-commentaren uit de {@code .rgs} mee de IR in
- * te tillen als optionele regelbron-annotatie. In de huidige grammatica geldt
- * {@code LINE_COMMENT : '//' ~[\r\n]* -> skip} — commentaren worden weggegooid, niet naar een hidden channel
- * gerouteerd — dus de annotatie is er vandaag NIET. De verbalisator is daar eerlijk over: hij drukt een
- * bronverwijzing af zodra {@link ResolvedRule} er een draagt en laat de regel anders weg (geen verzonnen bron).
+ * <p><b>Bronverwijzing.</b> Een regel draagt de {@code // Bron:}-annotaties die direct boven haar kop staan
+ * ({@link ResolvedRule#statuteAnnotations}; op de draad {@code statuteAnnotations}, uchars IR-SPEC ch. 3.1, WF-082),
+ * een default de zijne in {@code Default.source}. De zin van een kenmerktoekenning eindigt dan met ". Grondslag:
+ * <tekst>", die van een defaults-groep met de bron van de variant die besliste; zonder annotatie staat er geen
+ * (geen verzonnen bron).
  */
 public final class Verbaliser {
 
@@ -682,7 +682,7 @@ public final class Verbaliser {
         }
 
         /** De grondslag van de beslisser: de bron die het IR haar geeft. Een default die de opgavemarkering maakte,
-         *  draagt in zijn bron zijn naam, en een regel draagt in het model geen bron. */
+         *  draagt in zijn bron zijn naam; een regel draagt haar bron in haar annotaties. */
         private String groundOf(Variant v) {
             if (v.rule() != null) return sourceReference(v.rule());
             if (generatedOpgave(v)) return null;
@@ -1150,12 +1150,15 @@ public final class Verbaliser {
         return null;
     }
 
-    /** De bronverwijzing van een regel wanneer de IR er een draagt als optionele regelbron-annotatie; anders null
-     *  (de grammatica gooit {@code // Bron:}-commentaren vandaag weg — zie de klasse-javadoc). Het model draagt de
-     *  annotatie nog niet, dus dit levert vandaag altijd null; de haak zit klaar zodra de annotatie mee de IR in
-     *  komt. */
-    private String sourceReference(ResolvedRule r) {
-        return null;
+    /** De bronverwijzing van een regel: haar niet-lege {@code // Bron:}-annotaties in bronvolgorde, verbonden met
+     *  "; ", zoals uchars frontend de annotaties van een defaults-blok in {@code Default.source} schrijft; null
+     *  zonder annotatie. Een lege annotatie valt weg omdat het model van de frontend haar houdt en de draad niet
+     *  (WF-082): zo geven de route uit bronnen en die uit een IR-document dezelfde tekst. */
+    private static String sourceReference(ResolvedRule r) {
+        List<String> filled = Objects.requireNonNull(r.statuteAnnotations(),
+                        () -> "de regel '" + r.name() + "' draagt geen lijst van bronannotaties")
+                .stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
+        return filled.isEmpty() ? null : String.join("; ", filled);
     }
 
     /** Toon de opgeloste globals in modeldeclaratie-volgorde als bijlage-context (parameters + rekendatum),
