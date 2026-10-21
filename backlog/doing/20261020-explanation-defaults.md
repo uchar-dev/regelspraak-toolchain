@@ -492,3 +492,180 @@ uitlegzinnen; deel T1 van `werk/defaults-decider/fable-advies.md` §6. Commit `0
   1636/145/340/53; skip-pin PASS. `make gates` en de v2-meting niet gedraaid: die volgen na de pin-bump van
   `undecided-stack-record`. Op v2 zullen de zinnen van kenmerktoekenningen met een `// Bron:` de Grondslag krijgen; dat
   is nog niet gemeten.
+
+### Aanvulling, pin `26a2fb85` (2026-10-21)
+
+De laatste stap van de kaart: de pin op uchar-kaart `undecided-stack-record`, de uitleg bij een stapel waarop niemand
+besliste, het bewijs op v2 en `make gates`. Tak `card/explanation-defaults`, ongemerged en ongepusht.
+
+- `30800c0b` de pin op uchar `26a2fb85`.
+- `80644b32` de uitleg zonder besluit uit de `rootChains`, met de aangepaste overervingstests.
+- deze aanvulling, in de commit na `80644b32`.
+
+#### De pin
+
+uchar `36d57244` → `26a2fb85`, main, de landing van uchar-kaart `undecided-stack-record`
+(`backlog/done/20261021-undecided-stack-record.md` in uchar): `decisionsOf` geeft voor elk object van de sessie en elke
+stapel van zijn type een record, ook zonder beslisser en zonder conflict, en dan met de `rootChains` van de stapel; de
+lowering en de semantiek bleven gelijk. `make check-pin` groen.
+
+Wat de pin alleen verschuift (`werk/defaults-decider/tc-logs/verify-pin-2.log`, en `tc-logs/red-4.log` met
+`-Dmaven.test.failure.ignore=true`, zodat ook de dienst draait): de uchar-backend 1636 tests, groen en evenveel als op
+`36d57244`; de toolchain 147 tests met 2 fouten, de dienst 344 met 5, Quarkus 53 groen. Alle zeven zijn dezelfde
+`NullPointerException` in `Verbaliser$DefaultsExplanation.decided` (`d.decider().pointer()`): `ExplanationDefaultsTest`
+(2), `ExplanationDefaultsServiceTest` (de penning en de overerving, uit bronnen en uit een document: 4) en
+`PlaygroundRoleFactTypeTest.every_scenario_golden`, dat elke scenario-golden van uchar met uitleg door de playground
+speelt. De reden: tot de pin betekende een ontbrekend record "niemand besliste", sinds de pin is dat een record zonder
+beslisser, en de Verbalisator las daar een beslisser. De replay-poort en de tweelingen vragen geen uitleg
+(`scripts/check-service-replay.sh` en `scripts/check-twins.sh` noemen `explanation` niet) en uchar veranderde geen
+uitkomst (gate 12 van uchar speelt 261, ongewijzigd); in `make gates` hieronder staan ze gelijk aan de vorige run.
+
+#### Wat er veranderde
+
+`Verbaliser.DefaultsExplanation` (`toolchain/.../engine/Verbaliser.java`):
+
+- **Elke stapel komt uit `decisionsOf`.** `sentences` geeft per record van het object één zin: een conflict, een besluit,
+  of, zonder beslisser en zonder conflict, "geen variant besliste". Het document geeft alleen de volgorde van de zinnen,
+  zoals voorheen die van de eerste groep die het doel op de typeketen van het object schrijft. Nieuw en luid: een groep
+  op de typeketen van het object zonder record over haar doel ("de motor gaf geen beslissing over '…' van …, en het
+  document heeft voor … een defaults-groep op dat lid: elk object van de sessie heeft er één per stapel van zijn type").
+  De twee bestaande controles blijven (een record over een lid zonder groep, twee records over één lid); de eerste zegt
+  nu "de motor gaf een beslissing over" in plaats van "de motor besliste over", want een record is geen besluit meer.
+- **De zin zonder besluit.** `undecided(d)` neemt de varianten en hun volgorde uit `d.rootChains()`, legt elke pointer op
+  het document zoals bij een besluit (`variant`, `requireTarget`) en geeft per variant, de leden van een default vóór zijn
+  eigen inhoud (ch. 7.9), "gold niet, want …" of "gaf geen waarde", met de eigen evaluatie van voorheen. Een stapel
+  zonder varianten faalt luid. Weg: `composed(…)`, de afleiding van de stapel uit de groepen van het document en de zin
+  "welke varianten de stapel van een … samenstellen, geeft de motor zonder beslissing niet".
+- De javadoc van de klasse en van `verbalise(…, document, decisions)` zegt dat; drie ongebruikte imports zijn weg.
+
+Dienst, scenario-runner en `CaseSession` bleven gelijk: ze gaven de hele lijst van `decisionsOf` al door.
+
+**Aangepaste tests, met reden.** `ExplanationDefaultsTest.INHERITANCE_EXPECTED` en
+`ExplanationDefaultsServiceTest.INHERITANCE_EXPECTED` pinden voor W3, een erkend Wrakrecht waarop niemand beslist, de
+zin "W3 heeft geen uitkering, want geen variant besliste; welke varianten de stapel van een Wrakrecht samenstellen, geeft
+de motor zonder beslissing niet". Die zin vervalt bewust (besluit van de eigenaar: zeg met wat het doel houdt, en per
+variant "gold niet, want …"). Nu: "W3 heeft geen uitkering, want geen variant besliste; 'betwiste uitkering' gold niet,
+want niet geldt: het onderwerp betwist is; de regel 'uitkering van een wrakrecht' gold niet, want niet geldt: het
+onderwerp gezonken is": de stapel van een Wrakrecht, zonder de geërfde basis 'uitkering', die niet meedoet. De javadoc
+bij de situatie zegt dat nu. Geen andere verwachting veranderde: de zinnen zonder besluit van J4, J5 en J6 (een stapel
+uit één type) komen letterlijk zo uit het record.
+
+**Rood eerst.** Op de pin-commit met alleen de nieuwe W3-verwachting (`tc-logs/red-4.log`) faalden de drie routes: de
+scenario-runner (2), de dienst uit bronnen en uit een IR-document (4), alle met de `NullPointerException` hierboven, en
+`PlaygroundRoleFactTypeTest`. Na de code groen: `mvn -B -o verify` (`tc-logs/verify-build-3.log`) 1636/147/344/53, gelijk
+aan de telling na T1, skip-pin PASS in de drie eigen modules (vloeren 120, 235 en 43); `PlaygroundRoleFactTypeTest` speelt
+elke scenario-golden van uchar zonder dat de nieuwe controle op een ontbrekend record afgaat.
+
+#### Bewijs op v2
+
+`werk/defaults-decider/bewijs.md`, sectie "Na T1 en undecided-stack-record", meting `na2/` (toolchain `80644b32`, uchar
+`26a2fb85`, 2026-10-21 13:53):
+
+- Het antwoord buiten de uitleg is in alle vijf verzoeken gelijk in `voor/`, `na/` en `na2/`.
+- Alle 81 oude zinnen (13, 14, 20, 13, 21) staan terug, in dezelfde volgorde; 30 letterlijk, en 51 letterlijk met
+  ". Grondslag: …" erachter (8, 8, 14, 8 en 13 per verzoek): de kenmerktoekenningen waarvan de regel een `// Bron:` draagt
+  (T1).
+- Van `na/` naar `na2/` veranderden alleen die 51 en de vier zinnen over de herlevingstermijn hieronder; per verzoek
+  evenveel zinnen (28, 31, 36, 28, 48) op dezelfde plaatsen. De 17 zinnen over de drie herlevingskenmerken zijn
+  letterlijk die van `na/`; `bewijs.md` geeft ze opnieuw letterlijk.
+- De vier zinnen over de herlevingstermijn van een RechtOpUitkeringWwBijOntslag waarop niemand besliste (een stapel uit
+  de basis op Recht op uitkering WW en de vijf blokken van `hww-13` op het subtype, ch. 7.10). Vóór, in `na/` vier keer
+  op het label na gelijk:
+  "R1 heeft geen herlevingstermijn, want geen variant besliste; welke varianten de stapel van een
+  RechtOpUitkeringWwBijOntslag samenstellen, geeft de motor zonder beslissing niet"
+  Na, letterlijk uit `na2/`:
+  - **inkomen, R1**: "R1 heeft geen herlevingstermijn, want geen variant besliste; 'resterende uitkeringsduur art. 21
+    lid 4' gold niet, want de voorwaarde "de aanvraag uitkering van het RechtOpUitkeringWwBijOntslag heeft de
+    werkzaamheden-als-politiek ambtsdrager" niet is vast te stellen; 'halve maand na de startperiode art. 8 lid 3'
+    (uitzondering op 'herkrijgingstermijn na de startperiode art. 8 lid 3' op 'herlevingstermijn art. 21 lid 3 en 5')
+    gold niet, want de voorwaarde "het aantal eindigingsgronden van het RechtOpUitkeringWwBijOntslag die aan de volgende
+    voorwaarde voldoen: zijn code reden beëindiging recht op uitkering ww is gelijk aan 'Omvang zelfstandig werk na
+    startperiode' is groter dan 0" niet is vast te stellen; 'herkrijgingstermijn na de startperiode art. 8 lid 3' gold
+    niet, want de voorwaarde "het aantal eindigingsgronden van het RechtOpUitkeringWwBijOntslag die aan de volgende
+    voorwaarde voldoen: zijn code reden beëindiging recht op uitkering ww is gelijk aan 'Omvang zelfstandig werk na
+    startperiode' is groter dan 0" niet is vast te stellen; 'halve maand na zelfstandig werk art. 8 lid 3' (uitzondering
+    op 'herkrijgingstermijn na zelfstandig werk art. 8 lid 3' op 'herlevingstermijn art. 21 lid 3 en 5') gold niet, want
+    niet geldt: de uitkeringsduur van de uitkeringsduur van het RechtOpUitkeringWwBijOntslag (onbekend) gevuld is;
+    'herkrijgingstermijn na zelfstandig werk art. 8 lid 3' gold niet, want niet geldt: de uitkeringsduur van de
+    uitkeringsduur van het RechtOpUitkeringWwBijOntslag (onbekend) gevuld is; de regel 'herlevingstermijn art. 21 lid 3
+    en 5' gold niet, want de voorwaarde "het aantal eindigingsgronden van het Recht op uitkering WW die aan de volgende
+    voorwaarde voldoen: hij heeft de zesmaandentermijn is groter dan 0" niet is vast te stellen"
+  - **intrekking, R1**: "R1 heeft geen herlevingstermijn, want geen variant besliste; 'resterende uitkeringsduur art. 21
+    lid 4' gold niet, want de voorwaarde "de aanvraag uitkering van het RechtOpUitkeringWwBijOntslag heeft de
+    werkzaamheden-als-politiek ambtsdrager" niet is vast te stellen; 'halve maand na de startperiode art. 8 lid 3'
+    (uitzondering op 'herkrijgingstermijn na de startperiode art. 8 lid 3' op 'herlevingstermijn art. 21 lid 3 en 5')
+    gold niet, want de voorwaarde "het aantal eindigingsgronden van het RechtOpUitkeringWwBijOntslag die aan de volgende
+    voorwaarde voldoen: zijn code reden beëindiging recht op uitkering ww is gelijk aan 'Omvang zelfstandig werk na
+    startperiode' is groter dan 0" niet is vast te stellen; 'herkrijgingstermijn na de startperiode art. 8 lid 3' gold
+    niet, want de voorwaarde "het aantal eindigingsgronden van het RechtOpUitkeringWwBijOntslag die aan de volgende
+    voorwaarde voldoen: zijn code reden beëindiging recht op uitkering ww is gelijk aan 'Omvang zelfstandig werk na
+    startperiode' is groter dan 0" niet is vast te stellen; 'halve maand na zelfstandig werk art. 8 lid 3' (uitzondering
+    op 'herkrijgingstermijn na zelfstandig werk art. 8 lid 3' op 'herlevingstermijn art. 21 lid 3 en 5') gold niet, want
+    niet geldt: de uitkeringsduur van de uitkeringsduur van het RechtOpUitkeringWwBijOntslag (onbekend) gevuld is;
+    'herkrijgingstermijn na zelfstandig werk art. 8 lid 3' gold niet, want niet geldt: de uitkeringsduur van de
+    uitkeringsduur van het RechtOpUitkeringWwBijOntslag (onbekend) gevuld is; de regel 'herlevingstermijn art. 21 lid 3
+    en 5' gold niet, want de voorwaarde "het aantal eindigingsgronden van het Recht op uitkering WW die aan de volgende
+    voorwaarde voldoen: hij heeft de zesmaandentermijn is groter dan 0" niet is vast te stellen"
+  - **restant, R1**: "R1 heeft geen herlevingstermijn, want geen variant besliste; 'resterende uitkeringsduur art. 21
+    lid 4' gold niet, want de voorwaarde "de aanvraag uitkering van het RechtOpUitkeringWwBijOntslag heeft de
+    werkzaamheden-als-politiek ambtsdrager" niet is vast te stellen; 'halve maand na de startperiode art. 8 lid 3'
+    (uitzondering op 'herkrijgingstermijn na de startperiode art. 8 lid 3' op 'herlevingstermijn art. 21 lid 3 en 5')
+    gold niet, want de voorwaarde "het aantal eindigingsgronden van het RechtOpUitkeringWwBijOntslag die aan de volgende
+    voorwaarde voldoen: zijn code reden beëindiging recht op uitkering ww is gelijk aan 'Omvang zelfstandig werk na
+    startperiode' is groter dan 0" niet is vast te stellen; 'herkrijgingstermijn na de startperiode art. 8 lid 3' gold
+    niet, want de voorwaarde "het aantal eindigingsgronden van het RechtOpUitkeringWwBijOntslag die aan de volgende
+    voorwaarde voldoen: zijn code reden beëindiging recht op uitkering ww is gelijk aan 'Omvang zelfstandig werk na
+    startperiode' is groter dan 0" niet is vast te stellen; 'halve maand na zelfstandig werk art. 8 lid 3' (uitzondering
+    op 'herkrijgingstermijn na zelfstandig werk art. 8 lid 3' op 'herlevingstermijn art. 21 lid 3 en 5') gold niet, want
+    niet geldt: de uitkeringsduur van de uitkeringsduur van het RechtOpUitkeringWwBijOntslag naar beneden afgerond op 0
+    decimalen (12 mnd) is kleiner dan de uitkeringsduur van de uitkeringsduur van het RechtOpUitkeringWwBijOntslag (12,0
+    mnd); 'herkrijgingstermijn na zelfstandig werk art. 8 lid 3' gaf geen waarde; de regel 'herlevingstermijn art. 21
+    lid 3 en 5' gold niet, want de voorwaarde "het aantal eindigingsgronden van het Recht op uitkering WW die aan de
+    volgende voorwaarde voldoen: hij heeft de zesmaandentermijn is groter dan 0" niet is vast te stellen"
+  - **restant, R2**: "R2 heeft geen herlevingstermijn, want geen variant besliste; 'resterende uitkeringsduur art. 21
+    lid 4' gold niet, want niet geldt: zijn beëindigingsdatum (onbekend) gevuld is; 'halve maand na de startperiode art.
+    8 lid 3' (uitzondering op 'herkrijgingstermijn na de startperiode art. 8 lid 3' op 'herlevingstermijn art. 21 lid 3
+    en 5') gold niet, want niet geldt: zijn beëindigingsdatum (onbekend) gevuld is; 'herkrijgingstermijn na de
+    startperiode art. 8 lid 3' gold niet, want niet geldt: zijn beëindigingsdatum (onbekend) gevuld is; 'halve maand na
+    zelfstandig werk art. 8 lid 3' (uitzondering op 'herkrijgingstermijn na zelfstandig werk art. 8 lid 3' op
+    'herlevingstermijn art. 21 lid 3 en 5') gold niet, want niet geldt: zijn beëindigingsdatum (onbekend) gevuld is;
+    'herkrijgingstermijn na zelfstandig werk art. 8 lid 3' gold niet, want niet geldt: zijn beëindigingsdatum (onbekend)
+    gevuld is; de regel 'herlevingstermijn art. 21 lid 3 en 5' gold niet, want niet geldt: zijn beëindigingsdatum
+    (onbekend) gevuld is"
+- Nagelezen tegen `v2/`: dezelfde varianten in dezelfde volgorde als de beslissende zinnen over die stapel in detentie en
+  herkrijging, de geërfde basis als laatste. In restant R1 gold `herkrijgingstermijn na zelfstandig werk`, maar gaf ze
+  geen waarde: haar herkrijgingsmaand leest een grond met code Omvang zelfstandig werk, en de grond van restant heeft
+  een andere code.
+
+#### make gates
+
+`TAG=explanation-defaults CLUSTER=explanation-defaults make gates` op `80644b32`
+(`werk/defaults-decider/tc-gates-2.log`): groen, 7 stappen in 9m44s.
+
+```
+gates: 1 pin        GROEN      0s  PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit; de versies zijn gelijk
+gates: 2 reactor    GROEN   6m11s  testgevallen per module 1636/147/344/53
+gates: 3 twins      GROEN      9s  3 tweelingen, 18 cases via HTTP met de gepinde verwachtingen; vocabulairetweeling jutterswet-vocabulaires: 2 cases in 34 verzoeken; getuige: 4 getuigenissen
+gates: 4 replay     GROEN   1m14s  231 goldens, 610 cases (pin 231)
+gates: 5 manifest   GROEN      1s  32 regels, 29 ok, 3 uitgesloten, 0 mismatch
+gates: 6 image      GROEN     49s  decision-service:explanation-defaults
+gates: 7 kind-smoke GROEN   1m20s  H2 PASS, H3 PASS, H4 PASS
+```
+
+Gelijk aan de run op `c43c6dc3` (`tc-gates-1.log`) op de tellingen na die T1 en deze kaart verschoven: de reactor
+1636/147/344/53 (was 1636/145/340/53; de zes tests van T1 erbij), de tweelingen, de replay-poort (231 goldens, 610
+cases, pin 231) en het manifest (29 ok, 3 uitgesloten) zijn gelijk. Het kind-cluster is na de run weg; de images
+`decision-service:explanation-defaults`, `-h4a` en `-h4b` staan nog in docker.
+
+#### Wat open bleef
+
+- **"Niet vast te stellen".** De reden waarom een variant niet besliste, komt nog uit de eigen evaluatie van de
+  Verbalisator; tellingen, "de laatste van", kwantoren en vergelijkingen over rollen zijn daar niet vast te stellen, ook
+  in de vier herlevingstermijnzinnen. De lezingen uit uchar zijn de uchar-kaarten `fixpoint-readings` (U2) en
+  `ref-trace-and-readings-gate` (U3), in `backlog/new/` van uchar.
+- **Het lidwoord van een bezittelijk kenmerk**, **de scenario-runner leest het document twee keer** en **de geldigheid
+  van een groep**: ongewijzigd, zoals in "Wat open bleef" hierboven.
+- **Uit de kaart, niet in deze kaart:** graaf en dekking tonen de groepen nog niet; leeg als 0 in een berekening rekent de
+  Verbalisator niet na.
+
+Het punt "Een samengestelde stapel zonder besluit" uit "Wat open bleef" hierboven is opgelost.
