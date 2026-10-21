@@ -148,9 +148,8 @@ EXPLANATION_UNDETERMINED=(
 )
 # Het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want " in de uitleg) over de gespeelde goldens: een
 # ondergrens, gemeten 2026-10-21 bij de kaart explanation-from-readings (1092 zinnen, 1241 voorwaarden over 231 goldens
-# en 610 cases); een leg die stilletjes minder uitlegt, faalt. Het antwoord met uitleg moet dat zonder zijn, met de
-# inconsistenties zonder volgorde vergeleken: de dienst noemt ze in de volgorde waarin de sessie haar feiten houdt, en
-# die ligt ook tussen twee verzoeken op dezelfde build niet vast.
+# en 610 cases); een leg die stilletjes minder uitlegt, faalt. Het antwoord met uitleg moet dat zonder zijn, ook in de
+# volgorde van de inconsistenties: het fixpunt geeft ze sinds uchar fixpoint-inconsistency-order in een vaste volgorde.
 EXPECTED_MIN_EXPLAINED_CONDITIONS=1241
 
 is_undetermined_listed() {

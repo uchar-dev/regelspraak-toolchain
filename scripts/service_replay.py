@@ -292,16 +292,6 @@ def read_json(text_):
     return json.loads(text_, parse_float=decimal.Decimal, parse_int=decimal.Decimal)
 
 
-def unordered(answer):
-    """Een antwoord met de inconsistenties gesorteerd: de dienst noemt ze in de volgorde waarin de sessie haar feiten
-    houdt, en die ligt niet vast, ook niet tussen twee verzoeken op dezelfde build."""
-    out = dict(answer)
-    for key in ("inconsistencies", "inconsistencyDetails"):
-        if isinstance(out.get(key), list):
-            out[key] = sorted(out[key], key=lambda x: json.dumps(x, sort_keys=True, default=str))
-    return out
-
-
 def first_difference(a, b, at):
     """De eerste plaats waar `a` en `b` verschillen, als JSON-pointer met beide waarden."""
     if isinstance(a, dict) and isinstance(b, dict):
@@ -325,9 +315,9 @@ def explained(service, path, request, answer, name):
     sentences = given.pop("explanation", None)
     if not isinstance(sentences, list):
         raise Deviation(f"{name}: het antwoord met uitleg draagt geen lijst 'explanation'")
-    if unordered(given) != unordered(answer):
+    if given != answer:
         raise Deviation(f"{name}: het antwoord met uitleg wijkt buiten de uitleg af van dat zonder, op "
-                        f"{first_difference(unordered(answer), unordered(given), '')}")
+                        f"{first_difference(answer, given, '')}")
     conditions = sum(z.count("omdat ") + z.count("want ") for z in sentences)
     undetermined = sum(z.count("niet is vast te stellen") for z in sentences)
     return len(sentences), conditions, undetermined
