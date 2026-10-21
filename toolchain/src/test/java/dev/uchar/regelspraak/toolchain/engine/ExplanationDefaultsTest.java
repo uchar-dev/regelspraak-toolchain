@@ -184,8 +184,9 @@ class ExplanationDefaultsTest {
                     indien hij gezonken is.
             """;
 
-    /** W3 is erkend, and the base that would give it 10 is not in its stack. Without a decision the engine gives no
-     *  stack, so the sentence names no variant rather than the inherited base, which did not take part. */
+    /** W3 is erkend, and the base that would give it 10 is not in its stack. No variant decides, and the engine's
+     *  record still names the stack in its order (its rootChains), so the sentence gives the reason of each variant
+     *  and does not name the inherited base, which did not take part. */
     private static final String INHERITANCE_SITUATION = """
 
             Scenario vier rechten
@@ -212,8 +213,9 @@ class ExplanationDefaultsTest {
                     + " is; 'betwiste uitkering' gold niet, want niet geldt: het onderwerp erkend is",
             "W2 heeft als uitkering 99 volgens 'betwiste uitkering', omdat het onderwerp erkend is en het onderwerp"
                     + " betwist is; verdrongen: de regel 'uitkering van een wrakrecht'",
-            "W3 heeft geen uitkering, want geen variant besliste; welke varianten de stapel van een Wrakrecht"
-                    + " samenstellen, geeft de motor zonder beslissing niet");
+            "W3 heeft geen uitkering, want geen variant besliste; 'betwiste uitkering' gold niet, want niet geldt:"
+                    + " het onderwerp betwist is; de regel 'uitkering van een wrakrecht' gold niet, want niet geldt:"
+                    + " het onderwerp gezonken is");
 
     @Test
     void every_defaults_group_gets_a_sentence_from_what_the_engine_decided() {

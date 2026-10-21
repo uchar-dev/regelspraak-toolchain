@@ -24,14 +24,11 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
-import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
-import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -86,12 +83,13 @@ import java.util.regex.Pattern;
  * besliste ({@link DroolsBackend#decisionsOf}): de variant die besliste, met haar voorwaarde zoals het IR haar
  * draagt (ch. 7.9 telt de voorwaarden van de omsluitende lagen erbij op); elke variant die vóór haar aan de beurt was
  * met de reden dat ze niet besliste; de varianten erna bij naam, als verdrongen. Beslist niemand, dan zegt de zin dat,
- * met wat het doel houdt; een conflict heet een conflict. Welke variant besliste, rekent de uitleg niet na: zij legt
- * de pointer van de motor op het document van de build ({@link Document}); alleen de reden waarom een variant niet
- * besliste komt uit de eigen evaluatie hieronder. Een variant heet naar haar blok ({@code Default.name}): de basis
- * als "de regel '…'", een variant op het eerste niveau bij haar naam alleen, want de draad legt
- * {@code Uitzondering op} en {@code Afwijking van} daar gelijk vast, en een geneste variant met de keten van haar
- * lagen.
+ * met wat het doel houdt en per variant van de stapel de reden dat ze niet besliste; een conflict heet een conflict.
+ * Elke stapel en haar varianten komen uit de motor, ook waar niemand besliste. Welke variant besliste, rekent de
+ * uitleg niet na: zij legt de pointer van de motor op het document van de build ({@link Document}); alleen de reden
+ * waarom een variant niet besliste komt uit de eigen evaluatie hieronder. Een variant heet naar haar blok
+ * ({@code Default.name}): de basis als "de regel '…'", een variant op het eerste niveau bij haar naam alleen, want de
+ * draad legt {@code Uitzondering op} en {@code Afwijking van} daar gelijk vast, en een geneste variant met de keten
+ * van haar lagen.
  *
  * <p><b>Bronverwijzing.</b> Een regel draagt de {@code // Bron:}-annotaties die direct boven haar kop staan
  * ({@link ResolvedRule#statuteAnnotations}; op de draad {@code statuteAnnotations}, uchars IR-SPEC ch. 3.1, WF-082),
@@ -172,8 +170,9 @@ public final class Verbaliser {
      * vóór of na de terugschrijving), op het document van de build gelegd ({@code document}). De groepen staan in de
      * volgorde van het document.
      *
-     * @throws IllegalStateException een pointer die niet op {@code document} terug te leggen is, of een beslissing over
-     *                               een lid waarvoor het type van het object geen groep heeft
+     * @throws IllegalStateException een pointer die niet op {@code document} terug te leggen is, een beslissing over
+     *                               een lid waarvoor het type van het object geen groep heeft, of een groep op de
+     *                               typeketen van het object zonder beslissing over haar doel
      */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
                                   Document document, List<DefaultsDecision> decisions) {
@@ -294,29 +293,31 @@ public final class Verbaliser {
         }
 
         void sentences(List<String> sink) {
-            // per doel één stapel (ch. 7.10: per concreet type en doel), in de volgorde van de eerste groep die het
-            // doel op de typeketen van het object schrijft
-            Map<String, List<PrioritizedDefaults>> perMember = new LinkedHashMap<>();
-            for (PrioritizedDefaults g : document.groups()) {
-                ObjectType subject = subjectOf(g);
-                if (type.isA(subject)) perMember.computeIfAbsent(g.target(), k -> new ArrayList<>()).add(g);
-            }
-            Map<String, DefaultsDecision> perDecided = new LinkedHashMap<>();
+            // Elke stapel komt uit decisionsOf: elk object van de sessie heeft per stapel van zijn type één record,
+            // ook waar niemand besliste (ch. 7.10: per concreet type en doel één stapel). Het document geeft alleen
+            // de volgorde, die van de eerste groep die het doel op de typeketen van het object schrijft.
+            List<String> members = new ArrayList<>();
+            for (PrioritizedDefaults g : document.groups())
+                if (type.isA(subjectOf(g)) && !members.contains(g.target())) members.add(g.target());
+            Map<String, DefaultsDecision> perMember = new LinkedHashMap<>();
             for (DefaultsDecision d : decisions) {
                 if (d.object() != bean) continue;
-                if (!perMember.containsKey(d.member()))
-                    throw new IllegalStateException("de motor besliste over '" + d.member() + "' van " + label
-                            + ", en het document heeft voor " + type.name + " geen defaults-groep op dat lid");
-                if (perDecided.put(d.member(), d) != null)
+                if (!members.contains(d.member()))
+                    throw new IllegalStateException("de motor gaf een beslissing over '" + d.member() + "' van "
+                            + label + ", en het document heeft voor " + type.name + " geen defaults-groep op dat lid");
+                if (perMember.put(d.member(), d) != null)
                     throw new IllegalStateException("de motor gaf twee beslissingen over '" + d.member() + "' van "
                             + label + ", waar één stapel er één geeft");
             }
-            for (Map.Entry<String, List<PrioritizedDefaults>> e : perMember.entrySet()) {
-                DefaultsDecision d = perDecided.get(e.getKey());
-                boolean characteristic = e.getValue().get(0).isCharacteristic();
-                if (d == null) sink.add(undecided(e.getKey(), characteristic, e.getValue()));
-                else if (d.conflict() != null) sink.add(conflicted(d));
-                else sink.add(decided(d));
+            for (String member : members) {
+                DefaultsDecision d = perMember.get(member);
+                if (d == null)
+                    throw new IllegalStateException("de motor gaf geen beslissing over '" + member + "' van " + label
+                            + ", en het document heeft voor " + type.name + " een defaults-groep op dat lid: elk"
+                            + " object van de sessie heeft er één per stapel van zijn type");
+                if (d.conflict() != null) sink.add(conflicted(d));
+                else if (d.decider() != null) sink.add(decided(d));
+                else sink.add(undecided(d));
             }
         }
 
@@ -373,41 +374,26 @@ public final class Verbaliser {
             return b.toString();
         }
 
-        private String undecided(String member, boolean characteristic, List<PrioritizedDefaults> groups) {
-            StringBuilder b = new StringBuilder(label).append(' ').append(standing(member, characteristic))
+        /** Niemand besliste: wat het doel houdt, en per variant van de stapel waarom ze niet besliste. De varianten en
+         *  hun volgorde zijn die van het record ({@link DefaultsDecision#rootChains}), ook waar ch. 7.10 de stapel uit
+         *  twee declaraties samenstelt. */
+        private String undecided(DefaultsDecision d) {
+            List<Turn> turns = new ArrayList<>();
+            for (List<String> chain : d.rootChains())
+                for (String pointer : chain) {
+                    Variant v = variant(pointer);
+                    requireTarget(v, d.member());
+                    all(v, Role.BEFORE, turns);
+                }
+            if (turns.isEmpty())
+                throw new IllegalStateException("de motor gaf over '" + d.member() + "' van " + label
+                        + " een stapel zonder varianten: " + d.rootChains());
+            StringBuilder b = new StringBuilder(label).append(' ').append(standing(d.member(), d.characteristic()))
                     .append(", want geen variant besliste");
-            // Zonder beslissing geeft de motor de stapel niet. Schrijven twee typen van de keten het doel, dan stelt
-            // ch. 7.10 haar samen (een eigen basis vervangt de geërfde, een gewone regel wordt basis), en de uitleg
-            // stelt die semantiek niet zelf op; anders is de stapel de groepen van dat ene type, in documentvolgorde.
-            if (composed(member, characteristic, groups))
-                return b.append("; welke varianten de stapel van een ").append(naming.objectType(type.name))
-                        .append(" samenstellen, geeft de motor zonder beslissing niet").toString();
-            for (PrioritizedDefaults g : groups) {
-                int i = document.groups().indexOf(g);
-                List<Turn> turns = new ArrayList<>();
-                for (int j = 0; j < g.defaults().size(); j++)
-                    all(new Variant("/rules/prioritizedDefaults/" + i + "/defaults/" + j, g.defaults().get(j), null, g,
-                            null, -1, j), Role.BEFORE, turns);
-                for (Turn t : turns)
-                    b.append("; ").append(name(t.variant())).append(' ')
-                            .append(notDecided(t.variant(), characteristic, member));
-            }
+            for (Turn t : turns)
+                b.append("; ").append(name(t.variant())).append(' ')
+                        .append(notDecided(t.variant(), d.characteristic(), d.member()));
             return b.toString();
-        }
-
-        /** Of de stapel van het doel op dit object uit meer dan één type van de keten komt: groepen op twee typen, of
-         *  bij een attribuut een gewone regel die het doel op een type van de keten schrijft naast een groep (ch. 7.10
-         *  vouwt alleen attribuutschrijvers). */
-        private boolean composed(String member, boolean characteristic, List<PrioritizedDefaults> groups) {
-            Set<ObjectType> writers = Collections.newSetFromMap(new IdentityHashMap<>());
-            for (PrioritizedDefaults g : groups) writers.add(subjectOf(g));
-            if (!characteristic)
-                for (ResolvedRule r : document.rules())
-                    if (r.kind() != ResolvedRule.Kind.KENMERKTOEKENNING
-                            && r.target() instanceof Expr.AttributeReference ref && member.equals(ref.attribute())
-                            && ref.objectType() != null && type.isA(ref.objectType()))
-                        writers.add(ref.objectType());
-            return writers.size() > 1;
         }
 
         // ---- volgorde: wie was vóór de beslisser aan de beurt, wie erna ----

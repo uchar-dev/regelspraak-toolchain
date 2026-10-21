@@ -231,8 +231,9 @@ class ExplanationDefaultsServiceTest {
                     + " is; 'betwiste uitkering' gold niet, want niet geldt: het onderwerp erkend is",
             "W2 heeft als uitkering 99 volgens 'betwiste uitkering', omdat het onderwerp erkend is en het onderwerp"
                     + " betwist is; verdrongen: de regel 'uitkering van een wrakrecht'",
-            "W3 heeft geen uitkering, want geen variant besliste; welke varianten de stapel van een Wrakrecht"
-                    + " samenstellen, geeft de motor zonder beslissing niet");
+            "W3 heeft geen uitkering, want geen variant besliste; 'betwiste uitkering' gold niet, want niet geldt:"
+                    + " het onderwerp betwist is; de regel 'uitkering van een wrakrecht' gold niet, want niet geldt:"
+                    + " het onderwerp gezonken is");
 
     @Test
     void from_sources_a_stack_composed_by_inheritance_follows_the_order_the_engine_gives() throws Exception {
