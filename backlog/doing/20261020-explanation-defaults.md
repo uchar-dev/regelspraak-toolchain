@@ -458,3 +458,37 @@ De reactor telt 145 toolchain-tests (was 143, `ExplanationDefaultsTest`) en 340 
   draagt (`ResolvedRule.statuteAnnotations`, op de draad `statuteAnnotations`, ook in uchars goldens); de klasse-javadoc
   zegt nog dat de grammatica ze weggooit. Een kenmerktoekenning krijgt daardoor geen Grondslag, een default wel. Niet
   veranderd: de zinnen van de kenmerktoekenningen blijven letterlijk gelijk (acceptatie (c)).
+
+### Aanvulling T1, 2026-10-21
+
+Besluit van de eigenaar (2026-10-21): de Grondslag bij een kenmerktoekenning wordt gefixt, ook al veranderen daarmee
+uitlegzinnen; deel T1 van `werk/defaults-decider/fable-advies.md` §6. Commit `0f7d874b`, op de pin `36d57244`.
+
+- **Wat er veranderde.** `Verbaliser.sourceReference(ResolvedRule)` gaf altijd null; nu leest hij
+  `ResolvedRule.statuteAnnotations` en geeft de niet-lege annotaties in bronvolgorde, verbonden met "; ", de vorm waarin
+  uchars frontend de annotaties van een defaults-blok in `Default.source` schrijft (`RuleChecker.annotationText`). De
+  zin van een kenmerktoekenning met een `// Bron:` eindigt zo met ". Grondslag: <tekst>", toegekend en niet toegekend.
+  Een lege annotatie (`//Bron:`) valt weg: het model van de frontend houdt haar als lege tekst, de emitter schrijft haar
+  niet op de draad (WF-082; gelezen in `RuleChecker.statuteAnnotations` en `IrEmitter.annotations`), en zo geven de
+  dienst uit bronnen en die uit een IR-document dezelfde zin. De klasse-javadoc over de grammatica die commentaar
+  weggooit is vervangen door een korte juiste alinea. Een gevolg in de defaults-zinnen, zonder dat hun code veranderde:
+  `groundOf` riep `sourceReference` al aan voor een beslisser die een gewone regel is, de basis van een subtype (ch.
+  7.10), dus die zin krijgt nu ook de Grondslag van die regel; alleen de javadoc van `groundOf` ("een regel draagt in
+  het model geen bron") is bijgewerkt. `decisionsOf`-afhandeling en de defaults-zinnen verder ongemoeid.
+- **Rood eerst.** `ExplanationStatuteAnnotationTest` (scenario-runner, twee tests) en
+  `ExplanationStatuteAnnotationServiceTest` (dienst uit bronnen en uit een IR-document, vier tests), met een eigen model:
+  `meerderjarigheid` met één annotatie, `recht op strandgoed` met twee, `aanmelding` met een lege, voor een jutter die
+  alles krijgt en een die niets krijgt; en het overervingsmodel van `ExplanationDefaultsTest` met een `// Bron:` op de
+  gewone regel van het subtype. Op `0c84d34e` faalden alle zes met alleen de ontbrekende Grondslag
+  (`werk/defaults-decider/tc-logs/t1-red-1.log`); na de fix groen. Vóór en na:
+  - "J2 heeft geen recht op strandgoed, want niet geldt: het onderwerp ingezetene is"
+  - "J2 heeft geen recht op strandgoed, want niet geldt: het onderwerp ingezetene is. Grondslag: Jutterswet art. 4 lid
+    1; Jutterswet art. 4 lid 3"
+  - "W1 heeft als uitkering 200 volgens de regel 'uitkering van een wrakrecht', omdat het onderwerp gezonken is;
+    'betwiste uitkering' gold niet, want niet geldt: het onderwerp erkend is", na met ". Grondslag: Jutterswet art. 9"
+- **Aangepaste tests: geen.** Geen bestaande test pinde een hele uitlegzin van een regel met een `// Bron:`; de enige
+  annotaties in de bestaande uitlegtests staan op defaults-blokken (`ExplanationDefaults*`), en die zinnen bleven gelijk.
+- **Suites.** `mvn -B -o verify` groen (`werk/defaults-decider/tc-logs/t1-verify-1.log`): 1636/147/344/53, was
+  1636/145/340/53; skip-pin PASS. `make gates` en de v2-meting niet gedraaid: die volgen na de pin-bump van
+  `undecided-stack-record`. Op v2 zullen de zinnen van kenmerktoekenningen met een `// Bron:` de Grondslag krijgen; dat
+  is nog niet gemeten.
