@@ -277,7 +277,7 @@ the only way to the plain sentence, so `explanation` and `explanationParts` cann
 
 | kind | leaf or group | what | meta |
 |---|---|---|---|
-| `SUBJECT` | leaf | the label of an instance: the subject, or a member of a fold | — |
+| `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
 | `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]` |
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute or parameter |
 | `VALUE` | leaf | a value as the engine read it, with its unit; a literal | `empty: true` for an empty one ("onbekend") |

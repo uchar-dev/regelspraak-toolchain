@@ -193,7 +193,8 @@ public final class ScenarioRunner {
      *  {@code h} (null where its input or fire raised): verbalised in {@code vocabulary} on {@code explained}, what
      *  uchar's loader read of the IR document the build was made from. The document carries uchar's table of origins
      *  (IR-SPEC ch. 2.13), so that model tells the rules uchar wrote. The objects of the session are of the build's
-     *  types, named alike in that model, and their types are those the case gives its labels. */
+     *  types, named alike in that model, and their types are those the case gives its labels; the objects its
+     *  creations made the verbaliser takes from the fixpoint. */
     private static Explained explanation(Verbaliser.Document explained, ScenarioResult r, Handed h, JsonNode c,
                                          String vocabulary) {
         if (r.status() == ScenarioResult.Status.MARKER) return new Explained(r, List.of(), null, null, null);
@@ -224,7 +225,7 @@ public final class ScenarioRunner {
                         + " het fixpunt, en speelde de case toch niet uit");
             return new Explained(r, List.of(), noExplanation, session, null);
         }
-        return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings())
+        return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings(), h.fixpoint())
                 .sentences(session.beans(), types, h.decisions()), null, session, null);
     }
 

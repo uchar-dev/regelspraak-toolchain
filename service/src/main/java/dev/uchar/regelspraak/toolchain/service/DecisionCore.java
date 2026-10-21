@@ -768,9 +768,9 @@ public final class DecisionCore {
 
     /**
      * Attach the {@link Verbaliser} verhaal to {@code answer} as an {@code "explanation"} array: the beans of the
-     * request with their derived values, on the document of the entry point's build with readings, with the decisions
-     * and readings of the session that gave the answer. A pure read of the already-fired session — nothing re-fires,
-     * nothing is recomputed. The types of the request's labels and the names lie on the model of that document. With
+     * request with their derived values and the objects its creations made, on the document of the entry point's build
+     * with readings, with the decisions, readings and fixpoint of the session that gave the answer. A pure read of the
+     * already-fired session — nothing re-fires, nothing is recomputed. The types of the request's labels and the names lie on the model of that document. With
      * {@code parts}, {@code "explanationParts"} beside it: the same sentences as their parts ({@link ExplanationParts}).
      */
     private void addExplanation(ObjectNode answer, Executor.Outcome outcome, RequestMapper.Result mr, Entrypoint ep,
@@ -784,8 +784,8 @@ public final class DecisionCore {
                         + " document van de uitleg");
             types.put(label, named);
         });
-        List<Sentence> sentences = new Verbaliser(ep.document(), Naming.of(explained, naming.choice()), outcome.readings())
-                .sentences(outcome.beans(), types, outcome.decisions());
+        List<Sentence> sentences = new Verbaliser(ep.document(), Naming.of(explained, naming.choice()), outcome.readings(),
+                outcome.fixpoint()).sentences(outcome.beans(), types, outcome.decisions());
         var arr = answer.putArray("explanation");
         for (Sentence sentence : sentences) arr.add(sentence.text());
         if (parts) answer.set("explanationParts", ExplanationParts.json(sentences));

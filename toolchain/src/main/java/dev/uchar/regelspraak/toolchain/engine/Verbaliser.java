@@ -17,9 +17,11 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.OriginForm;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.RoleBindingRef;
 import dev.uchar.regelspraak.loader.NodePositions;
+import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -27,6 +29,7 @@ import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
@@ -59,7 +62,7 @@ import java.util.regex.Pattern;
  * van de build ({@link Document}, dat uchars lader met de posities van de knopen las) en zet ze in zinnen. Een lege
  * waarde staat er als "(onbekend)"; een lid of operand dat de motor niet bereikte, noemt de zin niet, of zonder
  * waarde. Bij een voorwaarde die niet gold noemt de zin het lid waar de motor stopte. Een kwantorvouw staat er met haar
- * brontekst en het oordeel van de motor, en daarachter de leden die die uitkomst dragen, bij hun label en met hun
+ * brontekst en het oordeel van de motor, en daarachter de leden die die uitkomst dragen, bij hun naam en met hun
  * aantal ("is niet voldaan: niet voor V2 en V4 (2 van de 4)"). Een lezing die ontbreekt, of een
  * fout of een vorm die niet aan de beurt was waar de zin een oordeel nodig heeft, faalt luid: de uitleg volgt een
  * sessie zonder evaluatiefout.
@@ -104,6 +107,13 @@ import java.util.regex.Pattern;
  * <tekst>", die van een defaults-groep met de bron van de variant die besliste; zonder annotatie staat er geen
  * (geen verzonnen bron).
  *
+ * <p><b>Gemaakte objecten.</b> Een object dat een objectcreatie van de sessie maakte ({@link Fixpoint#objects}) heeft
+ * geen label; de uitleg noemt het met de naam die uchars canonieke tekst het geeft (RUNTIME-SEMANTICS ch. 5.12),
+ * {@code «"<creatie>"»(<onderwerp>)#1}, met het onderwerp zoals de uitleg het noemt: een object van de invoer bij zijn
+ * label, een gemaakt object bij deze naam ("«"schrijf een kwitantie"»(«"geef een vangstpenning"»(J1)#1)#1"). Zo'n
+ * object krijgt zijn zinnen na de objecten van de invoer, in de volgorde van het fixpunt, en heet zo ook als lid van
+ * een kwantorvouw.
+ *
  * <p><b>Stukken.</b> Elke zin schrijft de verbalisator op één {@link Sentence.Builder}, als een ondiepe boom van
  * {@link Part}s met een soort: het onderwerp, de namen met hun declaratie, de regeltekst, de waarden, de regelnamen, de
  * verbindingswoorden en de lijm, een voorwaarde als groep met het oordeel van de motor op haar knoop, de leden van een
@@ -120,20 +130,26 @@ public final class Verbaliser {
     private final Document document;
     /** De lezingen van de sessie, per vorm en object. */
     private final Map<String, Map<Object, ConditionReading>> readings = new HashMap<>();
-    /** Het label van elk object dat {@code verbalise} kreeg: de zin van een kwantorvouw noemt haar leden zo. */
+    /** De naam van elk object dat de uitleg verantwoordt: het label dat {@code verbalise} kreeg, of de naam van een
+     *  gemaakt object ({@link #madeName}); de zin van een kwantorvouw noemt haar leden zo. */
     private final Map<Object, String> labels = new IdentityHashMap<>();
+    /** De objecten die de creaties van de sessie maakten, in de volgorde van het fixpunt. */
+    private final List<Fixpoint.MadeObject> made;
 
     /**
      * Een verbalisator voor één sessie van een build met lezingen: {@code document} is het document van die build zoals
      * uchars lader het las, met de posities van zijn knopen ({@link Document#of}); {@code readings} wat
-     * {@link DroolsBackend#readingsOf} van de sessie gaf; {@code naming} de namen, op het model van {@code document}.
+     * {@link DroolsBackend#readingsOf} van de sessie gaf; {@code fixpoint} wat {@code DroolsBackend.fixpointOf} van
+     * dezelfde sessie gaf, met de labels van de invoer gelezen, waarvan de uitleg de gemaakte objecten leest;
+     * {@code naming} de namen, op het model van {@code document}.
      *
      * @throws IllegalStateException twee lezingen van één vorm op één object
      */
-    public Verbaliser(Document document, Naming naming, List<ConditionReading> readings) {
+    public Verbaliser(Document document, Naming naming, List<ConditionReading> readings, Fixpoint fixpoint) {
         this.document = Objects.requireNonNull(document, "document");
         this.model = document.model();
         this.naming = Objects.requireNonNull(naming, "naming");
+        this.made = Objects.requireNonNull(fixpoint, "fixpoint").objects();
         for (ConditionReading r : readings)
             if (this.readings.computeIfAbsent(r.form(), k -> new IdentityHashMap<>()).put(r.object(), r) != null)
                 throw new IllegalStateException("de motor gaf twee lezingen van " + r.form() + " op één object");
@@ -147,10 +163,10 @@ public final class Verbaliser {
 
     /** {@link #verbalise(Map, Map)} als zinnen met hun stukken. */
     public List<Sentence> sentences(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
-        label(instances);
+        Subjects subjects = subjects(instances, typePerLabel);
         List<Sentence> sink = new ArrayList<>();
-        for (Map.Entry<String, Object> e : instances.entrySet()) {
-            ObjectType ot = typePerLabel.get(e.getKey());
+        for (Map.Entry<String, Object> e : subjects.beans().entrySet()) {
+            ObjectType ot = subjects.types().get(e.getKey());
             if (ot == null || e.getValue() == null) continue;
             assignments(e.getKey(), e.getValue(), ot, sink);
         }
@@ -162,13 +178,16 @@ public final class Verbaliser {
      * dienst-verzoek-id) op de bijbehorende, gevuurde en teruggeschreven bean; {@code typePerLabel} het objecttype per
      * label, op het model van het document. Per label eerst één zin per kenmerktoekenning van zijn type, in de volgorde
      * van het document, dan één zin per defaults-groep van zijn type: wat de motor besliste ({@code decisions}, uit
-     * {@link DroolsBackend#decisionsOf} van dezelfde sessie). Daarna één zin per kenmerktoekenning buiten de scope
-     * ({@link Document#outside}) op het type van een label.
+     * {@link DroolsBackend#decisionsOf} van dezelfde sessie). Na de labels volgen zo de objecten die een creatie van
+     * de sessie maakte, bij hun naam ({@link #madeName}), in de volgorde van het fixpunt, elk met het objecttype
+     * waarvan het de bean is. Daarna één zin per kenmerktoekenning buiten de scope ({@link Document#outside}) op het
+     * type van een label of een gemaakt object.
      *
      * @throws IllegalStateException een pointer die niet op het document terug te leggen is, een beslissing over
      *                               een lid waarvoor het type van het object geen groep heeft, een groep op de
-     *                               typeketen van het object zonder beslissing over haar doel, of een lezing die
-     *                               ontbreekt of niet past bij wat de zin zegt
+     *                               typeketen van het object zonder beslissing over haar doel, een lezing die
+     *                               ontbreekt of niet past bij wat de zin zegt, of een gemaakt object dat de uitleg
+     *                               niet kan noemen ({@link #madeName})
      */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
                                   List<DefaultsDecision> decisions) {
@@ -179,13 +198,13 @@ public final class Verbaliser {
     public List<Sentence> sentences(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
                                     List<DefaultsDecision> decisions) {
         Objects.requireNonNull(decisions, "decisions");
-        label(instances);
+        Subjects subjects = subjects(instances, typePerLabel);
         List<Sentence> sink = new ArrayList<>();
         Set<String> outside = new LinkedHashSet<>();
-        for (Map.Entry<String, Object> e : instances.entrySet()) {
+        for (Map.Entry<String, Object> e : subjects.beans().entrySet()) {
             String label = e.getKey();
             Object bean = e.getValue();
-            ObjectType ot = typePerLabel.get(label);
+            ObjectType ot = subjects.types().get(label);
             if (ot == null || bean == null) continue;
             assignments(label, bean, ot, sink);
             new DefaultsExplanation(document, label, bean, ot, decisions).sentences(sink);
@@ -203,12 +222,88 @@ public final class Verbaliser {
         return sentences.stream().map(Sentence::text).toList();
     }
 
-    private void label(Map<String, Object> instances) {
+    /** Wie de uitleg verantwoordt, bij naam, met het objecttype van elk. */
+    private record Subjects(Map<String, Object> beans, Map<String, ObjectType> types) {}
+
+    /** De objecten van de invoer onder hun label, in de volgorde van {@code instances}, en daarna elk object dat een
+     *  creatie van de sessie maakte onder zijn naam ({@link #madeName}), in de volgorde van het fixpunt, met het
+     *  objecttype waarvan het de bean is. Zet ook {@link #labels}. */
+    private Subjects subjects(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
         labels.clear();
         instances.forEach((label, bean) -> {
             if (bean != null && labels.put(bean, label) != null)
                 throw new IllegalStateException("het object van " + label + " staat onder twee labels");
         });
+        Map<Object, Fixpoint.MadeObject> byObject = new IdentityHashMap<>();
+        Map<Object, Set<String>> creationsPerSubject = new IdentityHashMap<>();
+        for (Fixpoint.MadeObject g : made) {
+            if (labels.containsKey(g.object()))
+                throw new IllegalStateException("het fixpunt noemt " + labels.get(g.object()) + " van de invoer een"
+                        + " gemaakt object, van de creatie '" + g.creation() + "'");
+            if (byObject.put(g.object(), g) != null)
+                throw new IllegalStateException("het fixpunt noemt een object van de creatie '" + g.creation()
+                        + "' twee keer");
+            // de naam draagt #1: een creatie maakt één object per onderwerp (RUNTIME-SEMANTICS ch. 5.5 en 5.12)
+            if (!creationsPerSubject.computeIfAbsent(g.subject(), s -> new HashSet<>()).add(g.creation()))
+                throw new IllegalStateException("het fixpunt geeft twee objecten van de creatie '" + g.creation()
+                        + "' voor één onderwerp, en een creatie maakt één object per onderwerp (RUNTIME-SEMANTICS"
+                        + " ch. 5.5)");
+        }
+        Map<String, Object> beans = new LinkedHashMap<>(instances);
+        Map<String, ObjectType> types = new HashMap<>(typePerLabel);
+        for (Fixpoint.MadeObject g : made) {
+            String name = madeName(g.object(), byObject, new ArrayList<>());
+            if (beans.put(name, g.object()) != null)
+                throw new IllegalStateException("het gemaakte object " + name + " heeft de naam van een object van de"
+                        + " invoer");
+            types.put(name, madeType(name, g.object()));
+        }
+        return new Subjects(beans, types);
+    }
+
+    /**
+     * De naam van gemaakt object {@code o} zoals uchars canonieke tekst haar schrijft (RUNTIME-SEMANTICS ch. 5.12):
+     * {@code «"<creatie>"»(<onderwerp>)#1}, de naam van de creatie tussen aanhalingstekens en ontsnapt zoals uchar
+     * haar schrijft, het object waarvoor zij het maakte en het nummer onder de objecten die zij daarvoor maakte, dat 1
+     * is. Het onderwerp heet zoals de uitleg het elders noemt: een object van de invoer bij zijn label, zonder
+     * aanhalingstekens, een gemaakt object bij zijn eigen naam. {@code byObject} geeft de gemaakte objecten van het
+     * fixpunt; {@code path} de objecten waarvan de naam op deze wacht.
+     *
+     * @throws IllegalStateException een onderwerp dat geen object van de invoer en geen gemaakt object is, of gemaakte
+     *                               objecten die elkaars onderwerp zijn in een kring
+     */
+    private String madeName(Object o, Map<Object, Fixpoint.MadeObject> byObject, List<Object> path) {
+        String known = labels.get(o);
+        if (known != null) return known;
+        Fixpoint.MadeObject g = byObject.get(o);
+        if (g == null)
+            throw new IllegalStateException("het fixpunt noemt als onderwerp van een gemaakt object een "
+                    + o.getClass().getSimpleName() + " dat geen object van de invoer en geen gemaakt object is");
+        if (path.stream().anyMatch(p -> p == o))
+            throw new IllegalStateException("de gemaakte objecten van de creatie '" + g.creation() + "' zijn elkaars"
+                    + " onderwerp in een kring");
+        path.add(o);
+        String name = "«" + quoted(g.creation()) + "»(" + madeName(g.subject(), byObject, path) + ")#1";
+        path.remove(path.size() - 1);
+        labels.put(o, name);
+        return name;
+    }
+
+    /** {@code s} tussen dubbele aanhalingstekens, met een backslash, een aanhalingsteken en een regeleinde ontsnapt,
+     *  zoals uchars canonieke tekst een naam schrijft. */
+    private static String quoted(String s) {
+        return "\"" + s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")
+                + "\"";
+    }
+
+    /** Het objecttype van gemaakt object {@code o}, dat {@code name} heet: het type waarvan het de gegenereerde bean
+     *  is, want uchars {@link Fixpoint.MadeObject} noemt geen type. */
+    private ObjectType madeType(String name, Object o) {
+        String bean = o.getClass().getName();
+        for (ObjectType ot : model.objectTypes.values())
+            if (bean.equals(FactModelGenerator.PACKAGE + "." + Namen.ident(ot.name, true))) return ot;
+        throw new IllegalStateException("het gemaakte object " + name + " is een " + bean + ", de bean van geen"
+                + " objecttype van het model van de uitleg");
     }
 
     private void assignments(String label, Object bean, ObjectType ot, List<Sentence> sink) {
@@ -1189,17 +1284,17 @@ public final class Verbaliser {
         b.close(Part.Kind.MEMBERS);
     }
 
-    /** De leden {@code members} bij hun label, in de code-unit-volgorde daarvan, met "en" voor het laatste; boven
-     *  vijf de eerste vijf en "en nog k". */
+    /** De leden {@code members} bij hun naam ({@link #labels}), in de code-unit-volgorde daarvan, met "en" voor het
+     *  laatste; boven vijf de eerste vijf en "en nog k". */
     private void names(Sentence.Builder b, List<Object> members, Condition.QuantifierFold q, Read read) {
         List<String> names = new ArrayList<>();
         for (Object member : members) {
             String label = labels.get(member);
-            // de uitleg kent alleen de labels van de invoer; een gemaakt object heeft er geen
             if (label == null)
                 throw new IllegalStateException("een lid van de kwantorvouw \"" + summary(q) + "\" van " + read.form()
-                        + " op " + read.label() + " heeft geen label: de uitleg noemt alleen de objecten van de"
-                        + " invoer, en dit " + member.getClass().getSimpleName() + " staat daar niet bij");
+                        + " op " + read.label() + " heeft geen naam: de uitleg noemt de objecten van de invoer en de"
+                        + " gemaakte objecten van het fixpunt, en dit " + member.getClass().getSimpleName()
+                        + " is geen van beide");
             names.add(label);
         }
         names.sort(String::compareTo);

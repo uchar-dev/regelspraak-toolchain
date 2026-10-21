@@ -17,7 +17,8 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
     /** What a part is. The groups are {@link #CONDITION}, {@link #MEMBERS} and {@link #GROUND}; every other kind is a
      *  leaf. {@link #TEXT} is the glue: every character that belongs to no other kind. */
     public enum Kind {
-        /** The label of an instance: the subject of the sentence, or a member of a quantifier fold. */
+        /** The label of an instance, or the name of an object a creation made ({@link Verbaliser}): the subject of
+         *  the sentence, or a member of a quantifier fold. */
         SUBJECT,
         /** A declared name as {@link Naming} names it, with {@code declaration}, {@code owner} and {@code canonical}
          *  where the declaration is known. */
