@@ -1,10 +1,5 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-
-import dev.uchar.regelspraak.loader.IrLoader;
-import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 
