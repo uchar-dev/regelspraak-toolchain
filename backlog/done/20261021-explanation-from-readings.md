@@ -171,3 +171,5 @@ kind-smoke H2–H4 PASS). Log: `werk/defaults-decider/t2/tc-gates.log`.
   de pin-bump daarna vergelijkt de leg weer in volgorde.
 - Uit de kaart `explanation-defaults`, ongewijzigd: het lidwoord van een bezittelijk kenmerk; de graaf en de dekking
   tonen de groepen niet.
+
+Geland 2026-10-21 door de hoofdsessie: fast-forward naar `867c6607` (`make gates` groen op `c9d52f8a`, 11m18s, `TAG/CLUSTER=explanation-from-readings`; de Result-commit erna raakt alleen de kaart). Pin uchar `15f39170`.
