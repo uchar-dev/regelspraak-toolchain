@@ -279,3 +279,5 @@ gelijkheidspin (232 speelden, 231 gepind): de nieuwe golden, bijgezet in `f44553
   Een naam vraagt de gemaakte objecten van het fixpunt (`Fixpoint.objects`: creatie en onderwerp) in de Verbalisator,
   dus de drie aanroepers (`ScenarioRunner`, `DecisionCore`, `ExplanationSession`), buiten May touch, en een keuze van de
   vorm: uchars canonieke tekst `«"<creatie>"»(<onderwerp>)#1` of de `#n` van `FixpointGivens`.
+
+Geland 2026-10-21 door de hoofdsessie: fast-forward naar `71a36fc7` (`make gates` groen op `f4455348`, 10m26s, `TAG/CLUSTER=explanation-fold-members`; de Result-commit erna raakt alleen de kaart). Pin uchar `4f283d9d`. Voorlopige besluiten van de hoofdsessie in deze kaart (de eigenaar kan ze omdraaien): een lid met een fout heet "niet beoordeeld" (bevestigd door de eigenaar met het Fable-advies); de vormen bij m = 0 en m = 1.
