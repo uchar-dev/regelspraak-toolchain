@@ -244,7 +244,7 @@ class DetailHttpTest {
         JsonNode playground = Playground.analyze(source).at("/scenario/results/0");
         var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
         ObjectNode service = strandmeldingKern.process("melding", SituationToRequest.assemble(bundle.scenarios().get(0)),
-                new RequestOptions(false, null, null, true, true, true));
+                new RequestOptions(false, null, null, true, true, true, false));
         assertEquals("20.00", service.at("/fixpoint/objects/0/values/0/value").asText(), service.toString());
         assertEquals(playground.get("fixpoint"), service.get("fixpoint"));
         assertEquals(playground.get("trace"), service.get("trace"));
@@ -288,7 +288,7 @@ class DetailHttpTest {
     @Test
     void the_flags_and_the_startup_setting() {
         RequestOptions o = ServiceHttp.options("Trace=TRUE&coverage&fixpoint=nee&explanation=true");
-        assertEquals(new RequestOptions(true, null, null, true, true, false), o);
+        assertEquals(new RequestOptions(true, null, null, true, true, false, false), o);
         assertEquals(List.of("trace", "coverage"), o.detailFlags());
         assertEquals(RequestOptions.DEFAULT, ServiceHttp.options("trace=false"));
         assertTrue(ServiceMain.parseArgs(new String[]{"d.json", "x.rgs", "--detail"}).detail());

@@ -59,6 +59,19 @@ debuggen in de werkbank.
 - **Veld:** `explanationParts`, parallel aan `explanation` (zoals `inconsistencies`/`inconsistencyDetails`), schema
   `ExplanationPart` recursief via `$ref`.
 
+## Voorlopige keuzes van de bouwer (2026-10-21; het advies beantwoordt ze niet)
+
+- ". Grondslag: " hoort bij het stuk `GROUND` (als `TEXT`, ook de punt): een zin zonder haar laatste stuk is de zin
+  van een regel zonder annotatie.
+- `holds` ontbreekt waar de motor de knoop bereikte zonder oordeel (na een lege binder); op v2 komt het niet voor.
+- De variant van de opgavemarkering (`'opgegeven X'`) is een `NAME` (attribuut): haar tekst komt uit `Naming`.
+- In de regel die uchar schreef (`inVocabulary`) is de tekst om de naam heen `QUOTE`, de naam `NAME`.
+- `CONNECTIVE` zijn de acht woorden van het advies en "en" tussen de beslissers van een conflict; "volgens",
+  "verdrongen", "besliste niet anders", "niet voor"/"wel voor" zijn `TEXT`.
+- Na een afwijking blijft een slug een `LEMMA`; een leeg segment geeft alleen zijn scheidingstekens; `STATUTE` zonder
+  lid of onderdeel draagt die sleutels niet, `NAME` draagt `owner` altijd (null bij een parameter).
+- `explanationParts=true` vraagt ook `explanation`.
+
 ## Acceptatie
 
 - (a) Voor de vijf service-smoke-verzoeken van herleving-WW v2

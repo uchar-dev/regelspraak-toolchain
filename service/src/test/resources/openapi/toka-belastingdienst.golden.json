@@ -21,6 +21,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -140,6 +149,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -269,6 +287,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -388,6 +415,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -517,6 +553,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -636,6 +681,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -765,6 +819,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -884,6 +947,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -1013,6 +1085,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -1132,6 +1213,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -1261,6 +1351,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -1380,6 +1479,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -1509,6 +1617,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -1628,6 +1745,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -1757,6 +1883,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -1876,6 +2011,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -2005,6 +2149,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -2124,6 +2277,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -2253,6 +2415,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -2372,6 +2543,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -2501,6 +2681,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -2620,6 +2809,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -2749,6 +2947,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -2868,6 +3075,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -2997,6 +3213,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -3116,6 +3341,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -3245,6 +3479,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -3369,6 +3612,15 @@
             }
           },
           {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
             "name": "trace",
             "in": "query",
             "required": false,
@@ -3488,6 +3740,15 @@
             "in": "query",
             "required": false,
             "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
             "schema": {
               "type": "boolean"
             }
@@ -3983,6 +4244,16 @@
             },
             "description": "met de vlag explanation: een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust."
           },
+          "explanationParts": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ExplanationPart"
+              }
+            },
+            "description": "met de vlag explanationParts: per zin van explanation, in dezelfde volgorde, de stukken aan haar wortel; de teksten van de bladeren achter elkaar zijn de zin."
+          },
           "trace": {
             "$ref": "#/components/schemas/Trace"
           },
@@ -4109,6 +4380,89 @@
             "items": {
               "type": "string"
             }
+          }
+        }
+      },
+      "ExplanationPart": {
+        "type": "object",
+        "description": "Een stuk van een uitlegzin: een blad met text, of een groep (CONDITION, MEMBERS, GROUND) met parts, waarvan de tekst die van haar stukken achter elkaar is. Per kind: SUBJECT het label van een instantie, het onderwerp of een lid van een kwantorvouw; NAME een gedeclareerde naam in het vocabulaire van het antwoord, met declaration (ATTRIBUUT, KENMERK, ROL of PARAMETER), owner en canonical, de sleutels kind, owner en canonical van een element van vocabularies; QUOTE regeltekst zoals geschreven, met dezelfde drie waar het operand één declaratie leest; VALUE een waarde met haar eenheid, met empty: true bij een lege; RULE de naam van een regel of van een variant van een defaults-groep; CONNECTIVE een woord dat de logica tussen de delen draagt (omdat, want, maar, en, of, en niet, niet geldt, gold niet); TEXT lijm; CONDITION een voorwaarde, met holds, het oordeel van de motor (ontbreekt waar de motor de knoop zonder oordeel bereikte), en bij een samenstelling of een kwantorvouw quantifier (all, none, atLeast, atMost, exactly, the) met threshold bij een telling; MEMBERS de leden van een kwantorvouw die haar uitkomst dragen, met members (m), holding (k) en unjudged; GROUND de grondslag, het laatste stuk van de zin, met de punt en 'Grondslag: ' als TEXT ervoor; STATUTE een Juriconnect-anker, met bwb, article en, waar het ze noemt, paragraph en part; LEMMA een lemma; DEVIATION een afwijking, met followed; NOTE elk ander segment van een annotatie.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "SUBJECT",
+              "NAME",
+              "QUOTE",
+              "VALUE",
+              "RULE",
+              "CONNECTIVE",
+              "TEXT",
+              "CONDITION",
+              "MEMBERS",
+              "GROUND",
+              "STATUTE",
+              "LEMMA",
+              "DEVIATION",
+              "NOTE"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExplanationPart"
+            }
+          },
+          "declaration": {
+            "type": "string"
+          },
+          "canonical": {
+            "type": "string"
+          },
+          "quantifier": {
+            "type": "string"
+          },
+          "bwb": {
+            "type": "string"
+          },
+          "article": {
+            "type": "string"
+          },
+          "paragraph": {
+            "type": "string"
+          },
+          "part": {
+            "type": "string"
+          },
+          "owner": {
+            "type": "string",
+            "nullable": true
+          },
+          "empty": {
+            "type": "boolean"
+          },
+          "holds": {
+            "type": "boolean"
+          },
+          "followed": {
+            "type": "boolean"
+          },
+          "threshold": {
+            "type": "integer"
+          },
+          "members": {
+            "type": "integer"
+          },
+          "holding": {
+            "type": "integer"
+          },
+          "unjudged": {
+            "type": "integer"
           }
         }
       },

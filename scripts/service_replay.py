@@ -12,9 +12,11 @@ Uitvoer: per golden één regel "<golden>\\t<STATUS>\\t<detail>" in de volgorde 
   PLAYED   alle cases gaven de gepinde verwachtingen (detail: het aantal cases);
   EXCLUDE  een case-vorm die het verzoek of het antwoord van de dienst niet uitdrukt (detail: de vorm);
   FAIL     een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is (detail: wat).
-Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true: het antwoord buiten de uitleg
-moet dat van het eerste zijn, en een PLAYED-regel krijgt drie velden erbij: het aantal uitlegzinnen, het aantal
-uitgelegde voorwaarden (de voorkomens van "omdat " en "want ") en het aantal voorkomens van "niet is vast te stellen".
+Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
+antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
+haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt drie velden erbij: het
+aantal uitlegzinnen, het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want ") en het aantal
+voorkomens van "niet is vast te stellen".
 Het script oordeelt niet over de hele set: de poortscripts (check-service-replay.sh, check-twins.sh) doen dat.
 """
 import argparse
@@ -305,18 +307,50 @@ def first_difference(a, b, at):
     return f"{at or '/'}: zonder {json.dumps(a, default=str)[:200]}, met {json.dumps(b, default=str)[:200]}"
 
 
+PART_KINDS = {"SUBJECT", "NAME", "QUOTE", "VALUE", "RULE", "CONNECTIVE", "TEXT", "CONDITION", "MEMBERS", "GROUND",
+              "STATUTE", "LEMMA", "DEVIATION", "NOTE"}
+PART_GROUPS = {"CONDITION", "MEMBERS", "GROUND"}
+
+
+def part_text(part, place):
+    """De teksten van de bladeren van een stuk achter elkaar; een blad heeft text en geen parts, een groep parts en
+    geen text, en elk stuk een soort van de toolchain."""
+    if not isinstance(part, dict) or part.get("kind") not in PART_KINDS:
+        raise Deviation(f"{place}: een stuk zonder bekende soort: {json.dumps(part, default=str)[:200]}")
+    if part["kind"] in PART_GROUPS:
+        if "text" in part or not isinstance(part.get("parts"), list):
+            raise Deviation(f"{place}: een groep zonder parts of met text: {json.dumps(part, default=str)[:200]}")
+        return "".join(part_text(c, place) for c in part["parts"])
+    if "parts" in part or not isinstance(part.get("text"), str):
+        raise Deviation(f"{place}: een blad zonder text of met parts: {json.dumps(part, default=str)[:200]}")
+    return part["text"]
+
+
 def explained(service, path, request, answer, name):
     """De uitleg van een verzoek waarvan de dienst `answer` gaf: (zinnen, uitgelegde voorwaarden, "niet is vast te
-    stellen"). Het antwoord met uitleg moet buiten de uitleg `answer` zijn."""
-    status, text_ = service.ask("POST", path + "?explanation=true", request)
+    stellen"). Het antwoord met uitleg en stukken moet buiten die twee velden `answer` zijn, en per zin moeten de
+    teksten van de bladeren van haar stukken achter elkaar de zin zijn, met de grondslag als laatste stuk."""
+    status, text_ = service.ask("POST", path + "?explanation=true&explanationParts=true", request)
     if status != 200:
         raise Deviation(f"{name}: met uitleg {status} {text_[:500]}")
     given = read_json(text_)
     sentences = given.pop("explanation", None)
+    parts = given.pop("explanationParts", None)
     if not isinstance(sentences, list):
         raise Deviation(f"{name}: het antwoord met uitleg draagt geen lijst 'explanation'")
+    if not isinstance(parts, list) or len(parts) != len(sentences):
+        raise Deviation(f"{name}: het antwoord draagt geen lijst 'explanationParts' met een entry per zin")
+    for i, (sentence, roots) in enumerate(zip(sentences, parts)):
+        place = f"{name}: zin {i + 1}"
+        if not isinstance(roots, list):
+            raise Deviation(f"{place}: de stukken zijn geen lijst")
+        joined = "".join(part_text(r, place) for r in roots)
+        if joined != sentence:
+            raise Deviation(f"{place}: de stukken geven {joined!r}, de zin is {sentence!r}")
+        if any(r["kind"] == "GROUND" for r in roots[:-1]):
+            raise Deviation(f"{place}: de grondslag is niet het laatste stuk")
     if given != answer:
-        raise Deviation(f"{name}: het antwoord met uitleg wijkt buiten de uitleg af van dat zonder, op "
+        raise Deviation(f"{name}: het antwoord met uitleg wijkt buiten de uitleg en haar stukken af van dat zonder, op "
                         f"{first_difference(answer, given, '')}")
     conditions = sum(z.count("omdat ") + z.count("want ") for z in sentences)
     undetermined = sum(z.count("niet is vast te stellen") for z in sentences)
@@ -379,7 +413,8 @@ def main():
     ap.add_argument("--corpus", required=True, help="de map met de goldens (uchar/corpus/golden)")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--descriptor", action="append", default=[], help="<golden>=<path>: een eigen descriptor")
-    ap.add_argument("--explanation", action="store_true", help="vraag elk verzoek ook met ?explanation=true")
+    ap.add_argument("--explanation", action="store_true",
+                    help="vraag elk verzoek ook met ?explanation=true&explanationParts=true")
     ap.add_argument("goldens", nargs="+", help="goldens, als pad relatief aan --corpus")
     a = ap.parse_args()
     own = dict(d.split("=", 1) for d in a.descriptor)

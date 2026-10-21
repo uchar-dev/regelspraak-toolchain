@@ -17,6 +17,7 @@ import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceError;
 import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
+import dev.uchar.regelspraak.toolchain.service.ExplanationParts;
 import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
 import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
 import dev.uchar.regelspraak.toolchain.service.Violation;
@@ -311,6 +312,7 @@ public final class Playground {
         }
         ArrayNode explanation = n.putArray("explanation");
         for (String z : u.explanation()) explanation.add(z);
+        n.set("explanationParts", ExplanationParts.json(u.sentences()));
         if (u.explanationError() != null) n.put("explanationError", u.explanationError());
         n.set("situation", ScenarioData.situation(s, model, naming));
         if (u.session() != null) {
@@ -432,7 +434,7 @@ public final class Playground {
         try {
             path = service.pathForScope(s.scope());
             RequestOptions options = new RequestOptions(true, vocabulary == null ? Naming.CANONICAL : vocabulary,
-                    Naming.CANONICAL, true, true, true);
+                    Naming.CANONICAL, true, true, true, true);
             DecisionCore.Assessment b = service.assess(path, SituationToRequest.assemble(s), options, expected);
             status = b.comparison().pass() ? ScenarioResult.Status.PASS : ScenarioResult.Status.FAIL;
             if (!b.comparison().pass()) diagnostic = caseName + ": " + b.comparison().diagnostic();
@@ -480,7 +482,7 @@ public final class Playground {
             vn.put("ok", v.ok());
             ScenarioData.place(vn, v, s, sourceLines);
         }
-        for (String field : List.of("coverage", "trace", "explanation"))
+        for (String field : List.of("coverage", "trace", "explanation", "explanationParts"))
             n.set(field, session.has(field) ? session.get(field) : NF.arrayNode());
         if (explanationError != null) n.put("explanationError", explanationError);
         n.set("situation", ScenarioData.situation(s, model, naming));

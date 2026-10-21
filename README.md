@@ -86,6 +86,10 @@ model declares) and the sentences of the messages, which keep their text. The ol
   service answers 200 with the attribute `null` and the rule among the `inconsistencies` (and the playground shows
   the scenario as an inconsistency), where it answered 422 `EVALUATION_FAULT` with the kind `DIVISION_BY_ZERO`. That
   kind is left for what uchar's runtime itself still raises; the code EF-005 is not in the JSON of the answer.
+- **Explanation parts** (card `explanation-parts`): `?explanationParts=true` asks the explanation and adds
+  `explanationParts` beside `explanation`, per sentence its parts with their kind (`docs/ENGINE.md`, "The parts of an
+  explanation"); the playground gives it per scenario on both routes. `explanation` is unchanged, and without the flag
+  the answer is byte for byte what it was.
 
 ## The pin
 
@@ -290,6 +294,8 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 - **The explanation** explains characteristic-attribution rules and defaults groups, not computations, consistencies or
   creations, whose readings uchar has as well. An attribution rule outside the scope of an entry point has no rule in
   its build and gets the one sentence "de regel '…' staat buiten deze berekening".
+- **The ground of a default** is parsed as one annotation: uchar joins the annotations of a defaults block with "; "
+  (`Default.source`), so the parts of its `GROUND` cannot tell two of them apart.
 - **The playground trace** names per fired rule the labels it bound and how often, but no value: uchar's report
   carries none. The values stand in the scenario's `fixpoint`, read from the case's own session.
 - **The sentence of an expectation.** uchar's scenario resolver gives the line an expectation begins on

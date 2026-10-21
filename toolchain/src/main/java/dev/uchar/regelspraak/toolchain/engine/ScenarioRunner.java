@@ -53,14 +53,18 @@ public final class ScenarioRunner {
 
     private static final ObjectMapper JSON = new ObjectMapper();
 
-    /** A scenario's report with the explanation of its outcome: {@code explanation} one sentence per characteristic an
-     *  attribution rule decided, and {@code explanationError} why there is none when a played scenario has none (null
-     *  otherwise; a MARKER scenario has no explanation and no reason beside its own diagnose). {@code session} is the
-     *  session uchar's replay judged, with uchar's reading of its fixpoint ({@link CaseSession.Outcome#fixpoint}), as the
-     *  replay handed it over, and {@code sessionError} why there is none otherwise (both null for a
-     *  MARKER scenario and without an explanation asked). */
-    public record Explained(ScenarioResult result, List<String> explanation, String explanationError,
-                            CaseSession.Outcome session, String sessionError) {}
+    /** A scenario's report with the explanation of its outcome: {@code sentences} one sentence per characteristic an
+     *  attribution rule decided, with its parts ({@link Sentence}), and {@code explanationError} why there is none when
+     *  a played scenario has none (null otherwise; a MARKER scenario has no explanation and no reason beside its own
+     *  diagnose). {@code session} is the session uchar's replay judged, with uchar's reading of its fixpoint
+     *  ({@link CaseSession.Outcome#fixpoint}), as the replay handed it over, and {@code sessionError} why there is none
+     *  otherwise (both null for a MARKER scenario and without an explanation asked). */
+    public record Explained(ScenarioResult result, List<Sentence> sentences, String explanationError,
+                            CaseSession.Outcome session, String sessionError) {
+
+        /** The plain sentences ({@link Sentence#text()}). */
+        public List<String> explanation() { return sentences.stream().map(Sentence::text).toList(); }
+    }
 
     /** Resolve {@code source} under the scenario frontend and run every scenario in it. A resolve error throws
      *  {@link ResolveError} carrying the diagnostics (the CLI turns that into exit 1). */
@@ -221,7 +225,7 @@ public final class ScenarioRunner {
             return new Explained(r, List.of(), noExplanation, session, null);
         }
         return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings())
-                .verbalise(session.beans(), types, h.decisions()), null, session, null);
+                .sentences(session.beans(), types, h.decisions()), null, session, null);
     }
 
     private static void remove(Path map) {

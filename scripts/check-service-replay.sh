@@ -144,7 +144,9 @@ REPLAY_EXCLUDED=(
 
 # Kaart explanation-from-readings: de leg van de uitleg. Elk verzoek gaat ook met ?explanation=true; het antwoord
 # buiten de uitleg moet gelijk zijn, de uitleg mag "niet is vast te stellen" niet meer noemen, want de motor draagt elke
-# voorwaarde die de uitleg verwoordt (zij leest de lezingen van de build met lezingen). Een golden waarvoor dat toch
+# voorwaarde die de uitleg verwoordt (zij leest de lezingen van de build met lezingen). Sinds de kaart explanation-parts
+# vraagt de leg ook &explanationParts=true: per zin moeten de teksten van de bladeren van haar stukken achter elkaar de
+# zin zijn, teken voor teken, met de grondslag als laatste stuk (service_replay.py faalt de golden anders). Een golden waarvoor dat toch
 # terugkomt, staat hieronder met de reden ("<golden>|<reden>"); de lijst faalt in beide richtingen op veroudering.
 EXPLANATION_UNDETERMINED=(
 )
@@ -262,5 +264,5 @@ echo "check-service-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
 echo "  uitgesloten: $excl, bij naam met reden"
-echo "  uitleg: $sentences zinnen, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
+echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
 echo "  duur: ${duration}s met ${REPLAY_WORKERS:-4} diensten tegelijk"

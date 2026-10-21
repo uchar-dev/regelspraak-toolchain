@@ -110,7 +110,10 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   readings of the same document, made at startup; a request with `?explanation=true` is mapped, fired and answered there,
   once, and the verbaliser renders the engine's readings of that session (`DroolsBackend.readingsOf`); uchar's witnesses
   hold that the facts at its fixpoint are those of the build without. With `"explanation": false` the entry point builds
-  the one build and refuses a request for an explanation (400, `UNSUPPORTED` on `explanation`). The service makes no
+  the one build and refuses a request for an explanation (400, `UNSUPPORTED` on `explanation`).
+  `?explanationParts=true` asks the explanation as well and adds `explanationParts` right after `explanation`: per
+  sentence, in the same order, the array of its parts ("The parts of an explanation", below); the texts of the leaves
+  after each other are the sentence, and without the flag the answer is byte for byte what it was. The service makes no
   bean itself: `RequestMapper` validates the request (names, types, units; a 400 with the field path) and writes it as
   the input of a `uchar-case-v0` case, `{"asOfDate", "input": {"instances": [...]}}` with the ids of the request as
   labels, the inline `roles` and each relation of `relations` as `roles` (a relation on the end whose role toward the
@@ -195,9 +198,9 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   a model with vocabularies every object type, property and entry point lists its other spellings in `x-spellings`,
   every enumeration its values' in `x-valueSpellings`, the descriptions say the service accepts them, the
   operations document `vocabulary` and `inputVocabulary`, and `info.x-vocabulary` names the document's
-  vocabulary. A model without vocabularies gets none of it. Every operation documents the flags `explanation`, `trace`,
-  `coverage` and `fixpoint`; `Answer` has the fields they add, `EvaluationFault` those of the detail, with the
-  components `Trace`, `Coverage` and `Fixpoint`. The 422 is one of `EvaluationFault` and `NoFixpoint`. The documents are written by the emitter's API
+  vocabulary. A model without vocabularies gets none of it. Every operation documents the flags `explanation`,
+  `explanationParts`, `trace`, `coverage` and `fixpoint`; `Answer` has the fields they add, `EvaluationFault` those of
+  the detail, with the components `ExplanationPart` (recursive through `parts`), `Trace`, `Coverage` and `Fixpoint`. The 422 is one of `EvaluationFault` and `NoFixpoint`. The documents are written by the emitter's API
   (`write`, file `<service>.<vocabulary>.json`); the service serves no route for them.
 - What uchar does not carry — a refusal of its emitter, loader or backend (a construct the exec-model branch does
   not lower among them), or a scoped rule name that yields no form in uchar's model — makes the entry point a
@@ -223,7 +226,7 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   scenario spell it, with `nameCanonical` beside it where that differs, so every name of the coverage and the trace is
   found by its exact text among the elements or in `generated`. Nothing is read off a name: both come from uchar's
   tables (`RegelSpraakModel.generated`, `TmsTranspiler.generated`). Per scenario it gets uchar's report with its
-  `trace` and `explanation`. Beside the report stand the source line of the scenario and of each expectation (`rule`,
+  `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`rule`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in), and the `fixpoint`
   of the case's own session as uchar reads it (`DroolsBackend.fixpointOf`): per object every value and characteristic with
@@ -246,8 +249,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
     it as `path`, after `rule`. Without one the result is a MARKER whose `diagnosis` says what each entry point lacks,
     with `path` null; there is no fallback to the ordinary route;
   - the situation becomes a request (`SituationToRequest`, each instance with its label as its id, the names
-    canonical, read with `inputVocabulary=canonical`), and the core answers it with `explanation`, `trace`, `coverage` and
-    `fixpoint`, in the vocabulary of `?vocabulary=` (canonical without it). uchar compares the `expected` of the case
+    canonical, read with `inputVocabulary=canonical`), and the core answers it with `explanation`, `explanationParts`,
+    `trace`, `coverage` and `fixpoint`, in the vocabulary of `?vocabulary=` (canonical without it). uchar compares the `expected` of the case
     its frontend writes for the scenario with the written-back session of that request, the ids of the request as
     labels (`DecisionCore.assess`, `DroolsBackend.compare`): PASS or FAIL, the `expectations` and the `diagnosis`
     as uchar's report gives them, prefixed with the name of the case file as the report prefixes it;
@@ -263,6 +266,56 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
     service is a FAIL naming its violations.
   The entry point fires only the forms of its scope and uses the parameters of the descriptor beside those the
   situation sets, so a verdict can differ from the ordinary route's, which fires the forms of the scenario's own scope.
+
+## The parts of an explanation
+
+The verbaliser (`engine/Verbaliser`) writes every sentence through one builder (`Sentence.Builder`) as a shallow tree
+of parts (`Part`, record `(kind, text, meta, parts)`); `Sentence.text()`, the texts of the leaves after each other, is
+the only way to the plain sentence, so `explanation` and `explanationParts` cannot differ. The service
+(`ExplanationParts`) and both routes of the playground write the tree with one writer: a leaf as `{"kind", "text",
+<meta>}`, a group as `{"kind", <meta>, "parts"}`. The groups stand only where the verbaliser is recursive.
+
+| kind | leaf or group | what | meta |
+|---|---|---|---|
+| `SUBJECT` | leaf | the label of an instance: the subject, or a member of a fold | — |
+| `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]` |
+| `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute or parameter |
+| `VALUE` | leaf | a value as the engine read it, with its unit; a literal | `empty: true` for an empty one ("onbekend") |
+| `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
+| `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
+| `TEXT` | leaf | glue: every character that belongs to no other kind | — |
+| `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
+| `MEMBERS` | group | the members of a fold that carry its outcome, after the colon | `members` (m), `holding` (k), `unjudged` |
+| `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | — |
+| `STATUTE` | leaf | a Juriconnect anchor, literally | `bwb`, `article`, and `paragraph` and `part` where it names them |
+| `LEMMA` | leaf | the slug of a lemma | — |
+| `DEVIATION` | leaf | the slug of a deviation | `followed` |
+| `NOTE` | leaf | any other segment of an annotation: a quotation, a free note | — |
+
+Without its last part (`GROUND`) a sentence is the sentence a rule without annotations gets. There is no kind for a CGM
+concept: no rule annotation carries one.
+
+**The grammar of the ground** (`engine/Ground`). The annotations are free text on the wire (uchar's IR-SPEC ch. 3.1,
+WF-082: one string per `// Bron:` line of a rule, provenance only); their structure is the convention of the werkbank's
+rule set (MODELKAART B20: "permalink met verhouding · anker(s) · lemma's: slug · slug"). The parser is total: a
+segment that matches no pattern is a `NOTE`, and it never fails.
+
+```
+ground      = annotation { "; " annotation }          (the annotations of a rule; a default has one, below)
+annotation  = segment { " · " segment }
+segment     = statute | lemma-head | deviation | lemma | note
+statute     = "BWBR" 7DIGIT "&artikel=" value [ "&lid=" value ] [ "&o=" value ]    (value: 1*, no "&")
+lemma-head  = "lemma's: " slug                        (opens the list of lemmas)
+deviation   = ( "afwijking: " | "afwijking, niet gevolgd: " ) slug     (only after the lemma head)
+lemma       = slug                                    (only after the lemma head)
+note        = any other text, also a slug before the lemma head and a near-anchor
+slug        = 1*( letter | DIGIT | "-" )
+```
+
+The separators `" · "`, `"; "`, `"lemma's: "` and the words of a deviation are `TEXT`; an empty segment adds only its
+separators. A default carries its annotations joined with "; " already (`Default.source`), and "; " also occurs within a
+note, so the parser takes that string as one annotation: a "; " between two annotations of a default stays inside a
+segment. The remedy is upstream (`Default.source` as a list in uchar), not splitting text here.
 
 **peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
 carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request

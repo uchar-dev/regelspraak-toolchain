@@ -17,6 +17,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.toolchain.engine.Part;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.io.IOException;
@@ -58,10 +59,11 @@ import java.util.List;
  * document's vocabulary in {@code x-vocabulaire}. A model without vocabularies gets none of this, so its document is
  * the one it always was.
  *
- * <p><b>What a request asks beside its body.</b> Every operation documents the flag {@code explanation} and the detail flags
- * {@code trace}, {@code dekking} and {@code fixpunt}, which a service gives only when it was started with detail
- * ({@link CoreConfig#detail()}) and otherwise refuses with a 400; the fields they add stand in {@code Answer} and, for
- * the detail, in {@code EvaluationFault}, with the components {@code Trace}, {@code Dekking} and {@code Fixpunt}.
+ * <p><b>What a request asks beside its body.</b> Every operation documents the flags {@code explanation} and
+ * {@code explanationParts} and the detail flags {@code trace}, {@code dekking} and {@code fixpunt}, which a service
+ * gives only when it was started with detail ({@link CoreConfig#detail()}) and otherwise refuses with a 400; the fields
+ * they add stand in {@code Answer} and, for the detail, in {@code EvaluationFault}, with the components
+ * {@code ExplanationPart}, {@code Trace}, {@code Dekking} and {@code Fixpunt}.
  *
  * <p><b>The 422.</b> A request on which the rules give no answer gets one of two bodies: {@code EvaluationFault}, the faults
  * that stand at the fixpoint, or {@code NoFixpoint}, a session that reached no fixpoint, with uchar's sentence.
@@ -110,6 +112,7 @@ public final class OpenApiEmitter {
         schemas.set("Error", errorSchema());
         schemas.set("EvaluationFault", evaluationFaultSchema());
         schemas.set("Info", infoSchema(sp));
+        schemas.set("ExplanationPart", explanationPartSchema());
         schemas.set("Trace", traceSchema());
         schemas.set("Coverage", coverageSchema());
         schemas.set("Fixpoint", fixpointSchema());
@@ -210,6 +213,9 @@ public final class OpenApiEmitter {
         }
         parameters.add(flagParameter("explanation", "true: het antwoord krijgt explanation, een zin per toegekend of onthouden"
                 + " kenmerk van een instantie van het verzoek, met de waarden waarop hij rust."));
+        parameters.add(flagParameter("explanationParts", "true: het antwoord krijgt explanation en daarnaast"
+                + " explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat,"
+                + " elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin."));
         parameters.add(flagParameter("trace", "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de"
                 + " ids van het verzoek die haar regels bonden en hoe vaak ze vuurden." + DETAIL));
         parameters.add(flagParameter("coverage", "true: het antwoord krijgt coverage (schema Coverage): per vorm van dit"
@@ -555,6 +561,13 @@ public final class OpenApiEmitter {
         explanation.putObject("items").put("type", "string");
         explanation.put("description", "met de vlag explanation: een zin per toegekend of onthouden kenmerk van een instantie van"
                 + " het verzoek, met de waarden waarop hij rust.");
+        ObjectNode explanationParts = props.putObject("explanationParts");
+        explanationParts.put("type", "array");
+        ObjectNode sentence = explanationParts.putObject("items");
+        sentence.put("type", "array");
+        sentence.putObject("items").put("$ref", "#/components/schemas/ExplanationPart");
+        explanationParts.put("description", "met de vlag explanationParts: per zin van explanation, in dezelfde"
+                + " volgorde, de stukken aan haar wortel; de teksten van de bladeren achter elkaar zijn de zin.");
         detailFields(props);
         return s;
     }
@@ -568,6 +581,46 @@ public final class OpenApiEmitter {
         error.put("type", "string");
         error.put("description", "met de vlag fixpoint, in plaats van fixpoint: waarom een waarde van het fixpunt niet"
                 + " getoond kan worden.");
+    }
+
+    /** One part of a sentence of the explanation ({@link ExplanationParts}): a leaf or a group, recursive through
+     *  {@code parts}. */
+    private static ObjectNode explanationPartSchema() {
+        ObjectNode s = NF.objectNode();
+        s.put("type", "object");
+        s.put("description", "Een stuk van een uitlegzin: een blad met text, of een groep (CONDITION, MEMBERS,"
+                + " GROUND) met parts, waarvan de tekst die van haar stukken achter elkaar is. Per kind: SUBJECT het"
+                + " label van een instantie, het onderwerp of een lid van een kwantorvouw; NAME een gedeclareerde naam"
+                + " in het vocabulaire van het antwoord, met declaration (ATTRIBUUT, KENMERK, ROL of PARAMETER), owner"
+                + " en canonical, de sleutels kind, owner en canonical van een element van vocabularies; QUOTE"
+                + " regeltekst zoals geschreven, met dezelfde drie waar het operand één declaratie leest; VALUE een"
+                + " waarde met haar eenheid, met empty: true bij een lege; RULE de naam van een regel of van een variant"
+                + " van een defaults-groep; CONNECTIVE een woord dat de logica tussen de delen draagt (omdat, want,"
+                + " maar, en, of, en niet, niet geldt, gold niet); TEXT lijm; CONDITION een voorwaarde, met holds, het"
+                + " oordeel van de motor (ontbreekt waar de motor de knoop zonder oordeel bereikte), en bij een"
+                + " samenstelling of een kwantorvouw quantifier (all, none, atLeast, atMost, exactly, the) met threshold"
+                + " bij een telling; MEMBERS de leden van een kwantorvouw die haar uitkomst dragen, met members (m),"
+                + " holding (k) en unjudged; GROUND de grondslag, het laatste stuk van de zin, met de punt en"
+                + " 'Grondslag: ' als TEXT ervoor; STATUTE een Juriconnect-anker, met bwb, article en, waar het ze"
+                + " noemt, paragraph en part; LEMMA een lemma; DEVIATION een afwijking, met followed; NOTE elk ander"
+                + " segment van een annotatie.");
+        s.putArray("required").add("kind");
+        ObjectNode props = s.putObject("properties");
+        ObjectNode kind = props.putObject("kind");
+        kind.put("type", "string");
+        ArrayNode kinds = kind.putArray("enum");
+        for (Part.Kind k : Part.Kind.values()) kinds.add(k.name());
+        props.putObject("text").put("type", "string");
+        ObjectNode parts = props.putObject("parts");
+        parts.put("type", "array");
+        parts.putObject("items").put("$ref", "#/components/schemas/ExplanationPart");
+        for (String key : new String[]{"declaration", "canonical", "quantifier", "bwb", "article", "paragraph", "part"})
+            props.putObject(key).put("type", "string");
+        props.putObject("owner").put("type", "string").put("nullable", true);
+        for (String key : new String[]{"empty", "holds", "followed"}) props.putObject(key).put("type", "boolean");
+        for (String key : new String[]{"threshold", "members", "holding", "unjudged"})
+            props.putObject(key).put("type", "integer");
+        return s;
     }
 
     /** The firings of a request's session, as uchar's waarnemer records them. */

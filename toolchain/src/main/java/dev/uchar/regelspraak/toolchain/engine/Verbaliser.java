@@ -7,6 +7,7 @@ import dev.uchar.regelspraak.ir.ExceptionGroup;
 import dev.uchar.regelspraak.ir.Expr;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
 import dev.uchar.regelspraak.ir.ResolvedRule;
+import dev.uchar.regelspraak.ir.Spelling;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.Unit;
@@ -34,6 +35,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.function.Consumer;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -101,6 +103,13 @@ import java.util.regex.Pattern;
  * een default de zijne in {@code Default.source}. De zin van een kenmerktoekenning eindigt dan met ". Grondslag:
  * <tekst>", die van een defaults-groep met de bron van de variant die besliste; zonder annotatie staat er geen
  * (geen verzonnen bron).
+ *
+ * <p><b>Stukken.</b> Elke zin schrijft de verbalisator op één {@link Sentence.Builder}, als een ondiepe boom van
+ * {@link Part}s met een soort: het onderwerp, de namen met hun declaratie, de regeltekst, de waarden, de regelnamen, de
+ * verbindingswoorden en de lijm, een voorwaarde als groep met het oordeel van de motor op haar knoop, de leden van een
+ * kwantorvouw als groep met hun telling, en de grondslag als laatste stuk, ontleed ({@link Ground}). De platte zin is
+ * {@link Sentence#text()}, de tekst van de stukken achter elkaar: {@link #verbalise} geeft die, {@link #sentences} de
+ * zinnen zelf.
  */
 public final class Verbaliser {
 
@@ -133,8 +142,13 @@ public final class Verbaliser {
     /** {@link #verbalise(Map, Map, List)} zonder de defaults-groepen en zonder de vormen buiten de scope: de
      *  kenmerktoekenningen alleen. */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
+        return texts(sentences(instances, typePerLabel));
+    }
+
+    /** {@link #verbalise(Map, Map)} als zinnen met hun stukken. */
+    public List<Sentence> sentences(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
         label(instances);
-        List<String> sink = new ArrayList<>();
+        List<Sentence> sink = new ArrayList<>();
         for (Map.Entry<String, Object> e : instances.entrySet()) {
             ObjectType ot = typePerLabel.get(e.getKey());
             if (ot == null || e.getValue() == null) continue;
@@ -158,9 +172,15 @@ public final class Verbaliser {
      */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
                                   List<DefaultsDecision> decisions) {
+        return texts(sentences(instances, typePerLabel, decisions));
+    }
+
+    /** {@link #verbalise(Map, Map, List)} als zinnen met hun stukken. */
+    public List<Sentence> sentences(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
+                                    List<DefaultsDecision> decisions) {
         Objects.requireNonNull(decisions, "decisions");
         label(instances);
-        List<String> sink = new ArrayList<>();
+        List<Sentence> sink = new ArrayList<>();
         Set<String> outside = new LinkedHashSet<>();
         for (Map.Entry<String, Object> e : instances.entrySet()) {
             String label = e.getKey();
@@ -173,8 +193,14 @@ public final class Verbaliser {
                 for (ObjectType t : ot.chain()) if (t.name.equalsIgnoreCase(type)) outside.add(rule);
             });
         }
-        for (String rule : outside) sink.add("de regel '" + rule + "' staat buiten deze berekening");
+        for (String rule : outside)
+            sink.add(Sentence.builder().text("de regel '").leaf(Part.Kind.RULE, rule)
+                    .text("' staat buiten deze berekening").build());
         return sink;
+    }
+
+    private static List<String> texts(List<Sentence> sentences) {
+        return sentences.stream().map(Sentence::text).toList();
     }
 
     private void label(Map<String, Object> instances) {
@@ -185,7 +211,7 @@ public final class Verbaliser {
         });
     }
 
-    private void assignments(String label, Object bean, ObjectType ot, List<String> sink) {
+    private void assignments(String label, Object bean, ObjectType ot, List<Sentence> sink) {
         for (ResolvedRule r : model.resolvedRules) {
             if (r.kind() != ResolvedRule.Kind.KENMERKTOEKENNING) continue;
             if (!(r.target() instanceof Expr.AttributeReference ref) || ref.objectType() == null) continue;
@@ -194,7 +220,7 @@ public final class Verbaliser {
             // supertype kent het kenmerk óók toe aan een subtype-instantie. Op naamgelijkheid vergelijken
             // laat precies die toekenningen onverklaard: het kenmerk staat AAN en het verhaal zwijgt.
             if (!ot.isA(ref.objectType())) continue;
-            String sentence = verbaliseAssignment(label, bean, ref, r);
+            Sentence sentence = verbaliseAssignment(label, bean, ref, r);
             if (sentence != null) sink.add(sentence);
         }
     }
@@ -296,7 +322,7 @@ public final class Verbaliser {
             this.decisions = decisions;
         }
 
-        void sentences(List<String> sink) {
+        void sentences(List<Sentence> sink) {
             // Elke stapel komt uit decisionsOf: elk object van de sessie heeft per stapel van zijn type één record,
             // ook waar niemand besliste (ch. 7.10: per concreet type en doel één stapel). Het document geeft alleen
             // de volgorde, die van de eerste groep die het doel op de typeketen van het object schrijft.
@@ -327,7 +353,7 @@ public final class Verbaliser {
 
         // ---- de drie zinnen ----
 
-        private String decided(DefaultsDecision d) {
+        private Sentence decided(DefaultsDecision d) {
             List<List<Variant>> chains = new ArrayList<>();
             for (List<String> chain : d.rootChains()) chains.add(chain.stream().map(this::variant).toList());
             String pointer = d.decider().pointer();
@@ -341,47 +367,68 @@ public final class Verbaliser {
                 throw new IllegalStateException("de beslisser " + pointer + " van '" + d.member() + "' van " + label
                         + " is een groep-default zonder eigen besluit of waarde");
             requireTarget(decider, d.member());
-            StringBuilder b = new StringBuilder(label).append(' ')
-                    .append(outcome(d.member(), d.characteristic(), d.decider().decision()))
-                    .append(" volgens ").append(name(decider)).append(reason(decider, d.characteristic()));
-            List<String> after = new ArrayList<>();
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+            outcome(b, d.member(), d.characteristic(), d.decider().decision());
+            b.text(" volgens ");
+            name(b, decider);
+            reason(b, decider, d.characteristic());
+            List<Variant> after = new ArrayList<>();
             for (Turn t : turns) {
                 switch (t.role()) {
-                    case BEFORE -> b.append("; ").append(name(t.variant())).append(' ')
-                            .append(notDecided(t.variant(), d.characteristic(), d.member()));
-                    case SIBLING -> b.append("; ").append(name(t.variant())).append(" besliste niet anders");
-                    case AFTER -> after.add(name(t.variant()));
+                    case BEFORE -> {
+                        b.text("; ");
+                        name(b, t.variant());
+                        b.text(" ");
+                        notDecided(b, t.variant(), d.characteristic(), d.member());
+                    }
+                    case SIBLING -> {
+                        b.text("; ");
+                        name(b, t.variant());
+                        b.text(" besliste niet anders");
+                    }
+                    case AFTER -> after.add(t.variant());
                     case DECIDER -> { }
                 }
             }
-            if (!after.isEmpty()) b.append("; verdrongen: ").append(String.join(", ", after));
+            for (int i = 0; i < after.size(); i++) {
+                b.text(i == 0 ? "; verdrongen: " : ", ");
+                name(b, after.get(i));
+            }
             if (d.characteristic() && Boolean.FALSE.equals(d.decider().decision()) && readBoolean(bean, d.member()))
-                b.append("; de invoer kende het kenmerk toe, en dat blijft staan");
-            String source = groundOf(decider);
-            if (source != null) b.append(". Grondslag: ").append(source);
-            return b.toString();
+                b.text("; de invoer kende het kenmerk toe, en dat blijft staan");
+            ground(b, groundOf(decider));
+            return b.build();
         }
 
-        private String conflicted(DefaultsDecision d) {
+        private Sentence conflicted(DefaultsDecision d) {
             DefaultsDecision.Conflict c = d.conflict();
-            StringBuilder b = new StringBuilder(label).append(' ').append(standing(d.member(), d.characteristic()))
-                    .append(", want er is een conflict");
-            if (c.pointer() != null) b.append(" in de uitzonderingen op ").append(carrierName(variant(c.pointer())));
-            b.append(": ");
-            List<String> parts = new ArrayList<>();
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+            standing(b, d.member(), d.characteristic());
+            b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" er is een conflict");
+            if (c.pointer() != null) {
+                b.text(" in de uitzonderingen op ");
+                carrierName(b, variant(c.pointer()));
+            }
+            b.text(": ");
+            boolean first = true;
             for (DefaultsDecision.Decider x : c.deciders()) {
                 Variant v = variant(x.pointer());
                 requireTarget(v, d.member());
-                parts.add(name(v) + " besliste '" + outcome(d.member(), d.characteristic(), x.decision()) + "'");
+                if (!first) b.text(" ").leaf(Part.Kind.CONNECTIVE, "en").text(" ");
+                first = false;
+                name(b, v);
+                b.text(" besliste '");
+                outcome(b, d.member(), d.characteristic(), x.decision());
+                b.text("'");
             }
-            b.append(String.join(" en ", parts)).append(", dus de groep schrijft niets");
-            return b.toString();
+            b.text(", dus de groep schrijft niets");
+            return b.build();
         }
 
         /** Niemand besliste: wat het doel houdt, en per variant van de stapel waarom ze niet besliste. De varianten en
          *  hun volgorde zijn die van het record ({@link DefaultsDecision#rootChains}), ook waar ch. 7.10 de stapel uit
          *  twee declaraties samenstelt. */
-        private String undecided(DefaultsDecision d) {
+        private Sentence undecided(DefaultsDecision d) {
             List<Turn> turns = new ArrayList<>();
             for (List<String> chain : d.rootChains())
                 for (String pointer : chain) {
@@ -392,12 +439,16 @@ public final class Verbaliser {
             if (turns.isEmpty())
                 throw new IllegalStateException("de motor gaf over '" + d.member() + "' van " + label
                         + " een stapel zonder varianten: " + d.rootChains());
-            StringBuilder b = new StringBuilder(label).append(' ').append(standing(d.member(), d.characteristic()))
-                    .append(", want geen variant besliste");
-            for (Turn t : turns)
-                b.append("; ").append(name(t.variant())).append(' ')
-                        .append(notDecided(t.variant(), d.characteristic(), d.member()));
-            return b.toString();
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+            standing(b, d.member(), d.characteristic());
+            b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" geen variant besliste");
+            for (Turn t : turns) {
+                b.text("; ");
+                name(b, t.variant());
+                b.text(" ");
+                notDecided(b, t.variant(), d.characteristic(), d.member());
+            }
+            return b.build();
         }
 
         // ---- volgorde: wie was vóór de beslisser aan de beurt, wie erna ----
@@ -456,22 +507,36 @@ public final class Verbaliser {
 
         /** Het doel met zijn waarde of besluit: bij een kenmerk de hoofdzin, ook de ontkende, bij een attribuut de
          *  waarde in de opmaak van een operand. */
-        private String outcome(String member, boolean characteristic, Object decision) {
-            if (characteristic) return predicateOf(member, Boolean.TRUE.equals(decision)).mainClause();
-            return "heeft als " + naming.attribute(type, member) + " " + render(decision, type.attribute(member));
+        private void outcome(Sentence.Builder b, String member, boolean characteristic, Object decision) {
+            if (characteristic) {
+                predicateOf(member, Boolean.TRUE.equals(decision)).mainClause(b);
+                return;
+            }
+            b.text("heeft als ");
+            attributeName(b, type, member);
+            b.text(" ");
+            value(b, render(decision, type.attribute(member)), decision == null);
         }
 
         /** Wat het doel houdt waar de groep niets schreef: het kenmerk zoals de invoer het gaf, de invoerwaarde of
          *  leeg. */
-        private String standing(String member, boolean characteristic) {
+        private void standing(Sentence.Builder b, String member, boolean characteristic) {
             if (characteristic) {
                 boolean present = readBoolean(bean, member);
-                return predicateOf(member, present).mainClause() + (present ? " uit de invoer" : "");
+                predicateOf(member, present).mainClause(b);
+                if (present) b.text(" uit de invoer");
+                return;
             }
             Object v = readRaw(bean, Namen.getter(member));
-            if (v == null) return "heeft geen " + naming.attribute(type, member);
-            return "houdt als " + naming.attribute(type, member) + " de invoerwaarde "
-                    + render(v, type.attribute(member));
+            if (v == null) {
+                b.text("heeft geen ");
+                attributeName(b, type, member);
+                return;
+            }
+            b.text("houdt als ");
+            attributeName(b, type, member);
+            b.text(" de invoerwaarde ");
+            value(b, render(v, type.attribute(member)), false);
         }
 
         private Predicate predicateOf(String member, boolean present) {
@@ -484,95 +549,147 @@ public final class Verbaliser {
         }
 
         /** Waarom de beslisser besliste: haar voorwaarde met de waarden van de operanden. */
-        private String reason(Variant v, boolean characteristic) {
+        private void reason(Sentence.Builder b, Variant v, boolean characteristic) {
             Condition c = conditionOf(v);
-            if (c == null && isInitialisation(v))
-                return ", omdat " + (characteristic ? "het kenmerk" : "de " + naming.attribute(type, targetOf(v)))
-                        + " in de invoer leeg was";
+            if (c == null && isInitialisation(v)) {
+                b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
+                if (characteristic) b.text("het kenmerk");
+                else {
+                    b.text("de ");
+                    attributeName(b, type, targetOf(v));
+                }
+                b.text(" in de invoer leeg was");
+                return;
+            }
             if (c == null || c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE
-                    && s.components().isEmpty()) return " (onvoorwaardelijk)";
+                    && s.components().isEmpty()) {
+                b.text(" (onvoorwaardelijk)");
+                return;
+            }
             ConditionReading.Status status = reading(v.pointer(), bean, label).status();
             Read read = read(v.pointer(), bean, label, c);
             if (status != ConditionReading.Status.HOLDS)
                 throw new IllegalStateException("de beslisser " + v.pointer() + " van " + label + " heeft de lezing "
                         + status + ", en een variant die besliste heeft een voorwaarde die geldt");
-            return ", omdat " + verbaliseCondition(c, read, subjectOf(v), ucharText(v));
+            b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
+            verbaliseCondition(b, c, read, subjectOf(v), ucharText(v));
         }
 
         /** Waarom een variant die aan de beurt was niet besliste: een kenmerkvariant waarvan de voorwaarde geldt,
          *  beslist altijd, dus gold haar voorwaarde niet; een attribuutvariant beslist ook niet waar haar waarde leeg
          *  is (ch. 7.1). */
-        private String notDecided(Variant v, boolean characteristic, String member) {
+        private void notDecided(Sentence.Builder b, Variant v, boolean characteristic, String member) {
             Condition c = conditionOf(v);
             ObjectType subject = subjectOf(v);
-            if (c == null && isInitialisation(v)) return initialisationNotDecided(member);
+            if (c == null && isInitialisation(v)) {
+                initialisationNotDecided(b, member);
+                return;
+            }
             if (c == null) {
-                if (!characteristic) return "gaf geen waarde";
+                if (!characteristic) {
+                    b.text("gaf geen waarde");
+                    return;
+                }
                 throw new IllegalStateException("de variant " + v.pointer() + " van '" + member + "' van " + label
                         + " heeft geen voorwaarde, en een kenmerkvariant zonder voorwaarde beslist altijd");
             }
             ConditionReading.Status status = reading(v.pointer(), bean, label).status();
-            return switch (status) {
+            switch (status) {
                 case HOLDS -> {
-                    if (!characteristic) yield "gaf geen waarde";
+                    if (!characteristic) {
+                        b.text("gaf geen waarde");
+                        return;
+                    }
                     throw new IllegalStateException("de variant " + v.pointer() + " van '" + member + "' van " + label
                             + " heeft een voorwaarde die geldt en besliste niet, en een kenmerkvariant waarvan de"
                             + " voorwaarde geldt, beslist altijd");
                 }
-                case FAILS -> "gold niet, want " + firstFailing(c, read(v.pointer(), bean, label, c), subject,
-                        ucharText(v));
-                case OUTSIDE_VALIDITY -> "gold niet, want zij valt op de rekendatum buiten haar geldigheid";
+                case FAILS -> {
+                    Read read = read(v.pointer(), bean, label, c);
+                    didNotHoldBecause(b).text(" ");
+                    firstFailing(b, c, read, subject, ucharText(v));
+                }
+                case OUTSIDE_VALIDITY ->
+                        didNotHoldBecause(b).text(" zij valt op de rekendatum buiten haar geldigheid");
                 case DISPLACED -> {
                     // een initialisatie wacht op haar beurt: het doel heeft een waarde van de invoer
-                    if (isInitialisation(v)) yield initialisationNotDecided(member);
+                    if (isInitialisation(v)) {
+                        initialisationNotDecided(b, member);
+                        return;
+                    }
                     throw new IllegalStateException("de variant " + v.pointer() + " van '" + member + "' van " + label
                             + " was volgens de motor niet aan de beurt, en de beslissing noemt haar vóór de beslisser");
                 }
                 case FAULTS -> throw faulted(v.pointer(), label);
-            };
+            }
         }
 
-        private String initialisationNotDecided(String member) {
-            return readRaw(bean, Namen.getter(member)) != null
-                    ? "gold niet, want de " + naming.attribute(type, member) + " had een invoerwaarde"
-                    : "gaf geen waarde";
+        private void initialisationNotDecided(Sentence.Builder b, String member) {
+            if (readRaw(bean, Namen.getter(member)) == null) {
+                b.text("gaf geen waarde");
+                return;
+            }
+            didNotHoldBecause(b).text(" de ");
+            attributeName(b, type, member);
+            b.text(" had een invoerwaarde");
         }
 
         // ---- namen ----
 
         /** De naam van een variant: de basis als "de regel '…'", een variant aan de wortel bij haar naam alleen, een
          *  geneste met de keten van haar lagen; zonder naam bij de opgavemarkering haar bron, anders haar plaats. */
-        private String name(Variant v) {
-            if (v.rule() != null) return "de regel '" + RegelSpraakModel.formName(v.rule().name()) + "'";
+        private void name(Sentence.Builder b, Variant v) {
+            if (v.rule() != null) {
+                b.text("de regel '").leaf(Part.Kind.RULE, RegelSpraakModel.formName(v.rule().name())).text("'");
+                return;
+            }
             String name = v.d().name();
             if (name == null) {
-                if (generatedOpgave(v)) return "'" + naming.attribute(subjectOf(v), v.d().source()) + "'";
-                if (v.holder() == null)
-                    return "de variant op plaats " + (v.place() + 1) + " van " + groupLabel(v.group());
-                return "de variant op plaats " + (v.place() + 1) + " van uitzonderingsgroep " + (v.member() + 1)
-                        + " van " + name(v.holder());
+                if (generatedOpgave(v)) {
+                    // de opgavemarkering noemt de default naar het attribuut van zijn bron, in het vocabulaire
+                    b.text("'");
+                    attributeName(b, subjectOf(v), v.d().source());
+                    b.text("'");
+                } else if (v.holder() == null) {
+                    b.text("de variant op plaats " + (v.place() + 1) + " van ");
+                    groupLabel(b, v.group());
+                } else {
+                    b.text("de variant op plaats " + (v.place() + 1) + " van uitzonderingsgroep " + (v.member() + 1)
+                            + " van ");
+                    name(b, v.holder());
+                }
+                return;
             }
-            if (v.holder() == null)
-                return name.equals(v.group().name()) ? "de regel '" + name + "'" : "'" + name + "'";
+            if (v.holder() == null) {
+                b.text(name.equals(v.group().name()) ? "de regel '" : "'").leaf(Part.Kind.RULE, name).text("'");
+                return;
+            }
             List<String> layers = new ArrayList<>();
             for (Variant h = v.holder(); h != null; h = h.holder())
-                if (h.d().name() != null) layers.add("'" + h.d().name() + "'");
+                if (h.d().name() != null) layers.add(h.d().name());
             // de groep-default van 'B voor S' draagt de blokken die op het eerste niveau van B voor subtype S staan
-            if (layers.isEmpty() && forSubtype(v.group())) return "'" + name + "'";
-            String basis = basisOf(v.group());
-            if (basis != null && (layers.isEmpty() || !layers.get(layers.size() - 1).equals("'" + basis + "'")))
-                layers.add("'" + basis + "'");
-            return layers.isEmpty() ? "'" + name + "'"
-                    : "'" + name + "' (uitzondering op " + String.join(" op ", layers) + ")";
+            String basis = layers.isEmpty() && forSubtype(v.group()) ? null : basisOf(v.group());
+            if (basis != null && (layers.isEmpty() || !layers.get(layers.size() - 1).equals(basis))) layers.add(basis);
+            b.text("'").leaf(Part.Kind.RULE, name).text("'");
+            if (layers.isEmpty()) return;
+            b.text(" (uitzondering op ");
+            for (int i = 0; i < layers.size(); i++) {
+                if (i > 0) b.text(" op ");
+                b.text("'").leaf(Part.Kind.RULE, layers.get(i)).text("'");
+            }
+            b.text(")");
         }
 
         /** De drager van uitzonderingsgroepen bij naam. Een groep-default zonder naam aan de wortel maakte de kop
          *  {@code Uitzonderingen ongeordend op B}, of uchar voor de blokken van een subtype onder B: zijn leden zijn
          *  uitzonderingen op de basis. */
-        private String carrierName(Variant v) {
+        private void carrierName(Sentence.Builder b, Variant v) {
             if (v.rule() == null && v.d().name() == null && !v.d().hasOwnContent() && v.holder() == null
-                    && basisOf(v.group()) != null) return "de regel '" + basisOf(v.group()) + "'";
-            return name(v);
+                    && basisOf(v.group()) != null) {
+                b.text("de regel '").leaf(Part.Kind.RULE, basisOf(v.group())).text("'");
+                return;
+            }
+            name(b, v);
         }
 
         /** De naam van de basis van een groep: de groepsnaam, en bij de groep {@code B voor S} die uchar maakte voor de
@@ -589,8 +706,9 @@ public final class Verbaliser {
                     .map(f -> f.form() == OriginForm.EXCEPTION_FOR_SUBTYPE).orElse(false);
         }
 
-        private String groupLabel(PrioritizedDefaults g) {
-            return g.name() != null ? "'" + g.name() + "'" : "de groep op " + g.subject() + "." + g.target();
+        private void groupLabel(Sentence.Builder b, PrioritizedDefaults g) {
+            if (g.name() != null) b.text("'").leaf(Part.Kind.RULE, g.name()).text("'");
+            else b.text("de groep op " + g.subject() + "." + g.target());
         }
 
         // ---- het model ----
@@ -684,13 +802,14 @@ public final class Verbaliser {
             return t;
         }
 
-        /** De grondslag van de beslisser: de bron die het IR haar geeft. Een default die de opgavemarkering maakte,
-         *  draagt in zijn bron zijn naam; een regel draagt haar bron in haar annotaties. */
-        private String groundOf(Variant v) {
-            if (v.rule() != null) return sourceReference(v.rule());
-            if (generatedOpgave(v)) return null;
+        /** De grondslag van de beslisser: de bron die het IR haar geeft, leeg zonder. Een default die de
+         *  opgavemarkering maakte, draagt in zijn bron zijn naam; een regel draagt haar bron in haar annotaties, een
+         *  default de zijne in één string ({@link Ground}). */
+        private List<String> groundOf(Variant v) {
+            if (v.rule() != null) return sourceAnnotations(v.rule());
+            if (generatedOpgave(v)) return List.of();
             String s = v.d().source();
-            return s == null || s.isBlank() ? null : s.trim();
+            return s == null || s.isBlank() ? List.of() : List.of(s.trim());
         }
 
         /** Of de opgavemarkering deze default maakte: een default zonder naam in de groep {@code opgave boven
@@ -717,7 +836,7 @@ public final class Verbaliser {
      *  met een voorwaarde NIET toegekend → "niet, want <het lid waar de motor stopte>"; onvoorwaardelijk-afwezig →
      *  geen zin (er valt niets te verantwoorden). Staat het kenmerk aan terwijl de voorwaarde van deze regel niet gold,
      *  dan kwam het uit de invoer of van een andere schrijver, en zegt de zin dat deze regel niet gold. */
-    private String verbaliseAssignment(String label, Object bean, Expr.AttributeReference ref, ResolvedRule r) {
+    private Sentence verbaliseAssignment(String label, Object bean, Expr.AttributeReference ref, ResolvedRule r) {
         String characteristic = ref.attribute();
         boolean present = readBoolean(bean, characteristic);
         Condition v = r.condition();
@@ -729,34 +848,89 @@ public final class Verbaliser {
             throw new IllegalStateException("de kenmerktoekenning '" + r.name() + "' kent '" + characteristic + "' toe, en "
                     + subject.name + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
         boolean ucharText = writtenByUchar(r);
-        StringBuilder b = new StringBuilder(label).append(' ').append(predicate.mainClause());
+        Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+        predicate.mainClause(b);
         if (v == null) {
-            b.append(" (onvoorwaardelijk toegekend)");
+            b.text(" (onvoorwaardelijk toegekend)");
         } else {
             String pointer = document.positions().versionOf(r);
             if (pointer == null)
                 throw new IllegalStateException("de regel '" + r.name() + "' staat niet als versie in het document van"
                         + " de uitleg: haar lezing heeft geen vorm");
             ConditionReading.Status status = reading(pointer, bean, label).status();
-            String but = present ? ", maar de regel '" + RegelSpraakModel.formName(r.name()) + "' gold niet, want "
-                    : ", want ";
             switch (status) {
                 case HOLDS -> {
                     if (!present)
                         throw new IllegalStateException("de voorwaarde van '" + r.name() + "' geldt volgens de motor op "
                                 + label + ", en het kenmerk '" + characteristic + "' staat niet");
-                    b.append(", omdat ").append(verbaliseCondition(v, read(pointer, bean, label, v), subject, ucharText));
+                    Read read = read(pointer, bean, label, v);
+                    b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
+                    verbaliseCondition(b, v, read, subject, ucharText);
                 }
-                case FAILS -> b.append(but).append(firstFailing(v, read(pointer, bean, label, v), subject, ucharText));
-                case OUTSIDE_VALIDITY -> b.append(but).append("de regel valt op de rekendatum buiten haar geldigheid");
+                case FAILS -> {
+                    Read read = read(pointer, bean, label, v);
+                    but(b, present, r);
+                    firstFailing(b, v, read, subject, ucharText);
+                }
+                case OUTSIDE_VALIDITY -> {
+                    but(b, present, r);
+                    b.text("de regel valt op de rekendatum buiten haar geldigheid");
+                }
                 case DISPLACED -> throw new IllegalStateException("de motor noemt '" + r.name() + "' op " + label
                         + " niet aan de beurt, en een kenmerktoekenning wacht niet op haar beurt");
                 case FAULTS -> throw faulted(pointer, label);
             }
         }
-        String source = sourceReference(r);
-        if (source != null) b.append(". Grondslag: ").append(source);
-        return b.toString();
+        ground(b, sourceAnnotations(r));
+        return b.build();
+    }
+
+    /** Het begin van de reden waarom de voorwaarde van {@code r} niet gold: bij een kenmerk dat toch staat, dat deze
+     *  regel niet gold. */
+    private static void but(Sentence.Builder b, boolean present, ResolvedRule r) {
+        b.text(", ");
+        if (present) {
+            b.leaf(Part.Kind.CONNECTIVE, "maar").text(" de regel '")
+                    .leaf(Part.Kind.RULE, RegelSpraakModel.formName(r.name())).text("' ");
+            didNotHoldBecause(b);
+        } else {
+            b.leaf(Part.Kind.CONNECTIVE, "want");
+        }
+        b.text(" ");
+    }
+
+    /** "gold niet, want". */
+    private static Sentence.Builder didNotHoldBecause(Sentence.Builder b) {
+        return b.leaf(Part.Kind.CONNECTIVE, "gold niet").text(", ").leaf(Part.Kind.CONNECTIVE, "want");
+    }
+
+    /** De grondslag als laatste stuk van de zin, met de punt en "Grondslag: " ervoor, zodat de zin zonder dat stuk
+     *  dezelfde is als een zin zonder annotatie; niets zonder annotatie. */
+    private static void ground(Sentence.Builder b, List<String> annotations) {
+        if (annotations.isEmpty()) return;
+        b.open(Part.Kind.GROUND, Map.of()).text(". Grondslag: ");
+        Ground.write(b, annotations);
+        b.close(Part.Kind.GROUND);
+    }
+
+    /** Een gedeclareerde naam zoals {@link Naming} haar noemt, met de sleutels van zijn declaratie {@code d}, de
+     *  sleutels van {@code vocabularies.elements[]}; zonder sleutels waar de declaratie niet bekend is. */
+    private static void declaredName(Sentence.Builder b, String text, Designatable d) {
+        b.leaf(Part.Kind.NAME, text, declaration(d));
+    }
+
+    private static Map<String, Object> declaration(Designatable d) {
+        return d == null ? Map.of() : Part.meta("declaration", d.kind().name(), "owner", d.owner(), "canonical", d.name());
+    }
+
+    /** Attribuut {@code member} van {@code holder} in het vocabulaire. */
+    private void attributeName(Sentence.Builder b, ObjectType holder, String member) {
+        declaredName(b, naming.attribute(holder, member), Naming.attributeOf(holder, member));
+    }
+
+    /** Een waarde in de opmaak van de zin; {@code empty} bij een lege. */
+    private static void value(Sentence.Builder b, String text, boolean empty) {
+        b.leaf(Part.Kind.VALUE, text, empty ? Part.meta("empty", true) : Map.of());
     }
 
     /** De lezing van vorm {@code form} op {@code bean}; faalt luid waar de motor er geen gaf. */
@@ -823,28 +997,57 @@ public final class Verbaliser {
 
     /** Een voorwaarde in proza, met de waarden die de motor las: WAAROM ze geldt. Van een samenstelling alleen de
      *  leden die de motor bereikte. {@code subject} is het objecttype van de regel, vanwaar een kenmerk- of rolnaam in
-     *  de voorwaarde gelezen wordt; {@code ucharText} of uchar de regel schreef. */
-    private String verbaliseCondition(Condition c, Read read, ObjectType subject, boolean ucharText) {
+     *  de voorwaarde gelezen wordt; {@code ucharText} of uchar de regel schreef. Elke voorwaarde is een groep
+     *  ({@link #conditionMeta}). */
+    private void verbaliseCondition(Sentence.Builder b, Condition c, Read read, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Compound s) {
-            List<String> parts = new ArrayList<>();
-            for (Condition d : s.components())
-                if (read.reached(d)) parts.add(verbaliseCondition(d, read, subject, ucharText));
             String conjunction = switch (s.quantifier()) {
-                case ALLE -> " en ";
-                case GEEN -> " en niet ";
-                default -> " of ";
+                case ALLE -> "en";
+                case GEEN -> "en niet";
+                default -> "of";
             };
-            return String.join(conjunction, parts);
+            b.open(Part.Kind.CONDITION, conditionMeta(c, read));
+            boolean first = true;
+            for (Condition d : s.components())
+                if (read.reached(d)) {
+                    if (!first) b.text(" ").leaf(Part.Kind.CONNECTIVE, conjunction).text(" ");
+                    first = false;
+                    verbaliseCondition(b, d, read, subject, ucharText);
+                }
+            b.close(Part.Kind.CONDITION);
+            return;
         }
-        return verbaliseAtom(c, read, subject, ucharText);
+        verbaliseAtom(b, c, read, subject, ucharText);
     }
 
-    /** Een enkele (niet-samengestelde) conditie als proza met de waarden van haar operanden; null voor een vorm die de
-     *  uitleg niet in woorden zet, die {@link #unstructured} met haar brontekst noemt. */
-    private String structuredAtom(Condition c, Read read, ObjectType subject, boolean ucharText) {
+    /** Wat de groep van voorwaarde {@code c} draagt: {@code holds}, het oordeel van de motor op haar knoop (geen
+     *  sleutel waar de motor de knoop bereikte zonder oordeel, na een lege binder), en bij een samenstelling of een
+     *  kwantorvouw {@code quantifier} in de spelling van de draad, met {@code threshold} bij een telling. */
+    private static Map<String, Object> conditionMeta(Condition c, Read read) {
+        Map<String, Object> meta = new LinkedHashMap<>();
+        if (read.of(c).value() instanceof Boolean holds) meta.put("holds", holds);
+        Condition.Quantifier q = null;
+        int threshold = 0;
+        if (c instanceof Condition.Compound s) { q = s.quantifier(); threshold = s.threshold(); }
+        if (c instanceof Condition.QuantifierFold f) { q = f.quantifier(); threshold = f.threshold(); }
+        if (q != null) {
+            meta.put("quantifier", Spelling.QUANTIFIER.spelling(q));
+            if (q == Condition.Quantifier.TEN_MINSTE || q == Condition.Quantifier.TEN_HOOGSTE
+                    || q == Condition.Quantifier.PRECIES) meta.put("threshold", threshold);
+        }
+        return meta;
+    }
+
+    /** Een enkele (niet-samengestelde) conditie als proza met de waarden van haar operanden, als schrijver van haar
+     *  stukken; null voor een vorm die de uitleg niet in woorden zet, die {@link #unstructured} met haar brontekst
+     *  noemt. */
+    private Consumer<Sentence.Builder> structuredAtom(Condition c, Read read, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Comparison vg) {
-            return operandProse(vg.left(), read, ucharText) + " " + operatorWords(vg.op()) + " "
-                    + operandProse(vg.right(), read, ucharText);
+            return b -> {
+                operandProse(b, vg.left(), read, ucharText);
+                b.text(" " + operatorWords(vg.op()) + " ");
+                operandProse(b, vg.right(), read, ucharText);
+            };
         }
         if (c instanceof Condition.CharacteristicCheck k) {
             List<RoleBindingRef> walk = walkOf(k);
@@ -852,32 +1055,56 @@ public final class Verbaliser {
             Predicate predicate = predicate(holder, k.characteristic(), !k.negation(), summary(c));
             // zonder soort geen werkwoord: dan de voorwaarde zoals de regel haar schrijft
             if (predicate == null) return null;
-            return who(walk) + " " + predicate.clause();
+            return b -> {
+                who(b, walk);
+                b.text(" ");
+                predicate.clause(b);
+            };
         }
         if (c instanceof Condition.RoleMembership rl)
-            return "het onderwerp " + (rl.negation() ? "geen " : "een ") + naming.roleFulfilled(subject, rl.role())
-                    + " is";
+            return b -> {
+                b.text("het onderwerp " + (rl.negation() ? "geen " : "een "));
+                declaredName(b, naming.roleFulfilled(subject, rl.role()),
+                        Naming.roleFulfilledBy(model, subject, rl.role()));
+                b.text(" is");
+            };
         if (c instanceof Condition.Predicate p) {
             String core = switch (p.kind()) {
                 case LEEG -> "leeg is";
                 case GEVULD -> "gevuld is";
                 default -> "voldoet aan " + p.kind().name().toLowerCase(Locale.ROOT);
             };
-            return operandProse(p.operand(), read, ucharText) + " " + core;
+            return b -> {
+                operandProse(b, p.operand(), read, ucharText);
+                b.text(" " + core);
+            };
         }
         return null;
     }
 
-    private String verbaliseAtom(Condition c, Read read, ObjectType subject, boolean ucharText) {
-        String structured = structuredAtom(c, read, subject, ucharText);
-        return structured != null ? structured : unstructured(c, read, "voldaan");
+    private void verbaliseAtom(Sentence.Builder b, Condition c, Read read, ObjectType subject, boolean ucharText) {
+        Consumer<Sentence.Builder> structured = structuredAtom(c, read, subject, ucharText);
+        if (structured != null) condition(b, c, read, structured);
+        else unstructured(b, c, read, "voldaan");
+    }
+
+    /** Voorwaarde {@code c} als groep, met wat {@code content} erin schrijft. */
+    private static void condition(Sentence.Builder b, Condition c, Read read, Consumer<Sentence.Builder> content) {
+        b.open(Part.Kind.CONDITION, conditionMeta(c, read));
+        content.accept(b);
+        b.close(Part.Kind.CONDITION);
     }
 
     /** Een vorm die de uitleg niet in woorden zet, met haar brontekst en {@code verdict} ("voldaan" of "niet
      *  voldaan"); een kwantorvouw met de leden die haar uitkomst dragen. */
-    private String unstructured(Condition c, Read read, String verdict) {
-        String sentence = "aan de voorwaarde \"" + summary(c) + "\" is " + verdict;
-        return c instanceof Condition.QuantifierFold q ? sentence + ": " + members(q, read) : sentence;
+    private void unstructured(Sentence.Builder b, Condition c, Read read, String verdict) {
+        condition(b, c, read, g -> {
+            g.text("aan de voorwaarde \"").leaf(Part.Kind.QUOTE, summary(c)).text("\" is " + verdict);
+            if (c instanceof Condition.QuantifierFold q) {
+                g.text(": ");
+                members(g, q, read);
+            }
+        });
     }
 
     /**
@@ -891,7 +1118,7 @@ public final class Verbaliser {
      * (voorlopig besluit van de hoofdsessie 2026-10-21). Faalde de vouw zelf op een fout, dan draagt haar knoop die
      * fout en faalt {@link Read#of} al.
      */
-    private String members(Condition.QuantifierFold q, Read read) {
+    private void members(Sentence.Builder b, Condition.QuantifierFold q, Read read) {
         ConditionReading.NodeReading n = read.of(q);
         if (!(n.value() instanceof Boolean holds))
             throw new IllegalStateException("de motor gaf voor de kwantorvouw \"" + summary(q) + "\" van "
@@ -900,10 +1127,10 @@ public final class Verbaliser {
         int unjudged = 0;
         for (ConditionReading.Contributor c : n.contributors()) {
             if (c.fault() != null) { unjudged++; continue; }
-            if (!(c.value() instanceof Boolean b))
+            if (!(c.value() instanceof Boolean verdict))
                 throw new IllegalStateException("de motor gaf voor een lid van de kwantorvouw \"" + summary(q)
                         + "\" van " + read.form() + " op " + read.label() + " geen oordeel en geen fout");
-            (b ? holding : failing).add(c.member());
+            (verdict ? holding : failing).add(c.member());
         }
         int k = holding.size(), m = k + failing.size();
         // de zin noemt de leden bij het oordeel van de vouw; spreken die twee elkaar tegen, dan liegt de zin
@@ -920,30 +1147,51 @@ public final class Verbaliser {
             throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form() + " op "
                     + read.label() + " geldt volgens de motor " + (holds ? "wel" : "niet") + ", en haar matrix geldt"
                     + " volgens de lezing voor " + k + " van de " + m + " leden");
+        b.open(Part.Kind.MEMBERS, Part.meta("members", m, "holding", k, "unjudged", unjudged));
         // m = 0 en m = 1 zonder telling (voorlopig besluit van de hoofdsessie 2026-10-21): "voor 1 van de 1" telt niets
-        if (m == 0) return withUnjudged("er is geen enkel lid", unjudged);
-        if (m == 1)
-            return withUnjudged((k == 0 ? "niet voor " : q.quantifier() == Condition.Quantifier.GEEN ? "wel voor "
-                    : "voor ") + names(k == 0 ? failing : holding, q, read) + ", het enige lid", unjudged);
-        String judged = switch (q.quantifier()) {
-            case ALLE -> holds ? "voor alle " + m
-                    : "niet voor " + names(failing, q, read) + " (" + (m - k) + " van de " + m + ")";
-            case GEEN -> holds ? "voor geen van de " + m
-                    : "wel voor " + names(holding, q, read) + " (" + k + " van de " + m + ")";
-            default -> k == 0 ? "voor geen van de " + m + " (" + names(failing, q, read) + ")"
-                    : "voor " + k + " van de " + m + " (" + names(holding, q, read) + ")";
-        };
-        return withUnjudged(judged, unjudged);
-    }
-
-    private static String withUnjudged(String judged, int unjudged) {
-        if (unjudged == 0) return judged;
-        return judged + " (" + unjudged + (unjudged == 1 ? " lid" : " leden") + " niet beoordeeld)";
+        if (m == 0) {
+            b.text("er is geen enkel lid");
+        } else if (m == 1) {
+            b.text(k == 0 ? "niet voor " : q.quantifier() == Condition.Quantifier.GEEN ? "wel voor " : "voor ");
+            names(b, k == 0 ? failing : holding, q, read);
+            b.text(", het enige lid");
+        } else {
+            switch (q.quantifier()) {
+                case ALLE -> {
+                    if (holds) b.text("voor alle " + m);
+                    else {
+                        b.text("niet voor ");
+                        names(b, failing, q, read);
+                        b.text(" (" + (m - k) + " van de " + m + ")");
+                    }
+                }
+                case GEEN -> {
+                    if (holds) b.text("voor geen van de " + m);
+                    else {
+                        b.text("wel voor ");
+                        names(b, holding, q, read);
+                        b.text(" (" + k + " van de " + m + ")");
+                    }
+                }
+                default -> {
+                    if (k == 0) {
+                        b.text("voor geen van de " + m + " (");
+                        names(b, failing, q, read);
+                    } else {
+                        b.text("voor " + k + " van de " + m + " (");
+                        names(b, holding, q, read);
+                    }
+                    b.text(")");
+                }
+            }
+        }
+        if (unjudged > 0) b.text(" (" + unjudged + (unjudged == 1 ? " lid" : " leden") + " niet beoordeeld)");
+        b.close(Part.Kind.MEMBERS);
     }
 
     /** De leden {@code members} bij hun label, in de code-unit-volgorde daarvan, met "en" voor het laatste; boven
      *  vijf de eerste vijf en "en nog k". */
-    private String names(List<Object> members, Condition.QuantifierFold q, Read read) {
+    private void names(Sentence.Builder b, List<Object> members, Condition.QuantifierFold q, Read read) {
         List<String> names = new ArrayList<>();
         for (Object member : members) {
             String label = labels.get(member);
@@ -955,26 +1203,46 @@ public final class Verbaliser {
             names.add(label);
         }
         names.sort(String::compareTo);
-        if (names.size() > 5) return String.join(", ", names.subList(0, 5)) + " en nog " + (names.size() - 5);
-        if (names.size() == 1) return names.get(0);
-        return String.join(", ", names.subList(0, names.size() - 1)) + " en " + names.get(names.size() - 1);
+        int shown = Math.min(names.size(), 5);
+        for (int i = 0; i < shown; i++) {
+            if (i > 0) b.text(i == shown - 1 && names.size() <= 5 ? " en " : ", ");
+            b.leaf(Part.Kind.SUBJECT, names.get(i));
+        }
+        if (names.size() > 5) b.text(" en nog " + (names.size() - 5));
     }
 
     /** Waarom een voorwaarde die volgens de motor niet geldt, niet gold: van een "alle"-samenstelling het lid waar de
      *  motor stopte, het eerste dat niet gold; van elke andere voorwaarde zijzelf, met wat de motor bereikte. */
-    private String firstFailing(Condition c, Read read, ObjectType subject, boolean ucharText) {
+    private void firstFailing(Sentence.Builder b, Condition c, Read read, ObjectType subject, boolean ucharText) {
         if (read.holds(c))
             throw new IllegalStateException("de voorwaarde van " + read.form() + " geldt op " + read.label()
                     + ", en de zin zegt waarom ze niet gold");
         if (c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE) {
             for (Condition d : s.components())
-                if (read.reached(d) && !read.holds(d)) return firstFailing(d, read, subject, ucharText);
+                if (read.reached(d) && !read.holds(d)) {
+                    firstFailing(b, d, read, subject, ucharText);
+                    return;
+                }
             throw new IllegalStateException("de samenstelling van " + read.form() + " op " + read.label()
                     + " gold niet, en de motor bereikte geen lid dat niet gold");
         }
-        if (c instanceof Condition.Compound) return "niet geldt: " + verbaliseCondition(c, read, subject, ucharText);
-        String structured = structuredAtom(c, read, subject, ucharText);
-        return structured != null ? "niet geldt: " + structured : unstructured(c, read, "niet voldaan");
+        if (c instanceof Condition.Compound) {
+            notHolds(b);
+            verbaliseCondition(b, c, read, subject, ucharText);
+            return;
+        }
+        Consumer<Sentence.Builder> structured = structuredAtom(c, read, subject, ucharText);
+        if (structured != null) {
+            notHolds(b);
+            condition(b, c, read, structured);
+        } else {
+            unstructured(b, c, read, "niet voldaan");
+        }
+    }
+
+    /** "niet geldt: ". */
+    private static void notHolds(Sentence.Builder b) {
+        b.leaf(Part.Kind.CONNECTIVE, "niet geldt").text(": ");
     }
 
     /** De wandeling van een kenmerkcheck over een rol, zoals de lader haar naast de check gaf; leeg voor een kenmerk
@@ -998,12 +1266,16 @@ public final class Verbaliser {
     }
 
     /** Wie een kenmerkcheck draagt: het onderwerp, of de rollen van de wandeling, de laatste eerst. */
-    private String who(List<RoleBindingRef> walk) {
-        if (walk.isEmpty()) return "het onderwerp";
-        List<String> roles = new ArrayList<>();
-        for (int i = walk.size() - 1; i >= 0; i--)
-            roles.add("de " + naming.role(walk.get(i).factType(), walk.get(i).role()));
-        return String.join(" van ", roles);
+    private void who(Sentence.Builder b, List<RoleBindingRef> walk) {
+        if (walk.isEmpty()) {
+            b.text("het onderwerp");
+            return;
+        }
+        for (int i = walk.size() - 1; i >= 0; i--) {
+            RoleBindingRef step = walk.get(i);
+            b.text(i == walk.size() - 1 ? "de " : " van de ");
+            declaredName(b, naming.role(step.factType(), step.role()), Designatable.role(step.factType(), step.role()));
+        }
     }
 
     private static String summary(Condition c) { return c.source() == null ? "?" : c.source().snippet().trim(); }
@@ -1081,10 +1353,19 @@ public final class Verbaliser {
      *  géén verdubbeling van de brontekst; elk ander operand toont zijn omschrijving mét de waarde die de motor las
      *  tussen haakjes ("de maandloon nieuw van EOver (3.000,00 EUR)"), zodat de jurist de norm én het feit ziet. Een
      *  operand dat de motor niet bereikte, staat er zonder waarde. */
-    private String operandProse(Expr e, Read read, boolean ucharText) {
-        if (!read.reached(e)) return describe(e, ucharText);
-        if (e instanceof Expr.Literal) return renderOperand(e, read);
-        return describe(e, ucharText) + " (" + renderOperand(e, read) + ")";
+    private void operandProse(Sentence.Builder b, Expr e, Read read, boolean ucharText) {
+        if (!read.reached(e)) {
+            describe(b, e, ucharText);
+            return;
+        }
+        if (e instanceof Expr.Literal) {
+            value(b, renderOperand(e, read), read.of(e).value() == null);
+            return;
+        }
+        describe(b, e, ucharText);
+        b.text(" (");
+        value(b, renderOperand(e, read), read.of(e).value() == null);
+        b.text(")");
     }
 
     /** Een Java-waarde in helder Nederlands: getallen met punt-duizend/komma-decimaal en de eenheid uit het type;
@@ -1138,38 +1419,66 @@ public final class Verbaliser {
     /** Een korte omschrijving van WAT een operand is, uit zijn brontekst (bv. "de maandloon nieuw van EOver"); die is
      *  regeltekst en blijft zoals hij geschreven is, behalve de naam van een gelezen attribuut in een regel die uchar
      *  schreef ({@code ucharText}). Zonder brontekst noemt hij de declaratie. */
-    private String describe(Expr e, boolean ucharText) {
-        if (e == null) return "de waarde";
+    private void describe(Sentence.Builder b, Expr e, boolean ucharText) {
+        if (e == null) {
+            b.text("de waarde");
+            return;
+        }
         String source = e.source().snippet();
         if (source != null && !source.isBlank()) {
-            if (ucharText && e instanceof Expr.AttributeReference ref) return inVocabulary(source.trim(), ref);
-            return source.trim();
+            if (ucharText && e instanceof Expr.AttributeReference ref) inVocabulary(b, source.trim(), ref);
+            else b.leaf(Part.Kind.QUOTE, source.trim(), declaration(declarationOf(e)));
+            return;
         }
-        if (e instanceof Expr.AttributeReference ref) return "de " + naming.attribute(ref.objectType(), ref.attribute());
-        if (e instanceof Expr.ParameterRef pr) return "de " + naming.parameter(pr.parameter().name());
-        return "de waarde";
+        if (e instanceof Expr.AttributeReference ref) {
+            b.text("de ");
+            attributeName(b, ref.objectType(), ref.attribute());
+        } else if (e instanceof Expr.ParameterRef pr) {
+            b.text("de ");
+            declaredName(b, naming.parameter(pr.parameter().name()), Designatable.parameter(pr.parameter().name()));
+        } else {
+            b.text("de waarde");
+        }
+    }
+
+    /** De declaratie die operand {@code e} leest, waar het één leest: een attribuut of een parameter; anders null. */
+    private static Designatable declarationOf(Expr e) {
+        if (e instanceof Expr.AttributeReference ref) return Naming.attributeOf(ref.objectType(), ref.attribute());
+        if (e instanceof Expr.ParameterRef pr) return Designatable.parameter(pr.parameter().name());
+        return null;
     }
 
     /** {@code tekst}, uchars spelling van lezing {@code ref} ("zijn opgegeven beëindigingsdatum"), met de naam van het
      *  gelezen attribuut via {@link Naming}: "zijn opgegeven Datum einde recht op uitkering". De lezing die uchars
      *  IR-lader leest draagt het onderwerpwoord niet, dus blijft de tekst de bron en verandert alleen de naam erin: het
      *  laatste voorkomen, want uchar schrijft de lezing als "zijn &lt;naam&gt;". */
-    private String inVocabulary(String text, Expr.AttributeReference ref) {
+    private void inVocabulary(Sentence.Builder b, String text, Expr.AttributeReference ref) {
         Matcher m = Pattern.compile("(?iu)" + namePattern(ref.attribute())).matcher(text);
         int begin = -1, end = -1;
         while (m.find()) { begin = m.start(); end = m.end(); }
         if (begin < 0)
             throw new IllegalStateException("uchar schreef de lezing van '" + ref.attribute() + "' als '" + text
                     + "', zonder die naam: de uitleg kan haar niet in het vocabulaire noemen");
-        return text.substring(0, begin) + naming.attribute(ref.objectType(), ref.attribute())
-                + text.substring(end);
+        // de tekst om de naam heen is uchars regeltekst
+        if (begin > 0) b.leaf(Part.Kind.QUOTE, text.substring(0, begin));
+        attributeName(b, ref.objectType(), ref.attribute());
+        if (end < text.length()) b.leaf(Part.Kind.QUOTE, text.substring(end));
     }
 
-    /** Een kenmerk als gezegde: het werkwoord en wat erbij hoort, in de volgorde van een hoofdzin ("heeft de
-     *  uitkeringsduur verstreken") of een bijzin ("de uitkeringsduur verstreken heeft"). */
-    private record Predicate(String verb, String namePart) {
-        String mainClause() { return verb + " " + namePart; }
-        String clause() { return namePart + " " + verb; }
+    /** Een kenmerk als gezegde: het werkwoord, wat vóór de naam staat (de ontkenning of het lidwoord) en de naam van
+     *  declaratie {@code declaration}, in de volgorde van een hoofdzin ("heeft de uitkeringsduur verstreken") of een
+     *  bijzin ("de uitkeringsduur verstreken heeft"). */
+    private record Predicate(String verb, String before, String name, Designatable declaration) {
+        void mainClause(Sentence.Builder b) {
+            b.text(verb + " " + before);
+            declaredName(b, name, declaration);
+        }
+
+        void clause(Sentence.Builder b) {
+            b.text(before);
+            declaredName(b, name, declaration);
+            b.text(" " + verb);
+        }
     }
 
     /** Kenmerk {@code characteristic} van {@code holder} als gezegde, met het werkwoord dat §3.5 zijn soort geeft en de
@@ -1182,12 +1491,13 @@ public final class Verbaliser {
         ObjectType.CharacteristicKind kind = holder == null ? null : holder.characteristicKind(characteristic);
         if (kind == null) return null;
         String name = naming.characteristic(holder, characteristic);
+        Designatable declaration = Naming.characteristicOf(holder, characteristic);
         return switch (kind) {
-            case BIJVOEGLIJK -> new Predicate("is", present ? name : "niet " + name);
-            case ZELFSTANDIG -> new Predicate("is", (present ? "een " : "geen ") + name);
+            case BIJVOEGLIJK -> new Predicate("is", present ? "" : "niet ", name, declaration);
+            case ZELFSTANDIG -> new Predicate("is", present ? "een " : "geen ", name, declaration);
             case BEZITTELIJK -> {
                 String article = present ? articleBefore(ruleText, characteristic) : "geen";
-                yield new Predicate("heeft", article == null ? name : article + " " + name);
+                yield new Predicate("heeft", article == null ? "" : article + " ", name, declaration);
             }
         };
     }
@@ -1246,14 +1556,13 @@ public final class Verbaliser {
         return null;
     }
 
-    /** De bronverwijzing van een regel: haar niet-lege {@code // Bron:}-annotaties in bronvolgorde, verbonden met
-     *  "; ", zoals uchars frontend de annotaties van een defaults-blok in {@code Default.source} schrijft; null
-     *  zonder annotatie. Een lege annotatie valt weg omdat het model van de frontend haar houdt en de draad niet
-     *  (WF-082): zo geven de route uit bronnen en die uit een IR-document dezelfde tekst. */
-    private static String sourceReference(ResolvedRule r) {
-        List<String> filled = Objects.requireNonNull(r.statuteAnnotations(),
+    /** De bronverwijzing van een regel: haar niet-lege {@code // Bron:}-annotaties in bronvolgorde, getrimd; de zin
+     *  verbindt ze met "; ", zoals uchars frontend de annotaties van een defaults-blok in {@code Default.source}
+     *  schrijft ({@link Ground}); leeg zonder annotatie. Een lege annotatie valt weg omdat het model van de frontend
+     *  haar houdt en de draad niet (WF-082): zo geven de route uit bronnen en die uit een IR-document dezelfde tekst. */
+    private static List<String> sourceAnnotations(ResolvedRule r) {
+        return Objects.requireNonNull(r.statuteAnnotations(),
                         () -> "de regel '" + r.name() + "' draagt geen lijst van bronannotaties")
                 .stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
-        return filled.isEmpty() ? null : String.join("; ", filled);
     }
 }

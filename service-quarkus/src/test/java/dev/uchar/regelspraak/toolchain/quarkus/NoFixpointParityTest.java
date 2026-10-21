@@ -90,7 +90,7 @@ class NoFixpointParityTest {
     private static JsonNode compare(String trace, String coverage, String fixpoint, String query) throws Exception {
         DecideResource resource = new DecideResource();
         resource.core = core;
-        Response quarkus = resource.process("estafette", null, null, null, trace, coverage, fixpoint, REQUEST);
+        Response quarkus = resource.process("estafette", null, null, null, trace, coverage, fixpoint, null, REQUEST);
         HttpResponse<String> jdk = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + service.port() + "/estafette" + query))
                 .header("Content-Type", "application/json")

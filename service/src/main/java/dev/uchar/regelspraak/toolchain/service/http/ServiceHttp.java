@@ -246,12 +246,13 @@ public final class ServiceHttp {
     }
 
     /** What the query of a request asks beside its body: {@link #requiresExplanation}, the values of {@code vocabulaire} and
-     *  {@code inputVocabulary} ({@link #queryValue}), and the detail flags {@code trace}, {@code dekking} and
-     *  {@code fixpunt} ({@link #isRequested}). The Quarkus adapter reads the same six parameters. */
+     *  {@code inputVocabulary} ({@link #queryValue}), the detail flags {@code trace}, {@code dekking} and
+     *  {@code fixpunt}, and {@code explanationParts} ({@link #isRequested}). The Quarkus adapter reads the same seven
+     *  parameters. */
     public static RequestOptions options(String rawQuery) {
         return new RequestOptions(requiresExplanation(rawQuery), queryValue(rawQuery, "vocabulary"),
                 queryValue(rawQuery, "inputVocabulary"), isRequested(rawQuery, "trace"), isRequested(rawQuery, "coverage"),
-                isRequested(rawQuery, "fixpoint"));
+                isRequested(rawQuery, "fixpoint"), isRequested(rawQuery, "explanationParts"));
     }
 
     /** The decoded value of the first query parameter {@code naam} (its name compared case-insensitively, as

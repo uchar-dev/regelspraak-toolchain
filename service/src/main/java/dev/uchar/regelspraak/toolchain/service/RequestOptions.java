@@ -5,6 +5,7 @@ import java.util.List;
 
 /**
  * What a request asks beside its body, from the query of its URL: {@code explanation}, the explanation in words;
+ * {@code explanationParts}, beside it each of its sentences as its parts (which asks the explanation as well);
  * {@code vocabulaire}, the vocabulary the answer names the declarations in (null: the entry point's default from the
  * descriptor, else the canonical names); {@code inputVocabulary}, the vocabulary the request's names are read in
  * (null: every name is read liberally, canonical or a designation in any vocabulary). A vocabulary is one the model
@@ -15,14 +16,19 @@ import java.util.List;
  * {@code dekking}, per form of the entry point whether it fired; {@code fixpunt}, what stands at the fixpoint.
  */
 public record RequestOptions(boolean explanation, String vocabulary, String inputVocabulary, boolean trace,
-                            boolean coverage, boolean fixpoint) {
+                            boolean coverage, boolean fixpoint, boolean explanationParts) {
 
     /** A request that asks nothing beside its body. */
     public static final RequestOptions DEFAULT = new RequestOptions(false, null, null);
 
-    /** A request that asks no detail of its session. */
+    public RequestOptions {
+        // the parts are those of the sentences of explanation: one build, one fire
+        explanation = explanation || explanationParts;
+    }
+
+    /** A request that asks no detail of its session and no parts of its explanation. */
     public RequestOptions(boolean explanation, String vocabulary, String inputVocabulary) {
-        this(explanation, vocabulary, inputVocabulary, false, false, false);
+        this(explanation, vocabulary, inputVocabulary, false, false, false, false);
     }
 
     /** The detail flags this request sets, by the name of their query parameter, in the order of the answer. */

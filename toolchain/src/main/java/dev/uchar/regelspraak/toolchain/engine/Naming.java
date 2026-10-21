@@ -122,14 +122,21 @@ public final class Naming {
      *  when it names no such role, or more than one. */
     public String roleFulfilled(ObjectType subject, String written) {
         if (vocabulary == null || subject == null || written == null) return written;
+        return designate(roleFulfilledBy(model, subject, written), written);
+    }
+
+    /** The role written {@code written} that {@code subject} itself fills, as a declaration of {@code model}; null when
+     *  it names no such role, or more than one. */
+    public static Designatable roleFulfilledBy(RegelSpraakModel model, ObjectType subject, String written) {
+        if (subject == null || written == null) return null;
         Designatable found = null;
         for (FactType ft : model.factTypes.values())
             for (Role r : ft.roles)
                 if (RegelSpraakModel.roleNameMatches(r, written) && fills(model, r, subject)) {
-                    if (found != null) return written;
+                    if (found != null) return null;
                     found = Designatable.role(ft.name, r.name());
                 }
-        return designate(found, written);
+        return found;
     }
 
     /** Attribute {@code naam} of {@code holder}, looked up on the type of its chain that declares it. */

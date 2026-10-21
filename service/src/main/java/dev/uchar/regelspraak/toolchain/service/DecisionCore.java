@@ -15,6 +15,7 @@ import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.toolchain.engine.ParameterSetLoader;
+import dev.uchar.regelspraak.toolchain.engine.Sentence;
 import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 import dev.uchar.regelspraak.toolchain.engine.Verbaliser;
 import dev.uchar.regelspraak.toolchain.engine.ParameterSetLoader.ParameterSetError;
@@ -706,7 +707,7 @@ public final class DecisionCore {
         }
         ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());
-        if (options.explanation()) addExplanation(answer, outcome, mr, ep, output);
+        if (options.explanation()) addExplanation(answer, outcome, mr, ep, output, options.explanationParts());
         if (withDetail) answer.setAll(detail(options, ep, observer, outcome.fixpoint(), null, input, output));
         return new Assessment(answer, outcome.comparison());
     }
@@ -769,10 +770,11 @@ public final class DecisionCore {
      * Attach the {@link Verbaliser} verhaal to {@code answer} as an {@code "explanation"} array: the beans of the
      * request with their derived values, on the document of the entry point's build with readings, with the decisions
      * and readings of the session that gave the answer. A pure read of the already-fired session — nothing re-fires,
-     * nothing is recomputed. The types of the request's labels and the names lie on the model of that document.
+     * nothing is recomputed. The types of the request's labels and the names lie on the model of that document. With
+     * {@code parts}, {@code "explanationParts"} beside it: the same sentences as their parts ({@link ExplanationParts}).
      */
     private void addExplanation(ObjectNode answer, Executor.Outcome outcome, RequestMapper.Result mr, Entrypoint ep,
-                                Naming naming) {
+                                Naming naming, boolean parts) {
         RegelSpraakModel explained = ep.document().model();
         Map<String, RegelSpraakModel.ObjectType> types = new LinkedHashMap<>();
         mr.typePerLabel().forEach((label, type) -> {
@@ -782,10 +784,11 @@ public final class DecisionCore {
                         + " document van de uitleg");
             types.put(label, named);
         });
-        List<String> sentences = new Verbaliser(ep.document(), Naming.of(explained, naming.choice()), outcome.readings())
-                .verbalise(outcome.beans(), types, outcome.decisions());
+        List<Sentence> sentences = new Verbaliser(ep.document(), Naming.of(explained, naming.choice()), outcome.readings())
+                .sentences(outcome.beans(), types, outcome.decisions());
         var arr = answer.putArray("explanation");
-        for (String sentence : sentences) arr.add(sentence);
+        for (Sentence sentence : sentences) arr.add(sentence.text());
+        if (parts) answer.set("explanationParts", ExplanationParts.json(sentences));
     }
 
     /**

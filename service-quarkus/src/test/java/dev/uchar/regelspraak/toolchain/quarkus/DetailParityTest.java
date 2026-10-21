@@ -151,7 +151,7 @@ class DetailParityTest {
                 default -> throw new IllegalArgumentException("geen detailvlag: " + part);
             }
         }
-        Response quarkus = resource.process(path, null, null, null, trace, coverage, fixpoint, body);
+        Response quarkus = resource.process(path, null, null, null, trace, coverage, fixpoint, null, body);
         HttpResponse<String> jdk = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + p.service().port() + "/" + path + "?" + query))
                 .header("Content-Type", "application/json")
