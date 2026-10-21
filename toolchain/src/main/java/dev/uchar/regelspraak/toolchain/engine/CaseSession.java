@@ -8,6 +8,7 @@ import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.engine.ScenarioResult;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import org.kie.api.runtime.KieSession;
@@ -51,9 +52,12 @@ public final class CaseSession {
      *  name, {@code evaluationDate}), the firings in the order they first fired, and uchar's reading of the fixpoint, read
      *  before the write-back with the labels of the input beans. The beans carry the derived values written back,
      *  unless an evaluation fault stands at the fixpoint ({@code fixpoint.errors()} not empty): the write-back would
-     *  throw it, so the beans then hold the input alone and the fault is in the fixpoint as data. */
+     *  throw it, so the beans then hold the input alone and the fault is in the fixpoint as data. {@code decisions} says
+     *  which default of each defaults stack decided ({@link DroolsBackend#decisionsOf}), read after the write-back, and is
+     *  empty where an evaluation fault stands: the session has no answer then. */
     public record Outcome(Map<String, Object> beans, Map<String, ObjectType> typePerLabel,
-                           Map<String, Object> globals, List<ScenarioResult.Firing> firings, Fixpoint fixpoint) {}
+                           Map<String, Object> globals, List<ScenarioResult.Firing> firings, Fixpoint fixpoint,
+                           List<DefaultsDecision> decisions) {}
 
     /** Play case {@code c} on {@code build}, a build of the exec-model branch, whose
      *  {@link DroolsBackend.Build#model()} names the types. The branch is required because the caller compares the
@@ -105,9 +109,13 @@ public final class CaseSession {
                 // read before the write-back, which throws a standing evaluation fault where the reading gives it as
                 // data, and writes nothing after a throw (uchar's entry, as the service's Uitvoerder reads it)
                 Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, labels::get);
-                if (fixpoint.faults().isEmpty()) DroolsBackend.setDerivedValues(build, session, labels::get);
+                List<DefaultsDecision> decisions = List.of();
+                if (fixpoint.faults().isEmpty()) {
+                    DroolsBackend.setDerivedValues(build, session, labels::get);
+                    decisions = DroolsBackend.decisionsOf(build, session);
+                }
                 return new Outcome(new LinkedHashMap<>(input.beans()), new LinkedHashMap<>(input.types()),
-                        new LinkedHashMap<>(globals), observer.firings(), fixpoint);
+                        new LinkedHashMap<>(globals), observer.firings(), fixpoint, decisions);
             } finally {
                 session.dispose();
                 Thread.currentThread().setContextClassLoader(previous);

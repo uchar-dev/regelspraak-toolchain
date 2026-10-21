@@ -23,7 +23,9 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Stream;
 
 /**
@@ -133,12 +135,16 @@ public final class ScenarioRunner {
             boolean played = report.stream().anyMatch(r -> r.status() != ScenarioResult.Status.MARKER);
             DroolsBackend.Build build = withExplanation && played ? UcharBuild.assemble(JSON.readTree(document),
                     DroolsBackend.Branch.EXEC_MODEL) : null;
+            // the explanation reads the document as uchar's loader reads it, the defaults groups beside the model
+            // included, which the build keeps to itself: the engine's decisions point into them
+            IrLoader.Loaded explained = build == null ? null : IrLoader.loadAll(JSON.readTree(document));
             List<Explained> sink = new ArrayList<>();
             for (int i = 0; i < scenarios.size(); i++) {
                 ScenarioResult r = report.get(i);
                 ScenarioResult named = new ScenarioResult(scenarios.get(i).name(), r.status(),
                         r.expectations(), r.trace(), r.coverage(), r.diagnostic());
-                sink.add(withExplanation ? explanation(build, named, JSON.readTree(Files.readString(cases.get(i))), vocabulary)
+                sink.add(withExplanation ? explanation(build, explained, named,
+                        JSON.readTree(Files.readString(cases.get(i))), vocabulary)
                         : new Explained(named, List.of(), null, null, null));
             }
             return sink;
@@ -159,11 +165,13 @@ public final class ScenarioRunner {
     }
 
     /** The explanation of report {@code r}, whose case is {@code c}: the case played in a session of its own on
-     *  {@code build}, checked against what uchar's replay reported, then verbalised in {@code vocabulaire}. The build's
-     *  model is the one uchar's loader read from the IR document; the document carries uchar's table of origins
-     *  (IR-SPEC ch. 2.13), so that model tells the rules uchar wrote. A read of that model carries its walk over roles
-     *  beside it, in the build ({@code TmsTranspiler.navigationBindings}), not on it. */
-    private static Explained explanation(DroolsBackend.Build build, ScenarioResult r, JsonNode c, String vocabulary) {
+     *  {@code build}, checked against what uchar's replay reported, then verbalised in {@code vocabulaire} on
+     *  {@code explained}, what uchar's loader read of the IR document the build was made from: the model, the defaults
+     *  groups beside it, on which the engine's decisions lay, and the walk over roles of each read, beside the read and
+     *  not on it. The document carries uchar's table of origins (IR-SPEC ch. 2.13), so that model tells the rules uchar
+     *  wrote. The objects of the session are of the build's types, named alike in that model. */
+    private static Explained explanation(DroolsBackend.Build build, IrLoader.Loaded explained, ScenarioResult r,
+                                         JsonNode c, String vocabulary) {
         if (r.status() == ScenarioResult.Status.MARKER) return new Explained(r, List.of(), null, null, null);
         if (r.expectations().isEmpty() && r.status() == ScenarioResult.Status.FAIL)
             return notPlayedOut(build, r, c);
@@ -187,10 +195,19 @@ public final class ScenarioRunner {
         }
         String difference = valueDifference(session, r, c);
         if (difference != null) return new Explained(r, List.of(), difference, null, difference);
-        return new Explained(r, new Verbaliser(build.model(), session.globals(),
-                Naming.of(build.model(), vocabulary),
-                (subject, read) -> build.execModelTranspiler().navigationBindings(read))
-                .verbalise(session.beans(), session.typePerLabel()), null, session, null);
+        RegelSpraakModel model = explained.model();
+        Map<String, RegelSpraakModel.ObjectType> types = new LinkedHashMap<>();
+        session.typePerLabel().forEach((label, type) -> {
+            RegelSpraakModel.ObjectType named = model.objectTypeByName(type.name);
+            if (named == null)
+                throw new IllegalStateException("het objecttype " + type.name + " van " + label + " staat niet in het"
+                        + " model dat uchars lader uit hetzelfde document las");
+            types.put(label, named);
+        });
+        return new Explained(r, new Verbaliser(model, session.globals(), Naming.of(model, vocabulary),
+                (subject, read) -> explained.navigationBindings().getOrDefault(read, List.of()))
+                .verbalise(session.beans(), types, Verbaliser.Document.of(explained), session.decisions()),
+                null, session, null);
     }
 
     /** A case uchar's replay did not play out, its play raised an exception: no explanation, and the session played

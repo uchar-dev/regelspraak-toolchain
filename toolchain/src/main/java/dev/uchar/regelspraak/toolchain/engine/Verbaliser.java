@@ -3,8 +3,12 @@ package dev.uchar.regelspraak.toolchain.engine;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.ir.Condition;
+import dev.uchar.regelspraak.ir.Default;
+import dev.uchar.regelspraak.ir.ExceptionGroup;
 import dev.uchar.regelspraak.ir.Expr;
+import dev.uchar.regelspraak.ir.PrioritizedDefaults;
 import dev.uchar.regelspraak.ir.ResolvedRule;
+import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.Unit;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
@@ -13,17 +17,21 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.OriginForm;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.RoleBindingRef;
 import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -72,6 +80,18 @@ import java.util.regex.Pattern;
  * zelfstandig "is een recht op grond-van-de-wia" of "is geen recht op grond-van-de-wia"; ook in een voorwaarde. Het
  * lidwoord bij een aanwezig bezittelijk kenmerk is dat van de regeltekst, want het model draagt dat van de declaratie
  * niet.
+ *
+ * <p><b>Defaults-groepen.</b> Een groep ({@code Uitzondering op}, {@code Afwijking van}, {@code Uitzonderingen
+ * ongeordend}, de opgavemarkering; uchars RUNTIME-SEMANTICS ch. 7) krijgt per object één zin, uit wat de motor
+ * besliste ({@link DroolsBackend#decisionsOf}): de variant die besliste, met haar voorwaarde zoals het IR haar
+ * draagt (ch. 7.9 telt de voorwaarden van de omsluitende lagen erbij op); elke variant die vóór haar aan de beurt was
+ * met de reden dat ze niet besliste; de varianten erna bij naam, als verdrongen. Beslist niemand, dan zegt de zin dat,
+ * met wat het doel houdt; een conflict heet een conflict. Welke variant besliste, rekent de uitleg niet na: zij legt
+ * de pointer van de motor op het document van de build ({@link Document}); alleen de reden waarom een variant niet
+ * besliste komt uit de eigen evaluatie hieronder. Een variant heet naar haar blok ({@code Default.name}): de basis
+ * als "de regel '…'", een variant op het eerste niveau bij haar naam alleen, want de draad legt
+ * {@code Uitzondering op} en {@code Afwijking van} daar gelijk vast, en een geneste variant met de keten van haar
+ * lagen.
  *
  * <p><b>Bronverwijzing.</b> Kaart-fase (1) vroeg de {@code // Bron:}-commentaren uit de {@code .rgs} mee de IR in
  * te tillen als optionele regelbron-annotatie. In de huidige grammatica geldt
@@ -128,10 +148,11 @@ public final class Verbaliser {
     }
 
     /**
-     * Bouw de uitleg voor een gedraaide wereld. {@code instances} mapt een LABEL (het scenario-label of het
-     * dienst-verzoek-id) op de bijbehorende, reeds gevuurde bean; {@code typePerLabel} het objecttype per label.
-     * Het resultaat is één regel per uitlegzin, in een stabiele volgorde (per label, in modeldeclaratie-volgorde
-     * van de regels). Een lege lijst betekent: geen kenmerktoekenning raakte een van deze instanties.
+     * Bouw de uitleg van de kenmerktoekenningen voor een gedraaide wereld, zonder de defaults-groepen.
+     * {@code instances} mapt een LABEL (het scenario-label of het dienst-verzoek-id) op de bijbehorende, reeds gevuurde
+     * bean; {@code typePerLabel} het objecttype per label. Het resultaat is één regel per uitlegzin, in een stabiele
+     * volgorde (per label, in modeldeclaratie-volgorde van de regels). Een lege lijst betekent: geen
+     * kenmerktoekenning raakte een van deze instanties.
      */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
         List<String> sink = new ArrayList<>();
@@ -140,19 +161,553 @@ public final class Verbaliser {
             Object bean = e.getValue();
             ObjectType ot = typePerLabel.get(label);
             if (ot == null || bean == null) continue;
-            for (ResolvedRule r : model.resolvedRules) {
-                if (r.kind() != ResolvedRule.Kind.KENMERKTOEKENNING) continue;
-                if (!(r.target() instanceof Expr.AttributeReference ref) || ref.objectType() == null) continue;
-                // IR-SPEC ch. 2.2: de regel geldt voor elk objecttype dat het doeltype IS (⊑), niet alleen voor
-                // het doeltype zelf — de gegenereerde bean erft native, dus een kenmerktoekenning op het
-                // supertype kent het kenmerk óók toe aan een subtype-instantie. Op naamgelijkheid vergelijken
-                // laat precies die toekenningen onverklaard: het kenmerk staat AAN en het verhaal zwijgt.
-                if (!ot.isA(ref.objectType())) continue;
-                String sentence = verbaliseAssignment(label, bean, ref, r);
-                if (sentence != null) sink.add(sentence);
-            }
+            assignments(label, bean, ot, sink);
         }
         return sink;
+    }
+
+    /**
+     * {@link #verbalise(Map, Map)} met per label na de kenmerktoekenningen één zin per defaults-groep van zijn type:
+     * wat de motor besliste ({@code decisions}, uit {@link DroolsBackend#decisionsOf} van dezelfde sessie, gelezen
+     * vóór of na de terugschrijving), op het document van de build gelegd ({@code document}). De groepen staan in de
+     * volgorde van het document.
+     *
+     * @throws IllegalStateException een pointer die niet op {@code document} terug te leggen is, of een beslissing over
+     *                               een lid waarvoor het type van het object geen groep heeft
+     */
+    public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
+                                  Document document, List<DefaultsDecision> decisions) {
+        Objects.requireNonNull(document, "document");
+        Objects.requireNonNull(decisions, "decisions");
+        List<String> sink = new ArrayList<>();
+        for (Map.Entry<String, Object> e : instances.entrySet()) {
+            String label = e.getKey();
+            Object bean = e.getValue();
+            ObjectType ot = typePerLabel.get(label);
+            if (ot == null || bean == null) continue;
+            assignments(label, bean, ot, sink);
+            new DefaultsExplanation(document, label, bean, ot, decisions).sentences(sink);
+        }
+        return sink;
+    }
+
+    private void assignments(String label, Object bean, ObjectType ot, List<String> sink) {
+        for (ResolvedRule r : model.resolvedRules) {
+            if (r.kind() != ResolvedRule.Kind.KENMERKTOEKENNING) continue;
+            if (!(r.target() instanceof Expr.AttributeReference ref) || ref.objectType() == null) continue;
+            // IR-SPEC ch. 2.2: de regel geldt voor elk objecttype dat het doeltype IS (⊑), niet alleen voor
+            // het doeltype zelf — de gegenereerde bean erft native, dus een kenmerktoekenning op het
+            // supertype kent het kenmerk óók toe aan een subtype-instantie. Op naamgelijkheid vergelijken
+            // laat precies die toekenningen onverklaard: het kenmerk staat AAN en het verhaal zwijgt.
+            if (!ot.isA(ref.objectType())) continue;
+            String sentence = verbaliseAssignment(label, bean, ref, r);
+            if (sentence != null) sink.add(sentence);
+        }
+    }
+
+    /**
+     * Waar de pointers van {@link DroolsBackend#decisionsOf} op terug te leggen zijn: de defaults-groepen en de regels
+     * van het document waaruit de build gemaakt is, in de volgorde van het document. Dat is het model waaruit uchars
+     * emitter het document schreef (met een scope het model van die scope), of wat uchars lader uit het document las;
+     * het moet het model zijn waarvan de verbalisator de lezingen kent ({@link Walks}). De emitter schrijft elke groep,
+     * default, uitzonderingsgroep en elk lid op zijn index, en een regel als vorm met haar versies ("naam #i").
+     */
+    public record Document(List<PrioritizedDefaults> groups, List<ResolvedRule> rules) {
+        public Document {
+            groups = List.copyOf(groups);
+            rules = List.copyOf(rules);
+        }
+
+        /** Het document dat uchars emitter van {@code emitted} schrijft. */
+        public static Document of(RegelSpraakModel emitted) {
+            return new Document(emitted.prioritizedDefaults, emitted.resolvedRules);
+        }
+
+        /** Het document zoals uchars lader het las: de groepen staan naast het model. */
+        public static Document of(IrLoader.Loaded loaded) {
+            return new Document(loaded.prioritizedDefaults(), loaded.model().resolvedRules);
+        }
+    }
+
+    // ---------------- defaults-groepen ----------------
+
+    private static final Pattern DEFAULT_POINTER = Pattern.compile(
+            "/rules/prioritizedDefaults/([0-9]+)/defaults/([0-9]+)((?:/exceptions/members/[0-9]+/defaults/[0-9]+)*)");
+    private static final Pattern NESTED_STEP = Pattern.compile("/exceptions/members/([0-9]+)/defaults/([0-9]+)");
+    private static final Pattern RULE_POINTER = Pattern.compile("/rules/rules/([0-9]+)/versions/([0-9]+)");
+    private static final Pattern VERSION = Pattern.compile("([\\s\\S]*) #([0-9]+)");
+
+    /** Een variant van een stapel: een default van een groep van het document, of een gewone regel die de stapel van
+     *  een subtype als basis opneemt (ch. 7.10). {@code holder} is de default die haar in een uitzonderingsgroep
+     *  draagt, null aan de wortel; {@code member} de index van die uitzonderingsgroep, {@code place} haar index in haar
+     *  keten. */
+    private record Variant(String pointer, Default d, ResolvedRule rule, PrioritizedDefaults group, Variant holder,
+                           int member, int place) {
+
+        boolean hasOwnContent() { return rule != null || d.hasOwnContent(); }
+
+        /** De varianten die deze default in zijn uitzonderingsgroepen draagt, per groep, in de volgorde van de
+         *  draad. */
+        List<List<Variant>> members() {
+            List<List<Variant>> sink = new ArrayList<>();
+            if (rule != null || d.exceptions() == null) return sink;
+            List<ExceptionGroup> groups = d.exceptions().members();
+            for (int m = 0; m < groups.size(); m++) {
+                List<Variant> chain = new ArrayList<>();
+                List<Default> defaults = groups.get(m).defaults();
+                for (int l = 0; l < defaults.size(); l++)
+                    chain.add(new Variant(pointer + "/exceptions/members/" + m + "/defaults/" + l, defaults.get(l),
+                            null, group, this, m, l));
+                sink.add(chain);
+            }
+            return sink;
+        }
+
+        boolean unordered() { return d != null && d.exceptions() != null && d.exceptions().unordered(); }
+
+        /** Of de default op {@code p} deze variant is of onder haar staat. */
+        boolean holds(String p) { return p.equals(pointer) || p.startsWith(pointer + "/"); }
+    }
+
+    /** Wat een variant van een beslissing was: vóór de beslisser aan de beurt en niet beslist, de beslisser, erna en
+     *  verdrongen, of een lid van een ongeordende groep na het lid dat besliste, dat niet anders besliste (het kan
+     *  hetzelfde besloten hebben of niets: de motor noemt alleen het eerste). */
+    private enum Role { BEFORE, DECIDER, AFTER, SIBLING }
+
+    private record Turn(Variant variant, Role role) {}
+
+    /** De zinnen over de defaults-groepen van één object. */
+    private final class DefaultsExplanation {
+        private final Document document;
+        private final String label;
+        private final Object bean;
+        private final ObjectType type;
+        private final List<DefaultsDecision> decisions;
+
+        DefaultsExplanation(Document document, String label, Object bean, ObjectType type,
+                            List<DefaultsDecision> decisions) {
+            this.document = document;
+            this.label = label;
+            this.bean = bean;
+            this.type = type;
+            this.decisions = decisions;
+        }
+
+        void sentences(List<String> sink) {
+            // per doel één stapel (ch. 7.10: per concreet type en doel), in de volgorde van de eerste groep die het
+            // doel op de typeketen van het object schrijft
+            Map<String, List<PrioritizedDefaults>> perMember = new LinkedHashMap<>();
+            for (PrioritizedDefaults g : document.groups()) {
+                ObjectType subject = subjectOf(g);
+                if (type.isA(subject)) perMember.computeIfAbsent(g.target(), k -> new ArrayList<>()).add(g);
+            }
+            Map<String, DefaultsDecision> perDecided = new LinkedHashMap<>();
+            for (DefaultsDecision d : decisions) {
+                if (d.object() != bean) continue;
+                if (!perMember.containsKey(d.member()))
+                    throw new IllegalStateException("de motor besliste over '" + d.member() + "' van " + label
+                            + ", en het document heeft voor " + type.name + " geen defaults-groep op dat lid");
+                if (perDecided.put(d.member(), d) != null)
+                    throw new IllegalStateException("de motor gaf twee beslissingen over '" + d.member() + "' van "
+                            + label + ", waar één stapel er één geeft");
+            }
+            for (Map.Entry<String, List<PrioritizedDefaults>> e : perMember.entrySet()) {
+                DefaultsDecision d = perDecided.get(e.getKey());
+                boolean characteristic = e.getValue().get(0).isCharacteristic();
+                if (d == null) sink.add(undecided(e.getKey(), characteristic, e.getValue()));
+                else if (d.conflict() != null) sink.add(conflicted(d));
+                else sink.add(decided(d));
+            }
+        }
+
+        // ---- de drie zinnen ----
+
+        private String decided(DefaultsDecision d) {
+            List<List<Variant>> chains = new ArrayList<>();
+            for (List<String> chain : d.rootChains()) chains.add(chain.stream().map(this::variant).toList());
+            String pointer = d.decider().pointer();
+            List<Turn> turns = new ArrayList<>();
+            walkRoot(chains, pointer, turns);
+            Variant decider = turns.stream().filter(t -> t.role() == Role.DECIDER).findFirst()
+                    .orElseThrow(() -> new IllegalStateException("de beslisser " + pointer + " van '" + d.member()
+                            + "' van " + label + " heeft geen eigen besluit of waarde in het document"))
+                    .variant();
+            if (!decider.hasOwnContent())
+                throw new IllegalStateException("de beslisser " + pointer + " van '" + d.member() + "' van " + label
+                        + " is een groep-default zonder eigen besluit of waarde");
+            requireTarget(decider, d.member());
+            StringBuilder b = new StringBuilder(label).append(' ')
+                    .append(outcome(d.member(), d.characteristic(), d.decider().decision()))
+                    .append(" volgens ").append(name(decider)).append(reason(decider, d.characteristic()));
+            List<String> after = new ArrayList<>();
+            for (Turn t : turns) {
+                switch (t.role()) {
+                    case BEFORE -> b.append("; ").append(name(t.variant())).append(' ')
+                            .append(notDecided(t.variant(), d.characteristic(), d.member()));
+                    case SIBLING -> b.append("; ").append(name(t.variant())).append(" besliste niet anders");
+                    case AFTER -> after.add(name(t.variant()));
+                    case DECIDER -> { }
+                }
+            }
+            if (!after.isEmpty()) b.append("; verdrongen: ").append(String.join(", ", after));
+            if (d.characteristic() && Boolean.FALSE.equals(d.decider().decision()) && readBoolean(bean, d.member()))
+                b.append("; de invoer kende het kenmerk toe, en dat blijft staan");
+            String source = groundOf(decider);
+            if (source != null) b.append(". Grondslag: ").append(source);
+            return b.toString();
+        }
+
+        private String conflicted(DefaultsDecision d) {
+            DefaultsDecision.Conflict c = d.conflict();
+            StringBuilder b = new StringBuilder(label).append(' ').append(standing(d.member(), d.characteristic()))
+                    .append(", want er is een conflict");
+            if (c.pointer() != null) b.append(" in de uitzonderingen op ").append(carrierName(variant(c.pointer())));
+            b.append(": ");
+            List<String> parts = new ArrayList<>();
+            for (DefaultsDecision.Decider x : c.deciders()) {
+                Variant v = variant(x.pointer());
+                requireTarget(v, d.member());
+                parts.add(name(v) + " besliste '" + outcome(d.member(), d.characteristic(), x.decision()) + "'");
+            }
+            b.append(String.join(" en ", parts)).append(", dus de groep schrijft niets");
+            return b.toString();
+        }
+
+        private String undecided(String member, boolean characteristic, List<PrioritizedDefaults> groups) {
+            StringBuilder b = new StringBuilder(label).append(' ').append(standing(member, characteristic))
+                    .append(", want geen variant besliste");
+            // Zonder beslissing geeft de motor de stapel niet. Schrijven twee typen van de keten het doel, dan stelt
+            // ch. 7.10 haar samen (een eigen basis vervangt de geërfde, een gewone regel wordt basis), en de uitleg
+            // stelt die semantiek niet zelf op; anders is de stapel de groepen van dat ene type, in documentvolgorde.
+            if (composed(member, characteristic, groups))
+                return b.append("; welke varianten de stapel van een ").append(naming.objectType(type.name))
+                        .append(" samenstellen, geeft de motor zonder beslissing niet").toString();
+            for (PrioritizedDefaults g : groups) {
+                int i = document.groups().indexOf(g);
+                List<Turn> turns = new ArrayList<>();
+                for (int j = 0; j < g.defaults().size(); j++)
+                    all(new Variant("/rules/prioritizedDefaults/" + i + "/defaults/" + j, g.defaults().get(j), null, g,
+                            null, -1, j), Role.BEFORE, turns);
+                for (Turn t : turns)
+                    b.append("; ").append(name(t.variant())).append(' ')
+                            .append(notDecided(t.variant(), characteristic, member));
+            }
+            return b.toString();
+        }
+
+        /** Of de stapel van het doel op dit object uit meer dan één type van de keten komt: groepen op twee typen, of
+         *  bij een attribuut een gewone regel die het doel op een type van de keten schrijft naast een groep (ch. 7.10
+         *  vouwt alleen attribuutschrijvers). */
+        private boolean composed(String member, boolean characteristic, List<PrioritizedDefaults> groups) {
+            Set<ObjectType> writers = Collections.newSetFromMap(new IdentityHashMap<>());
+            for (PrioritizedDefaults g : groups) writers.add(subjectOf(g));
+            if (!characteristic)
+                for (ResolvedRule r : document.rules())
+                    if (r.kind() != ResolvedRule.Kind.KENMERKTOEKENNING
+                            && r.target() instanceof Expr.AttributeReference ref && member.equals(ref.attribute())
+                            && ref.objectType() != null && type.isA(ref.objectType()))
+                        writers.add(ref.objectType());
+            return writers.size() > 1;
+        }
+
+        // ---- volgorde: wie was vóór de beslisser aan de beurt, wie erna ----
+
+        /** De wortel: één keten, of bij een ongeordende wortel (ch. 7.2) één per groep, die naast elkaar
+         *  beslissen. */
+        private void walkRoot(List<List<Variant>> chains, String decider, List<Turn> sink) {
+            int at = -1;
+            for (int c = 0; c < chains.size() && at < 0; c++)
+                for (Variant v : chains.get(c)) if (v.holds(decider)) { at = c; break; }
+            if (at < 0) throw new IllegalStateException("de beslisser " + decider + " van " + label
+                    + " staat in geen keten aan de wortel van zijn stapel");
+            for (int c = 0; c < chains.size(); c++) {
+                if (c == at) walkChain(chains.get(c), decider, sink);
+                else for (Variant v : chains.get(c)) all(v, c < at ? Role.BEFORE : Role.SIBLING, sink);
+            }
+        }
+
+        /** Een keten (ch. 7.1): de varianten erboven beslisten niet, die eronder zijn verdrongen. */
+        private void walkChain(List<Variant> chain, String decider, List<Turn> sink) {
+            int at = -1;
+            for (int j = 0; j < chain.size(); j++) if (chain.get(j).holds(decider)) at = j;
+            for (int j = 0; j < chain.size(); j++) {
+                if (j < at) all(chain.get(j), Role.BEFORE, sink);
+                else if (j == at) walkVariant(chain.get(j), decider, sink);
+                else all(chain.get(j), Role.AFTER, sink);
+            }
+        }
+
+        /** Een default met uitzonderingsgroepen (ch. 7.9): de leden eerst, de eigen inhoud is de terugval. */
+        private void walkVariant(Variant v, String decider, List<Turn> sink) {
+            List<List<Variant>> members = v.members();
+            if (v.pointer().equals(decider)) {
+                for (List<Variant> chain : members) for (Variant x : chain) all(x, Role.BEFORE, sink);
+                sink.add(new Turn(v, Role.DECIDER));
+                return;
+            }
+            int at = -1;
+            for (int m = 0; m < members.size() && at < 0; m++)
+                for (Variant x : members.get(m)) if (x.holds(decider)) { at = m; break; }
+            for (int m = 0; m < members.size(); m++) {
+                if (m == at) walkChain(members.get(m), decider, sink);
+                else for (Variant x : members.get(m))
+                    all(x, m < at ? Role.BEFORE : v.unordered() ? Role.SIBLING : Role.AFTER, sink);
+            }
+            if (v.hasOwnContent()) sink.add(new Turn(v, Role.AFTER));
+        }
+
+        /** {@code v} en wat het draagt, in de volgorde waarin het aan de beurt komt, met één rol. */
+        private void all(Variant v, Role role, List<Turn> sink) {
+            for (List<Variant> chain : v.members()) for (Variant x : chain) all(x, role, sink);
+            if (v.hasOwnContent()) sink.add(new Turn(v, role));
+        }
+
+        // ---- de delen van een zin ----
+
+        /** Het doel met zijn waarde of besluit: bij een kenmerk de hoofdzin, ook de ontkende, bij een attribuut de
+         *  waarde in de opmaak van een operand. */
+        private String outcome(String member, boolean characteristic, Object decision) {
+            if (characteristic) return predicateOf(member, Boolean.TRUE.equals(decision)).mainClause();
+            return "heeft als " + naming.attribute(type, member) + " " + render(decision, type.attribute(member));
+        }
+
+        /** Wat het doel houdt waar de groep niets schreef: het kenmerk zoals de invoer het gaf, de invoerwaarde of
+         *  leeg. */
+        private String standing(String member, boolean characteristic) {
+            if (characteristic) {
+                boolean present = readBoolean(bean, member);
+                return predicateOf(member, present).mainClause() + (present ? " uit de invoer" : "");
+            }
+            Object v = readRaw(bean, Namen.getter(member));
+            if (v == null) return "heeft geen " + naming.attribute(type, member);
+            return "houdt als " + naming.attribute(type, member) + " de invoerwaarde "
+                    + render(v, type.attribute(member));
+        }
+
+        private Predicate predicateOf(String member, boolean present) {
+            // het IR draagt de doeltekst van een default niet, dus ook niet het lidwoord van een bezittelijk kenmerk
+            Predicate p = predicate(type, member, present, null);
+            if (p == null)
+                throw new IllegalStateException("een defaults-groep beslist over '" + member + "', en " + type.name
+                        + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
+            return p;
+        }
+
+        /** Waarom de beslisser besliste: haar voorwaarde met de waarden van de operanden. */
+        private String reason(Variant v, boolean characteristic) {
+            Condition c = conditionOf(v);
+            if (c == null && isInitialisation(v))
+                return ", omdat " + (characteristic ? "het kenmerk" : "de " + naming.attribute(type, targetOf(v)))
+                        + " in de invoer leeg was";
+            if (c == null || c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE
+                    && s.components().isEmpty()) return " (onvoorwaardelijk)";
+            return ", omdat " + verbaliseCondition(c, bean, subjectOf(v), ucharText(v));
+        }
+
+        /** Waarom een variant die aan de beurt was niet besliste: een kenmerkvariant waarvan de voorwaarde geldt,
+         *  beslist altijd, dus gold haar voorwaarde niet; een attribuutvariant beslist ook niet waar haar waarde leeg
+         *  is (ch. 7.1). */
+        private String notDecided(Variant v, boolean characteristic, String member) {
+            Condition c = conditionOf(v);
+            ObjectType subject = subjectOf(v);
+            if (c == null && isInitialisation(v))
+                return readRaw(bean, Namen.getter(member)) != null
+                        ? "gold niet, want de " + naming.attribute(type, member) + " had een invoerwaarde"
+                        : "gaf geen waarde";
+            if (!characteristic && (c == null || Boolean.TRUE.equals(holds(c, subject)))) return "gaf geen waarde";
+            if (c == null)
+                return "gold niet, want de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
+            return "gold niet, want " + firstFailingConjunct(c, bean, subject, ucharText(v));
+        }
+
+        /** Of voorwaarde {@code c} in de eindtoestand geldt: een atoom zoals {@link #evaluate} het geeft, een
+         *  "alle"-samenstelling als elk deel geldt; null waar dat niet vast te stellen is. */
+        private Boolean holds(Condition c, ObjectType subject) {
+            if (c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE) {
+                Boolean all = Boolean.TRUE;
+                for (Condition part : s.components()) {
+                    Boolean h = evaluate(part, bean, subject);
+                    if (Boolean.FALSE.equals(h)) return false;
+                    if (h == null) all = null;
+                }
+                return all;
+            }
+            return evaluate(c, bean, subject);
+        }
+
+        // ---- namen ----
+
+        /** De naam van een variant: de basis als "de regel '…'", een variant aan de wortel bij haar naam alleen, een
+         *  geneste met de keten van haar lagen; zonder naam bij de opgavemarkering haar bron, anders haar plaats. */
+        private String name(Variant v) {
+            if (v.rule() != null) return "de regel '" + RegelSpraakModel.formName(v.rule().name()) + "'";
+            String name = v.d().name();
+            if (name == null) {
+                if (generatedOpgave(v)) return "'" + naming.attribute(subjectOf(v), v.d().source()) + "'";
+                if (v.holder() == null)
+                    return "de variant op plaats " + (v.place() + 1) + " van " + groupLabel(v.group());
+                return "de variant op plaats " + (v.place() + 1) + " van uitzonderingsgroep " + (v.member() + 1)
+                        + " van " + name(v.holder());
+            }
+            if (v.holder() == null)
+                return name.equals(v.group().name()) ? "de regel '" + name + "'" : "'" + name + "'";
+            List<String> layers = new ArrayList<>();
+            for (Variant h = v.holder(); h != null; h = h.holder())
+                if (h.d().name() != null) layers.add("'" + h.d().name() + "'");
+            // de groep-default van 'B voor S' draagt de blokken die op het eerste niveau van B voor subtype S staan
+            if (layers.isEmpty() && forSubtype(v.group())) return "'" + name + "'";
+            String basis = basisOf(v.group());
+            if (basis != null && (layers.isEmpty() || !layers.get(layers.size() - 1).equals("'" + basis + "'")))
+                layers.add("'" + basis + "'");
+            return layers.isEmpty() ? "'" + name + "'"
+                    : "'" + name + "' (uitzondering op " + String.join(" op ", layers) + ")";
+        }
+
+        /** De drager van uitzonderingsgroepen bij naam. Een groep-default zonder naam aan de wortel maakte de kop
+         *  {@code Uitzonderingen ongeordend op B}, of uchar voor de blokken van een subtype onder B: zijn leden zijn
+         *  uitzonderingen op de basis. */
+        private String carrierName(Variant v) {
+            if (v.rule() == null && v.d().name() == null && !v.d().hasOwnContent() && v.holder() == null
+                    && basisOf(v.group()) != null) return "de regel '" + basisOf(v.group()) + "'";
+            return name(v);
+        }
+
+        /** De naam van de basis van een groep: de groepsnaam, en bij de groep {@code B voor S} die uchar maakte voor de
+         *  blokken van een subtype S onder basisregel B, de naam van B. */
+        private String basisOf(PrioritizedDefaults g) {
+            if (g.name() == null) return null;
+            return model.generatedFrom(Designatable.form(g.name()))
+                    .filter(f -> f.form() == OriginForm.EXCEPTION_FOR_SUBTYPE)
+                    .map(f -> f.source().name()).orElse(g.name());
+        }
+
+        private boolean forSubtype(PrioritizedDefaults g) {
+            return g.name() != null && model.generatedFrom(Designatable.form(g.name()))
+                    .map(f -> f.form() == OriginForm.EXCEPTION_FOR_SUBTYPE).orElse(false);
+        }
+
+        private String groupLabel(PrioritizedDefaults g) {
+            return g.name() != null ? "'" + g.name() + "'" : "de groep op " + g.subject() + "." + g.target();
+        }
+
+        // ---- het model ----
+
+        /** De variant op {@code pointer} in het document; faalt luid op een pointer die er niet op terug te leggen
+         *  is. */
+        private Variant variant(String pointer) {
+            Matcher dm = DEFAULT_POINTER.matcher(pointer);
+            if (dm.matches()) {
+                int i = Integer.parseInt(dm.group(1)), j = Integer.parseInt(dm.group(2));
+                if (i >= document.groups().size()) throw unresolved(pointer, "het document heeft "
+                        + document.groups().size() + " defaults-groep(en)");
+                PrioritizedDefaults g = document.groups().get(i);
+                if (j >= g.defaults().size()) throw unresolved(pointer, "de groep '" + g.name() + "' heeft "
+                        + g.defaults().size() + " default(s)");
+                Variant v = new Variant("/rules/prioritizedDefaults/" + i + "/defaults/" + j, g.defaults().get(j), null,
+                        g, null, -1, j);
+                Matcher step = NESTED_STEP.matcher(dm.group(3));
+                while (step.find()) {
+                    int m = Integer.parseInt(step.group(1)), l = Integer.parseInt(step.group(2));
+                    List<List<Variant>> members = v.members();
+                    if (m >= members.size() || l >= members.get(m).size())
+                        throw unresolved(pointer, "bij " + v.pointer() + " staat geen uitzonderingsgroep " + m
+                                + " met een default " + l);
+                    v = members.get(m).get(l);
+                }
+                return v;
+            }
+            Matcher rm = RULE_POINTER.matcher(pointer);
+            if (rm.matches()) return ruleVariant(pointer, Integer.parseInt(rm.group(1)), Integer.parseInt(rm.group(2)));
+            throw unresolved(pointer, "dat is geen pointer naar een default of een regelversie");
+        }
+
+        /** De regelversie {@code /rules/rules/k/versions/v}: het document schrijft de regels als vormen, een vorm met
+         *  meer versies als de opeenvolgende regels "… #1" tot en met "… #n" van het model, zoals uchar de pointer
+         *  maakt. */
+        private Variant ruleVariant(String pointer, int form, int version) {
+            int k = -1, w = 0;
+            String previous = null;
+            for (ResolvedRule r : document.rules()) {
+                if (r.name() == null)
+                    throw unresolved(pointer,
+                            "een regel zonder naam laat open bij welke vorm van het document hij hoort");
+                if (previous != null && nextVersion(previous, r.name())) w++;
+                else { k++; w = 0; }
+                previous = r.name();
+                if (k == form && w == version) return new Variant(pointer, null, r, null, null, -1, 0);
+                if (k > form) break;
+            }
+            throw unresolved(pointer, "het document heeft geen vorm " + form + " met een versie " + version);
+        }
+
+        private IllegalStateException unresolved(String pointer, String why) {
+            return new IllegalStateException("de uitleg legt de pointer " + pointer + " van de motor niet op het"
+                    + " document terug: " + why);
+        }
+
+        private void requireTarget(Variant v, String member) {
+            String target = targetOf(v);
+            if (!member.equals(target))
+                throw new IllegalStateException("de pointer " + v.pointer() + " van de motor wijst naar een variant op"
+                        + " '" + target + "', en de beslissing gaat over '" + member + "' van " + label);
+        }
+
+        private String targetOf(Variant v) {
+            if (v.rule() == null) return v.group().target();
+            if (v.rule().target() instanceof Expr.AttributeReference ref) return ref.attribute();
+            throw new IllegalStateException("de regel '" + v.rule().name() + "' op " + v.pointer()
+                    + " schrijft geen attribuut of kenmerk");
+        }
+
+        private Condition conditionOf(Variant v) { return v.rule() != null ? v.rule().condition() : v.d().condition(); }
+
+        private boolean isInitialisation(Variant v) {
+            return v.rule() != null ? v.rule().kind() == ResolvedRule.Kind.INITIALISATIE : v.d().initialisation();
+        }
+
+        private ObjectType subjectOf(Variant v) {
+            if (v.rule() == null) return subjectOf(v.group());
+            if (v.rule().target() instanceof Expr.AttributeReference ref && ref.objectType() != null)
+                return ref.objectType();
+            throw new IllegalStateException("de regel '" + v.rule().name() + "' op " + v.pointer()
+                    + " noemt het objecttype van haar doel niet");
+        }
+
+        private ObjectType subjectOf(PrioritizedDefaults g) {
+            ObjectType t = model.objectTypeByName(g.subject());
+            if (t == null)
+                throw new IllegalStateException("de defaults-groep '" + g.name() + "' staat op " + g.subject()
+                        + ", en het model van de uitleg kent dat objecttype niet");
+            return t;
+        }
+
+        /** De grondslag van de beslisser: de bron die het IR haar geeft. Een default die de opgavemarkering maakte,
+         *  draagt in zijn bron zijn naam, en een regel draagt in het model geen bron. */
+        private String groundOf(Variant v) {
+            if (v.rule() != null) return sourceReference(v.rule());
+            if (generatedOpgave(v)) return null;
+            String s = v.d().source();
+            return s == null || s.isBlank() ? null : s.trim();
+        }
+
+        /** Of de opgavemarkering deze default maakte: een default zonder naam in de groep {@code opgave boven
+         *  berekening X}, volgens uchars tabel van herkomst; zijn tekst is van uchar. */
+        private boolean generatedOpgave(Variant v) {
+            return v.rule() == null && v.d().name() == null && v.group().name() != null
+                    && model.generatedFrom(Designatable.form(v.group().name()))
+                    .map(g -> g.form() == OriginForm.OPGAVE_BOVEN_BEREKENING).orElse(false);
+        }
+
+        private boolean ucharText(Variant v) {
+            return v.rule() != null ? writtenByUchar(v.rule()) : generatedOpgave(v);
+        }
+    }
+
+    /** Of {@code name} de versie na die van {@code previous} noemt, van één vorm. */
+    private static boolean nextVersion(String previous, String name) {
+        Matcher a = VERSION.matcher(previous), b = VERSION.matcher(name);
+        return a.matches() && b.matches() && a.group(1).equals(b.group(1))
+                && Integer.parseInt(b.group(2)) == Integer.parseInt(a.group(2)) + 1;
     }
 
     /** Één kenmerktoekenningsregel voor één instantie: is het kenmerk toegekend → "waarom (voorwaarden)"; is het

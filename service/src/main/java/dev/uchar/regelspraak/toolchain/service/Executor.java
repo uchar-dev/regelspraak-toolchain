@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import org.kie.api.runtime.KieSession;
@@ -42,10 +43,11 @@ public final class Executor {
     }
 
     /** The result of a fire: the beans by id with the derived values written back, the firings, the
-     *  inconsistenties, what stood at the fixpoint before the write-back, as uchar's entry reads it, and uchar's
-     *  verdict on the expectations the caller gave ({@link DroolsBackend#vergelijk}), null when it gave none. */
+     *  inconsistenties, what stood at the fixpoint before the write-back, as uchar's entry reads it, uchar's
+     *  verdict on the expectations the caller gave ({@link DroolsBackend#vergelijk}), null when it gave none, and which
+     *  default of each defaults stack decided ({@link DroolsBackend#decisionsOf}), empty when the caller did not ask. */
     public record Outcome(Map<String, Object> beans, int fired, List<Object> inconsistencies, Fixpoint fixpoint,
-                           DroolsBackend.Comparison comparison) {}
+                           DroolsBackend.Comparison comparison, List<DefaultsDecision> decisions) {}
 
     /** Fire the entry point's rules over {@code world} and return the beans with their derived values and the
      *  inconsistenties. */
@@ -92,6 +94,17 @@ public final class Executor {
      */
     public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer,
                          JsonNode expectations) {
+        return fire(world, setGlobals, observer, expectations, false);
+    }
+
+    /**
+     * As {@link #fire(World, Map, DroolsBackend.Observer, JsonNode)}, and with {@code withDecisions} which default of
+     * each defaults stack decided, read off the session after the write-back ({@link DroolsBackend#decisionsOf}), for the
+     * explanation. Only asked for an explanation: a pointer uchar cannot give fails the read, and a request without an
+     * explanation has no use for it.
+     */
+    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer,
+                         JsonNode expectations, boolean withDecisions) {
         // descriptor defaults first, set-vintage values next, request parameters override last
         Map<String, Object> globals = new LinkedHashMap<>(defaultGlobals);
         if (setGlobals != null) globals.putAll(setGlobals);
@@ -123,7 +136,8 @@ public final class Executor {
             List<Object> inc = readInconsistencies(session);
             DroolsBackend.Comparison comparison = expectations == null ? null
                     : DroolsBackend.compare(build, session, label::get, expectations);
-            return new Outcome(world.beans(), firing.firings(), inc, fixpoint, comparison);
+            List<DefaultsDecision> decisions = withDecisions ? DroolsBackend.decisionsOf(build, session) : List.of();
+            return new Outcome(world.beans(), firing.firings(), inc, fixpoint, comparison, decisions);
         } finally {
             session.dispose();
             Thread.currentThread().setContextClassLoader(previous);

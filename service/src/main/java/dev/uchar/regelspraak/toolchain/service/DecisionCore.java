@@ -115,9 +115,14 @@ public final class DecisionCore {
      *
      *  <p>An entry point uchar does not carry, started with {@link CoreConfig#allowMarkers()}, has no build:
      *  {@code markers} names the construct when uchar's refusal names one, {@code weigering} carries uchar's sentence,
-     *  and a request to it is refused with {@link NonExecutable}. */
+     *  and a request to it is refused with {@link NonExecutable}.
+     *
+     *  <p>{@code document} is the defaults groups and rules of the document the build was made from, which the
+     *  explanation lays the engine's decisions on ({@link Verbaliser.Document}): from sources those of the model of the
+     *  scope, from a document what uchar's loader read of it; null without a build. */
     public record Entrypoint(ServiceDescriptor.Entrypoint descriptor, DroolsBackend.Build build,
-                             List<String> markers, Map<String, Object> defaultGlobals, String refusal) {
+                             List<String> markers, Map<String, Object> defaultGlobals, String refusal,
+                             Verbaliser.Document document) {
         /** Whether a request to this entry point can fire: uchar built it. */
         public boolean executable() { return build != null; }
 
@@ -248,7 +253,7 @@ public final class DecisionCore {
             // walk throws on a navigation its emitter refuses, where the marker names the refusal.
             if (!ep.scopeCheckOptOut())
                 scopeErrors.addAll(scopeCompleteness(ep, model, scoped, producers));
-            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null));
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null, Verbaliser.Document.of(scoped)));
         }
         if (!scopeErrors.isEmpty())
             throw new ServiceError("dienst start niet: onvolledige regel-scope (buiten-scope kenmerk-producent)",
@@ -324,7 +329,7 @@ public final class DecisionCore {
                 marker(ep, refusal.construct(), refusal.getMessage(), defaults, config, perPath, markerErrors);
                 continue;
             }
-            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null));
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null, Verbaliser.Document.of(loaded)));
         }
         if (!scopeErrors.isEmpty())
             throw new ServiceError("dienst start niet: een scope draagt niet het hele document", scopeErrors);
@@ -353,7 +358,7 @@ public final class DecisionCore {
                                List<Violation> markerErrors) {
         if (config.allowMarkers()) {
             perPath.put(ep.path(), new Entrypoint(ep, null, construct == null ? List.of() : List.of(construct),
-                    defaults, reason));
+                    defaults, reason, null));
             return;
         }
         markerErrors.add(Violation.of(Violation.Kind.MARKER, "entrypoint:" + ep.path(), construct == null
@@ -649,7 +654,7 @@ public final class DecisionCore {
         Executor executor = new Executor(ep.build(), ep.defaultGlobals());
         Executor.Outcome outcome;
         try {
-            outcome = executor.fire(mr.world(), setGlobals, observer, expectations);
+            outcome = executor.fire(mr.world(), setGlobals, observer, expectations, options.explanation());
         } catch (EvaluationFault error) {
             if (!withDetail) throw error;
             throw error.withDetail(detail(options, ep, observer, error.fixpoint(), null, input, output));
@@ -732,7 +737,7 @@ public final class DecisionCore {
         globals.putAll(mr.world().globals());
         if (mr.world().evaluationDate() != null) globals.put("rekendatum", mr.world().evaluationDate());
         List<String> sentences = new Verbaliser(model, globals, naming, walks)
-                .verbalise(outcome.beans(), mr.typePerLabel());
+                .verbalise(outcome.beans(), mr.typePerLabel(), ep.document(), outcome.decisions());
         var arr = answer.putArray("explanation");
         for (String sentence : sentences) arr.add(sentence);
     }

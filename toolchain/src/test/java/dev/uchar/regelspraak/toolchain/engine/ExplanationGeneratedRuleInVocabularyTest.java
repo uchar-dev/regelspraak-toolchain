@@ -24,6 +24,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * main clause. A rule the author wrote keeps the text of its operands in every vocabulary, also where it reads the
  * same generated attribute and where its name looks like a generated one: what uchar generated is read in uchar's
  * table of origins ({@code RegelSpraakModel.generatedFrom}), not from a name.
+ *
+ * <p>The marker generates the defaults group {@code opgave boven berekening X} too, which has a sentence of its own on
+ * the scenario route (card explanation-defaults): its two variants carry no name of a block, and are named after the
+ * attribute they read, in the vocabulary as the operands of the generated rule are.
  */
 class ExplanationGeneratedRuleInVocabularyTest {
 
@@ -111,9 +115,13 @@ class ExplanationGeneratedRuleInVocabularyTest {
                 "V1 heeft afwijkende opgave meldingsdatum, omdat zijn opgegeven meldingsdatum (12-03-2026) gevuld is"
                         + " en zijn berekende meldingsdatum (13-03-2026) gevuld is en zijn opgegeven meldingsdatum"
                         + " (12-03-2026) is ongelijk aan zijn berekende meldingsdatum (13-03-2026)",
+                "V1 heeft als meldingsdatum 12-03-2026 volgens 'opgegeven meldingsdatum' (onvoorwaardelijk);"
+                        + " verdrongen: 'berekende meldingsdatum'",
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave meldingsdatum, want niet geldt: zijn opgegeven meldingsdatum"
-                        + " (onbekend) gevuld is"),
+                        + " (onbekend) gevuld is",
+                "V2 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk);"
+                        + " 'opgegeven meldingsdatum' gaf geen waarde"),
                 explanation(Naming.CANONICAL));
     }
 
@@ -125,9 +133,13 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " (12-03-2026) gevuld is en zijn berekende Datum melding vondst (13-03-2026) gevuld is en"
                         + " zijn opgegeven Datum melding vondst (12-03-2026) is ongelijk aan zijn berekende Datum"
                         + " melding vondst (13-03-2026)",
+                "V1 heeft als Datum melding vondst 12-03-2026 volgens 'opgegeven Datum melding vondst'"
+                        + " (onvoorwaardelijk); verdrongen: 'berekende Datum melding vondst'",
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
-                        + " vondst (onbekend) gevuld is"),
+                        + " vondst (onbekend) gevuld is",
+                "V2 heeft als Datum melding vondst 13-03-2026 volgens 'berekende Datum melding vondst'"
+                        + " (onvoorwaardelijk); 'opgegeven Datum melding vondst' gaf geen waarde"),
                 explanation("cgm"));
     }
 
@@ -139,9 +151,13 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " gevuld is en zijn berekende dag van de melding (13-03-2026) gevuld is en zijn opgegeven"
                         + " dag van de melding (12-03-2026) is ongelijk aan zijn berekende dag van de melding"
                         + " (13-03-2026)",
+                "V1 heeft als dag van de melding 12-03-2026 volgens 'opgegeven dag van de melding'"
+                        + " (onvoorwaardelijk); verdrongen: 'berekende dag van de melding'",
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave dag van de melding, want niet geldt: zijn opgegeven dag van de"
-                        + " melding (onbekend) gevuld is"),
+                        + " melding (onbekend) gevuld is",
+                "V2 heeft als dag van de melding 13-03-2026 volgens 'berekende dag van de melding'"
+                        + " (onvoorwaardelijk); 'opgegeven dag van de melding' gaf geen waarde"),
                 explanation("handboek"));
     }
 
