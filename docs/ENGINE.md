@@ -313,9 +313,8 @@ slug        = 1*( letter | DIGIT | "-" )
 ```
 
 The separators `" · "`, `"; "`, `"lemma's: "` and the words of a deviation are `TEXT`; an empty segment adds only its
-separators. A default carries its annotations joined with "; " already (`Default.source`), and "; " also occurs within a
-note, so the parser takes that string as one annotation: a "; " between two annotations of a default stays inside a
-segment. The remedy is upstream (`Default.source` as a list in uchar), not splitting text here.
+separators. A rule and a default carry their annotations as a list (`statuteAnnotations`; a default those of its
+block), so the parser takes each entry as one annotation and never splits text: "; " also occurs within a note.
 
 **peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
 carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request

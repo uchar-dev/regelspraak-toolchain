@@ -103,9 +103,9 @@ import java.util.regex.Pattern;
  *
  * <p><b>Bronverwijzing.</b> Een regel draagt de {@code // Bron:}-annotaties die direct boven haar kop staan
  * ({@link ResolvedRule#statuteAnnotations}; op de draad {@code statuteAnnotations}, uchars IR-SPEC ch. 3.1, WF-082),
- * een default de zijne in {@code Default.source}. De zin van een kenmerktoekenning eindigt dan met ". Grondslag:
- * <tekst>", die van een defaults-groep met de bron van de variant die besliste; zonder annotatie staat er geen
- * (geen verzonnen bron).
+ * een default die van zijn blok in {@link Default#statuteAnnotations} (ch. 6.1). De zin van een kenmerktoekenning
+ * eindigt dan met ". Grondslag: <tekst>", die van een defaults-groep met de bron van de variant die besliste; zonder
+ * annotatie staat er geen (geen verzonnen bron).
  *
  * <p><b>Gemaakte objecten.</b> Een object dat een objectcreatie van de sessie maakte ({@link Fixpoint#objects}) heeft
  * geen label; de uitleg noemt het met de naam die uchars canonieke tekst het geeft (RUNTIME-SEMANTICS ch. 5.12),
@@ -897,14 +897,14 @@ public final class Verbaliser {
             return t;
         }
 
-        /** De grondslag van de beslisser: de bron die het IR haar geeft, leeg zonder. Een default die de
-         *  opgavemarkering maakte, draagt in zijn bron zijn naam; een regel draagt haar bron in haar annotaties, een
-         *  default de zijne in één string ({@link Ground}). */
+        /** De grondslag van de beslisser: de annotaties die het IR haar geeft, leeg zonder. Een regel en een default
+         *  dragen ze als lijst ({@code statuteAnnotations}), een default die van zijn blok; de groep zelf
+         *  ({@code PrioritizedDefaults.source}) is geen grondslag van een default. De opgavemarkering maakt defaults
+         *  zonder blok en zonder annotaties. */
         private List<String> groundOf(Variant v) {
             if (v.rule() != null) return sourceAnnotations(v.rule());
             if (generatedOpgave(v)) return List.of();
-            String s = v.d().source();
-            return s == null || s.isBlank() ? List.of() : List.of(s.trim());
+            return v.d().statuteAnnotations();
         }
 
         /** Of de opgavemarkering deze default maakte: een default zonder naam in de groep {@code opgave boven
@@ -1652,9 +1652,9 @@ public final class Verbaliser {
     }
 
     /** De bronverwijzing van een regel: haar niet-lege {@code // Bron:}-annotaties in bronvolgorde, getrimd; de zin
-     *  verbindt ze met "; ", zoals uchars frontend de annotaties van een defaults-blok in {@code Default.source}
-     *  schrijft ({@link Ground}); leeg zonder annotatie. Een lege annotatie valt weg omdat het model van de frontend
-     *  haar houdt en de draad niet (WF-082): zo geven de route uit bronnen en die uit een IR-document dezelfde tekst. */
+     *  verbindt ze met "; " ({@link Ground}); leeg zonder annotatie. Een lege annotatie valt weg omdat het model van de
+     *  frontend haar houdt en de draad niet (WF-082): zo geven de route uit bronnen en die uit een IR-document dezelfde
+     *  tekst. Die van een default geeft uchar al getrimd en niet leeg ({@link Default#statuteAnnotations}). */
     private static List<String> sourceAnnotations(ResolvedRule r) {
         return Objects.requireNonNull(r.statuteAnnotations(),
                         () -> "de regel '" + r.name() + "' draagt geen lijst van bronannotaties")

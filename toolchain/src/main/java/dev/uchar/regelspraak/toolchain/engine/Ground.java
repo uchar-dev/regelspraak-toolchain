@@ -6,17 +6,13 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
 /**
- * The parser of the ground of a sentence of the explanation: the {@code // Bron:} annotations of a rule (uchar's
- * IR-SPEC ch. 3.1, WF-082, one string per annotation) or the {@code Default.source} of a default, as parts
- * ({@link Part.Kind#STATUTE}, {@link Part.Kind#LEMMA}, {@link Part.Kind#DEVIATION}, {@link Part.Kind#NOTE} and glue).
- * The structure is a convention of the rule set, not of uchar or RegelSpraak (the werkbank's MODELKAART B20: "permalink
+ * The parser of the ground of a sentence of the explanation: the {@code // Bron:} annotations of a rule or of the
+ * block of a default (uchar's IR-SPEC ch. 3.1 and 6.1, WF-082, {@code statuteAnnotations}: one string per annotation
+ * line, each parsed apart), as parts ({@link Part.Kind#STATUTE}, {@link Part.Kind#LEMMA}, {@link Part.Kind#DEVIATION},
+ * {@link Part.Kind#NOTE} and glue). The structure is a convention of the rule set, not of uchar or RegelSpraak (the werkbank's MODELKAART B20: "permalink
  * met verhouding · anker(s) · lemma's: slug · slug"), so the parser reads the text, and it is total: an annotation is
  * free text (provenance only), and a segment that matches no pattern is a {@code NOTE}. The grammar is in
  * {@code docs/ENGINE.md}, "The parts of an explanation".
- *
- * <p>A default carries its annotations already joined with "; " ({@code Default.source}, as uchar's frontend writes
- * it), and "; " also occurs within a note, so the parser takes that string as one annotation: a "; " between two
- * annotations of a default stays inside a segment.
  */
 final class Ground {
 
@@ -24,7 +20,7 @@ final class Ground {
 
     /** Between two segments of an annotation. */
     static final String SEGMENT_SEPARATOR = " · ";
-    /** Between two annotations of a rule, as {@code Default.source} joins those of a default. */
+    /** Between two annotations of a rule or of a default. */
     static final String ANNOTATION_SEPARATOR = "; ";
 
     private static final String SLUG = "[\\p{L}\\p{N}-]+";

@@ -10,9 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
  * The parser of the ground ({@link Ground}): each segment pattern of the werkbank's convention, a near-anchor and a slug
- * before the lemma head as a note, two annotations of a rule with "; " between them, and the one string of a
- * {@code Default.source}, whose "; " stays inside a segment. The texts of the parts after each other are always the
- * annotations joined with "; ".
+ * before the lemma head as a note, two annotations of a rule with "; " between them, and one annotation whose "; "
+ * stays inside a segment. The texts of the parts after each other are always the annotations joined with "; ".
  */
 class GroundTest {
 
@@ -86,8 +85,8 @@ class GroundTest {
     }
 
     @Test
-    void the_source_of_a_default_is_one_annotation_whose_semicolon_stays_in_a_segment() {
-        // uchar's frontend joins the annotations of a defaults block with "; " (Default.source)
+    void a_semicolon_within_one_annotation_stays_in_a_segment() {
+        // the parser never splits an annotation on "; ": rules and defaults carry their annotations as a list
         assertEquals(List.of(
                 "STATUTE«BWBR0004045&artikel=20&lid=2»{bwb=BWBR0004045, article=20, paragraph=2}",
                 "« · lemma's: »",

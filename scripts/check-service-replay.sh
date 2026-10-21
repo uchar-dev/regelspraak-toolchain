@@ -103,7 +103,11 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # 260 naar 261 met jutterswet-dringende-melding, een kwantor over een pad in vijf vormen; zij speelt ook door de dienst.
 # 2026-10-21, uchar's card `fold-contributor-verdicts` (pin 4f283d9d): 232 — de set van gate 12 groeit van 261 naar 262
 # met jutterswet-keurgemiddelde, een kwantorvouw die stopt vóór een delend lid; zij speelt ook door de dienst.
-EXPECTED_REPLAY_PLAYED=232
+# 2026-10-21, uchar's cards `clingo-day-kind-walk-after-fold-stop` en `default-statute-annotations` (pin 680e5263):
+# 234 — de set van gate 12 groeit van 262 naar 264 met jutterswet-keurtermijn, een kwantorvouw die stopt vóór een lid
+# waarvan de dagsoortwandeling faalt, en jutterswet-tweeledige-grondslag, een defaults-blok met twee
+# `// Bron:`-annotaties; beide spelen ook door de dienst.
+EXPECTED_REPLAY_PLAYED=234
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een

@@ -294,8 +294,6 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 - **The explanation** explains characteristic-attribution rules and defaults groups, not computations, consistencies or
   creations, whose readings uchar has as well. An attribution rule outside the scope of an entry point has no rule in
   its build and gets the one sentence "de regel '…' staat buiten deze berekening".
-- **The ground of a default** is parsed as one annotation: uchar joins the annotations of a defaults block with "; "
-  (`Default.source`), so the parts of its `GROUND` cannot tell two of them apart.
 - **The playground trace** names per fired rule the labels it bound and how often, but no value: uchar's report
   carries none. The values stand in the scenario's `fixpoint`, read from the case's own session.
 - **The sentence of an expectation.** uchar's scenario resolver gives the line an expectation begins on

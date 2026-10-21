@@ -13,9 +13,9 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 /**
  * The sentence of a characteristic assignment ends with ". Grondslag: <tekst>" when the rule carries {@code // Bron:}
  * annotations (uchar's {@code ResolvedRule.statuteAnnotations}, on the wire {@code statuteAnnotations}, IR-SPEC
- * ch. 3.1, WF-082): the non-blank annotations in source order, joined with "; ", the form in which uchar's frontend
- * writes the annotations of a defaults block into {@code Default.source}. That holds for an attributed and for a
- * withheld characteristic. A rule without annotations, or with a blank one, gets no Grondslag. Before, the
+ * ch. 3.1, WF-082): the non-blank annotations in source order, joined with "; ", as the ground of a default joins
+ * those of its block ({@code Default.statuteAnnotations}). That holds for an attributed and for a withheld
+ * characteristic. A rule without annotations, or with a blank one, gets no Grondslag. Before, the
  * explanation gave a Grondslag to a default and never to a rule.
  *
  * <p>The scenario route plays uchar's IR document, so the annotations come from what uchar's loader read; the
