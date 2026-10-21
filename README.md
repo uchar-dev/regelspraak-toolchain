@@ -193,12 +193,12 @@ make scenario-test                              # the golden TOKA scenario set
 
 A scenario document runs through uchar's scenario layer: uchar resolves it, lowers the scenarios to case files,
 and uchar's replay reports each one. With `--explanation` (`FILE="--explanation a.rgs"`) each played scenario also gets the
-explanation of its outcome: it is played once more, in a session of its own on the same build, through uchar's entry
-with the input as the replay puts it in, and the verbaliser explains the beans with their derived values. An operand
-that reads over a role is read on the object uchar's walk of the read reaches (`DroolsBackend.reached`), here and in the
-service's `?explanation=true`; where that object or its value is absent, the operand stands as "(onbekend)". The
-explanation is withheld, with the difference, when that session did not fire what uchar's replay reported, counted
-per form of the document as the replay counts it. uchar's scenario resolver refuses three of the 29 golden TOKA
+explanation of its outcome: uchar's replay plays it on the build with readings and hands over the session it judged
+(`CaseRunner.report` with a handoff), and the verbaliser renders each condition from the engine's readings of that
+session (`DroolsBackend.readingsOf`: per form and object how the condition came out, per node what the engine reached
+and the value and unit it read), here and in the service's `?explanation=true`; it computes nothing itself. An empty
+value stands as "(onbekend)", a member the engine did not reach is not named, and a condition that did not hold names
+the member where the engine stopped. uchar's scenario resolver refuses three of the 29 golden TOKA
 scenarios (listed with their reasons in `scripts/toka-manifest-exclusions.txt`).
 
 The decision service serves a descriptor over `.rgs` sources or over one `uchar-ir-v1` document; `docs/ENGINE.md`
@@ -287,8 +287,9 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service
   refuses them as `UNSUPPORTED`. 30 of the goldens gate 12 plays need one; the replay gate lists them.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
-- **The explanation** explains characteristic-attribution rules, not defaults groups: a characteristic a defaults group
-  decides gets no sentence.
+- **The explanation** explains characteristic-attribution rules and defaults groups, not computations, consistencies or
+  creations, whose readings uchar has as well. An attribution rule outside the scope of an entry point has no rule in
+  its build and gets the one sentence "de regel '…' staat buiten deze berekening".
 - **The playground trace** names per fired rule the labels it bound and how often, but no value: uchar's report
   carries none. The values stand in the scenario's `fixpoint`, read from the case's own session.
 - **The sentence of an expectation.** uchar's scenario resolver gives the line an expectation begins on

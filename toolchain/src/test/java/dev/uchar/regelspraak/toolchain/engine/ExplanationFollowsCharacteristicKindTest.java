@@ -156,13 +156,15 @@ class ExplanationFollowsCharacteristicKindTest {
     }
 
     /** The uitleg plays the IR document, whose check over a role carries its role binding beside the condition, not
-     *  on it, so the characteristic is looked up on the subject. It is none of the subject's, its kind is unknown,
-     *  and the condition stands as the rule writes it; before, the uitleg said "het onderwerp wia-recht is". */
+     *  on it. Since card explanation-from-readings the uitleg names the check after that walk, the role and the kind of
+     *  the characteristic on the object the role reaches, and its verdict is the engine's. Before, the characteristic
+     *  was looked up on the subject, which has none of that name, and the condition stood as the rule writes it ("aan
+     *  de voorwaarde \"de samenloop van het Recht een wia-recht heeft\" is voldaan"); before that, "het onderwerp
+     *  wia-recht is". */
     @Test
     void without_kind_the_condition_stands_like_the_rule_writes_it() {
         assertEquals(List.of(
-                "R1 is uitgesloten, omdat aan de voorwaarde \"de samenloop van het Recht een wia-recht heeft\""
-                        + " is voldaan"),
+                "R1 is uitgesloten, omdat de samenloop een wia-recht heeft"),
                 explanation(DOCUMENT_ROLE, Naming.CANONICAL));
     }
 }

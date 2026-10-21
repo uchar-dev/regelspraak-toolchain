@@ -50,9 +50,9 @@ class ExplanationServiceTest {
     }
 
     /** The golden sentence of the minderjarig decision, pinned over the scenario route until the move to uchar,
-     *  whose replay returns no fired facts to verbalise. A parameter operand is read from the globals and rendered
-     *  with its unit (18 jr); the tijdsduur the verbalisator does not recompute is honestly "(onbekend)", never
-     *  guessed. */
+     *  whose replay returns no fired facts to verbalise. Every operand has the value and the unit the engine read
+     *  (card explanation-from-readings): the parameter (18 jr) and the tijdsduur (9 jr), which until that card stood
+     *  as "(onbekend)", because the verbalisator, which then computed itself, did not compute a tijdsduur. */
     @Test
     void golden_explanation_sentence_minderjarig() {
         String request = """
@@ -65,7 +65,7 @@ class ExplanationServiceTest {
         ObjectNode answer = CORE.process("kenmerktoekenning-persoon-minderjarig", parse(request), true);
         assertTrue(contains(answer.get("explanation"),
                 "P1 is minderjarig, omdat de tijdsduur van zijn geboortedatum tot de vluchtdatum van zijn reis"
-                        + " in hele jaren (onbekend) is kleiner dan de volwassenleeftijd (18 jr)"),
+                        + " in hele jaren (9 jr) is kleiner dan de volwassenleeftijd (18 jr)"),
                 "de gouden uitlegzin: " + answer.get("explanation"));
     }
 

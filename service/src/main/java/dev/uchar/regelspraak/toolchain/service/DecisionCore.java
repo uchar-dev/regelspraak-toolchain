@@ -10,6 +10,7 @@ import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.engine.ScenarioResult;
 import dev.uchar.regelspraak.ir.Source;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
+import dev.uchar.regelspraak.ir.ResolvedRule;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
@@ -85,17 +86,11 @@ public final class DecisionCore {
     /** The {@code uchar-ir-v1} document of the source: the one the service was given, or, for {@code .rgs} sources,
      *  the one uchar's emitter writes of the model, emitted on the first ask ({@link #document()}). */
     private volatile String document;
-    /** The walk over roles of a read of {@link #model}, which the explanation reads an operand along: on the read of a
-     *  model the frontend resolved, beside it in the loader's table for a model read from a document. */
-    private final Verbaliser.Walks walks;
-
     private DecisionCore(ServiceDescriptor descriptor, RegelSpraakModel model,
                           Map<String, Entrypoint> perPath, List<ParameterSet> parameterSets,
-                          List<String> periodWarnings, boolean detail, FormIndex forms, String document,
-                          Verbaliser.Walks walks) {
+                          List<String> periodWarnings, boolean detail, FormIndex forms, String document) {
         this.descriptor = descriptor;
         this.model = model;
-        this.walks = walks;
         this.perPath = perPath;
         this.parameterSets = parameterSets;
         this.periodWarnings = periodWarnings;
@@ -117,12 +112,16 @@ public final class DecisionCore {
      *  {@code markers} names the construct when uchar's refusal names one, {@code weigering} carries uchar's sentence,
      *  and a request to it is refused with {@link NonExecutable}.
      *
-     *  <p>{@code document} is the defaults groups and rules of the document the build was made from, which the
-     *  explanation lays the engine's decisions on ({@link Verbaliser.Document}): from sources those of the model of the
-     *  scope, from a document what uchar's loader read of it; null without a build. */
+     *  <p>{@code explanationBuild} is the build with readings of the same document (card explanation-from-readings): a
+     *  request that asks for the explanation is mapped, fired and answered there, once, and the explanation reads the
+     *  readings of that session; uchar's witnesses hold that its facts at the fixpoint are those of {@code build}.
+     *  {@code document} is what uchar's loader read of that document, with the positions of its nodes, on which the
+     *  explanation lays the engine's decisions and readings ({@link Verbaliser.Document}), from sources with the
+     *  attribution rules the scope leaves out. Both are null without a build, and for an entry point whose descriptor
+     *  says it does not explain ({@link ServiceDescriptor.Entrypoint#explains}). */
     public record Entrypoint(ServiceDescriptor.Entrypoint descriptor, DroolsBackend.Build build,
                              List<String> markers, Map<String, Object> defaultGlobals, String refusal,
-                             Verbaliser.Document document) {
+                             DroolsBackend.Build explanationBuild, Verbaliser.Document document) {
         /** Whether a request to this entry point can fire: uchar built it. */
         public boolean executable() { return build != null; }
 
@@ -243,8 +242,16 @@ public final class DecisionCore {
             }
             RegelSpraakModel scoped = CaseEmitter.withScope(model, new ResolvedScenario.Scope(choice.forms()));
             DroolsBackend.Build build;
+            DroolsBackend.Build explanationBuild = null;
+            Verbaliser.Document explained = null;
             try {
-                build = UcharBuild.assemble(scoped, DroolsBackend.Branch.EXEC_MODEL);
+                com.fasterxml.jackson.databind.JsonNode tree = documentTree(UcharBuild.document(scoped));
+                build = UcharBuild.assemble(tree, DroolsBackend.Branch.EXEC_MODEL);
+                if (ep.explains()) {
+                    explanationBuild = UcharBuild.assemble(tree, DroolsBackend.Branch.EXEC_MODEL, true);
+                    explained = Verbaliser.Document.of(IrLoader.loadWithPositions(tree))
+                            .withOutside(outsideScope(model, scoped));
+                }
             } catch (UcharBuild.NotCarried ng) {
                 marker(ep, ng.construct(), ng.getMessage(), defaults, config, perPath, markerErrors);
                 continue;
@@ -253,7 +260,7 @@ public final class DecisionCore {
             // walk throws on a navigation its emitter refuses, where the marker names the refusal.
             if (!ep.scopeCheckOptOut())
                 scopeErrors.addAll(scopeCompleteness(ep, model, scoped, producers));
-            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null, Verbaliser.Document.of(scoped)));
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null, explanationBuild, explained));
         }
         if (!scopeErrors.isEmpty())
             throw new ServiceError("dienst start niet: onvolledige regel-scope (buiten-scope kenmerk-producent)",
@@ -266,8 +273,31 @@ public final class DecisionCore {
         List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
         List<String> warnings = periodWarnings(model, sets);
 
-        return new DecisionCore(descriptor, model, perPath, sets, warnings, config.detail(), forms, null,
-                Verbaliser.Walks.written(model));
+        return new DecisionCore(descriptor, model, perPath, sets, warnings, config.detail(), forms, null);
+    }
+
+    /** The {@code uchar-ir-v1} document uchar's emitter wrote, as a tree. */
+    private static com.fasterxml.jackson.databind.JsonNode documentTree(String document) {
+        try {
+            return DescriptorLoader.MAPPER.readTree(document);
+        } catch (IOException e) {
+            throw new IllegalStateException("de emitter schreef geen leesbare JSON: " + e.getMessage(), e);
+        }
+    }
+
+    /** The attribution rules of {@code model} that {@code scoped} does not carry, by form name, each with the object
+     *  type of its target, in the order of the model: the explanation names them as outside the computation. */
+    private static Map<String, String> outsideScope(RegelSpraakModel model, RegelSpraakModel scoped) {
+        java.util.Set<String> carried = new java.util.HashSet<>();
+        for (ResolvedRule r : scoped.resolvedRules) carried.add(RegelSpraakModel.formName(r.name()));
+        Map<String, String> outside = new LinkedHashMap<>();
+        for (ResolvedRule r : model.resolvedRules) {
+            String form = RegelSpraakModel.formName(r.name());
+            if (r.kind() != ResolvedRule.Kind.KENMERKTOEKENNING || carried.contains(form)) continue;
+            if (r.target() instanceof dev.uchar.regelspraak.ir.Expr.AttributeReference ref && ref.objectType() != null)
+                outside.putIfAbsent(form, ref.objectType().name);
+        }
+        return outside;
     }
 
     /**
@@ -304,11 +334,18 @@ public final class DecisionCore {
         if (!startErrors.isEmpty())
             throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
 
-        // one build: every entry point serves the whole document
+        // one build: every entry point serves the whole document; beside it the build with readings when an entry
+        // point explains
         DroolsBackend.Build build = null;
+        DroolsBackend.Build explanationBuild = null;
+        Verbaliser.Document explained = null;
         UcharBuild.NotCarried refusal = null;
         try {
             build = UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL);
+            if (descriptor.entrypoints().stream().anyMatch(ServiceDescriptor.Entrypoint::explains)) {
+                explanationBuild = UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL, true);
+                explained = Verbaliser.Document.of(IrLoader.loadWithPositions(document));
+            }
         } catch (UcharBuild.NotCarried ng) {
             refusal = ng;
         }
@@ -329,7 +366,8 @@ public final class DecisionCore {
                 marker(ep, refusal.construct(), refusal.getMessage(), defaults, config, perPath, markerErrors);
                 continue;
             }
-            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null, Verbaliser.Document.of(loaded)));
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null,
+                    ep.explains() ? explanationBuild : null, ep.explains() ? explained : null));
         }
         if (!scopeErrors.isEmpty())
             throw new ServiceError("dienst start niet: een scope draagt niet het hele document", scopeErrors);
@@ -337,8 +375,7 @@ public final class DecisionCore {
             throw new ServiceError("dienst start niet: uchar draagt een entrypoint niet", markerErrors);
         List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
         return new DecisionCore(descriptor, model, perPath, sets, periodWarnings(model, sets), config.detail(),
-                forms, documentJson,
-                (subject, read) -> loaded.navigationBindings().getOrDefault(read, List.of()));
+                forms, documentJson);
     }
 
     private static ServiceDescriptor readDescriptor(String descriptorJson) {
@@ -358,7 +395,7 @@ public final class DecisionCore {
                                List<Violation> markerErrors) {
         if (config.allowMarkers()) {
             perPath.put(ep.path(), new Entrypoint(ep, null, construct == null ? List.of() : List.of(construct),
-                    defaults, reason, null));
+                    defaults, reason, null, null));
             return;
         }
         markerErrors.add(Violation.of(Violation.Kind.MARKER, "entrypoint:" + ep.path(), construct == null
@@ -623,8 +660,13 @@ public final class DecisionCore {
             for (String flag : options.detailFlags())
                 choices.add(Violation.of(Violation.Kind.UNSUPPORTED, flag, "de dienst is zonder DETAIL gestart"
                         + " en geeft geen " + flag + "; start hem met DETAIL=true of --detail"));
+        if (options.explanation() && ep.explanationBuild() == null)
+            choices.add(Violation.of(Violation.Kind.UNSUPPORTED, "explanation", "het entrypoint '" + ep.descriptor().name()
+                    + "' geeft geen uitleg: de descriptor zet explanation op false"));
         if (!choices.isEmpty()) throw new ServiceError("verzoek valideert niet", choices);
-        RequestMapper mapper = new RequestMapper(model, ep.build(), new NameReader(model, options.inputVocabulary()));
+        // an explanation is given from the build with readings, which answers the request as well: one fire
+        DroolsBackend.Build fired = options.explanation() ? ep.explanationBuild() : ep.build();
+        RequestMapper mapper = new RequestMapper(model, fired, new NameReader(model, options.inputVocabulary()));
         RequestMapper.Result mr = mapper.map(new Request(requestTree));
         if (!mr.violations().isEmpty())
             throw new ServiceError("verzoek valideert niet", mr.violations());
@@ -651,7 +693,7 @@ public final class DecisionCore {
                 ? new DroolsBackend.Observer(label::get) : null;
         List<FixpointGivens.InputObject> input = options.fixpoint()
                 ? FixpointGivens.input(mr.world().beans(), mr.typePerLabel(), output) : null;
-        Executor executor = new Executor(ep.build(), ep.defaultGlobals());
+        Executor executor = new Executor(fired, ep.defaultGlobals());
         Executor.Outcome outcome;
         try {
             outcome = executor.fire(mr.world(), setGlobals, observer, expectations, options.explanation());
@@ -664,7 +706,7 @@ public final class DecisionCore {
         }
         ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());
-        if (options.explanation()) addExplanation(answer, outcome, mr, setGlobals, ep, output);
+        if (options.explanation()) addExplanation(answer, outcome, mr, ep, output);
         if (withDetail) answer.setAll(detail(options, ep, observer, outcome.fixpoint(), null, input, output));
         return new Assessment(answer, outcome.comparison());
     }
@@ -724,20 +766,24 @@ public final class DecisionCore {
     }
 
     /**
-     * Attach the {@link Verbaliser} verhaal to {@code answer} as an {@code "explanation"} array. The globals the
-     * verbalisator re-evaluates condition operands against are rebuilt with the SAME precedence
-     * {@link Executor#fire} fired them under (descriptor defaults → set-vintage → request overrides → rekendatum);
-     * the keys are {@link RequestMapper#globalName}, which the verbalisator reads a {@code ParameterRef} on. A pure
-     * read of the already-fired beans — nothing re-fires.
+     * Attach the {@link Verbaliser} verhaal to {@code answer} as an {@code "explanation"} array: the beans of the
+     * request with their derived values, on the document of the entry point's build with readings, with the decisions
+     * and readings of the session that gave the answer. A pure read of the already-fired session — nothing re-fires,
+     * nothing is recomputed. The types of the request's labels and the names lie on the model of that document.
      */
-    private void addExplanation(ObjectNode answer, Executor.Outcome outcome, RequestMapper.Result mr,
-                               Map<String, Object> setGlobals, Entrypoint ep, Naming naming) {
-        Map<String, Object> globals = new LinkedHashMap<>(ep.defaultGlobals());
-        globals.putAll(setGlobals);
-        globals.putAll(mr.world().globals());
-        if (mr.world().evaluationDate() != null) globals.put("rekendatum", mr.world().evaluationDate());
-        List<String> sentences = new Verbaliser(model, globals, naming, walks)
-                .verbalise(outcome.beans(), mr.typePerLabel(), ep.document(), outcome.decisions());
+    private void addExplanation(ObjectNode answer, Executor.Outcome outcome, RequestMapper.Result mr, Entrypoint ep,
+                                Naming naming) {
+        RegelSpraakModel explained = ep.document().model();
+        Map<String, RegelSpraakModel.ObjectType> types = new LinkedHashMap<>();
+        mr.typePerLabel().forEach((label, type) -> {
+            RegelSpraakModel.ObjectType named = explained.objectTypeByName(type.name);
+            if (named == null)
+                throw new IllegalStateException("het objecttype " + type.name + " van " + label + " staat niet in het"
+                        + " document van de uitleg");
+            types.put(label, named);
+        });
+        List<String> sentences = new Verbaliser(ep.document(), Naming.of(explained, naming.choice()), outcome.readings())
+                .verbalise(outcome.beans(), types, outcome.decisions());
         var arr = answer.putArray("explanation");
         for (String sentence : sentences) arr.add(sentence);
     }

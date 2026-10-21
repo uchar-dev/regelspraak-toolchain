@@ -58,3 +58,14 @@ waarde weer met de eenheid zoals de declaratie die schrijft.
 ## Omvang
 
 Klein. May touch: `toolchain/src/main/java/dev/uchar/regelspraak/toolchain/engine/Verbaliser.java` en zijn tests.
+
+## Result (2026-10-21)
+
+Opgegaan in de kaart `explanation-from-readings` (`backlog/doing/20261021-explanation-from-readings.md`), zoals die kaart
+zegt. De Verbalisator leest een getalliteral niet meer zelf (`literalValue` en `parseNumber` zijn weg): de waarde en de
+eenheid komen uit de lezing van de motor (`DroolsBackend.readingsOf`), de decimalen uit het lexeem van de draad
+("30.00": twee). Elke operand krijgt de eenheid die de motor las, ook een afgeleide waarde. Getuigen: de regel
+`premiewaardig` en `bonuswaardig` van `ExplanationReadingsTest` (scenario-runner) en `ExplanationReadingsServiceTest`
+(de dienst uit bronnen en uit een IR-document): "J1 is premiewaardig, omdat zijn premie (60,00 EUR) is groter dan 30,00
+EUR" en "J2 is bonuswaardig, omdat zijn bonus maal 2 (15,00 EUR) is groter dan 10,00 EUR". Vóór de kaart, op dezelfde
+bron: "… (60,00) is groter dan 3.000 EUR" en "… (15,00 EUR) is groter dan 1.000 EUR"; "0,5 km" stond er als "5,0 km".

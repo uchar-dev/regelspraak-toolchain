@@ -105,7 +105,12 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
                       [--port N]
 ```
 
-- `POST /<path>` per entry point; `?explanation=true` adds the verbaliser's sentences to the answer. The service makes no
+- `POST /<path>` per entry point; `?explanation=true` adds the verbaliser's sentences to the answer. An entry point that
+  explains (the descriptor's `explanation`, absent or true) has, beside the build that answers, uchar's build with
+  readings of the same document, made at startup; a request with `?explanation=true` is mapped, fired and answered there,
+  once, and the verbaliser renders the engine's readings of that session (`DroolsBackend.readingsOf`); uchar's witnesses
+  hold that the facts at its fixpoint are those of the build without. With `"explanation": false` the entry point builds
+  the one build and refuses a request for an explanation (400, `UNSUPPORTED` on `explanation`). The service makes no
   bean itself: `RequestMapper` validates the request (names, types, units; a 400 with the field path) and writes it as
   the input of a `uchar-case-v0` case, `{"asOfDate", "input": {"instances": [...]}}` with the ids of the request as
   labels, the inline `roles` and each relation of `relations` as `roles` (a relation on the end whose role toward the

@@ -14,7 +14,9 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
-import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
+import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
+import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -23,6 +25,7 @@ import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -37,13 +40,13 @@ import java.util.stream.Stream;
  * after its scenario. It compares nothing itself: a verdict here is uchar's replay verdict.
  *
  * <p>{@link #runWithExplanation} adds to each report the explanation of its outcome in words. uchar's report carries the
- * verdicts and the firings but not the fired facts (an explanation is presentation, its record says), so each played
- * scenario is played once more, in a session of its own on the same build ({@link CaseSession}), and the
- * {@link Verbaliser} explains that session's facts. The explanation is given only when that session fired what
- * uchar's replay reported and reads the values uchar read; otherwise it is withheld with the difference. The session
- * itself, with uchar's reading of its fixpoint, is given under the same condition. A case uchar's replay did not play
- * out has no explanation; its session is played all the same and given when evaluation faults stand at its fixpoint,
- * the faults the write-back of the replay throws, so that they are there as data.
+ * verdicts and the firings but not the fired facts (an explanation is presentation, its record says), so the replay
+ * plays on a build with readings and hands each session it fired to this class ({@link CaseRunner.Handoff}), right
+ * after the fire and before the write-back: the fixpoint, the decisions of the defaults stacks and the readings of the
+ * conditions are read off the very session the report judged ({@link CaseSession}), and the {@link Verbaliser} explains
+ * it once the report wrote its beans back. A case uchar's replay did not play out has no explanation; its session is
+ * given when evaluation faults stand at its fixpoint, the faults the write-back of the replay throws, so that they are
+ * there as data.
  */
 public final class ScenarioRunner {
     private ScenarioRunner() {}
@@ -53,8 +56,8 @@ public final class ScenarioRunner {
     /** A scenario's report with the explanation of its outcome: {@code explanation} one sentence per characteristic an
      *  attribution rule decided, and {@code explanationError} why there is none when a played scenario has none (null
      *  otherwise; a MARKER scenario has no explanation and no reason beside its own diagnose). {@code session} is the
-     *  case played in a session of its own, with uchar's reading of its fixpoint ({@link CaseSession.Outcome#fixpoint}),
-     *  when that session follows uchar's replay, and {@code sessionError} why there is none otherwise (both null for a
+     *  session uchar's replay judged, with uchar's reading of its fixpoint ({@link CaseSession.Outcome#fixpoint}), as the
+     *  replay handed it over, and {@code sessionError} why there is none otherwise (both null for a
      *  MARKER scenario and without an explanation asked). */
     public record Explained(ScenarioResult result, List<String> explanation, String explanationError,
                             CaseSession.Outcome session, String sessionError) {}
@@ -118,9 +121,24 @@ public final class ScenarioRunner {
                 Files.writeString(c, CaseEmitter.emit(scenarios.get(i)), StandardCharsets.UTF_8);
                 cases.add(c);
             }
+            // what the replay hands over of each session it fired, by case file, read before the write-back
+            Map<String, Handed> handed = new LinkedHashMap<>();
+            CaseRunner.Handoff handoff = (caseFile, build, session, labels, firing) -> {
+                if (firing.noFixpoint() != null) {
+                    handed.put(caseFile, new Handed(labels, null, List.of(), List.of(), firing.noFixpoint()));
+                    return;
+                }
+                Map<Object, String> labelOf = new IdentityHashMap<>();
+                labels.forEach((label, bean) -> labelOf.put(bean, label));
+                Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, labelOf::get);
+                boolean answered = fixpoint.faults().isEmpty();
+                handed.put(caseFile, new Handed(labels, fixpoint,
+                        answered ? DroolsBackend.decisionsOf(build, session) : List.of(),
+                        answered ? DroolsBackend.readingsOf(build, session) : List.of(), null));
+            };
             List<ScenarioResult> report;
             try {
-                report = CaseRunner.report(ir, cases);
+                report = CaseRunner.report(ir, cases, withExplanation ? handoff : null);
             } catch (IrLoader.DocumentError e) {
                 // the replay reports a refusal of its loader and backend as MARKER itself, but lets a malformed
                 // document escape; uchar's emitter wrote it, so uchar does not carry this document either
@@ -129,21 +147,19 @@ public final class ScenarioRunner {
             if (report.size() != scenarios.size())
                 throw new IllegalStateException("het rapport telt " + report.size() + " case(s) voor "
                         + scenarios.size() + " scenario('s): een gelagerde case hoort nooit een red-path case te zijn");
-            // the build the explanation plays on: the document the replay played, through the same facade
-            // (UcharBuild, this distribution's one way to a build). When the replay played no case (the facade
-            // refused the document, every report is MARKER) there is nothing to explain and no build to make.
+            // the explanation reads the document as uchar's loader reads it, with the positions of its nodes, on which
+            // the readings lie, and the defaults groups beside the model, into which the engine's decisions point;
+            // when the replay played no case (every report is MARKER) there is nothing to explain
             boolean played = report.stream().anyMatch(r -> r.status() != ScenarioResult.Status.MARKER);
-            DroolsBackend.Build build = withExplanation && played ? UcharBuild.assemble(JSON.readTree(document),
-                    DroolsBackend.Branch.EXEC_MODEL) : null;
-            // the explanation reads the document as uchar's loader reads it, the defaults groups beside the model
-            // included, which the build keeps to itself: the engine's decisions point into them
-            IrLoader.Loaded explained = build == null ? null : IrLoader.loadAll(JSON.readTree(document));
+            Verbaliser.Document explained = withExplanation && played
+                    ? Verbaliser.Document.of(IrLoader.loadWithPositions(JSON.readTree(document))) : null;
             List<Explained> sink = new ArrayList<>();
             for (int i = 0; i < scenarios.size(); i++) {
                 ScenarioResult r = report.get(i);
                 ScenarioResult named = new ScenarioResult(scenarios.get(i).name(), r.status(),
                         r.expectations(), r.trace(), r.coverage(), r.diagnostic());
-                sink.add(withExplanation ? explanation(build, explained, named,
+                sink.add(withExplanation ? explanation(explained, named,
+                        handed.get(cases.get(i).getFileName().toString()),
                         JSON.readTree(Files.readString(cases.get(i))), vocabulary)
                         : new Explained(named, List.of(), null, null, null));
             }
@@ -164,98 +180,48 @@ public final class ScenarioRunner {
         return sink;
     }
 
-    /** The explanation of report {@code r}, whose case is {@code c}: the case played in a session of its own on
-     *  {@code build}, checked against what uchar's replay reported, then verbalised in {@code vocabulaire} on
-     *  {@code explained}, what uchar's loader read of the IR document the build was made from: the model, the defaults
-     *  groups beside it, on which the engine's decisions lay, and the walk over roles of each read, beside the read and
-     *  not on it. The document carries uchar's table of origins (IR-SPEC ch. 2.13), so that model tells the rules uchar
-     *  wrote. The objects of the session are of the build's types, named alike in that model. */
-    private static Explained explanation(DroolsBackend.Build build, IrLoader.Loaded explained, ScenarioResult r,
-                                         JsonNode c, String vocabulary) {
+    /** What the replay handed over of the session of one case: the case labels of its input beans, its fixpoint, and
+     *  the decisions and readings of a session without a standing fault; or, without a fixpoint, uchar's sentence. */
+    private record Handed(Map<String, Object> labels, Fixpoint fixpoint, List<DefaultsDecision> decisions,
+                          List<ConditionReading> readings, String noFixpoint) {}
+
+    /** The explanation of report {@code r}, whose case is {@code c} and whose session the replay handed over as
+     *  {@code h} (null where its input or fire raised): verbalised in {@code vocabulary} on {@code explained}, what
+     *  uchar's loader read of the IR document the build was made from. The document carries uchar's table of origins
+     *  (IR-SPEC ch. 2.13), so that model tells the rules uchar wrote. The objects of the session are of the build's
+     *  types, named alike in that model, and their types are those the case gives its labels. */
+    private static Explained explanation(Verbaliser.Document explained, ScenarioResult r, Handed h, JsonNode c,
+                                         String vocabulary) {
         if (r.status() == ScenarioResult.Status.MARKER) return new Explained(r, List.of(), null, null, null);
-        if (r.expectations().isEmpty() && r.status() == ScenarioResult.Status.FAIL)
-            return notPlayedOut(build, r, c);
-        CaseSession.Outcome session;
-        try {
-            session = CaseSession.play(build, c);
-        } catch (CaseSession.NotPlayable e) {
-            return new Explained(r, List.of(), "de uitleg speelt deze case niet: " + e.getMessage(), null,
-                    "de eigen sessie speelt deze case niet: " + e.getMessage());
-        }
-        // uchar's replay wrote back without a throw, so no fault stood at its fixpoint
-        if (!session.fixpoint().faults().isEmpty()) {
-            String z = "de sessie van de uitleg kwam op een evaluatiefout die uchars replay niet gaf: "
-                    + session.fixpoint().faults().get(0).message();
-            return new Explained(r, List.of(), z, null, z);
-        }
-        if (!session.firings().equals(r.trace().firings())) {
-            String z = "de sessie van de uitleg vuurde " + session.firings() + ", uchars replay "
-                    + r.trace().firings();
-            return new Explained(r, List.of(), z, null, z);
-        }
-        String difference = valueDifference(session, r, c);
-        if (difference != null) return new Explained(r, List.of(), difference, null, difference);
+        boolean playedOut = !(r.expectations().isEmpty() && r.status() == ScenarioResult.Status.FAIL);
+        String noExplanation = playedOut ? null : "uchars replay speelde de case niet uit: " + r.diagnostic();
+        if (h == null)
+            return new Explained(r, List.of(), noExplanation, null, "uchars replay gaf de sessie van deze case niet"
+                    + " door: haar invoer of haar vuur gaf een uitzondering");
+        if (h.noFixpoint() != null)
+            return new Explained(r, List.of(), noExplanation, null, "uchars replay kwam niet op een fixpunt: "
+                    + h.noFixpoint());
         RegelSpraakModel model = explained.model();
         Map<String, RegelSpraakModel.ObjectType> types = new LinkedHashMap<>();
-        session.typePerLabel().forEach((label, type) -> {
-            RegelSpraakModel.ObjectType named = model.objectTypeByName(type.name);
+        for (JsonNode i : c.get("input").get("instances")) {
+            String label = i.get("label").asText(), type = i.get("objectType").asText();
+            RegelSpraakModel.ObjectType named = model.objectTypeByName(type);
             if (named == null)
-                throw new IllegalStateException("het objecttype " + type.name + " van " + label + " staat niet in het"
+                throw new IllegalStateException("het objecttype " + type + " van " + label + " staat niet in het"
                         + " model dat uchars lader uit hetzelfde document las");
             types.put(label, named);
-        });
-        return new Explained(r, new Verbaliser(model, session.globals(), Naming.of(model, vocabulary),
-                (subject, read) -> explained.navigationBindings().getOrDefault(read, List.of()))
-                .verbalise(session.beans(), types, Verbaliser.Document.of(explained), session.decisions()),
-                null, session, null);
-    }
-
-    /** A case uchar's replay did not play out, its play raised an exception: no explanation, and the session played
-     *  for its fixpoint. That session is given when evaluation faults stand at the fixpoint, which the write-back of
-     *  the replay throws; a session that reaches its fixpoint without one did not run as the replay ran. The session
-     *  raises what the replay raised where the replay raised it before the write-back, and that is its reason. */
-    private static Explained notPlayedOut(DroolsBackend.Build build, ScenarioResult r, JsonNode c) {
-        String noExplanation = "uchars replay speelde de case niet uit: " + r.diagnostic();
-        CaseSession.Outcome session;
-        try {
-            session = CaseSession.play(build, c);
-        } catch (CaseSession.NotPlayable e) {
-            return new Explained(r, List.of(), noExplanation, null,
-                    "de eigen sessie speelt deze case niet: " + e.getMessage());
-        } catch (RuntimeException e) {
-            // uchar's report names the same failure as this case's FAIL; the session reports it as well
-            return new Explained(r, List.of(), noExplanation, null,
-                    "de eigen sessie speelde de case evenmin uit: " + e.getClass().getSimpleName() + ": "
-                            + e.getMessage());
         }
-        if (session.fixpoint().faults().isEmpty())
-            return new Explained(r, List.of(), noExplanation, null, "de eigen sessie kwam zonder evaluatiefout op haar"
-                    + " fixpunt, waar uchars replay de case niet uitspeelde");
-        return new Explained(r, List.of(), noExplanation, session, null);
-    }
-
-    /** The first attribute or characteristic expectation whose value in the explanation's session differs from the
-     *  value uchar's replay read, rendered as the replay renders it; null when none differs. */
-    private static String valueDifference(CaseSession.Outcome session, ScenarioResult r, JsonNode c) {
-        for (ScenarioResult.ExpectationResult v : r.expectations()) {
-            JsonNode e = c.get("expected").get(v.position() - 1);
-            String kind = e.get("kind").asText();
-            Object bean = e.hasNonNull("label") ? session.beans().get(e.get("label").asText()) : null;
-            String own = switch (kind) {
-                case "attributeValue", "attributeEmpty" -> {
-                    Object w = bean == null ? null : CaseSession.read(bean, Namen.getter(e.get("attribute").asText()));
-                    yield w == null ? "leeg" : w.toString();
-                }
-                case "characteristicPresent", "characteristicAbsent" -> bean != null
-                        && Boolean.TRUE.equals(CaseSession.read(bean, Namen.getter(e.get("characteristic").asText())))
-                        ? "aanwezig" : "afwezig";
-                default -> null;
-            };
-            if (own != null && !own.equals(v.actual()))
-                return "de sessie van de uitleg las bij verwachting " + v.position() + " (" + v.source() + ") "
-                        + own + ", uchars replay " + v.actual();
+        CaseSession.Outcome session = new CaseSession.Outcome(new LinkedHashMap<>(h.labels()), types,
+                r.trace().firings(), h.fixpoint(), h.decisions(), h.readings());
+        if (!playedOut) {
+            // the write-back of the replay throws a fault that stands at the fixpoint: that is a case not played out
+            if (h.fixpoint().faults().isEmpty())
+                return new Explained(r, List.of(), noExplanation, null, "uchars replay kwam zonder evaluatiefout op"
+                        + " het fixpunt, en speelde de case toch niet uit");
+            return new Explained(r, List.of(), noExplanation, session, null);
         }
-        return null;
+        return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings())
+                .verbalise(session.beans(), types, h.decisions()), null, session, null);
     }
 
     private static void remove(Path map) {

@@ -68,6 +68,7 @@ public record ServiceDescriptor(
      * @param vocabulaire OPTIONAL the vocabulary an answer of this entry point names the declarations in when the
      *        request chooses none: one the model declares, or {@code canoniek}. Absent = the canonical names. The
      *        descriptor's own names (scope, invoer, uitvoer, inputElements, parameters) are canonical names.
+     * @param explanation OPTIONAL whether the entry point explains its answers ({@link #explains}); absent = true.
      */
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Entrypoint(
@@ -78,9 +79,15 @@ public record ServiceDescriptor(
             @JsonProperty("output") List<String> output,
             @JsonProperty("inputElements") List<String> inputElements,
             @JsonProperty("scopeCheckOptOut") boolean scopeCheckOptOut,
-            @JsonProperty("vocabulary") String vocabulary) {
+            @JsonProperty("vocabulary") String vocabulary,
+            @JsonProperty("explanation") Boolean explanation) {
 
         public List<String> inputElementsOrEmpty() { return inputElements == null ? List.of() : inputElements; }
+
+        /** Whether this entry point explains its answers ({@code ?explanation=true}): absent or true, the service builds
+         *  the build with readings beside the one that answers, at startup; false, it builds that one alone and refuses
+         *  a request for an explanation. */
+        public boolean explains() { return explanation == null || explanation; }
     }
 
     /**

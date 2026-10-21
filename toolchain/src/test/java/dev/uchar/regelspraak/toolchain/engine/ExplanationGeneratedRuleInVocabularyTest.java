@@ -171,22 +171,18 @@ class ExplanationGeneratedRuleInVocabularyTest {
         assertEquals(List.of("V1 is zwaar, omdat zijn gewicht (12) is groter dan 10"), explanation(bundle, "cgm"));
     }
 
-    /** The decision service explains on the model it resolved from its sources, which carries uchar's table of
-     *  origins itself, so the verbaliser reads the table there without being handed it. */
+    /** The decision service explains on what uchar's loader reads of the document its emitter wrote of the sources
+     *  (since card explanation-from-readings; before, on the model the frontend resolved), which carries uchar's table
+     *  of origins, so the verbaliser reads the table there without being handed it. */
     @Test
-    void on_the_model_of_the_frontend_reads_the_uitleg_the_origin_there() {
-        RegelSpraakEngine engine = RegelSpraakEngine.compile(MODEL);
+    void on_the_model_of_the_frontend_reads_the_uitleg_the_origin_there() throws Exception {
+        ExplanationSession engine = ExplanationSession.of(MODEL);
         Object v2 = engine.newInstance("Vondst");
         RegelSpraakRuntime.set(v2, Namen.ident("vinddag", false), LocalDate.of(2026, 3, 10));
-        try (RegelSpraakEngine.Session s = engine.newSession()) {
-            s.insert(v2).fire();
-            s.restore();
-        }
         assertEquals(List.of(
                 "V2 is niet zelf gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is"),
-                new Verbaliser(engine.model(), Map.of(), Naming.of(engine.model(), "cgm"))
-                        .verbalise(Map.of("V2", v2), Map.of("V2", engine.model().objectTypeByName("Vondst"))));
+                engine.explain("cgm", "Vondst", Map.of("V2", v2)));
     }
 }

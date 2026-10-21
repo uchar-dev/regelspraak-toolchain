@@ -48,19 +48,13 @@ class ExplanationOriginFromIrTest {
 
     @Test
     void on_the_model_from_the_ir_document_names_the_uitleg_the_operand_in_the_vocabulary() throws Exception {
-        RegelSpraakEngine engine = RegelSpraakEngine.compile(MODEL);
-        RegelSpraakModel fromIr = IrLoader.loadAll(new ObjectMapper().readTree(UcharBuild.document(engine.model())))
-                .model();
+        ExplanationSession engine = ExplanationSession.of(MODEL);
 
         Object v1 = engine.newInstance("Vondst");
         RegelSpraakRuntime.set(v1, Namen.ident("vinddag", false), LocalDate.of(2026, 3, 10));
         RegelSpraakRuntime.set(v1, Namen.ident("opgegeven meldingsdatum", false), LocalDate.of(2026, 3, 12));
         Object v2 = engine.newInstance("Vondst");
         RegelSpraakRuntime.set(v2, Namen.ident("vinddag", false), LocalDate.of(2026, 3, 10));
-        try (RegelSpraakEngine.Session s = engine.newSession()) {
-            s.insert(v1).insert(v2).fire();
-            s.restore();
-        }
         Map<String, Object> beans = new LinkedHashMap<>();
         beans.put("V1", v1);
         beans.put("V2", v2);
@@ -74,14 +68,8 @@ class ExplanationOriginFromIrTest {
                 "V2 is niet zelf gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is");
-        assertEquals(expected, explanation(engine.model(), beans), "op het model van de frontend");
-        assertEquals(expected, explanation(fromIr, beans), "op het model uit het IR-document");
-    }
-
-    private static List<String> explanation(RegelSpraakModel model, Map<String, Object> beans) {
-        ObjectType vondst = model.objectTypeByName("Vondst");
-        Map<String, ObjectType> types = new LinkedHashMap<>();
-        for (String label : beans.keySet()) types.put(label, vondst);
-        return new Verbaliser(model, Map.of(), Naming.of(model, "cgm")).verbalise(beans, types);
+        // since card explanation-from-readings every route explains on the model uchar's loader reads from the
+        // document, with the readings of the engine; the frontend's model is no longer a route of the explanation
+        assertEquals(expected, engine.explain("cgm", "Vondst", beans), "op het model uit het IR-document");
     }
 }

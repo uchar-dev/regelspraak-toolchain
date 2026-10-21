@@ -1,7 +1,6 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
-import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.ir.Condition;
 import dev.uchar.regelspraak.ir.Default;
 import dev.uchar.regelspraak.ir.ExceptionGroup;
@@ -16,7 +15,9 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.OriginForm;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.RoleBindingRef;
+import dev.uchar.regelspraak.loader.NodePositions;
 import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 
 import java.math.BigDecimal;
@@ -24,11 +25,15 @@ import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
+import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -45,21 +50,19 @@ import java.util.regex.Pattern;
  *   <li>afgesloten met een bronverwijzing wanneer de IR die als optionele regelbron-annotatie draagt.</li>
  * </ul>
  *
- * <p><b>Waarom uit de eindtoestand en niet uit de vuur-trace:</b> een kenmerk dat op een bean TRUE staat is het
- * enige harde bewijs dát het is toegekend; de trace telt activaties maar bindt geen waarde. De voorwaarde-
- * operanden worden hier daarom (read-only) opnieuw geëvalueerd tegen dezelfde eindtoestand die de regel ook zag —
- * de getallen die de uitleg toont zijn de getallen waarop de conclusie stoelt. Deze verbalisator VERZINT geen
- * semantiek: hij dekt de operand- en conditievormen die de IR expliciet structureert (attribuut/parameter/
- * literal/rekendatum-reads, de reken-operatoren, afronding, begrenzing, vergelijkingen, kenmerk-/rol-lidmaatschap
- * en de samengestelde alle/geen-kwantoren) en meldt een niet-gestructureerde vorm als zodanig, in plaats van te
- * gokken.
+ * <p><b>De waarden komen van de motor.</b> Of een kenmerk is toegekend, staat op de bean na de terugschrijving. Hoe
+ * de voorwaarde van een vorm uitkwam en wat elke knoop ervan vond, leest de uitleg uit de lezingen van een build met
+ * lezingen ({@link DroolsBackend#readingsOf}: per vorm, op haar pointer, en object de status en per knoop bereikt of
+ * niet, oordeel of waarde met eenheid). De uitleg rekent niets na: zij legt elke lezing op de knopen van het document
+ * van de build ({@link Document}, dat uchars lader met de posities van de knopen las) en zet ze in zinnen. Een lege
+ * waarde staat er als "(onbekend)"; een lid of operand dat de motor niet bereikte, noemt de zin niet, of zonder
+ * waarde. Bij een voorwaarde die niet gold noemt de zin het lid waar de motor stopte. Een lezing die ontbreekt, of een
+ * fout of een vorm die niet aan de beurt was waar de zin een oordeel nodig heeft, faalt luid: de uitleg volgt een
+ * sessie zonder evaluatiefout.
  *
- * <p><b>Lezing over een rol.</b> Een attribuut dat een operand over een rolpad leest ("de herlevingsgrens van het
- * recht van het Inkomen"), staat op een ander object dan het onderwerp. Welk object dat is, zegt uchar: de wandeling
- * van de lezing ({@link Walks}) en het object dat die wandeling vanaf de bean van het onderwerp bereikt
- * ({@link DroolsBackend#reached}), zoals de exec-model-tak de lezing las. De waarde is die op dat object, na de
- * terugschrijving de waarde die de motor afleidde; ontbreekt een link, dan is ze leeg en staat er "(onbekend)". Een
- * wandeling die de tak niet leest, weigert uchar met zijn zin, en die weigering gaat door.
+ * <p><b>Over een rol.</b> Een operand over een rolpad ("de herlevingsgrens van het recht van het Inkomen") heeft de
+ * waarde die de motor op het bereikte object las. Een kenmerkcheck over een rol ("de jutter van de Vondst ingezetene
+ * is") heet naar de wandeling die de lader naast de check gaf ({@code Loaded.navigationBindings}).
  *
  * <p><b>Vocabulaire.</b> Met een {@link Naming} noemt het verhaal de gedeclareerde namen — objecttypen,
  * attributen, kenmerken, rollen, parameters en enumeratiewaarden — in het gekozen vocabulaire; de brontekst van een
@@ -100,85 +103,59 @@ import java.util.regex.Pattern;
 public final class Verbaliser {
 
     private final RegelSpraakModel model;
-    /** De opgeloste globals die operanden kunnen lezen: parameters (op hun canonieke naam) + "rekendatum". */
-    private final Map<String, Object> globals;
     /** De namen waarin het verhaal de declaraties noemt. */
     private final Naming naming;
-    /** De wandeling van een lezing van {@link #model}. */
-    private final Walks walks;
+    /** Het document van de build, met de posities van zijn knopen. */
+    private final Document document;
+    /** De lezingen van de sessie, per vorm en object. */
+    private final Map<String, Map<Object, ConditionReading>> readings = new HashMap<>();
 
     /**
-     * Waar de wandeling van een lezing vandaan komt (IR-SPEC ch. 4.1a): één rolbinding per hop vanaf het onderwerp
-     * van de regel, leeg voor een lid van het onderwerp zelf. Het model dat de frontend resolvede, draagt de
-     * geschreven navigatie op de lezing, en de wandeling is die welke uchars emitter ervoor schrijft
-     * ({@link #written}). Het model dat uchars IR-lader las, draagt haar niet op de lezing maar in de tabel ernaast:
-     * voor het model van een build {@code build.execModelTranspiler().navigationBindings(read)}, voor een model van
-     * {@code IrLoader.loadAll} de tabel {@code navigationBindings()} van wat de lader teruggaf.
+     * Een verbalisator voor één sessie van een build met lezingen: {@code document} is het document van die build zoals
+     * uchars lader het las, met de posities van zijn knopen ({@link Document#of}); {@code readings} wat
+     * {@link DroolsBackend#readingsOf} van de sessie gaf; {@code naming} de namen, op het model van {@code document}.
+     *
+     * @throws IllegalStateException twee lezingen van één vorm op één object
      */
-    @FunctionalInterface
-    public interface Walks {
-        List<RoleBindingRef> of(ObjectType subject, Expr.AttributeReference read);
-
-        /** De wandeling die uchars emitter schrijft voor een lezing van {@code model}, een model dat de frontend
-         *  resolvede. */
-        static Walks written(RegelSpraakModel model) {
-            return (subject, read) -> IrEmitter.navigationBindings(model, subject, read);
-        }
+    public Verbaliser(Document document, Naming naming, List<ConditionReading> readings) {
+        this.document = Objects.requireNonNull(document, "document");
+        this.model = document.model();
+        this.naming = Objects.requireNonNull(naming, "naming");
+        for (ConditionReading r : readings)
+            if (this.readings.computeIfAbsent(r.form(), k -> new IdentityHashMap<>()).put(r.object(), r) != null)
+                throw new IllegalStateException("de motor gaf twee lezingen van " + r.form() + " op één object");
     }
 
-    /** Een verbalisator voor een model dat de frontend resolvede, canoniek. */
-    public Verbaliser(RegelSpraakModel model, Map<String, Object> globals) {
-        this(model, globals, Naming.canonical(model));
-    }
-
-    /** Een verbalisator voor een model dat de frontend resolvede: de wandeling van een lezing staat op de lezing. */
-    public Verbaliser(RegelSpraakModel model, Map<String, Object> globals, Naming naming) {
-        this(model, globals, naming, Walks.written(model));
-    }
-
-    /** Een verbalisator die de wandeling van een lezing uit {@code walks} neemt: voor een model dat uchars IR-lader
-     *  las, uit de tabel die de lader ernaast gaf. */
-    public Verbaliser(RegelSpraakModel model, Map<String, Object> globals, Naming naming, Walks walks) {
-        this.model = model;
-        this.globals = globals == null ? Map.of() : globals;
-        this.naming = naming;
-        this.walks = Objects.requireNonNull(walks, "walks");
-    }
-
-    /**
-     * Bouw de uitleg van de kenmerktoekenningen voor een gedraaide wereld, zonder de defaults-groepen.
-     * {@code instances} mapt een LABEL (het scenario-label of het dienst-verzoek-id) op de bijbehorende, reeds gevuurde
-     * bean; {@code typePerLabel} het objecttype per label. Het resultaat is één regel per uitlegzin, in een stabiele
-     * volgorde (per label, in modeldeclaratie-volgorde van de regels). Een lege lijst betekent: geen
-     * kenmerktoekenning raakte een van deze instanties.
-     */
+    /** {@link #verbalise(Map, Map, List)} zonder de defaults-groepen en zonder de vormen buiten de scope: de
+     *  kenmerktoekenningen alleen. */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
         List<String> sink = new ArrayList<>();
         for (Map.Entry<String, Object> e : instances.entrySet()) {
-            String label = e.getKey();
-            Object bean = e.getValue();
-            ObjectType ot = typePerLabel.get(label);
-            if (ot == null || bean == null) continue;
-            assignments(label, bean, ot, sink);
+            ObjectType ot = typePerLabel.get(e.getKey());
+            if (ot == null || e.getValue() == null) continue;
+            assignments(e.getKey(), e.getValue(), ot, sink);
         }
         return sink;
     }
 
     /**
-     * {@link #verbalise(Map, Map)} met per label na de kenmerktoekenningen één zin per defaults-groep van zijn type:
-     * wat de motor besliste ({@code decisions}, uit {@link DroolsBackend#decisionsOf} van dezelfde sessie, gelezen
-     * vóór of na de terugschrijving), op het document van de build gelegd ({@code document}). De groepen staan in de
-     * volgorde van het document.
+     * Bouw de uitleg voor een gedraaide wereld. {@code instances} mapt een LABEL (het scenario-label of het
+     * dienst-verzoek-id) op de bijbehorende, gevuurde en teruggeschreven bean; {@code typePerLabel} het objecttype per
+     * label, op het model van het document. Per label eerst één zin per kenmerktoekenning van zijn type, in de volgorde
+     * van het document, dan één zin per defaults-groep van zijn type: wat de motor besliste ({@code decisions}, uit
+     * {@link DroolsBackend#decisionsOf} van dezelfde sessie). Daarna één zin per kenmerktoekenning buiten de scope
+     * ({@link Document#outside}) op het type van een label.
      *
-     * @throws IllegalStateException een pointer die niet op {@code document} terug te leggen is, een beslissing over
-     *                               een lid waarvoor het type van het object geen groep heeft, of een groep op de
-     *                               typeketen van het object zonder beslissing over haar doel
+     * @throws IllegalStateException een pointer die niet op het document terug te leggen is, een beslissing over
+     *                               een lid waarvoor het type van het object geen groep heeft, een groep op de
+     *                               typeketen van het object zonder beslissing over haar doel, of een lezing die
+     *                               ontbreekt of niet past bij wat de zin zegt
      */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
-                                  Document document, List<DefaultsDecision> decisions) {
-        Objects.requireNonNull(document, "document");
+                                  List<DefaultsDecision> decisions) {
         Objects.requireNonNull(decisions, "decisions");
         List<String> sink = new ArrayList<>();
+        Set<String> outside = new LinkedHashSet<>();
         for (Map.Entry<String, Object> e : instances.entrySet()) {
             String label = e.getKey();
             Object bean = e.getValue();
@@ -186,7 +163,11 @@ public final class Verbaliser {
             if (ot == null || bean == null) continue;
             assignments(label, bean, ot, sink);
             new DefaultsExplanation(document, label, bean, ot, decisions).sentences(sink);
+            document.outside().forEach((rule, type) -> {
+                for (ObjectType t : ot.chain()) if (t.name.equalsIgnoreCase(type)) outside.add(rule);
+            });
         }
+        for (String rule : outside) sink.add("de regel '" + rule + "' staat buiten deze berekening");
         return sink;
     }
 
@@ -205,27 +186,36 @@ public final class Verbaliser {
     }
 
     /**
-     * Waar de pointers van {@link DroolsBackend#decisionsOf} op terug te leggen zijn: de defaults-groepen en de regels
-     * van het document waaruit de build gemaakt is, in de volgorde van het document. Dat is het model waaruit uchars
-     * emitter het document schreef (met een scope het model van die scope), of wat uchars lader uit het document las;
-     * het moet het model zijn waarvan de verbalisator de lezingen kent ({@link Walks}). De emitter schrijft elke groep,
-     * default, uitzonderingsgroep en elk lid op zijn index, en een regel als vorm met haar versies ("naam #i").
+     * Het document waaruit de build gemaakt is, zoals uchars lader het las ({@link IrLoader#loadWithPositions}): het
+     * model, de defaults-groepen ernaast, waarop de pointers van {@link DroolsBackend#decisionsOf} en de vormen van de
+     * lezingen terug te leggen zijn, de wandeling van elke lezing en kenmerkcheck over een rol, en de posities van de
+     * knopen, waarop de nummers van de lezingen liggen. De emitter schrijft elke groep, default, uitzonderingsgroep en
+     * elk lid op zijn index, en een regel als vorm met haar versies ("naam #i"). {@code outside} noemt de
+     * kenmerktoekenningen van de bron die de scope van een entrypoint niet draagt, met het objecttype van hun doel: zij
+     * hebben in de build geen regel en dus geen lezing.
      */
-    public record Document(List<PrioritizedDefaults> groups, List<ResolvedRule> rules) {
+    public record Document(IrLoader.Loaded loaded, NodePositions positions, Map<String, String> outside) {
         public Document {
-            groups = List.copyOf(groups);
-            rules = List.copyOf(rules);
+            Objects.requireNonNull(loaded, "loaded");
+            Objects.requireNonNull(positions, "positions");
+            outside = java.util.Collections.unmodifiableMap(new LinkedHashMap<>(outside));
         }
 
-        /** Het document dat uchars emitter van {@code emitted} schrijft. */
-        public static Document of(RegelSpraakModel emitted) {
-            return new Document(emitted.prioritizedDefaults, emitted.resolvedRules);
+        /** Het document zoals de lader het met posities las, zonder vormen buiten een scope. */
+        public static Document of(IrLoader.Positioned positioned) {
+            return new Document(positioned.loaded(), positioned.positions(), Map.of());
         }
 
-        /** Het document zoals uchars lader het las: de groepen staan naast het model. */
-        public static Document of(IrLoader.Loaded loaded) {
-            return new Document(loaded.prioritizedDefaults(), loaded.model().resolvedRules);
+        /** Dit document met de kenmerktoekenningen buiten de scope: vormnaam op het objecttype van hun doel. */
+        public Document withOutside(Map<String, String> rules) {
+            return new Document(loaded, positions, rules);
         }
+
+        public RegelSpraakModel model() { return loaded.model(); }
+
+        public List<PrioritizedDefaults> groups() { return loaded.prioritizedDefaults(); }
+
+        public List<ResolvedRule> rules() { return loaded.model().resolvedRules; }
     }
 
     // ---------------- defaults-groepen ----------------
@@ -487,7 +477,12 @@ public final class Verbaliser {
                         + " in de invoer leeg was";
             if (c == null || c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE
                     && s.components().isEmpty()) return " (onvoorwaardelijk)";
-            return ", omdat " + verbaliseCondition(c, bean, subjectOf(v), ucharText(v));
+            ConditionReading.Status status = reading(v.pointer(), bean, label).status();
+            Read read = read(v.pointer(), bean, label, c);
+            if (status != ConditionReading.Status.HOLDS)
+                throw new IllegalStateException("de beslisser " + v.pointer() + " van " + label + " heeft de lezing "
+                        + status + ", en een variant die besliste heeft een voorwaarde die geldt");
+            return ", omdat " + verbaliseCondition(c, read, subjectOf(v), ucharText(v));
         }
 
         /** Waarom een variant die aan de beurt was niet besliste: een kenmerkvariant waarvan de voorwaarde geldt,
@@ -496,29 +491,37 @@ public final class Verbaliser {
         private String notDecided(Variant v, boolean characteristic, String member) {
             Condition c = conditionOf(v);
             ObjectType subject = subjectOf(v);
-            if (c == null && isInitialisation(v))
-                return readRaw(bean, Namen.getter(member)) != null
-                        ? "gold niet, want de " + naming.attribute(type, member) + " had een invoerwaarde"
-                        : "gaf geen waarde";
-            if (!characteristic && (c == null || Boolean.TRUE.equals(holds(c, subject)))) return "gaf geen waarde";
-            if (c == null)
-                return "gold niet, want de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
-            return "gold niet, want " + firstFailingConjunct(c, bean, subject, ucharText(v));
+            if (c == null && isInitialisation(v)) return initialisationNotDecided(member);
+            if (c == null) {
+                if (!characteristic) return "gaf geen waarde";
+                throw new IllegalStateException("de variant " + v.pointer() + " van '" + member + "' van " + label
+                        + " heeft geen voorwaarde, en een kenmerkvariant zonder voorwaarde beslist altijd");
+            }
+            ConditionReading.Status status = reading(v.pointer(), bean, label).status();
+            return switch (status) {
+                case HOLDS -> {
+                    if (!characteristic) yield "gaf geen waarde";
+                    throw new IllegalStateException("de variant " + v.pointer() + " van '" + member + "' van " + label
+                            + " heeft een voorwaarde die geldt en besliste niet, en een kenmerkvariant waarvan de"
+                            + " voorwaarde geldt, beslist altijd");
+                }
+                case FAILS -> "gold niet, want " + firstFailing(c, read(v.pointer(), bean, label, c), subject,
+                        ucharText(v));
+                case OUTSIDE_VALIDITY -> "gold niet, want zij valt op de rekendatum buiten haar geldigheid";
+                case DISPLACED -> {
+                    // een initialisatie wacht op haar beurt: het doel heeft een waarde van de invoer
+                    if (isInitialisation(v)) yield initialisationNotDecided(member);
+                    throw new IllegalStateException("de variant " + v.pointer() + " van '" + member + "' van " + label
+                            + " was volgens de motor niet aan de beurt, en de beslissing noemt haar vóór de beslisser");
+                }
+                case FAULTS -> throw faulted(v.pointer(), label);
+            };
         }
 
-        /** Of voorwaarde {@code c} in de eindtoestand geldt: een atoom zoals {@link #evaluate} het geeft, een
-         *  "alle"-samenstelling als elk deel geldt; null waar dat niet vast te stellen is. */
-        private Boolean holds(Condition c, ObjectType subject) {
-            if (c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE) {
-                Boolean all = Boolean.TRUE;
-                for (Condition part : s.components()) {
-                    Boolean h = evaluate(part, bean, subject);
-                    if (Boolean.FALSE.equals(h)) return false;
-                    if (h == null) all = null;
-                }
-                return all;
-            }
-            return evaluate(c, bean, subject);
+        private String initialisationNotDecided(String member) {
+            return readRaw(bean, Namen.getter(member)) != null
+                    ? "gold niet, want de " + naming.attribute(type, member) + " had een invoerwaarde"
+                    : "gaf geen waarde";
         }
 
         // ---- namen ----
@@ -697,8 +700,9 @@ public final class Verbaliser {
     }
 
     /** Één kenmerktoekenningsregel voor één instantie: is het kenmerk toegekend → "waarom (voorwaarden)"; is het
-     *  met een voorwaarde NIET toegekend → "niet, want <eerste falende conjunct>"; onvoorwaardelijk-afwezig → geen
-     *  zin (er valt niets te verantwoorden). */
+     *  met een voorwaarde NIET toegekend → "niet, want <het lid waar de motor stopte>"; onvoorwaardelijk-afwezig →
+     *  geen zin (er valt niets te verantwoorden). Staat het kenmerk aan terwijl de voorwaarde van deze regel niet gold,
+     *  dan kwam het uit de invoer of van een andere schrijver, en zegt de zin dat deze regel niet gold. */
     private String verbaliseAssignment(String label, Object bean, Expr.AttributeReference ref, ResolvedRule r) {
         String characteristic = ref.attribute();
         boolean present = readBoolean(bean, characteristic);
@@ -712,15 +716,85 @@ public final class Verbaliser {
                     + subject.name + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
         boolean ucharText = writtenByUchar(r);
         StringBuilder b = new StringBuilder(label).append(' ').append(predicate.mainClause());
-        if (present) {
-            if (v != null) b.append(", omdat ").append(verbaliseCondition(v, bean, subject, ucharText));
-            else b.append(" (onvoorwaardelijk toegekend)");
+        if (v == null) {
+            b.append(" (onvoorwaardelijk toegekend)");
         } else {
-            b.append(", want ").append(firstFailingConjunct(v, bean, subject, ucharText));
+            String pointer = document.positions().versionOf(r);
+            if (pointer == null)
+                throw new IllegalStateException("de regel '" + r.name() + "' staat niet als versie in het document van"
+                        + " de uitleg: haar lezing heeft geen vorm");
+            ConditionReading.Status status = reading(pointer, bean, label).status();
+            String but = present ? ", maar de regel '" + RegelSpraakModel.formName(r.name()) + "' gold niet, want "
+                    : ", want ";
+            switch (status) {
+                case HOLDS -> {
+                    if (!present)
+                        throw new IllegalStateException("de voorwaarde van '" + r.name() + "' geldt volgens de motor op "
+                                + label + ", en het kenmerk '" + characteristic + "' staat niet");
+                    b.append(", omdat ").append(verbaliseCondition(v, read(pointer, bean, label, v), subject, ucharText));
+                }
+                case FAILS -> b.append(but).append(firstFailing(v, read(pointer, bean, label, v), subject, ucharText));
+                case OUTSIDE_VALIDITY -> b.append(but).append("de regel valt op de rekendatum buiten haar geldigheid");
+                case DISPLACED -> throw new IllegalStateException("de motor noemt '" + r.name() + "' op " + label
+                        + " niet aan de beurt, en een kenmerktoekenning wacht niet op haar beurt");
+                case FAULTS -> throw faulted(pointer, label);
+            }
         }
         String source = sourceReference(r);
         if (source != null) b.append(". Grondslag: ").append(source);
         return b.toString();
+    }
+
+    /** De lezing van vorm {@code form} op {@code bean}; faalt luid waar de motor er geen gaf. */
+    private ConditionReading reading(String form, Object bean, String label) {
+        ConditionReading r = readings.getOrDefault(form, Map.of()).get(bean);
+        if (r == null)
+            throw new IllegalStateException("de motor gaf geen lezing van " + form + " op " + label
+                    + ": de uitleg leest de lezingen van een build met lezingen, van elke vorm met een voorwaarde op elk"
+                    + " object waarop zij loopt");
+        return r;
+    }
+
+    /** De lezing van vorm {@code form} op {@code bean} met de nummers van de knopen van voorwaarde {@code c}. */
+    private Read read(String form, Object bean, String label, Condition c) {
+        ConditionReading r = reading(form, bean, label);
+        Map<Object, Integer> numbers = new IdentityHashMap<>();
+        List<Object> nodes = document.positions().subtree(c);
+        for (int i = 0; i < nodes.size(); i++) numbers.put(nodes.get(i), i);
+        Map<Integer, ConditionReading.NodeReading> perNumber = new HashMap<>();
+        for (ConditionReading.NodeReading n : r.nodes()) perNumber.put(n.node(), n);
+        return new Read(form, label, numbers, perNumber);
+    }
+
+    private static IllegalStateException faulted(String form, String label) {
+        return new IllegalStateException("de motor gaf voor " + form + " op " + label + " een evaluatiefout, en de"
+                + " uitleg volgt een sessie zonder fout");
+    }
+
+    /** De lezing van één vorm op één object, op de knopen van haar voorwaarde gelegd. Een knoop zonder eigen lezing
+     *  staat in het filter, de matrix of de bron van een vouw: de zin noemt hem alleen in de tekst van de vouw. */
+    private record Read(String form, String label, Map<Object, Integer> numbers,
+                        Map<Integer, ConditionReading.NodeReading> perNumber) {
+
+        /** De lezing van knoop {@code node}; faalt luid waar de knoop niet tot de voorwaarde hoort of de motor er
+         *  geen lezing van gaf. */
+        ConditionReading.NodeReading of(Object node) {
+            Integer number = numbers.get(node);
+            if (number == null)
+                throw new IllegalStateException("de knoop " + node + " hoort niet bij de voorwaarde van " + form);
+            ConditionReading.NodeReading n = perNumber.get(number);
+            if (n == null)
+                throw new IllegalStateException("de motor gaf voor " + form + " op " + label + " geen lezing van knoop "
+                        + number + ", en de zin noemt hem");
+            if (n.fault() != null)
+                throw new IllegalStateException("knoop " + number + " van " + form + " op " + label + " gaf een"
+                        + " evaluatiefout, en de uitleg volgt een sessie zonder fout: " + n.fault().getMessage());
+            return n;
+        }
+
+        boolean reached(Object node) { return of(node).reached(); }
+
+        boolean holds(Condition c) { return Boolean.TRUE.equals(of(c).value()); }
     }
 
     /** Of uchar de tekst van regel {@code r} schreef: een regel van de opgave-familie, volgens uchars tabel van
@@ -733,13 +807,14 @@ public final class Verbaliser {
 
     // ---------------- voorwaarde-verbalisatie ----------------
 
-    /** Een voorwaarde in proza, met de geëvalueerde operandwaarden: WAAROM ze geldt (het toegekende geval); de
-     *  niet-toegekende tak gaat via {@link #firstFailingConjunct}. {@code subject} is het objecttype van de regel,
-     *  vanwaar een kenmerk- of rolnaam in de voorwaarde gelezen wordt; {@code ucharText} of uchar de regel schreef. */
-    private String verbaliseCondition(Condition c, Object bean, ObjectType subject, boolean ucharText) {
+    /** Een voorwaarde in proza, met de waarden die de motor las: WAAROM ze geldt. Van een samenstelling alleen de
+     *  leden die de motor bereikte. {@code subject} is het objecttype van de regel, vanwaar een kenmerk- of rolnaam in
+     *  de voorwaarde gelezen wordt; {@code ucharText} of uchar de regel schreef. */
+    private String verbaliseCondition(Condition c, Read read, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Compound s) {
             List<String> parts = new ArrayList<>();
-            for (Condition d : s.components()) parts.add(verbaliseCondition(d, bean, subject, ucharText));
+            for (Condition d : s.components())
+                if (read.reached(d)) parts.add(verbaliseCondition(d, read, subject, ucharText));
             String conjunction = switch (s.quantifier()) {
                 case ALLE -> " en ";
                 case GEEN -> " en niet ";
@@ -747,23 +822,23 @@ public final class Verbaliser {
             };
             return String.join(conjunction, parts);
         }
-        return verbaliseAtom(c, bean, subject, ucharText);
+        return verbaliseAtom(c, read, subject, ucharText);
     }
 
-    /** Een enkele (niet-samengestelde) conditie als proza met geëvalueerde operanden. */
-    private String verbaliseAtom(Condition c, Object bean, ObjectType subject, boolean ucharText) {
+    /** Een enkele (niet-samengestelde) conditie als proza met de waarden van haar operanden; null voor een vorm die de
+     *  uitleg niet in woorden zet, die {@link #unstructured} met haar brontekst noemt. */
+    private String structuredAtom(Condition c, Read read, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Comparison vg) {
-            return operandProse(vg.left(), bean, subject, ucharText) + " " + operatorWords(vg.op()) + " "
-                    + operandProse(vg.right(), bean, subject, ucharText);
+            return operandProse(vg.left(), read, ucharText) + " " + operatorWords(vg.op()) + " "
+                    + operandProse(vg.right(), read, ucharText);
         }
         if (c instanceof Condition.CharacteristicCheck k) {
-            ObjectType holder = k.navigation() == null ? subject
-                    : model.roleTargetTypeToSubject(subject, k.navigation());
+            List<RoleBindingRef> walk = walkOf(k);
+            ObjectType holder = walk.isEmpty() ? subject : holderOf(walk);
             Predicate predicate = predicate(holder, k.characteristic(), !k.negation(), summary(c));
-            // zonder soort geen werkwoord: dan de voorwaarde zoals de regel haar schrijft, zoals hieronder
-            if (predicate == null) return "aan de voorwaarde \"" + summary(c) + "\" is voldaan";
-            String who = k.navigation() == null ? "het onderwerp" : "de " + naming.roleFrom(subject, k.navigation());
-            return who + " " + predicate.clause();
+            // zonder soort geen werkwoord: dan de voorwaarde zoals de regel haar schrijft
+            if (predicate == null) return null;
+            return who(walk) + " " + predicate.clause();
         }
         if (c instanceof Condition.RoleMembership rl)
             return "het onderwerp " + (rl.negation() ? "geen " : "een ") + naming.roleFulfilled(subject, rl.role())
@@ -774,172 +849,105 @@ public final class Verbaliser {
                 case GEVULD -> "gevuld is";
                 default -> "voldoet aan " + p.kind().name().toLowerCase(Locale.ROOT);
             };
-            return operandProse(p.operand(), bean, subject, ucharText) + " " + core;
-        }
-        // een nog niet gestructureerde conditievorm: eerlijk de brontekst tonen, geen gok.
-        return "aan de voorwaarde \"" + c.source().snippet().trim() + "\" is voldaan";
-    }
-
-    /** Voor een "alle volgende voorwaarden"-regel die NIET vuurde: de EERSTE conjunct die (na evaluatie van zijn
-     *  operanden tegen de eindtoestand) niet houdt — de reden dat de toekenning uitbleef. Voor een niet-
-     *  samengestelde voorwaarde is dat de voorwaarde zelf. Kan een conjunct niet worden geëvalueerd (een
-     *  onopgeloste vorm, een niet-leesbaar operand), dan noemt hij die eerlijk als "niet vast te stellen". */
-    private String firstFailingConjunct(Condition c, Object bean, ObjectType subject, boolean ucharText) {
-        if (c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE) {
-            for (Condition d : s.components()) {
-                Boolean holds = evaluate(d, bean, subject);
-                if (holds == null) return "de voorwaarde \"" + summary(d) + "\" niet is vast te stellen";
-                if (!holds) return "niet geldt: " + verbaliseAtom(d, bean, subject, ucharText);
-            }
-            // alle conjuncten houden maar het kenmerk staat toch niet aan: een producent buiten deze run.
-            return "de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
-        }
-        Boolean holds = evaluate(c, bean, subject);
-        if (Boolean.FALSE.equals(holds)) return "niet geldt: " + verbaliseAtom(c, bean, subject, ucharText);
-        if (holds == null) return "de voorwaarde \"" + summary(c) + "\" niet is vast te stellen";
-        return "de conclusie niet is bereikt (mogelijk een regel buiten deze berekening)";
-    }
-
-    private static String summary(Condition c) { return c.source() == null ? "?" : c.source().snippet().trim(); }
-
-    // ---------------- read-only conditie-evaluatie ----------------
-
-    /** Evalueer een conditie tegen de eindtoestand. null = niet vast te stellen (onopgeloste vorm / onleesbaar
-     *  operand); geen gok. Alleen de vormen die de "eerste falende conjunct" nodig heeft. */
-    private Boolean evaluate(Condition c, Object bean, ObjectType subject) {
-        if (c instanceof Condition.Comparison vg) {
-            Object l = evalExpr(vg.left(), bean, subject);
-            Object r = evalExpr(vg.right(), bean, subject);
-            if (l == null || r == null) return null;
-            return compare(vg.op(), l, r);
-        }
-        if (c instanceof Condition.CharacteristicCheck k && k.navigation() == null) {
-            Object v = readRaw(bean, Namen.getter(k.characteristic()));
-            boolean enabled = Boolean.TRUE.equals(v);
-            return k.negation() != enabled;   // negatie XOR aanwezig
-        }
-        if (c instanceof Condition.Predicate p) {
-            Object v = evalExpr(p.operand(), bean, subject);
-            return switch (p.kind()) {
-                case LEEG -> v == null;
-                case GEVULD -> v != null;
-                default -> null;
-            };
+            return operandProse(p.operand(), read, ucharText) + " " + core;
         }
         return null;
     }
 
-    private Boolean compare(Condition.Operator op, Object l, Object r) {
-        int c;
-        if (l instanceof BigDecimal a && r instanceof BigDecimal b) c = a.compareTo(b);
-        else if (l instanceof LocalDate a && r instanceof LocalDate b) c = a.compareTo(b);
-        else if (l instanceof LocalDateTime a && r instanceof LocalDateTime b) c = a.compareTo(b);
-        else if (op == Condition.Operator.GELIJK || op == Condition.Operator.ONGELIJK) {
-            boolean equal = l.equals(r);
-            return op == Condition.Operator.GELIJK ? equal : !equal;
-        } else return null;   // ongelijksoortige operanden voor een ordinale vergelijking
-        return switch (op) {
-            case KLEINER, EERDER -> c < 0;
-            case KLEINER_OF_GELIJK, EERDER_OF_GELIJK -> c <= 0;
-            case GROTER, LATER -> c > 0;
-            case GROTER_OF_GELIJK, LATER_OF_GELIJK -> c >= 0;
-            case GELIJK -> c == 0;
-            case ONGELIJK -> c != 0;
-        };
+    private String verbaliseAtom(Condition c, Read read, ObjectType subject, boolean ucharText) {
+        String structured = structuredAtom(c, read, subject, ucharText);
+        return structured != null ? structured : "aan de voorwaarde \"" + summary(c) + "\" is voldaan";
     }
 
-    // ---------------- expressie-evaluatie (read-only) ----------------
-
-    /** De waarde van een operand-expressie in de eindtoestand, of null als ze niet (zonder gok) te bepalen is —
-     *  precies de vormen die de IR structureert: literalen, attribuut-/parameter-reads, de rekenconstanten, de
-     *  reken-operatoren, afronding en begrenzing. {@code subject} is het objecttype van de regel, waarvandaan een
-     *  lezing over een rol wandelt. */
-    private Object evalExpr(Expr e, Object bean, ObjectType subject) {
-        if (e == null) return null;
-        if (e instanceof Expr.Literal lit) return literalValue(lit);
-        if (e instanceof Expr.ParameterRef pr) return globals.get(Namen.ident(pr.parameter().name(), false));
-        if (e instanceof Expr.Constant ct) {
-            if ("Rekendatum".equals(ct.name())) return globals.get("rekendatum");
-            return null;
+    /** Waarom een voorwaarde die volgens de motor niet geldt, niet gold: van een "alle"-samenstelling het lid waar de
+     *  motor stopte, het eerste dat niet gold; van elke andere voorwaarde zijzelf, met wat de motor bereikte. */
+    private String firstFailing(Condition c, Read read, ObjectType subject, boolean ucharText) {
+        if (read.holds(c))
+            throw new IllegalStateException("de voorwaarde van " + read.form() + " geldt op " + read.label()
+                    + ", en de zin zegt waarom ze niet gold");
+        if (c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE) {
+            for (Condition d : s.components())
+                if (read.reached(d) && !read.holds(d)) return firstFailing(d, read, subject, ucharText);
+            throw new IllegalStateException("de samenstelling van " + read.form() + " op " + read.label()
+                    + " gold niet, en de motor bereikte geen lid dat niet gold");
         }
-        if (e instanceof Expr.AttributeReference ref) {
-            Object holder = DroolsBackend.reached(model, bean, subject, ref, walks.of(subject, ref));
-            return holder == null ? null : readRaw(holder, Namen.getter(ref.attribute()));
-        }
-        if (e instanceof Expr.Binary bin) {
-            Object l = evalExpr(bin.left(), bean, subject);
-            Object r = evalExpr(bin.right(), bean, subject);
-            if (l instanceof BigDecimal a && r instanceof BigDecimal b) return compute(bin.op(), a, b);
-            return null;
-        }
-        if (e instanceof Expr.Rounding rounded) {
-            Object base = evalExpr(rounded.base(), bean, subject);
-            if (base instanceof BigDecimal a) return a.setScale(rounded.decimals(), roundingMode(rounded.mode()));
-            return null;
-        }
-        if (e instanceof Expr.Clamp bg) {
-            Object base = evalExpr(bg.base(), bean, subject);
-            if (!(base instanceof BigDecimal a)) return null;
-            Object min = evalExpr(bg.minimum(), bean, subject);
-            Object max = evalExpr(bg.maximum(), bean, subject);
-            if (min instanceof BigDecimal lo && a.compareTo(lo) < 0) a = lo;
-            if (max instanceof BigDecimal hi && a.compareTo(hi) > 0) a = hi;
-            return a;
-        }
-        return null;   // aggregaties, tijdsduren, teksreeksen: niet zonder verdere sessie te bepalen
+        if (c instanceof Condition.Compound) return "niet geldt: " + verbaliseCondition(c, read, subject, ucharText);
+        String structured = structuredAtom(c, read, subject, ucharText);
+        return structured != null ? "niet geldt: " + structured
+                : "aan de voorwaarde \"" + summary(c) + "\" is niet voldaan";
     }
 
-    private static Object compute(Expr.BinOp op, BigDecimal a, BigDecimal b) {
-        return switch (op) {
-            case PLUS -> a.add(b);
-            case MIN, VERMINDERD_MET -> a.subtract(b);
-            case MAAL -> a.multiply(b);
-            case PERCENTAGE_VAN -> a.multiply(b).movePointLeft(2);
-            case GEDEELD_DOOR, GEDEELD_DOOR_ABS ->
-                    b.signum() == 0 ? null : a.divide(b, 10, java.math.RoundingMode.HALF_UP);
-            default -> null;   // TOT_DE_MACHT: geen exacte BigDecimal-macht hier
-        };
+    /** De wandeling van een kenmerkcheck over een rol, zoals de lader haar naast de check gaf; leeg voor een kenmerk
+     *  van het onderwerp zelf. */
+    private List<RoleBindingRef> walkOf(Condition.CharacteristicCheck k) {
+        List<RoleBindingRef> walk = document.loaded().navigationBindings().get(k);
+        return walk == null ? List.of() : walk;
     }
 
-    private static java.math.RoundingMode roundingMode(Expr.RoundingMode m) {
-        return switch (m) {
-            case NAAR_BENEDEN -> java.math.RoundingMode.FLOOR;
-            case NAAR_BOVEN -> java.math.RoundingMode.CEILING;
-            case REKENKUNDIG -> java.math.RoundingMode.HALF_UP;
-            case RICHTING_NUL -> java.math.RoundingMode.DOWN;
-            case WEG_VAN_NUL -> java.math.RoundingMode.UP;
-        };
+    /** Het objecttype dat de laatste stap van {@code walk} bereikt: de vuller van haar rol. */
+    private ObjectType holderOf(List<RoleBindingRef> walk) {
+        RoleBindingRef last = walk.get(walk.size() - 1);
+        RegelSpraakModel.FactType ft = model.factTypes.get(last.factType());
+        if (ft != null)
+            for (RegelSpraakModel.Role r : ft.roles)
+                if (r.name().equals(last.role())) {
+                    ObjectType t = model.objectTypeByName(r.objectTypeName());
+                    if (t != null) return t;
+                }
+        throw new IllegalStateException("de wandeling " + walk + " eindigt op een rol die het model niet kent");
     }
 
-    private static Object literalValue(Expr.Literal lit) {
-        Datatype t = lit.type();
-        String w = lit.valueText();
-        try {
-            if (t.isNumberLike()) return parseNumber(w);
-            if (t instanceof Datatype.BooleanType) return "waar".equalsIgnoreCase(w) || Boolean.parseBoolean(w);
-            if (t instanceof Datatype.DateInDays) return LocalDate.parse(w);
-            if (t instanceof Datatype.DateTime) return LocalDateTime.parse(w);
-        } catch (RuntimeException unparsable) { /* val terug op de ruwe tekst */ }
-        return w;
+    /** Wie een kenmerkcheck draagt: het onderwerp, of de rollen van de wandeling, de laatste eerst. */
+    private String who(List<RoleBindingRef> walk) {
+        if (walk.isEmpty()) return "het onderwerp";
+        List<String> roles = new ArrayList<>();
+        for (int i = walk.size() - 1; i >= 0; i--)
+            roles.add("de " + naming.role(walk.get(i).factType(), walk.get(i).role()));
+        return String.join(" van ", roles);
     }
 
-    /** Parse een getal-literal naar {@link BigDecimal}. Een §13.4.17-getalliteral draagt zijn eenheid IN de
-     *  waarde-tekst ("100 km", "2.450,00 EUR"): de eenheid staat na een spatie, dus we nemen het eerste token en
-     *  vertalen de NL-notatie (punt = duizendtal, komma = decimaal). Gooit bij een niet-numeriek token. */
-    private static BigDecimal parseNumber(String w) {
-        String token = w.trim().split("\\s+", 2)[0];        // strip de eenheid-suffix ("100 km" -> "100")
-        String normalised = token.replace(".", "").replace(",", ".");   // NL -> BigDecimal-notatie
-        return new BigDecimal(normalised);
-    }
+    private static String summary(Condition c) { return c.source() == null ? "?" : c.source().snippet().trim(); }
 
     // ---------------- rendering ----------------
 
-    /** Een operandwaarde in NL-notatie, met eenheid waar de IR die kent; "onbekend" wanneer niet leesbaar. */
-    private String renderOperand(Expr e, Object bean, ObjectType subject) {
-        Object v = evalExpr(e, bean, subject);
+    /** De waarde van een operand zoals de motor haar las, in NL-notatie met haar eenheid; "onbekend" voor een lege
+     *  waarde. Een getal staat met de decimalen van zijn type, of van de declaratie van het gelezen lid; een getalliteral
+     *  met de decimalen die zijn lexeem schrijft ("30.00" als "30,00"), want het type van een literal noemt ze niet. */
+    private String renderOperand(Expr e, Read read) {
+        ConditionReading.NodeReading n = read.of(e);
+        Object v = n.value();
         if (v == null) return "onbekend";
         Datatype.Enumeration enumArray = enumerationOf(e);
-        return enumArray != null ? render(v, enumArray) : renderValue(v, e.type());
+        if (enumArray != null) return render(v, enumArray);
+        Datatype type = typeOf(e);
+        if (e instanceof Expr.Literal lit && v instanceof BigDecimal b) {
+            int scale = lexemeScale(lit.valueText());
+            if (b.scale() < scale) v = b.setScale(scale);
+            type = null;
+        }
+        String unit = n.unit() != null ? n.unit().abbreviation()
+                : (e.type() instanceof Datatype.Percentage || typeOf(e) instanceof Datatype.Percentage) ? "%" : null;
+        if (!(v instanceof BigDecimal b)) return renderValue(v, type);
+        String number = nlNumber(b, type);
+        return unit == null ? number : number + " " + unit;
+    }
+
+    /** Het type van een operand: dat van de expressie, of voor een attribuut- of parameterlezing dat van de declaratie
+     *  (een lezing uit uchars lader draagt zelf geen type); null voor elk ander operand. */
+    private static Datatype typeOf(Expr e) {
+        if (e.type() != null) return e.type();
+        if (e instanceof Expr.AttributeReference ref && ref.objectType() != null)
+            return ref.objectType().attribute(ref.attribute());
+        if (e instanceof Expr.ParameterRef pr) return pr.parameter().datatype();
+        return null;
+    }
+
+    /** Het aantal decimalen dat een getal-lexeem van de draad schrijft ("30.00": 2); 0 voor een geheel getal of een
+     *  breuk. */
+    private static int lexemeScale(String lexeme) {
+        if (lexeme == null) return 0;
+        Matcher m = Pattern.compile("-?[0-9]+\\.([0-9]+)").matcher(lexeme.trim());
+        return m.matches() ? m.group(1).length() : 0;
     }
 
     /** {@link #renderValue}, met een enumeratiewaarde in het gekozen vocabulaire: een waarde is een declaratie. */
@@ -970,11 +978,13 @@ public final class Verbaliser {
     }
 
     /** Een operand als leesbaar deel van een vergelijking: een LITERAL toont zijn waarde één keer ("100 km") —
-     *  géén verdubbeling van de brontekst; elk ander operand toont zijn omschrijving mét de geëvalueerde waarde
-     *  tussen haakjes ("de maandloon nieuw van EOver (3.000,00 EUR)"), zodat de jurist de norm én het feit ziet. */
-    private String operandProse(Expr e, Object bean, ObjectType subject, boolean ucharText) {
-        if (e instanceof Expr.Literal) return renderOperand(e, bean, subject);
-        return describe(e, ucharText) + " (" + renderOperand(e, bean, subject) + ")";
+     *  géén verdubbeling van de brontekst; elk ander operand toont zijn omschrijving mét de waarde die de motor las
+     *  tussen haakjes ("de maandloon nieuw van EOver (3.000,00 EUR)"), zodat de jurist de norm én het feit ziet. Een
+     *  operand dat de motor niet bereikte, staat er zonder waarde. */
+    private String operandProse(Expr e, Read read, boolean ucharText) {
+        if (!read.reached(e)) return describe(e, ucharText);
+        if (e instanceof Expr.Literal) return renderOperand(e, read);
+        return describe(e, ucharText) + " (" + renderOperand(e, read) + ")";
     }
 
     /** Een Java-waarde in helder Nederlands: getallen met punt-duizend/komma-decimaal en de eenheid uit het type;
@@ -1145,23 +1155,5 @@ public final class Verbaliser {
                         () -> "de regel '" + r.name() + "' draagt geen lijst van bronannotaties")
                 .stream().map(String::trim).filter(s -> !s.isEmpty()).toList();
         return filled.isEmpty() ? null : String.join("; ", filled);
-    }
-
-    /** Toon de opgeloste globals in modeldeclaratie-volgorde als bijlage-context (parameters + rekendatum),
-     *  handig onder een uitleg zodat de gebruiker de gehanteerde normwaarden ziet. Leeg wanneer er geen zijn. */
-    public List<String> globalContext() {
-        List<String> sink = new ArrayList<>();
-        Map<String, RegelSpraakModel.Parameter> perGlobal = new LinkedHashMap<>();
-        for (RegelSpraakModel.Parameter p : model.parameters.values())
-            perGlobal.put(Namen.ident(p.name(), false), p);
-        for (Map.Entry<String, Object> g : globals.entrySet()) {
-            if ("rekendatum".equals(g.getKey())) {
-                sink.add("rekendatum: " + renderValue(g.getValue(), new Datatype.DateInDays()));
-                continue;
-            }
-            RegelSpraakModel.Parameter p = perGlobal.get(g.getKey());
-            if (p != null) sink.add("de " + naming.parameter(p.name()) + ": " + render(g.getValue(), p.datatype()));
-        }
-        return sink;
     }
 }

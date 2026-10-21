@@ -98,8 +98,15 @@ public final class UcharBuild {
     /** Build {@code document}, a {@code uchar-ir-v1} document, on {@code branch} through uchar's facade. Every refusal
      *  of the facade — the loader's, a malformed document, the backend's — is {@link NotCarried}. */
     public static DroolsBackend.Build assemble(JsonNode document, DroolsBackend.Branch branch) {
+        return assemble(document, branch, false);
+    }
+
+    /** {@link #assemble(JsonNode, DroolsBackend.Branch)}, and where {@code readings} the build with readings
+     *  ({@link DroolsBackend#build(JsonNode, DroolsBackend.Branch, boolean)}), whose sessions
+     *  {@link DroolsBackend#readingsOf} reads for the explanation; an answer is given from the build without. */
+    public static DroolsBackend.Build assemble(JsonNode document, DroolsBackend.Branch branch, boolean readings) {
         try {
-            return DroolsBackend.build(document, branch);
+            return DroolsBackend.build(document, branch, readings);
         } catch (IrLoader.Refusal e) {
             throw new NotCarried("loader: " + e.getMessage(), null, e);
         } catch (IrLoader.DocumentError e) {
