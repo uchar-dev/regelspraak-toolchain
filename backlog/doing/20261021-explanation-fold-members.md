@@ -34,6 +34,18 @@ de bestaande foutzin). Voorbeeld, Jutter met vondsten V1 en V3 waardevol, V2 en 
     want aan de voorwaarde "alle vondsten van de Jutter waardevol zijn" is niet voldaan: niet voor V2 en V4 (2 van de 4)
     want aan de voorwaarde "ten minste één van de vondsten … waardevol is" is niet voldaan: voor geen van de 4 (V1, V2, V3 en V4)
 
+**Voorlopig besluit van de hoofdsessie (2026-10-21, naar Fable-advies 2, `werk/defaults-decider/fable-advies-2.md` §3
+en §4.3), in de plaats van de regel over een lid met een fout hierboven:**
+
+1. De telling is gelijk aan de lijst: m en k tellen alleen leden met een oordeel (geen fout). Een lid waarvan de matrix
+   een fout gaf, heet "niet beoordeeld", nooit "geldt niet". Is er minstens één, dan na de leden één toevoeging "(1 lid
+   niet beoordeeld)" of "(n leden niet beoordeeld)". Faalt de vouw zelf op een fout, dan blijft de bestaande foutzin.
+   Voorbeeld bij `all` niet voldaan met V2 en V4 false en V5 een fout: "niet voor V2 en V4 (2 van de 4) (1 lid niet
+   beoordeeld)".
+2. De bron is het oordeel per bijdrager uit de lezing; `reached` lees je niet (Drools schrijft vaak `unordered`).
+3. Bekende beperking, in de Result: het oordeel van een lid dat de sessie niet bereikte kan rusten op een deponering die
+   de lezing wegliet (een deling door leeg of nul in de matrix); het corpus en v2 hebben die vorm niet.
+
 Stap 2, na de landing van de uchar-kaart `fixpoint-inconsistency-order`: de pin naar die landingscommit, en de leg van de
 uitleg in `scripts/check-service-replay.sh` vergelijkt de inconsistenties weer in volgorde (uchar-acceptatie (c)).
 
