@@ -17,9 +17,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * explanation-fold-members), on the scenario route. One rule per quantifier: "alle" names the members for which the
  * matrix does not hold where the fold does not hold, "geen van de" those for which it holds, a counting quantifier
  * ("ten minste", "ten hoogste", "precies") those for which it holds either way, and all members where none does. J1
- * has two of four vondsten waardevol and two heavier than 4 kg, J2 one vondst that is both, J3 two that are neither, J4
- * none, J5 seven, entered out of the code-unit order of their labels, of which the sentence names the first five. The
- * verdict per member comes from the engine's reading. The decision service gives the same sentences on both its routes
+ * has two of four vondsten waardevol and two heavier than 4 kg, J2 one vondst that is both, named as the only member,
+ * J3 two that are neither, J4 none, J5 seven, entered out of the code-unit order of their labels, of which the sentence
+ * names the first five, J6 two light ones that are waardevol, J7 one light one that is not. The verdict per member
+ * comes from the engine's reading. The decision service gives the same sentences on both its routes
  * ({@code ExplanationFoldMembersServiceTest}).
  */
 class ExplanationFoldMembersTest {
@@ -84,6 +85,8 @@ class ExplanationFoldMembersTest {
             een Jutter J3
             een Jutter J4
             een Jutter J5
+            een Jutter J6
+            een Jutter J7
             een Vondst V1
             - het gewicht is 3 kg
             - is waardevol
@@ -129,6 +132,17 @@ class ExplanationFoldMembersTest {
             een Vondst X11
             - het gewicht is 5 kg
             - de jutter is J5
+            een Vondst V8
+            - het gewicht is 1 kg
+            - is waardevol
+            - de jutter is J6
+            een Vondst V9
+            - het gewicht is 2 kg
+            - is waardevol
+            - de jutter is J6
+            een Vondst V10
+            - het gewicht is 1 kg
+            - de jutter is J7
             Scenario vijf jutters
             met peildatum 01-06-2026
             gebaseerd op de situatie basis
@@ -160,34 +174,47 @@ class ExplanationFoldMembersTest {
             "J1 is zwaarbeladen, omdat " + AT_LEAST + " is voldaan: voor 2 van de 4 (V2 en V4)",
             "J1 is niet lichtbeladen, want " + AT_MOST + " is niet voldaan: voor 2 van de 4 (V2 en V4)",
             "J1 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor 2 van de 4 (V2 en V4)",
-            "J2 is gelukkig, omdat " + ALL + " is voldaan: voor alle 1",
-            "J2 is niet onvermogend, want " + NONE + " is niet voldaan: wel voor V5 (1 van de 1)",
-            "J2 is vermogend, omdat " + AT_LEAST_ONE + " is voldaan: voor 1 van de 1 (V5)",
-            "J2 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: voor 1 van de 1 (V5)",
-            "J2 is lichtbeladen, omdat " + AT_MOST + " is voldaan: voor 1 van de 1 (V5)",
-            "J2 is enkelbeladen, omdat " + EXACTLY + " is voldaan: voor 1 van de 1 (V5)",
+            "J2 is gelukkig, omdat " + ALL + " is voldaan: voor V5, het enige lid",
+            "J2 is niet onvermogend, want " + NONE + " is niet voldaan: wel voor V5, het enige lid",
+            "J2 is vermogend, omdat " + AT_LEAST_ONE + " is voldaan: voor V5, het enige lid",
+            "J2 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: voor V5, het enige lid",
+            "J2 is lichtbeladen, omdat " + AT_MOST + " is voldaan: voor V5, het enige lid",
+            "J2 is enkelbeladen, omdat " + EXACTLY + " is voldaan: voor V5, het enige lid",
             "J3 is niet gelukkig, want " + ALL + " is niet voldaan: niet voor V6 en V7 (2 van de 2)",
             "J3 is onvermogend, omdat " + NONE + " is voldaan: voor geen van de 2",
             "J3 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: voor geen van de 2 (V6 en V7)",
             "J3 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: voor geen van de 2 (V6 en V7)",
             "J3 is lichtbeladen, omdat " + AT_MOST + " is voldaan: voor geen van de 2 (V6 en V7)",
             "J3 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor geen van de 2 (V6 en V7)",
-            "J4 is gelukkig, omdat " + ALL + " is voldaan: (geen enkel lid)",
-            "J4 is onvermogend, omdat " + NONE + " is voldaan: (geen enkel lid)",
-            "J4 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: (geen enkel lid)",
-            "J4 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: (geen enkel lid)",
-            "J4 is lichtbeladen, omdat " + AT_MOST + " is voldaan: (geen enkel lid)",
-            "J4 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: (geen enkel lid)",
+            "J4 is gelukkig, omdat " + ALL + " is voldaan: er is geen enkel lid",
+            "J4 is onvermogend, omdat " + NONE + " is voldaan: er is geen enkel lid",
+            "J4 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: er is geen enkel lid",
+            "J4 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: er is geen enkel lid",
+            "J4 is lichtbeladen, omdat " + AT_MOST + " is voldaan: er is geen enkel lid",
+            "J4 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: er is geen enkel lid",
             "J5 is niet gelukkig, want " + ALL + " is niet voldaan: niet voor " + SEVEN + " (7 van de 7)",
             "J5 is onvermogend, omdat " + NONE + " is voldaan: voor geen van de 7",
             "J5 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: voor geen van de 7 (" + SEVEN + ")",
             "J5 is zwaarbeladen, omdat " + AT_LEAST + " is voldaan: voor 7 van de 7 (" + SEVEN + ")",
             "J5 is niet lichtbeladen, want " + AT_MOST + " is niet voldaan: voor 7 van de 7 (" + SEVEN + ")",
-            "J5 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor 7 van de 7 (" + SEVEN + ")");
+            "J5 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor 7 van de 7 (" + SEVEN + ")",
+            "J6 is gelukkig, omdat " + ALL + " is voldaan: voor alle 2",
+            "J6 is niet onvermogend, want " + NONE + " is niet voldaan: wel voor V8 en V9 (2 van de 2)",
+            "J6 is vermogend, omdat " + AT_LEAST_ONE + " is voldaan: voor 2 van de 2 (V8 en V9)",
+            "J6 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: voor geen van de 2 (V8 en V9)",
+            "J6 is lichtbeladen, omdat " + AT_MOST + " is voldaan: voor geen van de 2 (V8 en V9)",
+            "J6 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor geen van de 2 (V8 en V9)",
+            "J7 is niet gelukkig, want " + ALL + " is niet voldaan: niet voor V10, het enige lid",
+            "J7 is onvermogend, omdat " + NONE + " is voldaan: niet voor V10, het enige lid",
+            "J7 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: niet voor V10, het enige lid",
+            "J7 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: niet voor V10, het enige lid",
+            "J7 is lichtbeladen, omdat " + AT_MOST + " is voldaan: niet voor V10, het enige lid",
+            "J7 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: niet voor V10, het enige lid");
 
     @Test
     void the_sentence_of_a_quantifier_fold_names_the_members_that_carry_its_outcome() {
-        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(MODEL + SITUATION));
+        List<ScenarioRunner.Explained> u =
+                ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(MODEL + SITUATION));
         assertEquals(1, u.size());
         assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
         assertNull(u.get(0).explanationError(), u.get(0)::explanationError);
@@ -237,9 +264,9 @@ class ExplanationFoldMembersTest {
                 .flatMap(r -> r.nodes().stream()).flatMap(n -> n.contributors().stream())
                 .map(ConditionReading.Contributor::reached).toList();
         assertEquals(List.of(true, false), reached, "de motor stopt na het eerste lid");
-        assertEquals(List.of("P1 is niet wisselvallig, want aan de voorwaarde \"de dagvergoeding van geen van de bergers"
-                + " van de Bergingsploeg gedurende het gehele jaar groter is dan 40\" is niet voldaan: wel voor B1 en B2"
-                + " (2 van de 2)"), u.get(0).explanation());
+        assertEquals(List.of("P1 is niet wisselvallig, want aan de voorwaarde \"de dagvergoeding van geen van de"
+                + " bergers van de Bergingsploeg gedurende het gehele jaar groter is dan 40\" is niet voldaan: wel voor"
+                + " B1 en B2 (2 van de 2)"), u.get(0).explanation());
     }
 
     /** B1 has no dagvergoeding, so the whole-period matrix holds on it and "geen van de" stops there. B2 gives its
@@ -289,8 +316,8 @@ class ExplanationFoldMembersTest {
         assertNull(contributors.get(0).fault(), "het eerste lid heeft een oordeel");
         assertNotNull(contributors.get(1).fault(),
                 () -> "de matrix faalt op het tweede lid: " + contributors + " " + u.get(0).explanation());
-        assertEquals(List.of("P1 is niet wisselvallig, want aan de voorwaarde \"de dagvergoeding van geen van de bergers"
-                + " van de Bergingsploeg gedurende het gehele jaar groter is dan 40\" is niet voldaan: wel voor B1"
-                + " (1 van de 1) (1 lid niet beoordeeld)"), u.get(0).explanation());
+        assertEquals(List.of("P1 is niet wisselvallig, want aan de voorwaarde \"de dagvergoeding van geen van de"
+                + " bergers van de Bergingsploeg gedurende het gehele jaar groter is dan 40\" is niet voldaan: wel voor"
+                + " B1, het enige lid (1 lid niet beoordeeld)"), u.get(0).explanation());
     }
 }

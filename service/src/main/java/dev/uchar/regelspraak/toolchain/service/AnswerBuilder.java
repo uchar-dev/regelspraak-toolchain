@@ -100,7 +100,7 @@ public final class AnswerBuilder {
 
         ArrayNode inc = root.putArray("inconsistencies");
         ArrayNode details = NF.arrayNode();
-        for (Object o : outcome.inconsistencies()) {
+        for (Object o : outcome.fixpoint().inconsistencies()) {
             Object line = RegelSpraakRuntime.get(o, "rule");
             String name = line == null ? null : naming.form(line.toString());
             inc.add(name);

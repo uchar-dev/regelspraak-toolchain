@@ -884,11 +884,12 @@ public final class Verbaliser {
      * De leden van kwantorvouw {@code q} die haar uitkomst dragen, met hun aantal: m leden met een oordeel (de
      * contributors van haar knoop zonder fout), waarvan de matrix voor k geldt. Bij "alle" die niet geldt de leden
      * waarvoor de matrix niet geldt, bij "geen van de" die niet geldt de leden waarvoor zij geldt, bij een telling de
-     * leden waarvoor zij geldt en bij k = 0 alle leden. Het oordeel per lid is dat van de lezing, ook voor een lid na de
+     * leden waarvoor zij geldt en bij k = 0 alle leden; bij m = 0 "er is geen enkel lid", bij m = 1 dat lid bij naam
+     * ("niet voor G1, het enige lid"). Het oordeel per lid is dat van de lezing, ook voor een lid na de
      * stop van ch. 5.10 (besluit van de eigenaar 2026-10-21); de positie ({@code reached}) leest de zin niet. Een lid
      * waarvan de matrix een fout gaf, heeft geen oordeel: het telt niet mee en staat er achteraan als "niet beoordeeld"
-     * (voorlopig besluit van de hoofdsessie 2026-10-21). Faalde de vouw zelf op een fout, dan draagt haar knoop die fout
-     * en faalt {@link Read#of} al.
+     * (voorlopig besluit van de hoofdsessie 2026-10-21). Faalde de vouw zelf op een fout, dan draagt haar knoop die
+     * fout en faalt {@link Read#of} al.
      */
     private String members(Condition.QuantifierFold q, Read read) {
         ConditionReading.NodeReading n = read.of(q);
@@ -919,7 +920,12 @@ public final class Verbaliser {
             throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form() + " op "
                     + read.label() + " geldt volgens de motor " + (holds ? "wel" : "niet") + ", en haar matrix geldt"
                     + " volgens de lezing voor " + k + " van de " + m + " leden");
-        String judged = m == 0 ? "(geen enkel lid)" : switch (q.quantifier()) {
+        // m = 0 en m = 1 zonder telling (voorlopig besluit van de hoofdsessie 2026-10-21): "voor 1 van de 1" telt niets
+        if (m == 0) return withUnjudged("er is geen enkel lid", unjudged);
+        if (m == 1)
+            return withUnjudged((k == 0 ? "niet voor " : q.quantifier() == Condition.Quantifier.GEEN ? "wel voor "
+                    : "voor ") + names(k == 0 ? failing : holding, q, read) + ", het enige lid", unjudged);
+        String judged = switch (q.quantifier()) {
             case ALLE -> holds ? "voor alle " + m
                     : "niet voor " + names(failing, q, read) + " (" + (m - k) + " van de " + m + ")";
             case GEEN -> holds ? "voor geen van de " + m
@@ -927,6 +933,10 @@ public final class Verbaliser {
             default -> k == 0 ? "voor geen van de " + m + " (" + names(failing, q, read) + ")"
                     : "voor " + k + " van de " + m + " (" + names(holding, q, read) + ")";
         };
+        return withUnjudged(judged, unjudged);
+    }
+
+    private static String withUnjudged(String judged, int unjudged) {
         if (unjudged == 0) return judged;
         return judged + " (" + unjudged + (unjudged == 1 ? " lid" : " leden") + " niet beoordeeld)";
     }

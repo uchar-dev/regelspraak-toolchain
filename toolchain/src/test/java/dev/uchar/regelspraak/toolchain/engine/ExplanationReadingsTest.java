@@ -176,7 +176,7 @@ class ExplanationReadingsTest {
             "J2 is niet gerechtigd, want niet geldt: het onderwerp ingezetene is",
             "J2 is bijzonder, omdat het onderwerp in dienst is",
             "J2 is niet actief, want niet geldt: het onderwerp ingezetene is",
-            "J2 is gelukkig, omdat aan de voorwaarde \"alle vondsten van de Jutter waardevol zijn\" is voldaan: voor alle 1",
+            "J2 is gelukkig, omdat aan de voorwaarde \"alle vondsten van de Jutter waardevol zijn\" is voldaan: voor W3, het enige lid",
             "J2 is meldplichtig, omdat zijn aantal meldingen (12) is groter dan 3",
             "J2 is bonuswaardig, omdat zijn bonus maal 2 (15,00 EUR) is groter dan 10,00 EUR",
             "J2 is kustjutter, omdat zijn afstand tot de kust (300 m) is kleiner dan 0,5 km",

@@ -3,7 +3,6 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
-import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
@@ -24,7 +23,8 @@ import java.util.Map;
  * in that uchar's input step read ({@link World#input()}), each to-many list in the replay's order, {@link DroolsBackend#fire}
  * fires to the fixpoint, {@link DroolsBackend#fixpointOf} gives the evaluation faults that stand there, and where none
  * stands {@link DroolsBackend#setDerivedValues} puts the derived values on the beans, which the branch keeps as
- * facts of the session until then. It returns the beans and the {@code Inconsistentie} facts for the response builder.
+ * facts of the session until then. It returns the beans and the fixpoint, whose {@code Inconsistentie} facts the
+ * response builder reads.
  * Session-per-request; the KieBase is shared and immutable, so this is thread-safe by construction.
  *
  * <p>Every fault that stands at the fixpoint leaves here as an {@link EvaluationFault}, and nothing is written back: the
@@ -43,17 +43,18 @@ public final class Executor {
         this.defaultGlobals = defaultGlobals == null ? Map.of() : defaultGlobals;
     }
 
-    /** The result of a fire: the beans by id with the derived values written back, the firings, the
-     *  inconsistenties, what stood at the fixpoint before the write-back, as uchar's entry reads it, uchar's
-     *  verdict on the expectations the caller gave ({@link DroolsBackend#vergelijk}), null when it gave none, which
-     *  default of each defaults stack decided ({@link DroolsBackend#decisionsOf}) and how each condition came out
-     *  ({@link DroolsBackend#readingsOf}), both empty when the caller did not ask for the explanation. */
-    public record Outcome(Map<String, Object> beans, int fired, List<Object> inconsistencies, Fixpoint fixpoint,
+    /** The result of a fire: the beans by id with the derived values written back, the firings, what stood at the
+     *  fixpoint before the write-back, as uchar's entry reads it with the ids of the request, its §9.5 deposits
+     *  included ({@link Fixpoint#inconsistencies}), uchar's verdict on the expectations the caller gave
+     *  ({@link DroolsBackend#vergelijk}), null when it gave none, which default of each defaults stack decided
+     *  ({@link DroolsBackend#decisionsOf}) and how each condition came out ({@link DroolsBackend#readingsOf}), both
+     *  empty when the caller did not ask for the explanation. */
+    public record Outcome(Map<String, Object> beans, int fired, Fixpoint fixpoint,
                            DroolsBackend.Comparison comparison, List<DefaultsDecision> decisions,
                            List<ConditionReading> readings) {}
 
-    /** Fire the entry point's rules over {@code world} and return the beans with their derived values and the
-     *  inconsistenties. */
+    /** Fire the entry point's rules over {@code world} and return the beans with their derived values and what
+     *  stood at the fixpoint. */
     public Outcome fire(World world) {
         return fire(world, Map.of());
     }
@@ -137,12 +138,11 @@ public final class Executor {
             Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, label::get);
             if (!fixpoint.faults().isEmpty()) throw EvaluationFault.of(fixpoint, rethrown(session, label, fixpoint));
             DroolsBackend.setDerivedValues(build, session, label::get);
-            List<Object> inc = readInconsistencies(session);
             DroolsBackend.Comparison comparison = expectations == null ? null
                     : DroolsBackend.compare(build, session, label::get, expectations);
             List<DefaultsDecision> decisions = withExplanation ? DroolsBackend.decisionsOf(build, session) : List.of();
             List<ConditionReading> readings = withExplanation ? DroolsBackend.readingsOf(build, session) : List.of();
-            return new Outcome(world.beans(), firing.firings(), inc, fixpoint, comparison, decisions, readings);
+            return new Outcome(world.beans(), firing.firings(), fixpoint, comparison, decisions, readings);
         } finally {
             session.dispose();
             Thread.currentThread().setContextClassLoader(previous);
@@ -167,18 +167,5 @@ public final class Executor {
     private static void setGlobalSafe(KieSession session, String name, Object value) {
         try { session.setGlobal(name, value); }
         catch (RuntimeException unknown) { /* global not declared: no scoped rule reads it */ }
-    }
-
-    /** uchar's generator writes the {@code Inconsistentie} bean for every model, so a class loader without it is not
-     *  the one the KieBase was built against: that fails here rather than dropping every inconsistency. */
-    private List<Object> readInconsistencies(KieSession session) {
-        String name = FactModelGenerator.PACKAGE + ".Inconsistentie";
-        Class<?> inc;
-        try {
-            inc = Class.forName(name, true, build.beanLoader());
-        } catch (ClassNotFoundException e) {
-            throw new IllegalStateException("de bean-classloader van dit entrypoint draagt " + name + " niet", e);
-        }
-        return List.copyOf(session.getObjects(inc::isInstance));
     }
 }

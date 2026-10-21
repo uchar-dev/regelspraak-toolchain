@@ -18,7 +18,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * explanation-fold-members), on both routes of the decision service: from sources and from an IR document. The model,
  * the objects and the sentences are those of {@code ExplanationFoldMembersTest} (the scenario route): one rule per
  * quantifier, over a Jutter with two of four vondsten waardevol, one with one, one with two that are neither, one
- * without vondsten and one with seven.
+ * without vondsten, one with seven, one with two light ones that are waardevol and one with one light one that is
+ * not.
  */
 class ExplanationFoldMembersServiceTest {
 
@@ -89,6 +90,8 @@ class ExplanationFoldMembersServiceTest {
                 { "type": "Jutter", "id": "J3" },
                 { "type": "Jutter", "id": "J4" },
                 { "type": "Jutter", "id": "J5" },
+                { "type": "Jutter", "id": "J6" },
+                { "type": "Jutter", "id": "J7" },
                 { "type": "Vondst", "id": "V1", "attributes": { "gewicht": 3 },
                   "characteristics": { "waardevol": true }, "roles": { "jutter": "J1" } },
                 { "type": "Vondst", "id": "V2", "attributes": { "gewicht": 5 }, "roles": { "jutter": "J1" } },
@@ -105,7 +108,12 @@ class ExplanationFoldMembersServiceTest {
                 { "type": "Vondst", "id": "X1", "attributes": { "gewicht": 5 }, "roles": { "jutter": "J5" } },
                 { "type": "Vondst", "id": "X12", "attributes": { "gewicht": 5 }, "roles": { "jutter": "J5" } },
                 { "type": "Vondst", "id": "X2", "attributes": { "gewicht": 5 }, "roles": { "jutter": "J5" } },
-                { "type": "Vondst", "id": "X11", "attributes": { "gewicht": 5 }, "roles": { "jutter": "J5" } } ] }""";
+                { "type": "Vondst", "id": "X11", "attributes": { "gewicht": 5 }, "roles": { "jutter": "J5" } },
+                { "type": "Vondst", "id": "V8", "attributes": { "gewicht": 1 },
+                  "characteristics": { "waardevol": true }, "roles": { "jutter": "J6" } },
+                { "type": "Vondst", "id": "V9", "attributes": { "gewicht": 2 },
+                  "characteristics": { "waardevol": true }, "roles": { "jutter": "J6" } },
+                { "type": "Vondst", "id": "V10", "attributes": { "gewicht": 1 }, "roles": { "jutter": "J7" } } ] }""";
 
     private static final String ALL = "aan de voorwaarde \"alle vondsten van de Jutter waardevol zijn\"";
     private static final String NONE = "aan de voorwaarde \"geen van de vondsten van de Jutter waardevol is\"";
@@ -126,30 +134,42 @@ class ExplanationFoldMembersServiceTest {
             "J1 is zwaarbeladen, omdat " + AT_LEAST + " is voldaan: voor 2 van de 4 (V2 en V4)",
             "J1 is niet lichtbeladen, want " + AT_MOST + " is niet voldaan: voor 2 van de 4 (V2 en V4)",
             "J1 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor 2 van de 4 (V2 en V4)",
-            "J2 is gelukkig, omdat " + ALL + " is voldaan: voor alle 1",
-            "J2 is niet onvermogend, want " + NONE + " is niet voldaan: wel voor V5 (1 van de 1)",
-            "J2 is vermogend, omdat " + AT_LEAST_ONE + " is voldaan: voor 1 van de 1 (V5)",
-            "J2 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: voor 1 van de 1 (V5)",
-            "J2 is lichtbeladen, omdat " + AT_MOST + " is voldaan: voor 1 van de 1 (V5)",
-            "J2 is enkelbeladen, omdat " + EXACTLY + " is voldaan: voor 1 van de 1 (V5)",
+            "J2 is gelukkig, omdat " + ALL + " is voldaan: voor V5, het enige lid",
+            "J2 is niet onvermogend, want " + NONE + " is niet voldaan: wel voor V5, het enige lid",
+            "J2 is vermogend, omdat " + AT_LEAST_ONE + " is voldaan: voor V5, het enige lid",
+            "J2 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: voor V5, het enige lid",
+            "J2 is lichtbeladen, omdat " + AT_MOST + " is voldaan: voor V5, het enige lid",
+            "J2 is enkelbeladen, omdat " + EXACTLY + " is voldaan: voor V5, het enige lid",
             "J3 is niet gelukkig, want " + ALL + " is niet voldaan: niet voor V6 en V7 (2 van de 2)",
             "J3 is onvermogend, omdat " + NONE + " is voldaan: voor geen van de 2",
             "J3 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: voor geen van de 2 (V6 en V7)",
             "J3 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: voor geen van de 2 (V6 en V7)",
             "J3 is lichtbeladen, omdat " + AT_MOST + " is voldaan: voor geen van de 2 (V6 en V7)",
             "J3 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor geen van de 2 (V6 en V7)",
-            "J4 is gelukkig, omdat " + ALL + " is voldaan: (geen enkel lid)",
-            "J4 is onvermogend, omdat " + NONE + " is voldaan: (geen enkel lid)",
-            "J4 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: (geen enkel lid)",
-            "J4 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: (geen enkel lid)",
-            "J4 is lichtbeladen, omdat " + AT_MOST + " is voldaan: (geen enkel lid)",
-            "J4 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: (geen enkel lid)",
+            "J4 is gelukkig, omdat " + ALL + " is voldaan: er is geen enkel lid",
+            "J4 is onvermogend, omdat " + NONE + " is voldaan: er is geen enkel lid",
+            "J4 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: er is geen enkel lid",
+            "J4 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: er is geen enkel lid",
+            "J4 is lichtbeladen, omdat " + AT_MOST + " is voldaan: er is geen enkel lid",
+            "J4 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: er is geen enkel lid",
             "J5 is niet gelukkig, want " + ALL + " is niet voldaan: niet voor " + SEVEN + " (7 van de 7)",
             "J5 is onvermogend, omdat " + NONE + " is voldaan: voor geen van de 7",
             "J5 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: voor geen van de 7 (" + SEVEN + ")",
             "J5 is zwaarbeladen, omdat " + AT_LEAST + " is voldaan: voor 7 van de 7 (" + SEVEN + ")",
             "J5 is niet lichtbeladen, want " + AT_MOST + " is niet voldaan: voor 7 van de 7 (" + SEVEN + ")",
-            "J5 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor 7 van de 7 (" + SEVEN + ")");
+            "J5 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor 7 van de 7 (" + SEVEN + ")",
+            "J6 is gelukkig, omdat " + ALL + " is voldaan: voor alle 2",
+            "J6 is niet onvermogend, want " + NONE + " is niet voldaan: wel voor V8 en V9 (2 van de 2)",
+            "J6 is vermogend, omdat " + AT_LEAST_ONE + " is voldaan: voor 2 van de 2 (V8 en V9)",
+            "J6 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: voor geen van de 2 (V8 en V9)",
+            "J6 is lichtbeladen, omdat " + AT_MOST + " is voldaan: voor geen van de 2 (V8 en V9)",
+            "J6 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: voor geen van de 2 (V8 en V9)",
+            "J7 is niet gelukkig, want " + ALL + " is niet voldaan: niet voor V10, het enige lid",
+            "J7 is onvermogend, omdat " + NONE + " is voldaan: niet voor V10, het enige lid",
+            "J7 is niet vermogend, want " + AT_LEAST_ONE + " is niet voldaan: niet voor V10, het enige lid",
+            "J7 is niet zwaarbeladen, want " + AT_LEAST + " is niet voldaan: niet voor V10, het enige lid",
+            "J7 is lichtbeladen, omdat " + AT_MOST + " is voldaan: niet voor V10, het enige lid",
+            "J7 is niet enkelbeladen, want " + EXACTLY + " is niet voldaan: niet voor V10, het enige lid");
 
     private static DecisionCore fromSources() {
         return DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", SOURCE), CoreConfig.strict(),

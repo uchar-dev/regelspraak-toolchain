@@ -46,6 +46,20 @@ en §4.3), in de plaats van de regel over een lid met een fout hierboven:**
 3. Bekende beperking, in de Result: het oordeel van een lid dat de sessie niet bereikte kan rusten op een deponering die
    de lezing wegliet (een deling door leeg of nul in de matrix); het corpus en v2 hebben die vorm niet.
 
+**Tweede voorlopig besluit van de hoofdsessie (2026-10-21), over twee randgevallen, in de plaats van "Bij m = 0" en van
+de telling bij één lid hierboven** (m telt de leden met een oordeel):
+
+4. m = 0: geen haakjes, maar ": er is geen enkel lid" ("… is niet voldaan: er is geen enkel lid").
+5. m = 1: geen telling "van de 1", maar het lid bij naam met ", het enige lid": "voor G1, het enige lid" (`all`
+   voldaan; telling met k = 1), "niet voor G1, het enige lid" (`all` niet voldaan; `none` voldaan; telling met k = 0),
+   "wel voor G1, het enige lid" (`none` niet voldaan). De toevoeging "(n leden niet beoordeeld)" blijft daarachter waar
+   ze geldt; telt een fout mee zodat m met oordeel 0 of 1 wordt, dan volgen deze vormen m met oordeel.
+
+**Aanvulling van de hoofdsessie (2026-10-21):** op deze tak ook het toolchain-deel van acceptatie (c) van de uchar-kaart
+`fixpoint-inconsistency-order` dat zonder pin-bump kan: `AnswerBuilder` krijgt zijn inconsistenties uit
+`fixpoint.inconsistencies()` (gelezen met de ids van het verzoek) in plaats van `Executor.readInconsistencies(session)`,
+dezelfde verzameling; `readInconsistencies` vervalt. De leg van de replay vergelijkt nog zonder volgorde tot de pin-bump.
+
 Stap 2, na de landing van de uchar-kaart `fixpoint-inconsistency-order`: de pin naar die landingscommit, en de leg van de
 uitleg in `scripts/check-service-replay.sh` vergelijkt de inconsistenties weer in volgorde (uchar-acceptatie (c)).
 
