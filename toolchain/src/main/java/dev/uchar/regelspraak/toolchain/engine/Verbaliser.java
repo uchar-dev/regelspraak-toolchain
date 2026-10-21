@@ -56,7 +56,9 @@ import java.util.regex.Pattern;
  * niet, oordeel of waarde met eenheid). De uitleg rekent niets na: zij legt elke lezing op de knopen van het document
  * van de build ({@link Document}, dat uchars lader met de posities van de knopen las) en zet ze in zinnen. Een lege
  * waarde staat er als "(onbekend)"; een lid of operand dat de motor niet bereikte, noemt de zin niet, of zonder
- * waarde. Bij een voorwaarde die niet gold noemt de zin het lid waar de motor stopte. Een lezing die ontbreekt, of een
+ * waarde. Bij een voorwaarde die niet gold noemt de zin het lid waar de motor stopte. Een kwantorvouw staat er met haar
+ * brontekst en het oordeel van de motor, en daarachter de leden die die uitkomst dragen, bij hun label en met hun
+ * aantal ("is niet voldaan: niet voor V2 en V4 (2 van de 4)"). Een lezing die ontbreekt, of een
  * fout of een vorm die niet aan de beurt was waar de zin een oordeel nodig heeft, faalt luid: de uitleg volgt een
  * sessie zonder evaluatiefout.
  *
@@ -109,6 +111,8 @@ public final class Verbaliser {
     private final Document document;
     /** De lezingen van de sessie, per vorm en object. */
     private final Map<String, Map<Object, ConditionReading>> readings = new HashMap<>();
+    /** Het label van elk object dat {@code verbalise} kreeg: de zin van een kwantorvouw noemt haar leden zo. */
+    private final Map<Object, String> labels = new IdentityHashMap<>();
 
     /**
      * Een verbalisator voor één sessie van een build met lezingen: {@code document} is het document van die build zoals
@@ -129,6 +133,7 @@ public final class Verbaliser {
     /** {@link #verbalise(Map, Map, List)} zonder de defaults-groepen en zonder de vormen buiten de scope: de
      *  kenmerktoekenningen alleen. */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
+        label(instances);
         List<String> sink = new ArrayList<>();
         for (Map.Entry<String, Object> e : instances.entrySet()) {
             ObjectType ot = typePerLabel.get(e.getKey());
@@ -154,6 +159,7 @@ public final class Verbaliser {
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
                                   List<DefaultsDecision> decisions) {
         Objects.requireNonNull(decisions, "decisions");
+        label(instances);
         List<String> sink = new ArrayList<>();
         Set<String> outside = new LinkedHashSet<>();
         for (Map.Entry<String, Object> e : instances.entrySet()) {
@@ -169,6 +175,14 @@ public final class Verbaliser {
         }
         for (String rule : outside) sink.add("de regel '" + rule + "' staat buiten deze berekening");
         return sink;
+    }
+
+    private void label(Map<String, Object> instances) {
+        labels.clear();
+        instances.forEach((label, bean) -> {
+            if (bean != null && labels.put(bean, label) != null)
+                throw new IllegalStateException("het object van " + label + " staat onder twee labels");
+        });
     }
 
     private void assignments(String label, Object bean, ObjectType ot, List<String> sink) {
@@ -856,7 +870,84 @@ public final class Verbaliser {
 
     private String verbaliseAtom(Condition c, Read read, ObjectType subject, boolean ucharText) {
         String structured = structuredAtom(c, read, subject, ucharText);
-        return structured != null ? structured : "aan de voorwaarde \"" + summary(c) + "\" is voldaan";
+        return structured != null ? structured : unstructured(c, read, "voldaan");
+    }
+
+    /** Een vorm die de uitleg niet in woorden zet, met haar brontekst en {@code verdict} ("voldaan" of "niet
+     *  voldaan"); een kwantorvouw met de leden die haar uitkomst dragen. */
+    private String unstructured(Condition c, Read read, String verdict) {
+        String sentence = "aan de voorwaarde \"" + summary(c) + "\" is " + verdict;
+        return c instanceof Condition.QuantifierFold q ? sentence + ": " + members(q, read) : sentence;
+    }
+
+    /**
+     * De leden van kwantorvouw {@code q} die haar uitkomst dragen, met hun aantal: m leden met een oordeel (de
+     * contributors van haar knoop zonder fout), waarvan de matrix voor k geldt. Bij "alle" die niet geldt de leden
+     * waarvoor de matrix niet geldt, bij "geen van de" die niet geldt de leden waarvoor zij geldt, bij een telling de
+     * leden waarvoor zij geldt en bij k = 0 alle leden. Het oordeel per lid is dat van de lezing, ook voor een lid na de
+     * stop van ch. 5.10 (besluit van de eigenaar 2026-10-21); de positie ({@code reached}) leest de zin niet. Een lid
+     * waarvan de matrix een fout gaf, heeft geen oordeel: het telt niet mee en staat er achteraan als "niet beoordeeld"
+     * (voorlopig besluit van de hoofdsessie 2026-10-21). Faalde de vouw zelf op een fout, dan draagt haar knoop die fout
+     * en faalt {@link Read#of} al.
+     */
+    private String members(Condition.QuantifierFold q, Read read) {
+        ConditionReading.NodeReading n = read.of(q);
+        if (!(n.value() instanceof Boolean holds))
+            throw new IllegalStateException("de motor gaf voor de kwantorvouw \"" + summary(q) + "\" van "
+                    + read.form() + " op " + read.label() + " geen oordeel, maar " + n.value());
+        List<Object> holding = new ArrayList<>(), failing = new ArrayList<>();
+        int unjudged = 0;
+        for (ConditionReading.Contributor c : n.contributors()) {
+            if (c.fault() != null) { unjudged++; continue; }
+            if (!(c.value() instanceof Boolean b))
+                throw new IllegalStateException("de motor gaf voor een lid van de kwantorvouw \"" + summary(q)
+                        + "\" van " + read.form() + " op " + read.label() + " geen oordeel en geen fout");
+            (b ? holding : failing).add(c.member());
+        }
+        int k = holding.size(), m = k + failing.size();
+        // de zin noemt de leden bij het oordeel van de vouw; spreken die twee elkaar tegen, dan liegt de zin
+        boolean expected = switch (q.quantifier()) {
+            case ALLE -> k == m;
+            case GEEN -> k == 0;
+            case TEN_MINSTE -> k >= q.threshold();
+            case TEN_HOOGSTE -> k <= q.threshold();
+            case PRECIES -> k == q.threshold();
+            case DE -> throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form()
+                    + " heeft de kwantor 'de', die een kwantorvouw niet draagt (WF-108 (a))");
+        };
+        if (expected != holds)
+            throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form() + " op "
+                    + read.label() + " geldt volgens de motor " + (holds ? "wel" : "niet") + ", en haar matrix geldt"
+                    + " volgens de lezing voor " + k + " van de " + m + " leden");
+        String judged = m == 0 ? "(geen enkel lid)" : switch (q.quantifier()) {
+            case ALLE -> holds ? "voor alle " + m
+                    : "niet voor " + names(failing, q, read) + " (" + (m - k) + " van de " + m + ")";
+            case GEEN -> holds ? "voor geen van de " + m
+                    : "wel voor " + names(holding, q, read) + " (" + k + " van de " + m + ")";
+            default -> k == 0 ? "voor geen van de " + m + " (" + names(failing, q, read) + ")"
+                    : "voor " + k + " van de " + m + " (" + names(holding, q, read) + ")";
+        };
+        if (unjudged == 0) return judged;
+        return judged + " (" + unjudged + (unjudged == 1 ? " lid" : " leden") + " niet beoordeeld)";
+    }
+
+    /** De leden {@code members} bij hun label, in de code-unit-volgorde daarvan, met "en" voor het laatste; boven
+     *  vijf de eerste vijf en "en nog k". */
+    private String names(List<Object> members, Condition.QuantifierFold q, Read read) {
+        List<String> names = new ArrayList<>();
+        for (Object member : members) {
+            String label = labels.get(member);
+            // de uitleg kent alleen de labels van de invoer; een gemaakt object heeft er geen
+            if (label == null)
+                throw new IllegalStateException("een lid van de kwantorvouw \"" + summary(q) + "\" van " + read.form()
+                        + " op " + read.label() + " heeft geen label: de uitleg noemt alleen de objecten van de"
+                        + " invoer, en dit " + member.getClass().getSimpleName() + " staat daar niet bij");
+            names.add(label);
+        }
+        names.sort(String::compareTo);
+        if (names.size() > 5) return String.join(", ", names.subList(0, 5)) + " en nog " + (names.size() - 5);
+        if (names.size() == 1) return names.get(0);
+        return String.join(", ", names.subList(0, names.size() - 1)) + " en " + names.get(names.size() - 1);
     }
 
     /** Waarom een voorwaarde die volgens de motor niet geldt, niet gold: van een "alle"-samenstelling het lid waar de
@@ -873,8 +964,7 @@ public final class Verbaliser {
         }
         if (c instanceof Condition.Compound) return "niet geldt: " + verbaliseCondition(c, read, subject, ucharText);
         String structured = structuredAtom(c, read, subject, ucharText);
-        return structured != null ? "niet geldt: " + structured
-                : "aan de voorwaarde \"" + summary(c) + "\" is niet voldaan";
+        return structured != null ? "niet geldt: " + structured : unstructured(c, read, "niet voldaan");
     }
 
     /** De wandeling van een kenmerkcheck over een rol, zoals de lader haar naast de check gaf; leeg voor een kenmerk
