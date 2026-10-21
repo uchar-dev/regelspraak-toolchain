@@ -23,3 +23,11 @@ tekst.
 - (a) De meting per variant in de Result, met de keuze en haar reden.
 - (b) `explanation` is de gekozen variant; de stukken en de zin blijven teken voor teken gelijk.
 - (c) `make gates` groen.
+
+## Gesloten (2026-10-21)
+
+Opgegaan in de werkbank-kaart `eval-uitleg-varianten` (besluit van de eigenaar): de varianten worden in de eval-runner
+van de werkbank samengesteld uit `explanationParts` en daar gemeten; uchar en de toolchain hoeven er niets voor. Laat de
+proef zien dat een optie stukken vraagt die nu niet netjes weg kunnen (een waarde met haar haakjes, de niet-beslissende
+varianten van een defaults-groep), of wint een variant die elke afnemer moet krijgen, dan komt dat als nieuwe
+toolchain-kaart.
