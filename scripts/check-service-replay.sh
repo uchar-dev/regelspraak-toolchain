@@ -140,6 +140,26 @@ REPLAY_EXCLUDED=(
   "synth2-prorata-breed|tijdlijn als invoerwaarde"
 )
 
+# Kaart explanation-from-readings: de leg van de uitleg. Elk verzoek gaat ook met ?explanation=true; het antwoord
+# buiten de uitleg moet gelijk zijn, de uitleg mag "niet is vast te stellen" niet meer noemen, want de motor draagt elke
+# voorwaarde die de uitleg verwoordt (zij leest de lezingen van de build met lezingen). Een golden waarvoor dat toch
+# terugkomt, staat hieronder met de reden ("<golden>|<reden>"); de lijst faalt in beide richtingen op veroudering.
+EXPLANATION_UNDETERMINED=(
+)
+# Het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want " in de uitleg) over de gespeelde goldens: een
+# ondergrens, gemeten 2026-10-21 bij de kaart explanation-from-readings (1092 zinnen, 1241 voorwaarden over 231 goldens
+# en 610 cases); een leg die stilletjes minder uitlegt, faalt. Het antwoord met uitleg moet dat zonder zijn, met de
+# inconsistenties zonder volgorde vergeleken: de dienst noemt ze in de volgorde waarin de sessie haar feiten houdt, en
+# die ligt ook tussen twee verzoeken op dezelfde build niet vast.
+EXPECTED_MIN_EXPLAINED_CONDITIONS=1241
+
+is_undetermined_listed() {
+  local e; for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
+    [ "${e%%|*}" = "$1" ] && return 0
+  done
+  return 1
+}
+
 is_excluded() { local e; for e in "${REPLAY_EXCLUDED[@]}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1; }
 
 # Elke regel een golden en een reden, en geen golden twee keer.
@@ -176,17 +196,26 @@ mvn -B -o -q -DskipTests package -pl service -am >"$log" 2>&1 \
   || { tail -20 "$log" >&2; fail "de dienst bouwt niet"; }
 
 begin=$(date +%s)
-output=$(python3 scripts/service_replay.py --corpus uchar/corpus/golden \
+output=$(python3 scripts/service_replay.py --corpus uchar/corpus/golden --explanation \
     --workers "${REPLAY_WORKERS:-4}" "${set_goldens[@]}") || fail "de replay-driver faalde"
 duration=$(( $(date +%s) - begin ))
 
-played=0; excl=0; cases=0
-deviations=(); unnamed=(); outdated=()
-while IFS=$'\t' read -r g status detail; do
+played=0; excl=0; cases=0; sentences=0; conditions=0
+deviations=(); unnamed=(); outdated=(); undetermined=(); explained_goldens=()
+while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined; do
   [ -n "$g" ] || continue
   case "$status" in
     PLAYED)
       is_excluded "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_EXCLUDED")
+      [ -n "$g_undetermined" ] || fail "$g: de replay-driver gaf geen telling van de uitleg"
+      sentences=$((sentences + g_sentences)); conditions=$((conditions + g_conditions))
+      explained_goldens+=("$g")
+      if [ "$g_undetermined" -gt 0 ]; then
+        is_undetermined_listed "$g" \
+          || undetermined+=("$g: $g_undetermined keer \"niet is vast te stellen\" in de uitleg")
+      elif is_undetermined_listed "$g"; then
+        outdated+=("$g staat in EXPLANATION_UNDETERMINED maar zijn uitleg noemt \"niet is vast te stellen\" niet")
+      fi
       played=$((played + 1)); cases=$((cases + detail)) ;;
     EXCLUDE)
       is_excluded "$g" || unnamed+=("$g :: $detail")
@@ -197,6 +226,12 @@ done <<< "$output"
 for e in "${REPLAY_EXCLUDED[@]}"; do
   g="${e%%|*}"
   printf '%s\n' "${set_goldens[@]}" | grep -qxF "$g" || outdated+=("$g staat in REPLAY_EXCLUDED maar niet in de set van gate 12")
+done
+
+for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
+  g="${e%%|*}"
+  printf '%s\n' "${explained_goldens[@]}" | grep -qxF "$g" \
+    || outdated+=("$g staat in EXPLANATION_UNDETERMINED maar speelt niet door de dienst")
 done
 
 if [ ${#deviations[@]} -gt 0 ]; then
@@ -211,7 +246,14 @@ if [ ${#outdated[@]} -gt 0 ]; then
   echo "check-service-replay: FAIL — REPLAY_EXCLUDED is verouderd:" >&2
   printf '    %s\n' "${outdated[@]}" >&2; exit 1
 fi
+if [ ${#undetermined[@]} -gt 0 ]; then
+  echo "check-service-replay: FAIL — ${#undetermined[@]} golden(s) leggen een voorwaarde uit als niet vast te stellen:" >&2
+  printf '    %s\n' "${undetermined[@]}" >&2; exit 1
+fi
 [ "$played" -gt 0 ] || fail "geen golden speelde door de dienst (een lege set is een faal)"
+[ "$conditions" -gt 0 ] || fail "de uitleg verwoordde over $played goldens geen enkele voorwaarde (een lege leg is een faal)"
+[ "$conditions" -ge "$EXPECTED_MIN_EXPLAINED_CONDITIONS" ] \
+  || fail "de uitleg verwoordde $conditions voorwaarden, de vloer EXPECTED_MIN_EXPLAINED_CONDITIONS is $EXPECTED_MIN_EXPLAINED_CONDITIONS"
 [ "$played" -eq "$EXPECTED_REPLAY_PLAYED" ] \
   || fail "$played goldens speelden, EXPECTED_REPLAY_PLAYED pint $EXPECTED_REPLAY_PLAYED (een nieuwe speler: zet het getal bij)"
 
@@ -219,4 +261,5 @@ echo "check-service-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
 echo "  uitgesloten: $excl, bij naam met reden"
+echo "  uitleg: $sentences zinnen, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
 echo "  duur: ${duration}s met ${REPLAY_WORKERS:-4} diensten tegelijk"

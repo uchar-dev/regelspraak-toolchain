@@ -12,6 +12,9 @@ Uitvoer: per golden één regel "<golden>\\t<STATUS>\\t<detail>" in de volgorde 
   PLAYED   alle cases gaven de gepinde verwachtingen (detail: het aantal cases);
   EXCLUDE  een case-vorm die het verzoek of het antwoord van de dienst niet uitdrukt (detail: de vorm);
   FAIL     een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is (detail: wat).
+Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true: het antwoord buiten de uitleg
+moet dat van het eerste zijn, en een PLAYED-regel krijgt drie velden erbij: het aantal uitlegzinnen, het aantal
+uitgelegde voorwaarden (de voorkomens van "omdat " en "want ") en het aantal voorkomens van "niet is vast te stellen".
 Het script oordeelt niet over de hele set: de poortscripts (check-service-replay.sh, check-twins.sh) doen dat.
 """
 import argparse
@@ -289,7 +292,48 @@ def read_json(text_):
     return json.loads(text_, parse_float=decimal.Decimal, parse_int=decimal.Decimal)
 
 
-def play(golden, map_, descriptor_path=None):
+def unordered(answer):
+    """Een antwoord met de inconsistenties gesorteerd: de dienst noemt ze in de volgorde waarin de sessie haar feiten
+    houdt, en die ligt niet vast, ook niet tussen twee verzoeken op dezelfde build."""
+    out = dict(answer)
+    for key in ("inconsistencies", "inconsistencyDetails"):
+        if isinstance(out.get(key), list):
+            out[key] = sorted(out[key], key=lambda x: json.dumps(x, sort_keys=True, default=str))
+    return out
+
+
+def first_difference(a, b, at):
+    """De eerste plaats waar `a` en `b` verschillen, als JSON-pointer met beide waarden."""
+    if isinstance(a, dict) and isinstance(b, dict):
+        for k in list(a) + [k for k in b if k not in a]:
+            if a.get(k) != b.get(k):
+                return first_difference(a.get(k), b.get(k), f"{at}/{k}")
+    if isinstance(a, list) and isinstance(b, list) and len(a) == len(b):
+        for i, (x, y) in enumerate(zip(a, b)):
+            if x != y:
+                return first_difference(x, y, f"{at}/{i}")
+    return f"{at or '/'}: zonder {json.dumps(a, default=str)[:200]}, met {json.dumps(b, default=str)[:200]}"
+
+
+def explained(service, path, request, answer, name):
+    """De uitleg van een verzoek waarvan de dienst `answer` gaf: (zinnen, uitgelegde voorwaarden, "niet is vast te
+    stellen"). Het antwoord met uitleg moet buiten de uitleg `answer` zijn."""
+    status, text_ = service.ask("POST", path + "?explanation=true", request)
+    if status != 200:
+        raise Deviation(f"{name}: met uitleg {status} {text_[:500]}")
+    given = read_json(text_)
+    sentences = given.pop("explanation", None)
+    if not isinstance(sentences, list):
+        raise Deviation(f"{name}: het antwoord met uitleg draagt geen lijst 'explanation'")
+    if unordered(given) != unordered(answer):
+        raise Deviation(f"{name}: het antwoord met uitleg wijkt buiten de uitleg af van dat zonder, op "
+                        f"{first_difference(unordered(answer), unordered(given), '')}")
+    conditions = sum(z.count("omdat ") + z.count("want ") for z in sentences)
+    undetermined = sum(z.count("niet is vast te stellen") for z in sentences)
+    return len(sentences), conditions, undetermined
+
+
+def play(golden, map_, descriptor_path=None, explanation=False):
     """De uitkomstregel van één golden."""
     try:
         document = json.load(open(os.path.join(map_, "ir.json")))
@@ -312,6 +356,7 @@ def play(golden, map_, descriptor_path=None):
                 path = "/replay"
             else:
                 path = "/" + json.load(open(descriptor_path))["entrypoints"][0]["path"]
+            totals = [0, 0, 0]
             with Service(descriptor_path, source, workdir) as service:
                 for name, v, c in requests:
                     status, text_ = service.ask("POST", path, v)
@@ -327,6 +372,11 @@ def play(golden, map_, descriptor_path=None):
                         compare(c, read_json(text_))
                     except Deviation as a:
                         raise Deviation(f"{name}: {a}")
+                    if explanation:
+                        for k, n in enumerate(explained(service, path, v, read_json(text_), name)):
+                            totals[k] += n
+        if explanation:
+            return golden, "PLAYED", "\t".join(str(n) for n in [len(cases)] + totals)
         return golden, "PLAYED", str(len(cases))
     except NotExpressible as n:
         return golden, "EXCLUDE", str(n)
@@ -339,14 +389,16 @@ def main():
     ap.add_argument("--corpus", required=True, help="de map met de goldens (uchar/corpus/golden)")
     ap.add_argument("--workers", type=int, default=4)
     ap.add_argument("--descriptor", action="append", default=[], help="<golden>=<path>: een eigen descriptor")
+    ap.add_argument("--explanation", action="store_true", help="vraag elk verzoek ook met ?explanation=true")
     ap.add_argument("goldens", nargs="+", help="goldens, als pad relatief aan --corpus")
     a = ap.parse_args()
     own = dict(d.split("=", 1) for d in a.descriptor)
     with concurrent.futures.ThreadPoolExecutor(max_workers=a.workers) as pool:
-        tasks = [pool.submit(play, g, os.path.join(a.corpus, g), own.get(g)) for g in a.goldens]
+        tasks = [pool.submit(play, g, os.path.join(a.corpus, g), own.get(g), a.explanation) for g in a.goldens]
         for t in tasks:
             golden, status, detail = t.result()
-            print(f"{golden}\t{status}\t{' '.join(detail.split())}", flush=True)
+            fields = detail.split("\t") if status == "PLAYED" else [detail]
+            print("\t".join([golden, status] + [" ".join(f.split()) for f in fields]), flush=True)
 
 
 if __name__ == "__main__":
