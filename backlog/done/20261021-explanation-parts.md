@@ -287,3 +287,5 @@ replay 232 goldens, 614 cases, pin 232, elke zin gelijk aan haar stukken; manife
   ondoorzichtig voor uchar) is in aanbouw; daarna leest de ontleder de lijst, in de toolchain-ronde met
   `explanation-made-object-names`.
 - De tekst voor het taalmodel: kaart `explanation-for-the-model`, na een meting met de eval van de werkbank.
+
+Geland 2026-10-21 door de hoofdsessie: fast-forward naar `d8475cd8` (`make gates` groen op `85faaefc`, 12m10s, `TAG/CLUSTER=explanation-parts`; de Result-commit erna raakt alleen de kaart). Pin uchar `4f283d9d`. Voorlopige besluiten (Fable-advies 3 en de bouwer) staan hierboven; de eigenaar kan ze omdraaien.
