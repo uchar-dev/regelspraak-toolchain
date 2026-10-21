@@ -35,6 +35,30 @@ casus uitpakt, en het citaat maakt de zinnen voor het taalmodel ongeveer twee ke
 van de 171 zinnen dragen ". Grondslag: …", samen 43.634 van de 121.861 tekens (36 %). Een eigen veld verandert de platte
 zin voor het taalmodel; dat botst met "letterlijk gelijk aan nu".
 
+## Voorlopige besluiten (Fable-advies 3, 2026-10-21; de eigenaar kan ze omdraaien)
+
+Het advies staat in `uchar-dev/werk/defaults-decider/fable-advies-3.md`. Aanvulling van de eigenaar bij de vraag: de
+primaire afnemer van de uitleg is het taalmodel (opzet: persoonlijke assistent); de kleuren zijn vooral voor hem, voor
+debuggen in de werkbank.
+
+- **De grondslag** krijgt een eigen plaats per zin: het laatste stuk van de zin, soort `GROUND`, ontleed. Deze kaart
+  verandert de platte zin niet (bytegelijk). De tekst voor het taalmodel (grondslag inkorten tot de wetsverwijzingen,
+  het herhaalde onderwerp van een `of`-lijst één keer) is een eigen kaart, `explanation-for-the-model`, na een meting met
+  de eval; de eval-runner kan uit de stukken varianten samenstellen.
+- **Achter een eigen vlag:** de eval geeft de hele antwoordbody aan het model (`toolsets.py` van de werkbank); de stukken
+  komen daarom alleen met `explanationParts=true`, zodat het model ze niet ongevraagd leest.
+- **Vorm:** een ondiepe boom uit één bouwer (`Sentence`/`Part` in `engine/`); de Verbalisator schrijft op de bouwer en
+  `text()` is de platte zin, zodat elke bestaande uitlegtest de bytegelijkheid bewijst. Soorten: `SUBJECT`, `NAME`
+  (met `declaration`/`owner`/`canonical`, de sleutels van `vocabularies.elements[]`), `QUOTE`, `VALUE`, `RULE`,
+  `CONNECTIVE`, `TEXT` (lijm), de groepen `CONDITION` (`holds`, `quantifier`) en `MEMBERS` (m, k), en `GROUND` met
+  kinderen `STATUTE` (`bwb`/`article`/`paragraph`/`part`), `LEMMA`, `DEVIATION`, `NOTE`. Geen soort voor een
+  CGM-begrip: geen getuige op regelniveau.
+- **De ontleder van de grondslag** is totaal: wat geen patroon past, is `NOTE`; de grammatica staat in `docs/ENGINE.md`.
+  De grondslag staat op de draad als één string per `// Bron:`-regel; ontleden zonder tekst te parsen kan niet.
+  Beperking: een default krijgt zijn annotaties al samengevoegd met "; " (`Default.source`); de oplossing ligt in uchar.
+- **Veld:** `explanationParts`, parallel aan `explanation` (zoals `inconsistencies`/`inconsistencyDetails`), schema
+  `ExplanationPart` recursief via `$ref`.
+
 ## Acceptatie
 
 - (a) Voor de vijf service-smoke-verzoeken van herleving-WW v2
