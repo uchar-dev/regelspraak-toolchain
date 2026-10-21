@@ -57,6 +57,23 @@ Hoe verwoordt de uitleg de varianten die niet beslisten? Voorstel van de hoofdse
 Bij geneste uitzonderingen noemt de zin de voorwaarde zoals de auteur haar schreef, of de opgetelde voorwaarde van
 ch. 7.9: ook dat is een keuze voor de eigenaar.
 
+## Besluiten van de eigenaar (2026-10-21)
+
+Voorgelegd door de hoofdsessie, gekozen zoals aanbevolen:
+
+1. **Varianten die niet beslisten.** Per besliste waarde de beslisser met "omdat" en haar voorwaarden; elke variant die
+   vóór de beslisser aan de beurt was met "gold niet, want <eerste falende voorwaarde>" (bij een attribuut "gaf geen
+   waarde"); de varianten erna alleen bij naam, als verdrongen. Beslist niemand: dat zeggen, met wat het doel houdt.
+   Een conflict heet een conflict.
+2. **Geneste lagen.** De opgetelde voorwaarde zoals het IR haar draagt (ch. 7.9), met de keten van lagen bij naam.
+3. **Naam op de draad.** De naam van een variant haalde IR en model niet; uchar schrijft haar nu als `Default.name`
+   (uchar-kaart `defaults-decider`, die ook de ingang `DroolsBackend.decisionsOf` levert: welke variant besliste, het
+   onwaar-besluit inbegrepen). Deze kaart volgt met de pin-bump.
+
+Verwoording binnen die besluiten (hoofdsessie): een `Uitzondering op B` en een `Afwijking van B` op het eerste niveau
+legt de draad gelijk vast (uchar `frontends/regelspraak/grammar/DIVERGENCES.md` §4, "Lowering"), dus daar noemt de
+uitleg alleen de naam, zonder soortwoord; "de regel" alleen voor de basis, "uitzondering op …" voor een geneste laag.
+
 ## Doel
 
 Voor elke waarde die een defaults-groep beslist, noemt de uitleg de variant die besliste en de voorwaarden waarop dat
