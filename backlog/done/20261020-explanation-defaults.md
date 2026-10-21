@@ -669,3 +669,5 @@ cases, pin 231) en het manifest (29 ok, 3 uitgesloten) zijn gelijk. Het kind-clu
   Verbalisator niet na.
 
 Het punt "Een samengestelde stapel zonder besluit" uit "Wat open bleef" hierboven is opgelost.
+
+Geland 2026-10-21 door de hoofdsessie: fast-forward naar `427d1966` (`make gates` groen op die stand, 9m44s, `TAG/CLUSTER=explanation-defaults`). In dezelfde commit de vervolgkaart `explanation-from-readings` (T2 uit het Fable-advies: de uitleg rendert uit de lezingen van de motor) in `backlog/new/`; zij volgt op de uchar-kaart `fixpoint-readings`.
