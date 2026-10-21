@@ -239,3 +239,5 @@ PASS). Log: `werk/defaults-decider/t5/tc-gates.log`.
   daar als plaats van een melding); zo'n melding noemt nu geen plaats. Geen test pint het.
 - De naam van een gemaakt onderwerp kan genest raken (`«"…"»(«"…"»(J1)#1)#1`): eenduidig, voor een taalmodel niet
   mooi; mee te nemen in `explanation-for-the-model`.
+
+Geland 2026-10-21 door de hoofdsessie: fast-forward naar `caea9ca0` (`make gates` groen op `20c63b5f`, 10m10s, `TAG/CLUSTER=explanation-made-object-names`; de Result-commit erna raakt alleen de kaart). Pin uchar `680e5263` (met `default-statute-annotations`). Voorlopige keuzes van de bouwer staan hierboven; de eigenaar kan ze omdraaien.
