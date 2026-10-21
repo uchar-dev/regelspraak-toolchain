@@ -38,7 +38,7 @@ zin voor het taalmodel; dat botst met "letterlijk gelijk aan nu".
 ## Voorlopige besluiten (Fable-advies 3, 2026-10-21; de eigenaar kan ze omdraaien)
 
 Het advies staat in `uchar-dev/werk/defaults-decider/fable-advies-3.md`. Aanvulling van de eigenaar bij de vraag: de
-primaire afnemer van de uitleg is het taalmodel (opzet: persoonlijke assistent); de kleuren zijn vooral voor hem, voor
+primaire afnemer van de uitleg is het taalmodel (opzet: persoonlijke assistent); de kleuren zijn vooral voor de eigenaar, voor
 debuggen in de werkbank.
 
 - **De grondslag** krijgt een eigen plaats per zin: het laatste stuk van de zin, soort `GROUND`, ontleed. Deze kaart
