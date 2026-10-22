@@ -172,7 +172,9 @@ EXPECTED_MIN_EXPLAINED_CONDITIONS=1241
 # Kaart explanation-computed-attributes: het aantal zinnen over een waarde die een gewone regel schreef, met haar
 # berekening ("<onderwerp> heeft als ...", vorm A van het advies) over de gespeelde goldens: een ondergrens, gemeten
 # 2026-10-22 bij die kaart (pin 88c4624b: 3443 zinnen, waarvan 1852 van vorm A, over 241 goldens en 647 cases); een
-# leg die stilletjes minder berekeningen uitlegt, faalt.
+# leg die stilletjes minder berekeningen uitlegt, faalt. Sinds de kaart explanation-defaults-computation draagt ook de
+# zin van een defaults-groep op een attribuut de berekening van de variant die besliste, en telt die zin mee (gemeten
+# 2026-10-22: 2046); de vloer bleef staan.
 EXPECTED_MIN_EXPLAINED_COMPUTATIONS=1852
 
 is_undetermined_listed() {

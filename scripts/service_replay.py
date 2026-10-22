@@ -17,7 +17,8 @@ antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin 
 haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vier velden erbij: het
 aantal uitlegzinnen, het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want "), het aantal
 voorkomens van "niet is vast te stellen", en het aantal zinnen over een waarde die een gewone regel schreef (kaart
-explanation-computed-attributes: "<onderwerp> heeft als ..." met de berekening als stuk COMPUTATION).
+explanation-computed-attributes: "<onderwerp> heeft als ..." met de berekening als stuk COMPUTATION), sinds de kaart
+explanation-defaults-computation ook die over een waarde die een defaults-groep besliste.
 Het script oordeelt niet over de hele set: de poortscripts (check-service-replay.sh, check-twins.sh) doen dat.
 """
 import argparse
@@ -361,8 +362,8 @@ def explained(service, path, request, answer, name):
 
 
 def computed(roots):
-    """Of een zin de waarde noemt die een gewone regel schreef: "<onderwerp> heeft als ...", met de berekening als
-    stuk COMPUTATION."""
+    """Of een zin de waarde noemt die een gewone regel schreef, of de variant die een defaults-groep besliste:
+    "<onderwerp> heeft als ...", met de berekening als stuk COMPUTATION."""
     return (len(roots) > 1 and roots[0]["kind"] == "SUBJECT" and roots[1]["kind"] == "TEXT"
             and roots[1]["text"] == " heeft als " and any(r["kind"] == "COMPUTATION" for r in roots))
 
