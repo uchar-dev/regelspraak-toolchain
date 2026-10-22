@@ -10,8 +10,8 @@ uchar main `0866c03f` brengt sinds de pin `88c4624b` (T1):
 - `check-admits-instance-cycle`: `check` laat een kring over een schakelrelatie toe en noemt een lezing buiten de
   afbakening (RGS-357), plus een snippetfix: een snippet stopt vóór de slotpunt van de zin;
 - twee clingo-fixes (CLINGO-030, de binding van een bewaking in een vouwlid);
-- drie nieuwe goldens (`jutterswet-vergunningtermijnen`, `jutterswet-vroege-vondsten-zonder-schorsing` en de
-  snippets van 38 goldens).
+- twee nieuwe goldens (`jutterswet-vergunningtermijnen`, `jutterswet-vroege-vondsten-zonder-schorsing`), en in 38
+  goldens snippets zonder slotpunt.
 
 De werkbank heeft de toelating nodig voor K12 in v2, zodra hww-06 herschreven is (normvraag B2.5).
 
