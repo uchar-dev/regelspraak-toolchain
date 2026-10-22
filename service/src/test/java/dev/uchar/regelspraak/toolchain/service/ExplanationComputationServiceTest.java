@@ -443,8 +443,9 @@ class ExplanationComputationServiceTest {
                 "S1 heeft als uitkering 20,00 volgens de regel 'uitkering van een strandrecht' (onvoorwaardelijk): zijn"
                         + " grondslag maal 2, met zijn grondslag (10,00)",
                 "W1 heeft als uitkering 10,00 volgens de variant op plaats 2 van 'uitkering van een wrakrecht'"
-                        + " (onvoorwaardelijk); de variant op plaats 1 van 'uitkering van een wrakrecht' gold niet, want"
-                        + " niet geldt: het onderwerp betwist is"), sentences(answer(core, request)));
+                        + " (onvoorwaardelijk): zijn grondslag (10,00); de variant op plaats 1 van 'uitkering van een"
+                        + " wrakrecht' gold niet, want niet geldt: het onderwerp betwist is"),
+                sentences(answer(core, request)));
     }
 
     /** Every sentence of form A carries the computation as a group, and every writer that did not write stands in a

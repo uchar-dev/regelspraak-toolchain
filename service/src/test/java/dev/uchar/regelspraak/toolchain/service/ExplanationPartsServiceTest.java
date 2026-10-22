@@ -135,17 +135,17 @@ public class ExplanationPartsServiceTest {
                     + " is groter dan 10 of het onderwerp ingezetene is" + GROUND,
             "J1 is niet gelukkig, want " + FOLD + " is niet voldaan: niet voor V2 (1 van de 2)",
             "J1 heeft recht op strandgoed, omdat het onderwerp ervaren is",
-            "J1 heeft als premie 100,00 volgens de regel 'premie', omdat het onderwerp ervaren is; 'jeugdpremie' gold"
-                    + " niet, want niet geldt: zijn leeftijd (30) is kleiner dan 18",
+            "J1 heeft als premie 100,00 volgens de regel 'premie': 100,00, omdat het onderwerp ervaren is;"
+                    + " 'jeugdpremie' gold niet, want niet geldt: zijn leeftijd (30) is kleiner dan 18",
             "J1 heeft als meldpremie 7,50 volgens de regel 'meldpremie': zijn aantal meldingen maal 2,50, met zijn"
                     + " aantal meldingen (3), omdat het onderwerp ingezetene is",
             "J2 is ervaren, maar de regel 'ervaren' gold niet, want niet geldt: zijn leeftijd (16) is groter dan de"
                     + " minimumleeftijd (17)" + GROUND,
             "J2 is gelukkig, omdat " + FOLD + " is voldaan: er is geen enkel lid",
             "J2 heeft recht op strandgoed, omdat het onderwerp ervaren is",
-            "J2 heeft als premie 50,00 volgens 'jeugdpremie', omdat het onderwerp ervaren is en zijn leeftijd (16) is"
-                    + " kleiner dan 18; verdrongen: de regel 'premie'. Grondslag: BWBR0004045&artikel=20&lid=2 · lemma's:"
-                    + " jeugdpremie · afwijking: oude-premie",
+            "J2 heeft als premie 50,00 volgens 'jeugdpremie': 50,00, omdat het onderwerp ervaren is en zijn leeftijd"
+                    + " (16) is kleiner dan 18; verdrongen: de regel 'premie'. Grondslag: BWBR0004045&artikel=20&lid=2"
+                    + " · lemma's: jeugdpremie · afwijking: oude-premie",
             noMeldpremie("J2"),
             "J3 is niet ervaren, want niet geldt: zijn aantal meldingen (3) is groter dan 10 of het onderwerp"
                     + " ingezetene is" + GROUND,
@@ -204,7 +204,8 @@ public class ExplanationPartsServiceTest {
                     + " CONDITION{holds=false}[" + LEEFTIJD + " « (» VALUE«16» «) is groter dan » " + MINIMUMLEEFTIJD
                     + " « (» VALUE«17» «)»] " + GROUND_PARTS,
             8, "SUBJECT«J2» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie}«premie» « »"
-                    + " VALUE«50,00» « volgens '» RULE«jeugdpremie» «', » CONNECTIVE«omdat» « »"
+                    + " VALUE«50,00» « volgens '» RULE«jeugdpremie» «'» COMPUTATION[«: » QUOTE«50,00»] «, »"
+                    + " CONNECTIVE«omdat» « »"
                     + " CONDITION{holds=true, quantifier=all}[CONDITION{holds=true}[«het onderwerp » " + ERVAREN
                     + " « is»] « » CONNECTIVE«en» « »"
                     + " CONDITION{holds=true}[" + LEEFTIJD + " « (» VALUE«16» «) is kleiner dan » VALUE«18»]]"

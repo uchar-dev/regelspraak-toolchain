@@ -99,6 +99,10 @@ model declares) and the sentences of the messages, which keep their text. The ol
   was computed (the values the computation read, the members of a fold, the value before a rounding or a bound) and why
   the other writers did not write; the parts have two new groups, `COMPUTATION` and `VARIANT` (`docs/ENGINE.md`, "The
   parts of an explanation"). The sentences that were there are unchanged and keep their order.
+- **The deciding variant computes** (card `explanation-defaults-computation`): in the sentence of a defaults group on
+  an attribute, the variant that decided gets the same `COMPUTATION` after its name. This changes existing sentences:
+  `"… volgens 'berekende maxdatum' (onvoorwaardelijk); …"` is now `"… volgens 'berekende maxdatum' (onvoorwaardelijk):
+  zijn berekende maxdatum (01-01-2026); …"`. Nothing else in those sentences changes.
 
 ## The pin
 

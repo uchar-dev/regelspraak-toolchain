@@ -90,8 +90,9 @@ import java.util.regex.Pattern;
  *
  * <p><b>Defaults-groepen.</b> Een groep ({@code Uitzondering op}, {@code Afwijking van}, {@code Uitzonderingen
  * ongeordend}, de opgavemarkering; uchars RUNTIME-SEMANTICS ch. 7) krijgt per object één zin, uit wat de motor
- * besliste ({@link DroolsBackend#decisionsOf}): de variant die besliste, met haar voorwaarde zoals het IR haar
- * draagt (ch. 7.9 telt de voorwaarden van de omsluitende lagen erbij op); elke variant die vóór haar aan de beurt was
+ * besliste ({@link DroolsBackend#decisionsOf}): de variant die besliste, bij een attribuut met hoe zij haar waarde
+ * berekende, zoals de zin van een berekende waarde hieronder, en met haar voorwaarde zoals het IR haar draagt (ch. 7.9
+ * telt de voorwaarden van de omsluitende lagen erbij op); elke variant die vóór haar aan de beurt was
  * met de reden dat ze niet besliste; de varianten erna bij naam, als verdrongen. Beslist niemand, dan zegt de zin dat,
  * met wat het doel houdt en per variant van de stapel de reden dat ze niet besliste; een conflict heet een conflict.
  * Elke stapel en haar varianten komen uit de motor, ook waar niemand besliste. Welke variant besliste, rekent de
@@ -219,8 +220,9 @@ public final class Verbaliser {
             ObjectType ot = subjects.types().get(label);
             if (ot == null || bean == null) continue;
             assignments(label, bean, ot, sink);
-            new DefaultsExplanation(document, label, bean, ot, decisions).sentences(sink);
-            new ComputationExplanation(label, bean, ot, decisions).sentences(sink);
+            ComputationExplanation computations = new ComputationExplanation(label, bean, ot, decisions);
+            new DefaultsExplanation(document, label, bean, ot, decisions, computations).sentences(sink);
+            computations.sentences(sink);
             document.outside().forEach((rule, type) -> {
                 for (ObjectType t : ot.chain()) if (t.name.equalsIgnoreCase(type)) outside.add(rule);
             });
@@ -423,14 +425,18 @@ public final class Verbaliser {
         private final Object bean;
         private final ObjectType type;
         private final List<DefaultsDecision> decisions;
+        /** De berekeningen van hetzelfde object: de beslisser van een attribuut krijgt de berekening van een gewone
+         *  regel. */
+        private final ComputationExplanation computations;
 
         DefaultsExplanation(Document document, String label, Object bean, ObjectType type,
-                            List<DefaultsDecision> decisions) {
+                            List<DefaultsDecision> decisions, ComputationExplanation computations) {
             this.document = document;
             this.label = label;
             this.bean = bean;
             this.type = type;
             this.decisions = decisions;
+            this.computations = computations;
         }
 
         void sentences(List<Sentence> sink) {
@@ -650,10 +656,13 @@ public final class Verbaliser {
             return p;
         }
 
-        /** Waarom de beslisser besliste: haar voorwaarde met de waarden van de operanden. */
+        /** Waarom de beslisser besliste: haar voorwaarde met de waarden van de operanden. Bij een attribuut staat
+         *  daarvoor hoe zij haar waarde berekende ({@link #computation}), na " (onvoorwaardelijk)" waar zij geen
+         *  voorwaarde heeft, zoals in de zin van een gewone regel. */
         private void reason(Sentence.Builder b, Variant v, boolean characteristic) {
             Condition c = conditionOf(v);
             if (c == null && isInitialisation(v)) {
+                computation(b, v, characteristic);
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
                 if (characteristic) b.text("het kenmerk");
                 else {
@@ -666,6 +675,7 @@ public final class Verbaliser {
             if (c == null || c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE
                     && s.components().isEmpty()) {
                 b.text(" (onvoorwaardelijk)");
+                computation(b, v, characteristic);
                 return;
             }
             ConditionReading.Status status = reading(v.pointer(), bean, label).status();
@@ -673,8 +683,23 @@ public final class Verbaliser {
             if (status != ConditionReading.Status.HOLDS)
                 throw new IllegalStateException("de beslisser " + v.pointer() + " van " + label + " heeft de lezing "
                         + status + ", en een variant die besliste heeft een voorwaarde die geldt");
+            computation(b, v, characteristic);
             b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
             verbaliseCondition(b, c, read, subjectOf(v), ucharText(v));
+        }
+
+        /** Hoe de beslisser van een attribuut haar waarde berekende, zoals de zin van een gewone regel het zegt
+         *  ({@link ComputationExplanation#computation}): de waarde van een default is zijn consequentie, die van een
+         *  regel die ch. 7.10 in de stapel opnam haar waarde. In de lezing van de beslisser volgen de knopen van die
+         *  waarde op die van haar voorwaarde zoals het IR haar draagt (ch. 5.12); zonder voorwaarde, ook waar ch. 7.10
+         *  haar de lege rechtvaardiging geeft die nergens in het document staat, heeft zij alleen die van haar waarde.
+         *  Een kenmerk heeft geen waarde om te berekenen. */
+        private void computation(Sentence.Builder b, Variant v, boolean characteristic) {
+            if (characteristic) return;
+            Expr value = v.rule() != null ? v.rule().value() : v.d().consequence();
+            Condition c = conditionOf(v);
+            int offset = c == null ? 0 : document.positions().subtree(c).size();
+            computations.computation(b, value, ucharText(v), read(v.pointer(), bean, label, value, offset));
         }
 
         /** Waarom een variant die aan de beurt was niet besliste: een kenmerkvariant waarvan de voorwaarde geldt,
@@ -1121,7 +1146,7 @@ public final class Verbaliser {
             Condition c = r.condition();
             boolean initialisation = r.kind() == ResolvedRule.Kind.INITIALISATIE;
             if (c == null && !initialisation) b.text(" (onvoorwaardelijk)");
-            if (!timeline) computation(b, w, valueRead(w));
+            if (!timeline) computation(b, r.value(), writtenByUchar(r), valueRead(w));
             if (c != null) {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
                 verbaliseCondition(b, c, read(w.pointer(), bean, label, c), w.target().objectType(),
@@ -1173,10 +1198,9 @@ public final class Verbaliser {
             return read(w.pointer(), bean, label, w.rule().value(), offset);
         }
 
-        /** Hoe regel {@code w} haar waarde berekende, met de dubbele punt ervoor. */
-        private void computation(Sentence.Builder b, Writer w, Read read) {
-            Expr root = w.rule().value();
-            boolean ucharText = writtenByUchar(w.rule());
+        /** Hoe een vorm waarde {@code root} berekende, met de dubbele punt ervoor; {@code read} is haar lezing op de
+         *  knopen van die waarde, {@code ucharText} of uchar de tekst van de vorm schreef. */
+        private void computation(Sentence.Builder b, Expr root, boolean ucharText, Read read) {
             List<Object> nodes = document.positions().subtree(root);
             b.open(Part.Kind.COMPUTATION, Map.of()).text(": ");
             Map<Object, String> definitions = definitions(nodes);

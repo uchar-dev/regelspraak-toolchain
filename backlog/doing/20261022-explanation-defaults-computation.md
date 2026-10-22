@@ -21,3 +21,15 @@ eigen kaart.
 - (a) Rood eerst op de drie routes met een eigen model.
 - (b) De v2-meting vóór en na, met elke veranderde zin in de Result; het antwoord buiten de uitleg bytegelijk.
 - (c) `make gates` groen.
+
+## Voorlopige besluiten van de bouwer (2026-10-22)
+
+*Gemarkeerd voorlopig: een keuze die het advies niet uitdrukkelijk beslist, dicht bij het advies en bij T1. De eigenaar
+kan haar omdraaien.*
+
+- **W1 Elke beslissende variant op een attribuut**, ook de default `opgegeven X` die de opgavemarkering maakt, krijgt
+  haar berekening (v2, intrekking): "R1 heeft als beëindigingsdatum 01-03-2026 volgens 'opgegeven beëindigingsdatum'
+  (onvoorwaardelijk): zijn opgegeven beëindigingsdatum (01-03-2026); verdrongen: 'berekende beëindigingsdatum'". De kaart
+  noemt "elke 'volgens 'berekende …' (onvoorwaardelijk)'"; het advies (§5 T2) zegt "de variant die … besliste", zonder
+  uitzondering. De berekening herhaalt hier de waarde van de zin, zoals bij een gewone regel die één attribuut leest
+  (T1); de `NAME` met `canonical=opgegeven X` laat de keten bij de invoer stoppen.

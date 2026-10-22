@@ -98,20 +98,20 @@ class ExplanationDefaultsServiceTest {
                     + " gold niet, want niet geldt: zijn leeftijd (30) is kleiner dan 18; " + HERSTEL + " gold niet,"
                     + " want niet geldt: het onderwerp in dienst is; 'uitsluiting bij dienstverband' gold niet, want"
                     + " niet geldt: het onderwerp in dienst is",
-            "J1 heeft als premie 100,00 volgens de regel 'premie', omdat zijn leeftijd (30) is groter dan 17;"
-                    + " 'premie uit bonus' gaf geen waarde",
+            "J1 heeft als premie 100,00 volgens de regel 'premie': 100,00, omdat zijn leeftijd (30) is groter dan"
+                    + " 17; 'premie uit bonus' gaf geen waarde",
             "J2 heeft geen recht op de penning volgens 'uitsluiting bij dienstverband', omdat het onderwerp ingezetene"
                     + " is en het onderwerp in dienst is; 'jeugdpenning' gold niet, want niet geldt: zijn leeftijd (30)"
                     + " is kleiner dan 18; " + HERSTEL + " gold niet, want niet geldt: zijn aantal vondsten (5) is"
                     + " groter dan 10; verdrongen: de regel 'penning'. Grondslag: Jutterswet art. 3",
-            "J2 heeft als premie 20,00 volgens 'premie uit bonus', omdat zijn leeftijd (30) is groter dan 17 en het"
-                    + " onderwerp ingezetene is; verdrongen: de regel 'premie'",
+            "J2 heeft als premie 20,00 volgens 'premie uit bonus': zijn bonus (20,00), omdat zijn leeftijd (30) is"
+                    + " groter dan 17 en het onderwerp ingezetene is; verdrongen: de regel 'premie'",
             "J3 heeft recht op de penning volgens " + HERSTEL + ", omdat het onderwerp ingezetene is en het onderwerp in"
                     + " dienst is en zijn aantal vondsten (12) is groter dan 10; 'jeugdpenning' gold niet, want niet"
                     + " geldt: zijn leeftijd (30) is kleiner dan 18; verdrongen: 'uitsluiting bij dienstverband', de"
                     + " regel 'penning'",
-            "J3 heeft als premie 100,00 volgens de regel 'premie', omdat zijn leeftijd (30) is groter dan 17;"
-                    + " 'premie uit bonus' gaf geen waarde",
+            "J3 heeft als premie 100,00 volgens de regel 'premie': 100,00, omdat zijn leeftijd (30) is groter dan"
+                    + " 17; 'premie uit bonus' gaf geen waarde",
             "J4 heeft recht op de penning volgens 'jeugdpenning', omdat zijn leeftijd (16) is kleiner dan 18;"
                     + " verdrongen: " + HERSTEL + ", 'uitsluiting bij dienstverband', de regel 'penning'",
             "J4 heeft geen premie, want geen variant besliste; 'premie uit bonus' gold niet, want niet geldt: zijn"
@@ -121,8 +121,8 @@ class ExplanationDefaultsServiceTest {
                     + " zijn leeftijd (30) is kleiner dan 18; " + HERSTEL + " gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is; 'uitsluiting bij dienstverband' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is; de regel 'penning' gold niet, want niet geldt: het onderwerp ingezetene is",
-            "J5 heeft als premie 100,00 volgens de regel 'premie', omdat zijn leeftijd (30) is groter dan 17;"
-                    + " 'premie uit bonus' gold niet, want niet geldt: het onderwerp ingezetene is",
+            "J5 heeft als premie 100,00 volgens de regel 'premie': 100,00, omdat zijn leeftijd (30) is groter dan"
+                    + " 17; 'premie uit bonus' gold niet, want niet geldt: het onderwerp ingezetene is",
             "J6 heeft recht op de penning volgens 'jeugdpenning', omdat zijn leeftijd (16) is kleiner dan 18;"
                     + " verdrongen: " + HERSTEL + ", 'uitsluiting bij dienstverband', de regel 'penning'",
             "J6 houdt als premie de invoerwaarde 7,50, want geen variant besliste; 'premie uit bonus' gold niet, want"
@@ -174,13 +174,13 @@ class ExplanationDefaultsServiceTest {
                     + " 'stormvergoeding' (uitzondering op 'vergoeding') besliste 'heeft als vergoeding 30' en"
                     + " 'vloedvergoeding' (uitzondering op 'vergoeding') besliste 'heeft als vergoeding 45', dus de"
                     + " groep schrijft niets",
-            "K2 heeft als vergoeding 30 volgens 'stormvergoeding' (uitzondering op 'vergoeding'), omdat het onderwerp"
-                    + " ingezetene is en het onderwerp getroffen door storm is; 'vloedvergoeding' (uitzondering op"
-                    + " 'vergoeding') besliste niet anders; verdrongen: de regel 'vergoeding'",
-            "K3 heeft als vergoeding 45 volgens 'vloedvergoeding' (uitzondering op 'vergoeding'), omdat het onderwerp"
-                    + " ingezetene is en het onderwerp getroffen door vloed is; 'stormvergoeding' (uitzondering op"
-                    + " 'vergoeding') gold niet, want niet geldt: het onderwerp getroffen door storm is; verdrongen: de"
-                    + " regel 'vergoeding'");
+            "K2 heeft als vergoeding 30 volgens 'stormvergoeding' (uitzondering op 'vergoeding'): 30, omdat het"
+                    + " onderwerp ingezetene is en het onderwerp getroffen door storm is; 'vloedvergoeding'"
+                    + " (uitzondering op 'vergoeding') besliste niet anders; verdrongen: de regel 'vergoeding'",
+            "K3 heeft als vergoeding 45 volgens 'vloedvergoeding' (uitzondering op 'vergoeding'): 45, omdat het"
+                    + " onderwerp ingezetene is en het onderwerp getroffen door vloed is; 'stormvergoeding'"
+                    + " (uitzondering op 'vergoeding') gold niet, want niet geldt: het onderwerp getroffen door storm"
+                    + " is; verdrongen: de regel 'vergoeding'");
 
     /** A subtype's own ordinary rule replaces the inherited base (ch. 7.10); the engine names it by its rule version, which
      *  the explanation lays on the rules of the scope's model, or on those uchar's loader read. */
@@ -225,12 +225,12 @@ class ExplanationDefaultsServiceTest {
 
     /** The sentences of {@code ExplanationDefaultsTest}, the scenario route. */
     private static final List<String> INHERITANCE_EXPECTED = List.of(
-            "R1 heeft als uitkering 10 volgens de regel 'uitkering', omdat het onderwerp erkend is; 'betwiste"
+            "R1 heeft als uitkering 10 volgens de regel 'uitkering': 10, omdat het onderwerp erkend is; 'betwiste"
                     + " uitkering' gold niet, want niet geldt: het onderwerp betwist is",
-            "W1 heeft als uitkering 200 volgens de regel 'uitkering van een wrakrecht', omdat het onderwerp gezonken"
-                    + " is; 'betwiste uitkering' gold niet, want niet geldt: het onderwerp erkend is",
-            "W2 heeft als uitkering 99 volgens 'betwiste uitkering', omdat het onderwerp erkend is en het onderwerp"
-                    + " betwist is; verdrongen: de regel 'uitkering van een wrakrecht'",
+            "W1 heeft als uitkering 200 volgens de regel 'uitkering van een wrakrecht': 200, omdat het onderwerp"
+                    + " gezonken is; 'betwiste uitkering' gold niet, want niet geldt: het onderwerp erkend is",
+            "W2 heeft als uitkering 99 volgens 'betwiste uitkering': 99, omdat het onderwerp erkend is en het"
+                    + " onderwerp betwist is; verdrongen: de regel 'uitkering van een wrakrecht'",
             "W3 heeft geen uitkering, want geen variant besliste; 'betwiste uitkering' gold niet, want niet geldt:"
                     + " het onderwerp betwist is; de regel 'uitkering van een wrakrecht' gold niet, want niet geldt:"
                     + " het onderwerp gezonken is");

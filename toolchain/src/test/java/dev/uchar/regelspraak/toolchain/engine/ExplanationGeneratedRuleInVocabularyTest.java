@@ -123,14 +123,14 @@ class ExplanationGeneratedRuleInVocabularyTest {
                 "V1 heeft afwijkende opgave meldingsdatum, omdat zijn opgegeven meldingsdatum (12-03-2026) gevuld is"
                         + " en zijn berekende meldingsdatum (13-03-2026) gevuld is en zijn opgegeven meldingsdatum"
                         + " (12-03-2026) is ongelijk aan zijn berekende meldingsdatum (13-03-2026)",
-                "V1 heeft als meldingsdatum 12-03-2026 volgens 'opgegeven meldingsdatum' (onvoorwaardelijk);"
-                        + " verdrongen: 'berekende meldingsdatum'",
+                "V1 heeft als meldingsdatum 12-03-2026 volgens 'opgegeven meldingsdatum' (onvoorwaardelijk): zijn"
+                        + " opgegeven meldingsdatum (12-03-2026); verdrongen: 'berekende meldingsdatum'",
                 melding("V1", "meldingsdatum"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave meldingsdatum, want niet geldt: zijn opgegeven meldingsdatum"
                         + " (onbekend) gevuld is",
-                "V2 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk);"
-                        + " 'opgegeven meldingsdatum' gaf geen waarde",
+                "V2 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk): zijn"
+                        + " berekende meldingsdatum (13-03-2026); 'opgegeven meldingsdatum' gaf geen waarde",
                 melding("V2", "meldingsdatum")),
                 explanation(Naming.CANONICAL));
     }
@@ -144,13 +144,15 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " zijn opgegeven Datum melding vondst (12-03-2026) is ongelijk aan zijn berekende Datum"
                         + " melding vondst (13-03-2026)",
                 "V1 heeft als Datum melding vondst 12-03-2026 volgens 'opgegeven Datum melding vondst'"
-                        + " (onvoorwaardelijk); verdrongen: 'berekende Datum melding vondst'",
+                        + " (onvoorwaardelijk): zijn opgegeven Datum melding vondst (12-03-2026); verdrongen:"
+                        + " 'berekende Datum melding vondst'",
                 melding("V1", "Datum melding vondst"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is",
                 "V2 heeft als Datum melding vondst 13-03-2026 volgens 'berekende Datum melding vondst'"
-                        + " (onvoorwaardelijk); 'opgegeven Datum melding vondst' gaf geen waarde",
+                        + " (onvoorwaardelijk): zijn berekende Datum melding vondst (13-03-2026); 'opgegeven"
+                        + " Datum melding vondst' gaf geen waarde",
                 melding("V2", "Datum melding vondst")),
                 explanation("cgm"));
     }
@@ -164,13 +166,15 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " dag van de melding (12-03-2026) is ongelijk aan zijn berekende dag van de melding"
                         + " (13-03-2026)",
                 "V1 heeft als dag van de melding 12-03-2026 volgens 'opgegeven dag van de melding'"
-                        + " (onvoorwaardelijk); verdrongen: 'berekende dag van de melding'",
+                        + " (onvoorwaardelijk): zijn opgegeven dag van de melding (12-03-2026); verdrongen:"
+                        + " 'berekende dag van de melding'",
                 melding("V1", "dag van de melding"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave dag van de melding, want niet geldt: zijn opgegeven dag van de"
                         + " melding (onbekend) gevuld is",
                 "V2 heeft als dag van de melding 13-03-2026 volgens 'berekende dag van de melding'"
-                        + " (onvoorwaardelijk); 'opgegeven dag van de melding' gaf geen waarde",
+                        + " (onvoorwaardelijk): zijn berekende dag van de melding (13-03-2026); 'opgegeven"
+                        + " dag van de melding' gaf geen waarde",
                 melding("V2", "dag van de melding")),
                 explanation("handboek"));
     }

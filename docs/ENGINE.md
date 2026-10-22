@@ -287,7 +287,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `VARIANT`).
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
 | `MEMBERS` | group | the members of a quantifier fold that carry its outcome, after the colon; in a computation the members of a fold over a set, each with what it contributed | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
-| `COMPUTATION` | group | how the rule of a computed value computed it, after the rule's name, with its colon (below) | — |
+| `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, after its name, with its colon (below) | — |
 | `VARIANT` | group | a writer of a computed value that did not write it, with the `"; "` before it | `decided: false`, and `displaced: true` for an initialisation that was not at its turn |
 | `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | the decider whose annotations they are (below): `rule`, or `group`, `pointer`, `position` and `variant` where it has a name |
 | `STATUTE` | leaf | a Juriconnect anchor, literally | `bwb`, `article`, and `paragraph` and `part` where it names them |
@@ -327,6 +327,15 @@ leden)", a count without a value per member), and its filter, where it is one ch
 the fourth form is read on the bean. A rule on a timeline target wrote "een tijdlijn" and has no computation. A rule
 outside the scope of an entry point gets the one sentence "de regel '…' staat buiten deze berekening", like an
 attribution rule.
+
+**The deciding variant of a defaults group** (card `explanation-defaults-computation`). In the sentence of a defaults
+group on an attribute, the variant that decided gets the same `COMPUTATION` after its name, where the sentence of a
+computed value has it: after `" (onvoorwaardelijk)"` and before `", omdat …"`. Its value is the default's consequence,
+or the value of the ordinary rule uchar's RUNTIME-SEMANTICS ch. 7.10 took into the stack; for the two defaults the
+opgave marker makes it reads `opgegeven X` or `berekende X` (`"volgens 'berekende maxdatum' (onvoorwaardelijk): zijn
+berekende maxdatum (01-01-2026)"`), so a reader goes on from there to the sentence of the computed value. The values
+come from the variant's reading, where the nodes of its value follow those of its condition. The variants that did not
+decide stay as they were, and a characteristic has no computation.
 
 **The decider of a ground.** `GROUND` names the rule or the default whose `statuteAnnotations` it carries, in the
 terms of the IR, so a reader finds that decider and its annotations in the document (and from there the `// Bron:`
