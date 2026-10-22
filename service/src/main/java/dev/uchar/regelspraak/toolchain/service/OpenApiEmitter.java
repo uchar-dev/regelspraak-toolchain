@@ -601,7 +601,13 @@ public final class OpenApiEmitter {
                 + " samenstelling of een kwantorvouw quantifier (all, none, atLeast, atMost, exactly, the) met threshold"
                 + " bij een telling; MEMBERS de leden van een kwantorvouw die haar uitkomst dragen, met members (m),"
                 + " holding (k) en unjudged; GROUND de grondslag, het laatste stuk van de zin, met de punt en"
-                + " 'Grondslag: ' als TEXT ervoor; STATUTE een Juriconnect-anker, met bwb, article en, waar het ze"
+                + " 'Grondslag: ' als TEXT ervoor, en met de beslisser waarvan het de statuteAnnotations zijn, in de"
+                + " termen van het IR: bij een regel rule, de naam van haar vorm in rules.rules; bij een default group,"
+                + " de naam van zijn groep in rules.prioritizedDefaults (null waar het document de groep geen naam"
+                + " geeft), pointer, de JSON Pointer van de default in die groep (/defaults/1, of dieper"
+                + " /defaults/0/exceptions/members/0/defaults/0), position, zijn plaats in zijn keten (1-gebaseerd, zoals"
+                + " de zin 'de variant op plaats n' telt), en variant, zijn naam, waar hij er een heeft; STATUTE een"
+                + " Juriconnect-anker, met bwb, article en, waar het ze"
                 + " noemt, paragraph en part; LEMMA een lemma; DEVIATION een afwijking, met followed; NOTE elk ander"
                 + " segment van een annotatie.");
         s.putArray("required").add("kind");
@@ -614,11 +620,12 @@ public final class OpenApiEmitter {
         ObjectNode parts = props.putObject("parts");
         parts.put("type", "array");
         parts.putObject("items").put("$ref", "#/components/schemas/ExplanationPart");
-        for (String key : new String[]{"declaration", "canonical", "quantifier", "bwb", "article", "paragraph", "part"})
+        for (String key : new String[]{"declaration", "canonical", "quantifier", "bwb", "article", "paragraph", "part",
+                "rule", "pointer", "variant"})
             props.putObject(key).put("type", "string");
-        props.putObject("owner").put("type", "string").put("nullable", true);
+        for (String key : new String[]{"owner", "group"}) props.putObject(key).put("type", "string").put("nullable", true);
         for (String key : new String[]{"empty", "holds", "followed"}) props.putObject(key).put("type", "boolean");
-        for (String key : new String[]{"threshold", "members", "holding", "unjudged"})
+        for (String key : new String[]{"threshold", "members", "holding", "unjudged", "position"})
             props.putObject(key).put("type", "integer");
         return s;
     }

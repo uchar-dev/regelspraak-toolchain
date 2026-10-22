@@ -150,7 +150,7 @@ public class ExplanationPartsServiceTest {
             "V1 is aangemeld, omdat de jutter ingezetene is",
             "V2 is aangemeld, omdat de jutter ingezetene is");
 
-    private static final String GROUND_PARTS = "GROUND[«. Grondslag: »"
+    private static final String GROUND_PARTS = "GROUND{rule=ervaren}[«. Grondslag: »"
             + " STATUTE{bwb=BWBR0004045, article=20, paragraph=1, part=b}«BWBR0004045&artikel=20&lid=1&o=b» « · »"
             + " NOTE«\"met ingang van de dag waarop hij ervaren is\"» « · lemma's: » LEMMA«ervaren-jutter» « · »"
             + " LEMMA«strandgoed» « · afwijking, niet gevolgd: » DEVIATION{followed=false}«oude-jutter» «; »"
@@ -188,7 +188,8 @@ public class ExplanationPartsServiceTest {
                     + " CONDITION{holds=true, quantifier=all}[CONDITION{holds=true}[«het onderwerp » " + ERVAREN
                     + " « is»] « » CONNECTIVE«en» « »"
                     + " CONDITION{holds=true}[" + LEEFTIJD + " « (» VALUE«16» «) is kleiner dan » VALUE«18»]]"
-                    + " «; verdrongen: de regel '» RULE«premie» «'» GROUND[«. Grondslag: »"
+                    + " «; verdrongen: de regel '» RULE«premie» «'»"
+                    + " GROUND{group=premie, pointer=/defaults/0, position=1, variant=jeugdpremie}[«. Grondslag: »"
                     + " STATUTE{bwb=BWBR0004045, article=20, paragraph=2}«BWBR0004045&artikel=20&lid=2» « · lemma's: »"
                     + " LEMMA«jeugdpremie» « · afwijking: » DEVIATION{followed=true}«oude-premie»]",
             8, "SUBJECT«J3» « is niet » " + ERVAREN + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
@@ -231,6 +232,8 @@ public class ExplanationPartsServiceTest {
         assertEquals(EXPECTED, sentences(answer));
         Set<String> kinds = ExplanationPartsCheck.assertPartsAreTheSentences(answer.get("explanation"),
                 answer.get("explanationParts"));
+        assertEquals(5, ExplanationPartsCheck.assertGroundsNameTheirDeciders(answer.get("explanationParts"),
+                DescriptorLoader.MAPPER.readTree(UcharBuild.document(Resolver.resolve(SOURCE)))));
         Set<String> every = new TreeSet<>(Arrays.stream(Part.Kind.values()).map(Part.Kind::name).toList());
         assertEquals(every, kinds, "elke soort komt voor");
         for (Map.Entry<Integer, String> e : new java.util.TreeMap<>(PARTS).entrySet())

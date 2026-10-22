@@ -64,10 +64,13 @@ class ExplanationDefaultStatuteAnnotationsServiceTest {
                     + " BWBR0004045&artikel=3&lid=1 · lemma's: uitsluiting; BWBR0004045&artikel=3&lid=2 · \"met ingang"
                     + " van de dag van de dienst; ook bij uitzending\"");
 
-    /** The last part of each sentence, its ground. */
+    /** The last part of each sentence, its ground, with the default whose annotations it carries (card
+     *  explanation-ground-source). */
     private static final List<String> GROUNDS = List.of(
-            "GROUND[«. Grondslag: » STATUTE{bwb=BWBR0004045, article=2}«BWBR0004045&artikel=2»]",
-            "GROUND[«. Grondslag: » STATUTE{bwb=BWBR0004045, article=3, paragraph=1}«BWBR0004045&artikel=3&lid=1»"
+            "GROUND{group=penning, pointer=/defaults/1, position=2, variant=penning}[«. Grondslag: »"
+                    + " STATUTE{bwb=BWBR0004045, article=2}«BWBR0004045&artikel=2»]",
+            "GROUND{group=penning, pointer=/defaults/0, position=1, variant=uitsluiting bij dienstverband}"
+                    + "[«. Grondslag: » STATUTE{bwb=BWBR0004045, article=3, paragraph=1}«BWBR0004045&artikel=3&lid=1»"
                     + " « · lemma's: » LEMMA«uitsluiting» «; »"
                     + " STATUTE{bwb=BWBR0004045, article=3, paragraph=2}«BWBR0004045&artikel=3&lid=2» « · »"
                     + " NOTE«\"met ingang van de dag van de dienst; ook bij uitzending\"»]");
@@ -89,6 +92,8 @@ class ExplanationDefaultStatuteAnnotationsServiceTest {
         for (JsonNode z : answer.get("explanation")) sentences.add(z.asText());
         assertEquals(EXPECTED, sentences);
         ExplanationPartsCheck.assertPartsAreTheSentences(answer.get("explanation"), answer.get("explanationParts"));
+        assertEquals(2, ExplanationPartsCheck.assertGroundsNameTheirDeciders(answer.get("explanationParts"),
+                DescriptorLoader.MAPPER.readTree(UcharBuild.document(Resolver.resolve(SOURCE)))));
         for (int i = 0; i < GROUNDS.size(); i++) {
             JsonNode parts = answer.get("explanationParts").get(i);
             JsonNode ground = DescriptorLoader.MAPPER.createArrayNode().add(parts.get(parts.size() - 1));

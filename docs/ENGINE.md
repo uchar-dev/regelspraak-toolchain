@@ -286,7 +286,7 @@ the only way to the plain sentence, so `explanation` and `explanationParts` cann
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
 | `MEMBERS` | group | the members of a fold that carry its outcome, after the colon | `members` (m), `holding` (k), `unjudged` |
-| `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | — |
+| `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | the decider whose annotations they are (below): `rule`, or `group`, `pointer`, `position` and `variant` where it has a name |
 | `STATUTE` | leaf | a Juriconnect anchor, literally | `bwb`, `article`, and `paragraph` and `part` where it names them |
 | `LEMMA` | leaf | the slug of a lemma | — |
 | `DEVIATION` | leaf | the slug of a deviation | `followed` |
@@ -294,6 +294,25 @@ the only way to the plain sentence, so `explanation` and `explanationParts` cann
 
 Without its last part (`GROUND`) a sentence is the sentence a rule without annotations gets. There is no kind for a CGM
 concept: no rule annotation carries one.
+
+**The decider of a ground.** `GROUND` names the rule or the default whose `statuteAnnotations` it carries, in the
+terms of the IR, so a reader finds that decider and its annotations in the document (and from there the `// Bron:`
+block in the sources) without reading the sentence, which may name several rules:
+
+- a rule — the rule of a characteristic assignment, or a rule that decides in a defaults group as the base of a
+  subtype's stack (uchar's RUNTIME-SEMANTICS ch. 7.10): `rule`, the name of its form, `rules.rules[].name`, which
+  carries the annotations for all its versions (IR-SPEC ch. 3.1); the model names a version `"<name> #i"`, the key
+  never does;
+- a default: `group`, the name of its group, `rules.prioritizedDefaults[].name` (null only where the document gives
+  the group no name, which WF-107 refuses and uchar's loader reads); `pointer`, the default in that group as a JSON
+  Pointer, `/defaults/1` or, nested in an exception group, `/defaults/0/exceptions/members/0/defaults/0` (the engine's
+  pointer without the group's index in the document, because a scope moves that index and not the name); `position`,
+  its place in its chain, 1-based, the n of "de variant op plaats n"; and `variant`, its name (`Default.name`), where
+  it has one. The name alone is no identity: a default is in no namespace, and an exception may lose its name
+  (IR-SPEC ch. 6.1).
+
+A sentence without `GROUND` has no decider with annotations: a rule or block without `// Bron:` lines, and the
+defaults and the rule the opgave marker makes.
 
 **The grammar of the ground** (`engine/Ground`). The annotations are free text on the wire (uchar's IR-SPEC ch. 3.1,
 WF-082: one string per `// Bron:` line of a rule, provenance only); their structure is the convention of the werkbank's

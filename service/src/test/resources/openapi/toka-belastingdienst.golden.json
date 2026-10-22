@@ -4385,7 +4385,7 @@
       },
       "ExplanationPart": {
         "type": "object",
-        "description": "Een stuk van een uitlegzin: een blad met text, of een groep (CONDITION, MEMBERS, GROUND) met parts, waarvan de tekst die van haar stukken achter elkaar is. Per kind: SUBJECT het label van een instantie, het onderwerp of een lid van een kwantorvouw; NAME een gedeclareerde naam in het vocabulaire van het antwoord, met declaration (ATTRIBUUT, KENMERK, ROL of PARAMETER), owner en canonical, de sleutels kind, owner en canonical van een element van vocabularies; QUOTE regeltekst zoals geschreven, met dezelfde drie waar het operand één declaratie leest; VALUE een waarde met haar eenheid, met empty: true bij een lege; RULE de naam van een regel of van een variant van een defaults-groep; CONNECTIVE een woord dat de logica tussen de delen draagt (omdat, want, maar, en, of, en niet, niet geldt, gold niet); TEXT lijm; CONDITION een voorwaarde, met holds, het oordeel van de motor (ontbreekt waar de motor de knoop zonder oordeel bereikte), en bij een samenstelling of een kwantorvouw quantifier (all, none, atLeast, atMost, exactly, the) met threshold bij een telling; MEMBERS de leden van een kwantorvouw die haar uitkomst dragen, met members (m), holding (k) en unjudged; GROUND de grondslag, het laatste stuk van de zin, met de punt en 'Grondslag: ' als TEXT ervoor; STATUTE een Juriconnect-anker, met bwb, article en, waar het ze noemt, paragraph en part; LEMMA een lemma; DEVIATION een afwijking, met followed; NOTE elk ander segment van een annotatie.",
+        "description": "Een stuk van een uitlegzin: een blad met text, of een groep (CONDITION, MEMBERS, GROUND) met parts, waarvan de tekst die van haar stukken achter elkaar is. Per kind: SUBJECT het label van een instantie, het onderwerp of een lid van een kwantorvouw; NAME een gedeclareerde naam in het vocabulaire van het antwoord, met declaration (ATTRIBUUT, KENMERK, ROL of PARAMETER), owner en canonical, de sleutels kind, owner en canonical van een element van vocabularies; QUOTE regeltekst zoals geschreven, met dezelfde drie waar het operand één declaratie leest; VALUE een waarde met haar eenheid, met empty: true bij een lege; RULE de naam van een regel of van een variant van een defaults-groep; CONNECTIVE een woord dat de logica tussen de delen draagt (omdat, want, maar, en, of, en niet, niet geldt, gold niet); TEXT lijm; CONDITION een voorwaarde, met holds, het oordeel van de motor (ontbreekt waar de motor de knoop zonder oordeel bereikte), en bij een samenstelling of een kwantorvouw quantifier (all, none, atLeast, atMost, exactly, the) met threshold bij een telling; MEMBERS de leden van een kwantorvouw die haar uitkomst dragen, met members (m), holding (k) en unjudged; GROUND de grondslag, het laatste stuk van de zin, met de punt en 'Grondslag: ' als TEXT ervoor, en met de beslisser waarvan het de statuteAnnotations zijn, in de termen van het IR: bij een regel rule, de naam van haar vorm in rules.rules; bij een default group, de naam van zijn groep in rules.prioritizedDefaults (null waar het document de groep geen naam geeft), pointer, de JSON Pointer van de default in die groep (/defaults/1, of dieper /defaults/0/exceptions/members/0/defaults/0), position, zijn plaats in zijn keten (1-gebaseerd, zoals de zin 'de variant op plaats n' telt), en variant, zijn naam, waar hij er een heeft; STATUTE een Juriconnect-anker, met bwb, article en, waar het ze noemt, paragraph en part; LEMMA een lemma; DEVIATION een afwijking, met followed; NOTE elk ander segment van een annotatie.",
         "required": [
           "kind"
         ],
@@ -4439,7 +4439,20 @@
           "part": {
             "type": "string"
           },
+          "rule": {
+            "type": "string"
+          },
+          "pointer": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          },
           "owner": {
+            "type": "string",
+            "nullable": true
+          },
+          "group": {
             "type": "string",
             "nullable": true
           },
@@ -4462,6 +4475,9 @@
             "type": "integer"
           },
           "unjudged": {
+            "type": "integer"
+          },
+          "position": {
             "type": "integer"
           }
         }

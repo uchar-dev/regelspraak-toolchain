@@ -55,6 +55,63 @@ public final class ExplanationPartsCheck {
         return p.get("text").asText();
     }
 
+    /** Every {@code GROUND} of {@code explanationParts} names its decider in the terms of the IR {@code document}: a rule
+     *  by {@code rule}, the name of its form in {@code rules.rules}; a default by {@code group}, the name of its group in
+     *  {@code rules.prioritizedDefaults}, {@code pointer}, the default in that group, {@code position}, its place in its
+     *  chain, 1-based, and {@code variant}, its name, where it has one. The {@code statuteAnnotations} the document
+     *  gives that decider are the text of the ground after ". Grondslag: ", joined by "; ". Returns the number of
+     *  grounds. */
+    public static int assertGroundsNameTheirDeciders(JsonNode explanationParts, JsonNode document) {
+        int grounds = 0;
+        for (int i = 0; i < explanationParts.size(); i++) {
+            JsonNode parts = explanationParts.get(i);
+            JsonNode last = parts.get(parts.size() - 1);
+            if (!"GROUND".equals(last.path("kind").asText())) continue;
+            grounds++;
+            Set<String> keys = new TreeSet<>();
+            last.fieldNames().forEachRemaining(keys::add);
+            keys.removeAll(Set.of("kind", "parts"));
+            JsonNode decider;
+            if (last.has("rule")) {
+                assertEquals(Set.of("rule"), keys, "zin " + i + ": een regel draagt alleen rule");
+                decider = named(document.at("/rules/rules"), last.get("rule").asText(), "regel", i);
+            } else {
+                assertTrue(keys.equals(Set.of("group", "pointer", "position"))
+                        || keys.equals(Set.of("group", "pointer", "position", "variant")),
+                        "zin " + i + ": de grondslag noemt geen regel en geen default: " + keys);
+                JsonNode group = named(document.at("/rules/prioritizedDefaults"), last.get("group").asText(),
+                        "defaults-groep", i);
+                String pointer = last.get("pointer").asText();
+                decider = group.at(pointer);
+                assertTrue(decider.isObject(), "zin " + i + ": " + pointer + " wijst in de groep geen default aan");
+                assertTrue(pointer.matches("(/defaults/[0-9]+/exceptions/members/[0-9]+)*/defaults/[0-9]+"),
+                        "zin " + i + ": " + pointer + " is geen pad van een default in zijn groep");
+                int index = Integer.parseInt(pointer.substring(pointer.lastIndexOf('/') + 1));
+                assertEquals(index + 1, last.get("position").asInt(), "zin " + i + ": de plaats in de keten");
+                assertEquals(decider.path("name").asText(null), last.path("variant").asText(null),
+                        "zin " + i + ": de naam van de variant");
+            }
+            List<String> annotations = new ArrayList<>();
+            for (JsonNode a : decider.path("statuteAnnotations")) annotations.add(a.asText());
+            assertFalse(annotations.isEmpty(), "zin " + i + ": de beslisser heeft geen statuteAnnotations");
+            StringBuilder text = new StringBuilder();
+            for (JsonNode c : last.get("parts")) text.append(leaves(c, new TreeSet<>()));
+            assertEquals(". Grondslag: " + String.join("; ", annotations), text.toString(), "zin " + i);
+        }
+        return grounds;
+    }
+
+    private static JsonNode named(JsonNode list, String name, String what, int sentence) {
+        JsonNode found = null;
+        for (JsonNode n : list) {
+            if (!name.equals(n.path("name").asText(null))) continue;
+            assertTrue(found == null, "zin " + sentence + ": twee keer " + what + " '" + name + "'");
+            found = n;
+        }
+        assertTrue(found != null, "zin " + sentence + ": geen " + what + " '" + name + "' in het document");
+        return found;
+    }
+
     /** The parts as {@code KIND{meta}«text»} for a leaf, {@code «text»} for glue and {@code KIND{meta}[...]} for a group,
      *  separated by a space. */
     public static String render(JsonNode parts) {

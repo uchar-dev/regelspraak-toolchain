@@ -105,7 +105,9 @@ import java.util.regex.Pattern;
  * ({@link ResolvedRule#statuteAnnotations}; op de draad {@code statuteAnnotations}, uchars IR-SPEC ch. 3.1, WF-082),
  * een default die van zijn blok in {@link Default#statuteAnnotations} (ch. 6.1). De zin van een kenmerktoekenning
  * eindigt dan met ". Grondslag: <tekst>", die van een defaults-groep met de bron van de variant die besliste; zonder
- * annotatie staat er geen (geen verzonnen bron).
+ * annotatie staat er geen (geen verzonnen bron). Het stuk van de grondslag noemt die beslisser in de termen van het IR
+ * (een regel bij haar vorm, een default bij zijn groep en zijn pointer daarin), zodat een lezer zijn annotaties en hun
+ * plek in de bronnen vindt zonder de zin te lezen.
  *
  * <p><b>Gemaakte objecten.</b> Een object dat een objectcreatie van de sessie maakte ({@link Fixpoint#objects}) heeft
  * geen label; de uitleg noemt het met de naam die uchars canonieke tekst het geeft (RUNTIME-SEMANTICS ch. 5.12),
@@ -359,6 +361,9 @@ public final class Verbaliser {
             "/rules/prioritizedDefaults/([0-9]+)/defaults/([0-9]+)((?:/exceptions/members/[0-9]+/defaults/[0-9]+)*)");
     private static final Pattern NESTED_STEP = Pattern.compile("/exceptions/members/([0-9]+)/defaults/([0-9]+)");
     private static final Pattern RULE_POINTER = Pattern.compile("/rules/rules/([0-9]+)/versions/([0-9]+)");
+    /** De pointer van een default, met als groep 1 zijn pointer in zijn groep. */
+    private static final Pattern IN_GROUP = Pattern.compile(
+            "/rules/prioritizedDefaults/[0-9]+(/defaults/[0-9]+(?:/exceptions/members/[0-9]+/defaults/[0-9]+)*)");
     private static final Pattern VERSION = Pattern.compile("([\\s\\S]*) #([0-9]+)");
 
     /** Een variant van een stapel: een default van een groep van het document, of een gewone regel die de stapel van
@@ -491,7 +496,7 @@ public final class Verbaliser {
             }
             if (d.characteristic() && Boolean.FALSE.equals(d.decider().decision()) && readBoolean(bean, d.member()))
                 b.text("; de invoer kende het kenmerk toe, en dat blijft staan");
-            ground(b, groundOf(decider));
+            ground(b, groundOf(decider), deciderOf(decider));
             return b.build();
         }
 
@@ -907,6 +912,24 @@ public final class Verbaliser {
             return v.d().statuteAnnotations();
         }
 
+        /** De beslisser waarvan de grondslag de annotaties is, in de termen van het IR, zodat een lezer hem en zijn
+         *  annotaties in het document vindt zonder de zin te lezen: een regel bij de naam van haar vorm
+         *  ({@link #ruleDecider}), een default bij de naam van zijn groep ({@code group}, null waar het document de groep
+         *  geen naam geeft), zijn pointer in die groep ({@code pointer}: die van de motor zonder de plaats van de groep
+         *  in het document, want een scope verschuift die en de naam niet), zijn plaats in zijn keten ({@code position},
+         *  1-gebaseerd, zoals {@link #name} hem noemt) en zijn naam ({@code variant}) waar hij er een heeft. */
+        private Map<String, Object> deciderOf(Variant v) {
+            if (v.rule() != null) return ruleDecider(v.rule());
+            Matcher m = IN_GROUP.matcher(v.pointer());
+            if (!m.matches())
+                throw new IllegalStateException("de default " + v.pointer() + " van " + label + " heeft geen pointer"
+                        + " in een defaults-groep");
+            Map<String, Object> meta = Part.meta("group", v.group().name(), "pointer", m.group(1),
+                    "position", v.place() + 1);
+            if (v.d().name() != null) meta.put("variant", v.d().name());
+            return meta;
+        }
+
         /** Of de opgavemarkering deze default maakte: een default zonder naam in de groep {@code opgave boven
          *  berekening X}, volgens uchars tabel van herkomst; zijn tekst is van uchar. */
         private boolean generatedOpgave(Variant v) {
@@ -976,8 +999,14 @@ public final class Verbaliser {
                 case FAULTS -> throw faulted(pointer, label);
             }
         }
-        ground(b, sourceAnnotations(r));
+        ground(b, sourceAnnotations(r), ruleDecider(r));
         return b.build();
+    }
+
+    /** Een regel als beslisser van een grondslag: de naam van haar vorm, {@code rules.rules[].name} op de draad, die
+     *  de annotaties draagt voor al haar versies (IR-SPEC ch. 3.1); het model noemt een versie "… #i". */
+    private static Map<String, Object> ruleDecider(ResolvedRule r) {
+        return Part.meta("rule", RegelSpraakModel.formName(r.name()));
     }
 
     /** Het begin van de reden waarom de voorwaarde van {@code r} niet gold: bij een kenmerk dat toch staat, dat deze
@@ -1000,10 +1029,11 @@ public final class Verbaliser {
     }
 
     /** De grondslag als laatste stuk van de zin, met de punt en "Grondslag: " ervoor, zodat de zin zonder dat stuk
-     *  dezelfde is als een zin zonder annotatie; niets zonder annotatie. */
-    private static void ground(Sentence.Builder b, List<String> annotations) {
+     *  dezelfde is als een zin zonder annotatie, en met {@code decider}, wie de annotaties draagt, als meta; niets
+     *  zonder annotatie. */
+    private static void ground(Sentence.Builder b, List<String> annotations, Map<String, Object> decider) {
         if (annotations.isEmpty()) return;
-        b.open(Part.Kind.GROUND, Map.of()).text(". Grondslag: ");
+        b.open(Part.Kind.GROUND, decider).text(". Grondslag: ");
         Ground.write(b, annotations);
         b.close(Part.Kind.GROUND);
     }

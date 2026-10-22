@@ -40,8 +40,10 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         /** The members of a quantifier fold that carry its outcome: {@code members} (m, the members with a verdict),
          *  {@code holding} (k, those for which its matrix holds) and {@code unjudged} (those whose matrix faulted). */
         MEMBERS,
-        /** The ground of the sentence, its last part: the {@code // Bron:} annotations of the rule, parsed
-         *  ({@link Ground}). */
+        /** The ground of the sentence, its last part: the {@code // Bron:} annotations of the rule or of the default
+         *  that decided, parsed ({@link Ground}), with that decider in the terms of the IR: {@code rule}, the name of
+         *  the rule's form, or {@code group}, {@code pointer} (the default in its group), {@code position} (its place
+         *  in its chain, 1-based) and {@code variant} (its name, where it has one). */
         GROUND,
         /** A Juriconnect anchor, with {@code bwb}, {@code article}, and {@code paragraph} and {@code part} where it
          *  names them. */
