@@ -90,6 +90,10 @@ model declares) and the sentences of the messages, which keep their text. The ol
   `explanationParts` beside `explanation`, per sentence its parts with their kind (`docs/ENGINE.md`, "The parts of an
   explanation"); the playground gives it per scenario on both routes. `explanation` is unchanged, and without the flag
   the answer is byte for byte what it was.
+- **The ground names its decider** (card `explanation-ground-source`): a `GROUND` part carries the decider whose
+  `statuteAnnotations` it renders, in the terms of the IR: `rule` (the name of the rule's form), or for a default
+  `group`, `pointer` (the default within its group, RFC 6901), `position` (1-based) and `variant` (its name, where it
+  has one). `explanation` and the text of the parts are unchanged.
 
 ## The pin
 
