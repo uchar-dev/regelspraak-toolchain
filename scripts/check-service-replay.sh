@@ -112,7 +112,12 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # 264 naar 268 met date-with-parts (de datumconstructie), fold-filter-nested-aggregate, fold-filter-inner-fold-via-
 # element-role en jutterswet-schone-maand-na-zware-klacht (een vouw in het filter van een andere vouw); alle vier
 # spelen ook door de dienst.
-EXPECTED_REPLAY_PLAYED=238
+# 2026-10-22, uchar's cards `cycle-across-instances`, `third-condition-level` en zijn fixronde (pin 88c4624b): 241 —
+# de set van gate 12 groeit van 268 naar 271 met jutterswet-vergunningketen (de instantiegeordende kring, een waarde
+# die dezelfde waarde van haar voorganger leest; uit het ir.json), jutterswet-vrijstelling-drie-niveaus (drie niveaus
+# van geneste voorwaarden) en jutterswet-premietabel-twee-ofcellen (een beslistabelrij met twee of-cellen); alle drie
+# spelen ook door de dienst.
+EXPECTED_REPLAY_PLAYED=241
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
