@@ -34,3 +34,28 @@ uchar een lezing van de waarde-expressie naast die van de voorwaarde).
 Na het advies aan te scherpen. Minimaal: op de vijf service-verzoeken en s01 krijgt elk van de 17 genoemde
 uitkomsten, waar het antwoord haar een waarde geeft, een zin; de bestaande zinnen blijven bytegelijk; `make gates`
 groen.
+
+## Voorlopige besluiten (2026-10-22, naar het Fable-advies)
+
+Bron: `uchar-dev/research/uitleg-berekende-waarden-2026-10-22/fable-advies.md` (§2–§7). De eigenaar kan elk besluit
+omdraaien.
+
+- **De premisse klopt maar half.** Voor een regel op een attribuut mét voorwaarde legt ch. 5.12 de knopen van de waarde
+  al vast (tussenwaarden, bijdragers van een vouw, eenheid per knoop); de Verbalisator leest ze alleen niet. Een vorm
+  zonder voorwaarde heeft geen lezing: dat levert uchar-kaart `readings-of-unconditional-forms` (U4); de snippets van
+  `percentageOf` repareert uchar in de frontend (U5, mee in `check-admits-instance-cycle`). Deze kaart start na de
+  pin-bump die beide meebrengt.
+- **B1 Reikwijdte:** elke waarde die een gewone regel schrijft, ook leeg; de keten stopt bij invoer, parameter, opgave
+  en een regel buiten de scope.
+- **B2 Eén zin per (object, attribuut)** over alle schrijvers, in de vorm van de defaults-zin, met vier vormen: een
+  regel gold (A), gold en gaf geen waarde (B), geen regel gold en leeg (C), geen regel gold en een invoerwaarde (D).
+- **B3** Waarden alleen uit `readingsOf`; geen bean-lezing voor een berekende waarde, geen rekenaar.
+- **B4 Tussenwaarden:** de lezingen, de parameters, de binders, de ingebouwde functies en de vouwen met hun bijdragers,
+  elk één keer met waarde, plus "vóór de afronding" en "vóór de begrenzing"; geen andere `Binary`-tussenwaarden.
+- **B7 Nieuwe lijm:** "volgens de regel '…':", "met …", "vóór de afronding", "vóór de begrenzing", "want de regel '…' gaf
+  geen waarde", "want geen regel gold", "verdrongen: de regel '…'".
+- Ontwerp en technische keuzes: §5 T1 en §7 van het advies (`ComputationExplanation` naast `DefaultsExplanation`, groepen
+  `COMPUTATION` en `VARIANT` in de stukken, nieuwe zinnen per object na de defaults-zinnen, een tijdlijn-doel als "een
+  tijdlijn" zonder berekening). Acceptatie zoals §5 T1 (a)–(e), met de vloer `EXPECTED_MIN_EXPLAINED_COMPUTATIONS` in
+  `check-service-replay.sh`.
+- `explanation-part-groups` (punt 2, `VARIANT`) en deze kaart delen de groep `VARIANT`: wie eerst bouwt, legt haar vast.
