@@ -94,6 +94,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
   `statuteAnnotations` it renders, in the terms of the IR: `rule` (the name of the rule's form), or for a default
   `group`, `pointer` (the default within its group, RFC 6901), `position` (1-based) and `variant` (its name, where it
   has one). `explanation` and the text of the parts are unchanged.
+- **Computed values are explained** (card `explanation-computed-attributes`): every attribute an ordinary rule writes
+  gets one sentence per object, after the sentences of the defaults groups, with the rule that held, the value, how it
+  was computed (the values the computation read, the members of a fold, the value before a rounding or a bound) and why
+  the other writers did not write; the parts have two new groups, `COMPUTATION` and `VARIANT` (`docs/ENGINE.md`, "The
+  parts of an explanation"). The sentences that were there are unchanged and keep their order.
 
 ## The pin
 
@@ -296,9 +301,9 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service
   refuses them as `UNSUPPORTED`. 30 of the goldens gate 12 plays need one; the replay gate lists them.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
-- **The explanation** explains characteristic-attribution rules and defaults groups, not computations, consistencies or
-  creations, whose readings uchar has as well. An attribution rule outside the scope of an entry point has no rule in
-  its build and gets the one sentence "de regel '…' staat buiten deze berekening".
+- **The explanation** explains characteristic-attribution rules, defaults groups and the values ordinary rules
+  compute, not consistencies or creations, whose readings uchar has as well. A rule outside the scope of an entry point
+  has no rule in its build and gets the one sentence "de regel '…' staat buiten deze berekening".
 - **The playground trace** names per fired rule the labels it bound and how often, but no value: uchar's report
   carries none. The values stand in the scenario's `fixpoint`, read from the case's own session.
 - **The sentence of an expectation.** uchar's scenario resolver gives the line an expectation begins on

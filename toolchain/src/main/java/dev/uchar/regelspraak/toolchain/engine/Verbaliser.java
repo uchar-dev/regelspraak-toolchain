@@ -101,6 +101,15 @@ import java.util.regex.Pattern;
  * draad legt {@code Uitzondering op} en {@code Afwijking van} daar gelijk vast, en een geneste variant met de keten
  * van haar lagen.
  *
+ * <p><b>Berekende waarden.</b> Een attribuut dat de gewone regels van het document op een object schrijven
+ * (gelijkstelling, berekening, initialisatie; niet een regel die ch. 7.10 in een stapel opnam, die staat in de zin van
+ * haar stapel) krijgt per object één zin over al zijn schrijvers samen ({@link ComputationExplanation}): de regel die
+ * gold met de waarde, hoe zij die berekende (de regeltekst van haar waarde, met elke waarde die de berekening las of
+ * vouwde, de leden van een vouw met wat elk bijdroeg, en de waarde vóór een afronding en vóór een begrenzing) en
+ * waarom zij gold; daarna elke andere schrijver met de reden dat zij niet schreef. Alle waarden komen uit de lezing van
+ * de regel ({@link DroolsBackend#readingsOf}), die sinds uchars kaart readings-of-unconditional-forms ook een regel
+ * zonder voorwaarde heeft; alleen een invoerwaarde, waar geen regel schreef, staat op de bean.
+ *
  * <p><b>Bronverwijzing.</b> Een regel draagt de {@code // Bron:}-annotaties die direct boven haar kop staan
  * ({@link ResolvedRule#statuteAnnotations}; op de draad {@code statuteAnnotations}, uchars IR-SPEC ch. 3.1, WF-082),
  * een default die van zijn blok in {@link Default#statuteAnnotations} (ch. 6.1). De zin van een kenmerktoekenning
@@ -180,9 +189,10 @@ public final class Verbaliser {
      * dienst-verzoek-id) op de bijbehorende, gevuurde en teruggeschreven bean; {@code typePerLabel} het objecttype per
      * label, op het model van het document. Per label eerst één zin per kenmerktoekenning van zijn type, in de volgorde
      * van het document, dan één zin per defaults-groep van zijn type: wat de motor besliste ({@code decisions}, uit
-     * {@link DroolsBackend#decisionsOf} van dezelfde sessie). Na de labels volgen zo de objecten die een creatie van
-     * de sessie maakte, bij hun naam ({@link #madeName}), in de volgorde van het fixpunt, elk met het objecttype
-     * waarvan het de bean is. Daarna één zin per kenmerktoekenning buiten de scope ({@link Document#outside}) op het
+     * {@link DroolsBackend#decisionsOf} van dezelfde sessie), dan één zin per attribuut dat de gewone regels van het
+     * document op zijn type schrijven ({@link ComputationExplanation}). Na de labels volgen zo de objecten die een
+     * creatie van de sessie maakte, bij hun naam ({@link #madeName}), in de volgorde van het fixpunt, elk met het
+     * objecttype waarvan het de bean is. Daarna één zin per regel buiten de scope ({@link Document#outside}) op het
      * type van een label of een gemaakt object.
      *
      * @throws IllegalStateException een pointer die niet op het document terug te leggen is, een beslissing over
@@ -210,6 +220,7 @@ public final class Verbaliser {
             if (ot == null || bean == null) continue;
             assignments(label, bean, ot, sink);
             new DefaultsExplanation(document, label, bean, ot, decisions).sentences(sink);
+            new ComputationExplanation(label, bean, ot, decisions).sentences(sink);
             document.outside().forEach((rule, type) -> {
                 for (ObjectType t : ot.chain()) if (t.name.equalsIgnoreCase(type)) outside.add(rule);
             });
@@ -327,9 +338,9 @@ public final class Verbaliser {
      * model, de defaults-groepen ernaast, waarop de pointers van {@link DroolsBackend#decisionsOf} en de vormen van de
      * lezingen terug te leggen zijn, de wandeling van elke lezing en kenmerkcheck over een rol, en de posities van de
      * knopen, waarop de nummers van de lezingen liggen. De emitter schrijft elke groep, default, uitzonderingsgroep en
-     * elk lid op zijn index, en een regel als vorm met haar versies ("naam #i"). {@code outside} noemt de
-     * kenmerktoekenningen van de bron die de scope van een entrypoint niet draagt, met het objecttype van hun doel: zij
-     * hebben in de build geen regel en dus geen lezing.
+     * elk lid op zijn index, en een regel als vorm met haar versies ("naam #i"). {@code outside} noemt de regels van de
+     * bron die een kenmerk of een attribuut toekennen en die de scope van een entrypoint niet draagt, met het objecttype
+     * van hun doel: zij hebben in de build geen regel en dus geen lezing.
      */
     public record Document(IrLoader.Loaded loaded, NodePositions positions, Map<String, String> outside) {
         public Document {
@@ -343,7 +354,7 @@ public final class Verbaliser {
             return new Document(positioned.loaded(), positioned.positions(), Map.of());
         }
 
-        /** Dit document met de kenmerktoekenningen buiten de scope: vormnaam op het objecttype van hun doel. */
+        /** Dit document met de regels buiten de scope: vormnaam op het objecttype van hun doel. */
         public Document withOutside(Map<String, String> rules) {
             return new Document(loaded, positions, rules);
         }
@@ -627,16 +638,7 @@ public final class Verbaliser {
                 if (present) b.text(" uit de invoer");
                 return;
             }
-            Object v = readRaw(bean, Namen.getter(member));
-            if (v == null) {
-                b.text("heeft geen ");
-                attributeName(b, type, member);
-                return;
-            }
-            b.text("houdt als ");
-            attributeName(b, type, member);
-            b.text(" de invoerwaarde ");
-            value(b, render(v, type.attribute(member)), false);
+            attributeStanding(b, bean, type, member);
         }
 
         private Predicate predicateOf(String member, boolean present) {
@@ -943,6 +945,464 @@ public final class Verbaliser {
         }
     }
 
+    // ---------------- berekende waarden ----------------
+
+    /** De soorten knopen, zoals de draad ze spelt, die in een berekening iets lezen of samenvatten: de zin noemt elk met
+     *  de waarde van zijn knoop. Een {@code Literal} en een {@code Binary} niet: die staan in de regeltekst. */
+    private static final Set<String> OPERAND_KINDS = Set.of("AttributeReference", "ParameterReference",
+            "DimensionCellRead", "BinderRef", "BuiltinCall", "Aggregation", "Fold");
+
+    /** Van {@link #OPERAND_KINDS} de soorten die één waarde lezen, en een gelijste vouw: als wortel van een waarde zijn
+     *  zij de regeltekst zelf, met hun waarde, zonder "met". */
+    private static final Set<String> READ_KINDS = Set.of("AttributeReference", "ParameterReference",
+            "DimensionCellRead", "BinderRef", "Fold");
+
+    /** Een schrijver van een attribuut op één object: een versie van een gewone regel, haar doel, haar pointer in het
+     *  document en haar lezing op het object. */
+    private record Writer(ResolvedRule rule, Expr.AttributeReference target, String pointer, ConditionReading reading) {}
+
+    /**
+     * De zinnen over de attributen die de gewone regels van het document op één object schrijven: een gelijkstelling,
+     * een berekening en een initialisatie, op het type van het object of een supertype ervan (IR-SPEC ch. 2.2). Een
+     * regel die ch. 7.10 in een stapel van het object opnam, telt niet mee: zij staat in de zin van haar stapel (haar
+     * pointer staat in {@link DefaultsDecision#rootChains}). Een regel op een supertype die de motor op het object niet
+     * las, terwijl het type van het object een stapel op haar doel heeft, telt ook niet mee: die stapel beslist het doel
+     * op dat type (ch. 7.10), en de regel loopt er niet. Per attribuut één zin over al zijn schrijvers, in de volgorde
+     * van het document, in een van vier vormen:
+     *
+     * <ul>
+     *   <li>een regel gold en gaf een waarde: "heeft als X W volgens de regel 'R'", haar berekening en waarom zij gold;</li>
+     *   <li>een regel gold en gaf geen waarde (RUNTIME-SEMANTICS ch. 1.2g): wat het doel houdt, "want de regel 'R' gaf
+     *       geen waarde", haar berekening en waarom zij gold;</li>
+     *   <li>geen regel gold en het doel is leeg: "heeft geen X, want geen regel gold";</li>
+     *   <li>geen regel gold en het doel houdt een invoerwaarde: "houdt als X de invoerwaarde W, want geen regel
+     *       gold".</li>
+     * </ul>
+     *
+     * <p>Daarna elke andere schrijver als groep {@link Part.Kind#VARIANT}, met de reden dat zij niet schreef: haar
+     * voorwaarde gold niet (het lid waar de motor stopte), zij valt buiten haar geldigheid, zij gold en gaf geen waarde,
+     * of zij is een initialisatie die niet aan de beurt was ("verdrongen"). Dan de grondslag van de regel die gold.
+     *
+     * <p>De berekening ({@link Part.Kind#COMPUTATION}) is de regeltekst van de waarde, met elke knoop die iets leest of
+     * samenvat ({@link #OPERAND_KINDS}) met de waarde die de motor er las, elke brontekst één keer; leest de waarde één
+     * declaratie of vouwt zij over een verzameling, dan is die knoop de regeltekst zelf, met zijn waarde, en de
+     * regeltekst van een {@code Let} is die van haar lichaam, want haar brontekst is de definitie van haar binder; een
+     * binder staat er met de tekst van zijn definitie. Een vouw over een verzameling noemt haar leden met wat elk
+     * bijdroeg ({@link Part.Kind#MEMBERS}), en haar filter, als dat één kenmerkcheck of één lezing is, als regeltekst met
+     * de sleutels van die declaratie. Na de waarden de waarde vóór elke afronding en vóór elke begrenzing. Een knoop die
+     * de motor niet bereikte (de tak van een keuze) staat er zonder waarde. Elke waarde komt uit de lezing van de regel:
+     * de knopen van haar waarde volgen in de nummering op die van haar voorwaarde (ch. 5.12), en een regel zonder
+     * voorwaarde heeft alleen die van haar waarde. Alleen de invoerwaarde, waar geen regel schreef, staat op de bean.
+     *
+     * <p>Een regel op een tijdlijn-doel schreef "een tijdlijn" ({@code timeline: true} op de waarde), zonder berekening:
+     * de zin noemt de perioden niet.
+     */
+    private final class ComputationExplanation {
+        private final String label;
+        private final Object bean;
+        private final ObjectType type;
+        /** De pointers van de varianten van de stapels van dit object. */
+        private final Set<String> inStacks = new HashSet<>();
+        /** De doelen van de stapels van dit object, in kleine letters. */
+        private final Set<String> stackTargets = new HashSet<>();
+
+        ComputationExplanation(String label, Object bean, ObjectType type, List<DefaultsDecision> decisions) {
+            this.label = label;
+            this.bean = bean;
+            this.type = type;
+            for (DefaultsDecision d : decisions) {
+                if (d.object() != bean) continue;
+                for (List<String> chain : d.rootChains()) inStacks.addAll(chain);
+                stackTargets.add(d.member().toLowerCase(Locale.ROOT));
+            }
+        }
+
+        void sentences(List<Sentence> sink) {
+            Map<String, List<Writer>> perTarget = new LinkedHashMap<>();
+            for (ResolvedRule r : document.rules()) {
+                if (r.kind() == ResolvedRule.Kind.KENMERKTOEKENNING) continue;
+                if (!(r.target() instanceof Expr.AttributeReference ref) || ref.objectType() == null) continue;
+                if (!type.isA(ref.objectType())) continue;
+                String pointer = document.positions().versionOf(r);
+                if (pointer == null)
+                    throw new IllegalStateException("de regel '" + r.name() + "' staat niet als versie in het document"
+                            + " van de uitleg: haar lezing heeft geen vorm");
+                if (inStacks.contains(pointer)) continue;
+                String target = ref.attribute().toLowerCase(Locale.ROOT);
+                if (stackTargets.contains(target) && !readings.getOrDefault(pointer, Map.of()).containsKey(bean))
+                    continue;
+                perTarget.computeIfAbsent(target, k -> new ArrayList<>())
+                        .add(new Writer(r, ref, pointer, reading(pointer, bean, label)));
+            }
+            for (List<Writer> writers : perTarget.values()) sink.add(sentence(writers));
+        }
+
+        private Sentence sentence(List<Writer> writers) {
+            String member = writers.get(0).target().attribute();
+            boolean timeline = type.granularityOf(member) != null;
+            List<Writer> wrote = new ArrayList<>(), empty = new ArrayList<>();
+            Object written = null;
+            for (Writer w : writers) {
+                ConditionReading.Status status = w.reading().status();
+                if (status == ConditionReading.Status.FAULTS) throw faulted(w.pointer(), label);
+                if (status != ConditionReading.Status.HOLDS) continue;
+                Object v = valueRead(w).of(w.rule().value()).value();
+                if (v == null || v instanceof List<?> periods && periods.isEmpty()) {
+                    empty.add(w);
+                    continue;
+                }
+                if (!wrote.isEmpty() && !same(written, v))
+                    throw new IllegalStateException("de regels '" + formName(wrote.get(0)) + "' en '" + formName(w)
+                            + "' gelden op " + label + " met verschillende waarden voor '" + member + "' (" + written
+                            + " en " + v + "), en de uitleg volgt een sessie zonder fout");
+                if (wrote.isEmpty()) written = v;
+                wrote.add(w);
+            }
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+            List<Writer> deciders = wrote.isEmpty() ? empty : wrote;
+            if (!wrote.isEmpty()) {
+                b.text("heeft als ");
+                attributeName(b, type, member);
+                b.text(" ");
+                Writer first = wrote.get(0);
+                if (timeline) b.leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
+                else value(b, written(first, member), false);
+                for (int i = 0; i < wrote.size(); i++) {
+                    b.text(i == 0 ? " volgens " : ", en volgens ");
+                    decider(b, wrote.get(i), member, timeline, false);
+                }
+            } else {
+                standing(b, member, timeline);
+                b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" ");
+                if (empty.isEmpty()) b.text("geen regel gold");
+                for (int i = 0; i < empty.size(); i++) {
+                    if (i > 0) b.text(", en ");
+                    decider(b, empty.get(i), member, timeline, true);
+                }
+            }
+            for (Writer w : writers) if (!deciders.contains(w)) variant(b, w);
+            if (!deciders.isEmpty())
+                ground(b, sourceAnnotations(deciders.get(0).rule()), ruleDecider(deciders.get(0).rule()));
+            return b.build();
+        }
+
+        /** De waarde die regel {@code w} op {@code member} schreef, zoals de motor haar las: een getal met de decimalen
+         *  van het doel, zoals de zin van een defaults-groep het noemt, en met de eenheid van de knoop, of zonder die met
+         *  die van het doel. */
+        private String written(Writer w, String member) {
+            ConditionReading.NodeReading n = valueRead(w).of(w.rule().value());
+            Datatype target = type.attribute(member);
+            if (!(n.value() instanceof BigDecimal d)) return render(n.value(), target);
+            String unit = n.unit() != null ? n.unit().abbreviation() : unitWord(target);
+            String number = nlNumber(d, target);
+            return unit == null ? number : number + " " + unit;
+        }
+
+        /** Wat het doel houdt waar geen regel een waarde schreef: leeg of de invoerwaarde; van een tijdlijn-doel "een
+         *  tijdlijn". */
+        private void standing(Sentence.Builder b, String member, boolean timeline) {
+            Object v = readRaw(bean, Namen.getter(member));
+            if (!timeline || v == null) {
+                attributeStanding(b, bean, type, member);
+                return;
+            }
+            b.text("houdt als ");
+            attributeName(b, type, member);
+            b.text(" de invoerwaarde ").leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
+        }
+
+        /** Een regel die gold: haar naam, haar berekening en waarom zij gold; met {@code gaveNothing} dat zij geen waarde
+         *  gaf. Een initialisatie zonder voorwaarde gold omdat het doel in de invoer leeg was, zoals de zin van een
+         *  initialisatie in een stapel het zegt. */
+        private void decider(Sentence.Builder b, Writer w, String member, boolean timeline, boolean gaveNothing) {
+            ResolvedRule r = w.rule();
+            b.text("de regel '").leaf(Part.Kind.RULE, formName(w)).text("'");
+            if (gaveNothing) b.text(" gaf geen waarde");
+            Condition c = r.condition();
+            boolean initialisation = r.kind() == ResolvedRule.Kind.INITIALISATIE;
+            if (c == null && !initialisation) b.text(" (onvoorwaardelijk)");
+            if (!timeline) computation(b, w, valueRead(w));
+            if (c != null) {
+                b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
+                verbaliseCondition(b, c, read(w.pointer(), bean, label, c), w.target().objectType(),
+                        writtenByUchar(r));
+            } else if (initialisation) {
+                b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" de ");
+                attributeName(b, type, member);
+                b.text(" in de invoer leeg was");
+            }
+        }
+
+        /** Een schrijver die niet schreef, als groep met de "; " ervoor. */
+        private void variant(Sentence.Builder b, Writer w) {
+            ConditionReading.Status status = w.reading().status();
+            boolean displaced = status == ConditionReading.Status.DISPLACED;
+            if (displaced && w.rule().kind() != ResolvedRule.Kind.INITIALISATIE)
+                throw new IllegalStateException("de motor noemt '" + w.rule().name() + "' op " + label + " niet aan de"
+                        + " beurt, en alleen een initialisatie buiten een stapel wacht op haar beurt");
+            b.open(Part.Kind.VARIANT, displaced ? Part.meta("decided", false, "displaced", true)
+                    : Part.meta("decided", false));
+            if (displaced) {
+                b.text("; verdrongen: de regel '").leaf(Part.Kind.RULE, formName(w)).text("'");
+            } else {
+                b.text("; de regel '").leaf(Part.Kind.RULE, formName(w)).text("' ");
+                Condition c = w.rule().condition();
+                switch (status) {
+                    case HOLDS -> b.text("gaf geen waarde");
+                    case FAILS -> {
+                        if (c == null)
+                            throw new IllegalStateException("de motor noemt de voorwaarde van '" + w.rule().name()
+                                    + "' op " + label + " onwaar, en de regel heeft er geen");
+                        didNotHoldBecause(b).text(" ");
+                        firstFailing(b, c, read(w.pointer(), bean, label, c), w.target().objectType(),
+                                writtenByUchar(w.rule()));
+                    }
+                    case OUTSIDE_VALIDITY ->
+                            didNotHoldBecause(b).text(" zij valt op de rekendatum buiten haar geldigheid");
+                    default -> throw new IllegalStateException("de lezing " + status + " van '" + w.rule().name()
+                            + "' op " + label + " heeft geen reden in de zin");
+                }
+            }
+            b.close(Part.Kind.VARIANT);
+        }
+
+        /** De lezing van regel {@code w} op de knopen van haar waarde, die op die van haar voorwaarde volgen. */
+        private Read valueRead(Writer w) {
+            Condition c = w.rule().condition();
+            int offset = c == null ? 0 : document.positions().subtree(c).size();
+            return read(w.pointer(), bean, label, w.rule().value(), offset);
+        }
+
+        /** Hoe regel {@code w} haar waarde berekende, met de dubbele punt ervoor. */
+        private void computation(Sentence.Builder b, Writer w, Read read) {
+            Expr root = w.rule().value();
+            boolean ucharText = writtenByUchar(w.rule());
+            List<Object> nodes = document.positions().subtree(root);
+            b.open(Part.Kind.COMPUTATION, Map.of()).text(": ");
+            Map<Object, String> definitions = definitions(nodes);
+            String rootKind = kindOf(root);
+            // een lezing, parameter of vouw over een verzameling is de regeltekst zelf, met haar waarde; een ingebouwde
+            // functie of een aggregatie over haar argumenten noemt wat zij las
+            boolean single = READ_KINDS.contains(rootKind) || overASet(root, read);
+            if (single) {
+                operand(b, root, read, ucharText, definitions);
+            } else {
+                // de brontekst van een Let is de definitie van haar binder; de berekening is haar lichaam
+                Expr body = root;
+                while (body instanceof Expr.Let l) body = l.body();
+                describe(b, body, ucharText);
+            }
+            Set<Object> covered = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
+            if (root instanceof Expr.DimensionCellRead) covered.addAll(nodes);
+            Set<String> seen = new HashSet<>();
+            List<Expr> operands = new ArrayList<>();
+            for (Object n : nodes) {
+                if (n == root || covered.contains(n)) continue;
+                if (!(n instanceof Expr e) || !OPERAND_KINDS.contains(kindOf(n)) || !read.has(n)) continue;
+                // een dimensiecel is de lezing; het attribuut eronder is geen eigen operand
+                if (e instanceof Expr.DimensionCellRead) covered.addAll(document.positions().subtree(e));
+                if (seen.add(operandKey(e))) operands.add(e);
+            }
+            for (int i = 0; i < operands.size(); i++) {
+                b.text(i == 0 ? ", met " : i == operands.size() - 1 ? " en " : ", ");
+                operand(b, operands.get(i), read, ucharText, definitions);
+            }
+            for (Object n : nodes) {
+                if (!read.has(n) || !read.reached(n)) continue;
+                if (n instanceof Expr.Rounding r) {
+                    b.text("; vóór de afronding ");
+                    value(b, unrounded(r.base(), read), read.of(r.base()).value() == null);
+                } else if (n instanceof Expr.Clamp c) {
+                    b.text("; vóór de begrenzing ");
+                    value(b, unrounded(c.base(), read), read.of(c.base()).value() == null);
+                }
+            }
+            b.close(Part.Kind.COMPUTATION);
+        }
+
+        /** Per binder-lezing onder {@code nodes} de tekst van de definitie van haar binder ({@code Daarbij geldt}): de
+         *  brontekst van de dichtstbijzijnde Let erboven met die binder, zonder de punt erachter. */
+        private Map<Object, String> definitions(List<Object> nodes) {
+            Map<Object, String> sink = new IdentityHashMap<>();
+            for (Object n : nodes) {
+                if (!(n instanceof Expr.BinderRef ref)) continue;
+                String at = document.positions().of(n).pointer(), found = null;
+                int depth = -1;
+                for (Object m : nodes) {
+                    if (!(m instanceof Expr.Let l) || !l.binder().equals(ref.name())) continue;
+                    String p = document.positions().of(m).pointer();
+                    if (at.startsWith(p + "/") && p.length() > depth && l.source() != null
+                            && l.source().snippet() != null && !l.source().snippet().isBlank()) {
+                        depth = p.length();
+                        found = l.source().snippet().trim().replaceAll("\\.$", "");
+                    }
+                }
+                if (found != null) sink.put(n, found);
+            }
+            return sink;
+        }
+
+        /** De waarde van knoop {@code e} vóór een afronding of een begrenzing, met al haar decimalen: die van het type
+         *  van de knoop zouden haar al afronden. */
+        private String unrounded(Expr e, Read read) {
+            ConditionReading.NodeReading n = read.of(e);
+            if (!(n.value() instanceof BigDecimal d)) return renderOperand(e, read);
+            String unit = n.unit() != null ? n.unit().abbreviation()
+                    : (e.type() instanceof Datatype.Percentage || typeOf(e) instanceof Datatype.Percentage) ? "%" : null;
+            String number = nlNumber(d.stripTrailingZeros(), null);
+            return unit == null ? number : number + " " + unit;
+        }
+
+        /** Een knoop die iets leest of samenvat, met de waarde die de motor er las; een vouw over een verzameling met
+         *  haar leden, een binder met de tekst van haar definitie ({@code definitions}). Zonder waarde waar de motor
+         *  de knoop niet bereikte. */
+        private void operand(Sentence.Builder b, Expr e, Read read, boolean ucharText, Map<Object, String> definitions) {
+            Expr.FunctionCall fold = overASet(e, read) ? (Expr.FunctionCall) e : null;
+            if (fold != null) foldText(b, fold);
+            else if (definitions.containsKey(e)) b.leaf(Part.Kind.QUOTE, definitions.get(e));
+            else describe(b, e, ucharText);
+            if (!read.reached(e)) return;
+            ConditionReading.NodeReading n = read.of(e);
+            b.text(" (");
+            value(b, renderOperand(e, read), n.value() == null);
+            b.text(")");
+            if (fold != null) {
+                b.text(": ");
+                contributors(b, fold, n);
+            }
+        }
+
+        /** Of {@code e} een vouw over een verzameling is (RUNTIME-SEMANTICS ch. 3.4): een aggregatie met één argument,
+         *  de verzameling, zonder dimensieselectie; haar knoop draagt haar bijdragers. Een aggregatie over haar
+         *  argumenten ("de laatste van A en B") is er geen. */
+        private boolean overASet(Expr e, Read read) {
+            return e instanceof Expr.FunctionCall f && "Aggregation".equals(kindOf(e)) && f.dimensionSelection() == null
+                    && (f.arguments().size() == 1 || read.has(e) && !read.of(e).contributors().isEmpty());
+        }
+
+        /** Wat een operand de zin noemt, één keer: zijn brontekst en de declaratie die het leest. */
+        private String operandKey(Expr e) {
+            String text = e.source() == null || e.source().snippet() == null ? "" : e.source().snippet().trim();
+            Designatable d = declarationOf(e);
+            return text + "\u0000" + (d == null ? "" : d.kind() + "\u0000" + d.owner() + "\u0000" + d.name());
+        }
+
+        /** De regeltekst van vouw {@code f}, met de declaratie van het attribuut dat zij leest; staat haar filter erin en
+         *  is dat één kenmerkcheck of één lezing, dan is het filter een eigen stuk met de declaratie die het leest, en een
+         *  samenstelling een stuk per lid. */
+        private void foldText(Sentence.Builder b, Expr.FunctionCall f) {
+            String text = f.source().snippet().trim();
+            Designatable read = f.arguments().size() == 1 ? declarationOf(f.arguments().get(0)) : null;
+            Condition filter = f.filter();
+            if (filter == null) {
+                b.leaf(Part.Kind.QUOTE, text, declaration(read));
+                return;
+            }
+            String filterText = summary(filter);
+            int at = text.lastIndexOf(filterText);
+            if (at < 0)
+                throw new IllegalStateException("de tekst van het filter \"" + filterText + "\" staat niet in de tekst"
+                        + " van de vouw \"" + text + "\"");
+            quote(b, text.substring(0, at), read);
+            if (filter instanceof Condition.Compound s) {
+                int from = 0;
+                for (Condition d : s.components()) {
+                    String part = summary(d);
+                    int p = filterText.indexOf(part, from);
+                    if (p < 0)
+                        throw new IllegalStateException("de tekst van het lid \"" + part + "\" staat niet in de tekst van"
+                                + " het filter \"" + filterText + "\"");
+                    quote(b, filterText.substring(from, p), null);
+                    quote(b, part, filterDeclaration(d, f.elementObjectType()));
+                    from = p + part.length();
+                }
+                quote(b, filterText.substring(from), null);
+            } else {
+                quote(b, filterText, filterDeclaration(filter, f.elementObjectType()));
+            }
+            quote(b, text.substring(at + filterText.length()), null);
+        }
+
+        private void quote(Sentence.Builder b, String text, Designatable d) {
+            if (!text.isEmpty()) b.leaf(Part.Kind.QUOTE, text, declaration(d));
+        }
+
+        /** De declaratie die filterlid {@code c} van een vouw over {@code element} leest: het kenmerk van een
+         *  kenmerkcheck, of het ene attribuut of de ene parameter van een vergelijking of een gezegde; anders null. */
+        private Designatable filterDeclaration(Condition c, ObjectType element) {
+            if (c instanceof Condition.CharacteristicCheck k) {
+                List<RoleBindingRef> walk = walkOf(k);
+                return Naming.characteristicOf(walk.isEmpty() ? element : holderOf(walk), k.characteristic());
+            }
+            List<Expr> operands = c instanceof Condition.Comparison v ? List.of(v.left(), v.right())
+                    : c instanceof Condition.Predicate p ? List.of(p.operand()) : List.of();
+            Set<String> keys = new LinkedHashSet<>();
+            Designatable found = null;
+            for (Expr e : operands) {
+                Designatable d = declarationOf(e);
+                if (d != null && keys.add(d.kind() + "\u0000" + d.owner() + "\u0000" + d.name())) found = d;
+            }
+            return keys.size() == 1 ? found : null;
+        }
+
+        /** De leden van vouw {@code f} met wat elk bijdroeg, bij hun naam in de code-unit-volgorde daarvan; een telling
+         *  zonder waarde per lid. Boven vijf de eerste vijf en "en nog k". */
+        private void contributors(Sentence.Builder b, Expr.FunctionCall f, ConditionReading.NodeReading n) {
+            boolean count = f.kind() == Expr.FunctionKind.AANTAL || f.kind() == Expr.FunctionKind.AANTAL_GEVULDE;
+            List<Map.Entry<String, Object>> members = new ArrayList<>();
+            for (ConditionReading.Contributor c : n.contributors()) {
+                if (c.fault() != null)
+                    throw new IllegalStateException("een lid van de vouw \"" + f.source().snippet().trim() + "\" op "
+                            + label + " gaf een evaluatiefout, en de uitleg volgt een sessie zonder fout: "
+                            + c.fault().getMessage());
+                String name = labels.get(c.member());
+                if (name == null)
+                    throw new IllegalStateException("een lid van de vouw \"" + f.source().snippet().trim() + "\" op "
+                            + label + " heeft geen naam: de uitleg noemt de objecten van de invoer en de gemaakte"
+                            + " objecten van het fixpunt, en dit " + c.member().getClass().getSimpleName()
+                            + " is geen van beide");
+                members.add(new java.util.AbstractMap.SimpleImmutableEntry<>(name, c.value()));
+            }
+            members.sort(Map.Entry.comparingByKey());
+            int m = members.size();
+            b.open(Part.Kind.MEMBERS, Part.meta("members", m));
+            if (m == 0) {
+                b.text("er is geen enkel lid");
+            } else {
+                b.text("over ");
+                int shown = Math.min(m, 5);
+                for (int i = 0; i < shown; i++) {
+                    if (i > 0) b.text(i == shown - 1 && m <= 5 ? " en " : ", ");
+                    Map.Entry<String, Object> member = members.get(i);
+                    b.leaf(Part.Kind.SUBJECT, member.getKey());
+                    if (count) continue;
+                    b.text(" (");
+                    value(b, renderRead(f, member.getValue(), n.unit()), member.getValue() == null);
+                    b.text(")");
+                }
+                if (m > 5) b.text(" en nog " + (m - 5));
+                b.text(m == 1 ? ", het enige lid" : " (" + m + " leden)");
+            }
+            b.close(Part.Kind.MEMBERS);
+        }
+
+        /** De soort van knoop {@code node} zoals de draad haar spelt. */
+        private String kindOf(Object node) {
+            NodePositions.Position p = document.positions().of(node);
+            if (p == null)
+                throw new IllegalStateException("de knoop " + node + " staat niet in het document van de uitleg");
+            return p.kind();
+        }
+
+        private String formName(Writer w) { return RegelSpraakModel.formName(w.rule().name()); }
+
+        /** Of twee waarden die twee regels schreven dezelfde zijn; een getal op zijn waarde. */
+        private boolean same(Object a, Object b) {
+            if (a instanceof BigDecimal x && b instanceof BigDecimal y) return x.compareTo(y) == 0;
+            return Objects.equals(a, b);
+        }
+    }
+
     /** Of {@code name} de versie na die van {@code previous} noemt, van één vorm. */
     private static boolean nextVersion(String previous, String name) {
         Matcher a = VERSION.matcher(previous), b = VERSION.matcher(name);
@@ -1058,22 +1518,44 @@ public final class Verbaliser {
         b.leaf(Part.Kind.VALUE, text, empty ? Part.meta("empty", true) : Map.of());
     }
 
+    /** Wat attribuut {@code member} van {@code bean}, van objecttype {@code type}, houdt waar niemand het schreef:
+     *  leeg, of de invoerwaarde, van de bean gelezen. */
+    private void attributeStanding(Sentence.Builder b, Object bean, ObjectType type, String member) {
+        Object v = readRaw(bean, Namen.getter(member));
+        if (v == null) {
+            b.text("heeft geen ");
+            attributeName(b, type, member);
+            return;
+        }
+        b.text("houdt als ");
+        attributeName(b, type, member);
+        b.text(" de invoerwaarde ");
+        value(b, render(v, type.attribute(member)), false);
+    }
+
     /** De lezing van vorm {@code form} op {@code bean}; faalt luid waar de motor er geen gaf. */
     private ConditionReading reading(String form, Object bean, String label) {
         ConditionReading r = readings.getOrDefault(form, Map.of()).get(bean);
         if (r == null)
             throw new IllegalStateException("de motor gaf geen lezing van " + form + " op " + label
-                    + ": de uitleg leest de lezingen van een build met lezingen, van elke vorm met een voorwaarde op elk"
-                    + " object waarop zij loopt");
+                    + ": de uitleg leest de lezingen van een build met lezingen, van elke vorm met een voorwaarde of"
+                    + " een berekende waarde op elk object waarop zij loopt");
         return r;
     }
 
     /** De lezing van vorm {@code form} op {@code bean} met de nummers van de knopen van voorwaarde {@code c}. */
     private Read read(String form, Object bean, String label, Condition c) {
+        return read(form, bean, label, c, 0);
+    }
+
+    /** De lezing van vorm {@code form} op {@code bean} met de nummers van de knopen onder {@code root}, een voorwaarde
+     *  of een waarde van het document, vanaf {@code offset}: de knopen van de waarde van een vorm volgen op die van haar
+     *  voorwaarde (RUNTIME-SEMANTICS ch. 5.12). */
+    private Read read(String form, Object bean, String label, Object root, int offset) {
         ConditionReading r = reading(form, bean, label);
         Map<Object, Integer> numbers = new IdentityHashMap<>();
-        List<Object> nodes = document.positions().subtree(c);
-        for (int i = 0; i < nodes.size(); i++) numbers.put(nodes.get(i), i);
+        List<Object> nodes = document.positions().subtree(root);
+        for (int i = 0; i < nodes.size(); i++) numbers.put(nodes.get(i), offset + i);
         Map<Integer, ConditionReading.NodeReading> perNumber = new HashMap<>();
         for (ConditionReading.NodeReading n : r.nodes()) perNumber.put(n.node(), n);
         return new Read(form, label, numbers, perNumber);
@@ -1106,6 +1588,13 @@ public final class Verbaliser {
         }
 
         boolean reached(Object node) { return of(node).reached(); }
+
+        /** Of de motor een lezing van knoop {@code node} gaf: niet van een knoop in het filter, de matrix of de bron van
+         *  een vouw, die per lid van de vouw gelezen wordt. */
+        boolean has(Object node) {
+            Integer number = numbers.get(node);
+            return number != null && perNumber.containsKey(number);
+        }
 
         boolean holds(Condition c) { return Boolean.TRUE.equals(of(c).value()); }
     }
@@ -1412,7 +1901,12 @@ public final class Verbaliser {
      *  met de decimalen die zijn lexeem schrijft ("30.00" als "30,00"), want het type van een literal noemt ze niet. */
     private String renderOperand(Expr e, Read read) {
         ConditionReading.NodeReading n = read.of(e);
-        Object v = n.value();
+        return renderRead(e, n.value(), n.unit());
+    }
+
+    /** {@link #renderOperand} van waarde {@code v} met eenheid {@code u}, die de motor op knoop {@code e} las, of een
+     *  lid van een vouw op die knoop bijdroeg. */
+    private String renderRead(Expr e, Object v, Unit u) {
         if (v == null) return "onbekend";
         Datatype.Enumeration enumArray = enumerationOf(e);
         if (enumArray != null) return render(v, enumArray);
@@ -1422,7 +1916,7 @@ public final class Verbaliser {
             if (b.scale() < scale) v = b.setScale(scale);
             type = null;
         }
-        String unit = n.unit() != null ? n.unit().abbreviation()
+        String unit = u != null ? u.abbreviation()
                 : (e.type() instanceof Datatype.Percentage || typeOf(e) instanceof Datatype.Percentage) ? "%" : null;
         if (!(v instanceof BigDecimal b)) return renderValue(v, type);
         String number = nlNumber(b, type);

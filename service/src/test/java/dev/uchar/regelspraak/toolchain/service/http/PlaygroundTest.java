@@ -182,10 +182,13 @@ class PlaygroundTest {
             assertTrue(t.get("count").asInt() >= 1, t.toString());
             assertEquals("P1", t.get("labels").get(0).asText(), t.toString());
         }
-        // the uitleg: the characteristic, justified with the value its condition read
+        // the uitleg: the characteristic, justified with the value its condition read, and since card
+        // explanation-computed-attributes the computed korting
         assertFalse(r.has("explanationError"), r.toString());
-        assertEquals(1, r.get("explanation").size(), r.toString());
+        assertEquals(2, r.get("explanation").size(), r.toString());
         String sentence = r.get("explanation").get(0).asText();
         assertTrue(sentence.startsWith("P1 is minderjarig, omdat") && sentence.contains("12"), sentence);
+        assertEquals("P1 heeft als korting 25 volgens de regel 'bepaal korting': 25, omdat het onderwerp minderjarig"
+                + " is", r.get("explanation").get(1).asText());
     }
 }

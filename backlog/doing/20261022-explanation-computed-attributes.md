@@ -59,3 +59,35 @@ omdraaien.
   tijdlijn" zonder berekening). Acceptatie zoals §5 T1 (a)–(e), met de vloer `EXPECTED_MIN_EXPLAINED_COMPUTATIONS` in
   `check-service-replay.sh`.
 - `explanation-part-groups` (punt 2, `VARIANT`) en deze kaart delen de groep `VARIANT`: wie eerst bouwt, legt haar vast.
+
+## Voorlopige besluiten van de bouwer (2026-10-22)
+
+*Gemarkeerd voorlopig: keuzes die het advies niet beslist, dicht bij het advies en bij de zinnen die er al zijn. De
+eigenaar kan elk besluit omdraaien.*
+
+- **V1 Een initialisatie zonder voorwaarde die schreef** krijgt als reden ", omdat de X in de invoer leeg was", de
+  woorden van de zin van een initialisatie in een stapel (`DefaultsExplanation.reason`), niet " (onvoorwaardelijk)":
+  zij schrijft alleen op een leeg doel.
+- **V2 Een schrijver die gold en geen waarde gaf**, naast een die wel schreef, staat als `VARIANT` (`decided: false`)
+  met "; de regel '…' gaf geen waarde", de woorden van de defaults-zin. Gelden twee regels met dezelfde waarde: "…,
+  en volgens de regel '…'…"; geven twee geen waarde: "…, en de regel '…' gaf geen waarde…". De grondslag is die van
+  de eerste.
+- **V3 Vorm B zonder voorwaarde** houdt " (onvoorwaardelijk)" na "gaf geen waarde", zoals vorm A het na de regelnaam
+  zet.
+- **V4 De waarde van vorm A** is die van de wortelknoop van de lezing, met de decimalen van het gedeclareerde doel
+  (zoals de defaults-zin "heeft als premie 100,00" schrijft) en de eenheid van de knoop, of zonder die die van het
+  doel. De waarde vóór een afronding of begrenzing staat met al haar decimalen (de decimalen van het type van de
+  knoop zouden haar al afronden): "vóór de afronding 3.045 EUR", "vóór de afronding 15,43125".
+- **V5 De leden van een vouw** staan na "over", ook bij het ene lid ("over P1 (122 dg), het enige lid"; het advies
+  schrijft één keer "voor"). De ": " vóór de leden staat buiten `MEMBERS`, zoals bij een kwantorvouw nu; de kaart
+  `explanation-part-groups` (punt 1) verplaatst haar voor beide.
+- **V6 Een `Daarbij geldt`-binder** staat in de "met"-lijst met de tekst van zijn definitie, zonder de punt erachter
+  ("de grondpremie is de vondstwaarde van de Jutter gedeeld door 10 (27,345)"), zoals het advies vraagt. De
+  regeltekst van een waarde die een `Let` is, is die van haar lichaam: de brontekst van de `Let` zelf is de definitie
+  van haar binder.
+- **V7 Een tijdlijn-doel** zonder schrijver met een invoerwaarde: "houdt als X de invoerwaarde een tijdlijn".
+- **V8 Een regel op een supertype** waarvan de motor op een object geen lezing gaf, terwijl het type van dat object
+  een stapel op hetzelfde doel heeft (ch. 7.10, golden `jutterswet-wrakerfbasis`), is daar geen schrijver: de stapel
+  beslist het doel. Elke andere ontbrekende lezing faalt luid.
+- **V9 Een aggregatie over haar argumenten** ("de laatste van (A) en (B)") is geen vouw over een verzameling: zij staat
+  als regeltekst met haar argumenten in de "met"-lijst, zoals een ingebouwde functie.

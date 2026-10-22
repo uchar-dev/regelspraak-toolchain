@@ -32,7 +32,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * its own annotation; 'strandpremie', a plain rule on the subtype Strandjutter that replaces the base of the group
  * for a Strandjutter (RUNTIME-SEMANTICS ch. 7.10), so a rule decides in a defaults sentence; and the meldingsdatum,
  * which may be given, so that the opgave marker makes a group and a rule that carry no annotation, also where the
- * rule that computes the meldingsdatum carries one: their sentences have no ground.
+ * rule that computes the meldingsdatum carries one: their sentences have no ground. Since card
+ * explanation-computed-attributes that rule has a sentence of its own, on the berekende meldingsdatum it writes, with
+ * its ground.
  */
 class ExplanationGroundSourceServiceTest {
 
@@ -122,6 +124,7 @@ class ExplanationGroundSourceServiceTest {
                     + " leeftijd (30) is kleiner dan 18. Grondslag: BWBR0004045&artikel=5&lid=1",
             "J1 heeft als meldingsdatum 11-03-2026 volgens 'opgegeven meldingsdatum' (onvoorwaardelijk); verdrongen:"
                     + " 'berekende meldingsdatum'",
+            melding("J1"),
             "J2 is niet gevestigd, want de regel valt op de rekendatum buiten haar geldigheid" + GEVESTIGD,
             "J2 is niet gevestigd, want niet geldt: het onderwerp ingezetene is" + GEVESTIGD,
             notDiffering("J2"),
@@ -130,6 +133,7 @@ class ExplanationGroundSourceServiceTest {
                     + " Grondslag: BWBR0004045&artikel=5&lid=2 · lemma's: jeugdpremie",
             "J2 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk); 'opgegeven"
                     + " meldingsdatum' gaf geen waarde",
+            melding("J2"),
             "J3 is niet gevestigd, want de regel valt op de rekendatum buiten haar geldigheid" + GEVESTIGD,
             "J3 is niet gevestigd, want niet geldt: het onderwerp ingezetene is" + GEVESTIGD,
             notDiffering("J3"),
@@ -138,6 +142,7 @@ class ExplanationGroundSourceServiceTest {
                     + " BWBR0004045&artikel=5&lid=3",
             "J3 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk); 'opgegeven"
                     + " meldingsdatum' gaf geen waarde",
+            melding("J3"),
             "S1 is niet gevestigd, want de regel valt op de rekendatum buiten haar geldigheid" + GEVESTIGD,
             "S1 is niet gevestigd, want niet geldt: het onderwerp ingezetene is" + GEVESTIGD,
             notDiffering("S1"),
@@ -145,7 +150,15 @@ class ExplanationGroundSourceServiceTest {
                     + " want niet geldt: zijn leeftijd (30) is kleiner dan 18; " + JEUGD + " gold niet, want niet geldt:"
                     + " zijn leeftijd (30) is kleiner dan 18. Grondslag: BWBR0004045&artikel=8",
             "S1 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk); 'opgegeven"
-                    + " meldingsdatum' gaf geen waarde");
+                    + " meldingsdatum' gaf geen waarde",
+            melding("S1"));
+
+    /** The sentence of the berekende meldingsdatum the rule 'melding' computes, with its ground. */
+    private static String melding(String label) {
+        return label + " heeft als berekende meldingsdatum 13-03-2026 volgens de regel 'melding' (onvoorwaardelijk): de"
+                + " vinddag van de Jutter plus 3 dagen, met de vinddag van de Jutter (10-03-2026). Grondslag:"
+                + " BWBR0004045&artikel=7";
+    }
 
     /** The sentence of the rule the opgave marker makes, on an object without a given meldingsdatum. */
     private static String notDiffering(String label) {
@@ -154,16 +167,18 @@ class ExplanationGroundSourceServiceTest {
     }
 
     /** The meta of the ground of each sentence, "" where it has none: the two versions of 'gevestigd' are one form,
-     *  the rule and the group the opgave marker makes have none, and the rule 'strandpremie' decides for S1. */
+     *  the rule and the group the opgave marker makes have none, the rule 'strandpremie' decides for S1, and the
+     *  computed berekende meldingsdatum has the ground of the rule 'melding'. */
     private static final String RULE_GEVESTIGD = "{rule=gevestigd}";
+    private static final String RULE_MELDING = "{rule=melding}";
     private static final String BASE = "{group=premie, pointer=/defaults/1, position=2, variant=premie}";
     private static final String NESTED = "/defaults/0/exceptions/members/0/defaults/0";
 
     private static List<String> grounds(String jeugdpremie, String kinderpremie) {
-        return List.of(RULE_GEVESTIGD, RULE_GEVESTIGD, "", BASE, "",
-                RULE_GEVESTIGD, RULE_GEVESTIGD, "", jeugdpremie, "",
-                RULE_GEVESTIGD, RULE_GEVESTIGD, "", kinderpremie, "",
-                RULE_GEVESTIGD, RULE_GEVESTIGD, "", "{rule=strandpremie}", "");
+        return List.of(RULE_GEVESTIGD, RULE_GEVESTIGD, "", BASE, "", RULE_MELDING,
+                RULE_GEVESTIGD, RULE_GEVESTIGD, "", jeugdpremie, "", RULE_MELDING,
+                RULE_GEVESTIGD, RULE_GEVESTIGD, "", kinderpremie, "", RULE_MELDING,
+                RULE_GEVESTIGD, RULE_GEVESTIGD, "", "{rule=strandpremie}", "", RULE_MELDING);
     }
 
     private static final List<String> NAMED_GROUNDS = grounds(
@@ -184,9 +199,9 @@ class ExplanationGroundSourceServiceTest {
 
     /** The whole ground of the two sentences on a nested default and on a rule in a defaults sentence. */
     private static final Map<Integer, String> GROUND_PARTS = Map.of(
-            13, "GROUND{group=premie, pointer=" + NESTED + ", position=1, variant=kinderpremie}[«. Grondslag: »"
+            15, "GROUND{group=premie, pointer=" + NESTED + ", position=1, variant=kinderpremie}[«. Grondslag: »"
                     + " STATUTE{bwb=BWBR0004045, article=5, paragraph=3}«BWBR0004045&artikel=5&lid=3»]",
-            18, "GROUND{rule=strandpremie}[«. Grondslag: » STATUTE{bwb=BWBR0004045, article=8}«BWBR0004045&artikel=8»]");
+            21, "GROUND{rule=strandpremie}[«. Grondslag: » STATUTE{bwb=BWBR0004045, article=8}«BWBR0004045&artikel=8»]");
 
     private static String document() {
         return UcharBuild.document(Resolver.resolve(SOURCE));
@@ -226,7 +241,7 @@ class ExplanationGroundSourceServiceTest {
         List<String> meta = new ArrayList<>();
         for (JsonNode p : parts) meta.add(groundMeta(p));
         assertEquals(grounds, meta);
-        assertEquals(12, ExplanationPartsCheck.assertGroundsNameTheirDeciders(parts,
+        assertEquals(16, ExplanationPartsCheck.assertGroundsNameTheirDeciders(parts,
                 DescriptorLoader.MAPPER.readTree(document)));
     }
 

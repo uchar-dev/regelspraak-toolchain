@@ -273,19 +273,22 @@ The verbaliser (`engine/Verbaliser`) writes every sentence through one builder (
 of parts (`Part`, record `(kind, text, meta, parts)`); `Sentence.text()`, the texts of the leaves after each other, is
 the only way to the plain sentence, so `explanation` and `explanationParts` cannot differ. The service
 (`ExplanationParts`) and both routes of the playground write the tree with one writer: a leaf as `{"kind", "text",
-<meta>}`, a group as `{"kind", <meta>, "parts"}`. The groups stand only where the verbaliser is recursive.
+<meta>}`, a group as `{"kind", <meta>, "parts"}`. The groups stand where the verbaliser is recursive, and around a
+part a consumer may leave out with its glue (`COMPUTATION`, `VARIANT`).
 
 | kind | leaf or group | what | meta |
 |---|---|---|---|
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
 | `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]` |
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute or parameter |
-| `VALUE` | leaf | a value as the engine read it, with its unit; a literal | `empty: true` for an empty one ("onbekend") |
+| `VALUE` | leaf | a value as the engine read it, with its unit; a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for "een tijdlijn", the value of a timeline target |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
-| `MEMBERS` | group | the members of a fold that carry its outcome, after the colon | `members` (m), `holding` (k), `unjudged` |
+| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, after the colon; in a computation the members of a fold over a set, each with what it contributed | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
+| `COMPUTATION` | group | how the rule of a computed value computed it, after the rule's name, with its colon (below) | — |
+| `VARIANT` | group | a writer of a computed value that did not write it, with the `"; "` before it | `decided: false`, and `displaced: true` for an initialisation that was not at its turn |
 | `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | the decider whose annotations they are (below): `rule`, or `group`, `pointer`, `position` and `variant` where it has a name |
 | `STATUTE` | leaf | a Juriconnect anchor, literally | `bwb`, `article`, and `paragraph` and `part` where it names them |
 | `LEMMA` | leaf | the slug of a lemma | — |
@@ -294,6 +297,36 @@ the only way to the plain sentence, so `explanation` and `explanationParts` cann
 
 Without its last part (`GROUND`) a sentence is the sentence a rule without annotations gets. There is no kind for a CGM
 concept: no rule annotation carries one.
+
+**The sentence of a computed value** (card `explanation-computed-attributes`). Every attribute an ordinary rule of the
+document writes on an object of the session (an equation, a calculation, an initialisation; not a rule that uchar's
+RUNTIME-SEMANTICS ch. 7.10 took into a stack, which stands in the sentence of its stack) gets one sentence per object,
+over all its writers, after the sentences of the defaults groups, in one of four forms:
+
+- a rule held and wrote a value: `<SUBJECT> heeft als <NAME> <VALUE> volgens de regel '<RULE>'<COMPUTATION>, omdat
+  <CONDITION>`, or ` (onvoorwaardelijk)<COMPUTATION>` without a condition, or `<COMPUTATION>, omdat de <NAME> in de
+  invoer leeg was` for an initialisation without one;
+- a rule held and gave no value: `<SUBJECT> heeft geen <NAME>, want de regel '<RULE>' gaf geen waarde<COMPUTATION>,
+  omdat <CONDITION>`;
+- no rule held and the target is empty: `<SUBJECT> heeft geen <NAME>, want geen regel gold`;
+- no rule held and the target keeps an input value: `<SUBJECT> houdt als <NAME> de invoerwaarde <VALUE>, want geen
+  regel gold`.
+
+Then each other writer as a `VARIANT`: `; de regel '…' gold niet, want niet geldt: <the member where the engine
+stopped>`, `; de regel '…' gold niet, want zij valt op de rekendatum buiten haar geldigheid`, `; de regel '…' gaf geen
+waarde`, or `; verdrongen: de regel '…'`; then the ground of the rule that held. The `COMPUTATION` is `": "`, the rule
+text of the value (`QUOTE`), and `", met "` with every node that reads or folds something (an attribute, a parameter, a
+dimension cell, a binder of `Daarbij geldt` by the text of its definition, a built-in function, a fold), each rule text
+once, with the value the engine read there; where the value reads one declaration or folds over a set, that node is the
+rule text itself, with its value. A fold over a set has its `MEMBERS` ("over I4 (01-04-2026) en I5 (01-05-2026) (2
+leden)", a count without a value per member), and its filter, where it is one characteristic check or one read, is a
+`QUOTE` of its own with the keys of that declaration. Last come the value before each rounding (`"; vóór de afronding
+"`) and before each bound (`"; vóór de begrenzing "`). Every value is the engine's: the reading of the rule
+(`DroolsBackend.readingsOf`) carries the nodes of its value after those of its condition, and since uchar's card
+`readings-of-unconditional-forms` a rule without a condition has a reading of its value too; only the input value of
+the fourth form is read on the bean. A rule on a timeline target wrote "een tijdlijn" and has no computation. A rule
+outside the scope of an entry point gets the one sentence "de regel '…' staat buiten deze berekening", like an
+attribution rule.
 
 **The decider of a ground.** `GROUND` names the rule or the default whose `statuteAnnotations` it carries, in the
 terms of the IR, so a reader finds that decider and its annotations in the document (and from there the `// Bron:`

@@ -169,6 +169,11 @@ EXPLANATION_UNDETERMINED=(
 # en 610 cases); een leg die stilletjes minder uitlegt, faalt. Het antwoord met uitleg moet dat zonder zijn, ook in de
 # volgorde van de inconsistenties: het fixpunt geeft ze sinds uchar fixpoint-inconsistency-order in een vaste volgorde.
 EXPECTED_MIN_EXPLAINED_CONDITIONS=1241
+# Kaart explanation-computed-attributes: het aantal zinnen over een waarde die een gewone regel schreef, met haar
+# berekening ("<onderwerp> heeft als ...", vorm A van het advies) over de gespeelde goldens: een ondergrens, gemeten
+# 2026-10-22 bij die kaart (pin 88c4624b: 3443 zinnen, waarvan 1852 van vorm A, over 241 goldens en 647 cases); een
+# leg die stilletjes minder berekeningen uitlegt, faalt.
+EXPECTED_MIN_EXPLAINED_COMPUTATIONS=1852
 
 is_undetermined_listed() {
   local e; for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
@@ -217,15 +222,16 @@ output=$(python3 scripts/service_replay.py --corpus uchar/corpus/golden --explan
     --workers "${REPLAY_WORKERS:-4}" "${set_goldens[@]}") || fail "de replay-driver faalde"
 duration=$(( $(date +%s) - begin ))
 
-played=0; excl=0; cases=0; sentences=0; conditions=0
+played=0; excl=0; cases=0; sentences=0; conditions=0; computations=0
 deviations=(); unnamed=(); outdated=(); undetermined=(); explained_goldens=()
-while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined; do
+while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined g_computations; do
   [ -n "$g" ] || continue
   case "$status" in
     PLAYED)
       is_excluded "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_EXCLUDED")
-      [ -n "$g_undetermined" ] || fail "$g: de replay-driver gaf geen telling van de uitleg"
+      [ -n "$g_undetermined" ] && [ -n "$g_computations" ] || fail "$g: de replay-driver gaf geen telling van de uitleg"
       sentences=$((sentences + g_sentences)); conditions=$((conditions + g_conditions))
+      computations=$((computations + g_computations))
       explained_goldens+=("$g")
       if [ "$g_undetermined" -gt 0 ]; then
         is_undetermined_listed "$g" \
@@ -271,6 +277,8 @@ fi
 [ "$conditions" -gt 0 ] || fail "de uitleg verwoordde over $played goldens geen enkele voorwaarde (een lege leg is een faal)"
 [ "$conditions" -ge "$EXPECTED_MIN_EXPLAINED_CONDITIONS" ] \
   || fail "de uitleg verwoordde $conditions voorwaarden, de vloer EXPECTED_MIN_EXPLAINED_CONDITIONS is $EXPECTED_MIN_EXPLAINED_CONDITIONS"
+[ "$computations" -ge "$EXPECTED_MIN_EXPLAINED_COMPUTATIONS" ] \
+  || fail "de uitleg verwoordde $computations berekende waarden, de vloer EXPECTED_MIN_EXPLAINED_COMPUTATIONS is $EXPECTED_MIN_EXPLAINED_COMPUTATIONS"
 [ "$played" -eq "$EXPECTED_REPLAY_PLAYED" ] \
   || fail "$played goldens speelden, EXPECTED_REPLAY_PLAYED pint $EXPECTED_REPLAY_PLAYED (een nieuwe speler: zet het getal bij)"
 
@@ -278,5 +286,5 @@ echo "check-service-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
 echo "  uitgesloten: $excl, bij naam met reden"
-echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
+echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), $computations berekende waarden (vloer $EXPECTED_MIN_EXPLAINED_COMPUTATIONS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
 echo "  duur: ${duration}s met ${REPLAY_WORKERS:-4} diensten tegelijk"

@@ -589,18 +589,25 @@ public final class OpenApiEmitter {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "Een stuk van een uitlegzin: een blad met text, of een groep (CONDITION, MEMBERS,"
-                + " GROUND) met parts, waarvan de tekst die van haar stukken achter elkaar is. Per kind: SUBJECT het"
+                + " COMPUTATION, VARIANT, GROUND) met parts, waarvan de tekst die van haar stukken achter elkaar is. Per"
+                + " kind: SUBJECT het"
                 + " label van een instantie, het onderwerp of een lid van een kwantorvouw; NAME een gedeclareerde naam"
                 + " in het vocabulaire van het antwoord, met declaration (ATTRIBUUT, KENMERK, ROL of PARAMETER), owner"
                 + " en canonical, de sleutels kind, owner en canonical van een element van vocabularies; QUOTE"
                 + " regeltekst zoals geschreven, met dezelfde drie waar het operand één declaratie leest; VALUE een"
-                + " waarde met haar eenheid, met empty: true bij een lege; RULE de naam van een regel of van een variant"
+                + " waarde met haar eenheid, met empty: true bij een lege en timeline: true bij 'een tijdlijn', de waarde"
+                + " van een tijdlijn-doel; RULE de naam van een regel of van een variant"
                 + " van een defaults-groep; CONNECTIVE een woord dat de logica tussen de delen draagt (omdat, want,"
                 + " maar, en, of, en niet, niet geldt, gold niet); TEXT lijm; CONDITION een voorwaarde, met holds, het"
                 + " oordeel van de motor (ontbreekt waar de motor de knoop zonder oordeel bereikte), en bij een"
                 + " samenstelling of een kwantorvouw quantifier (all, none, atLeast, atMost, exactly, the) met threshold"
                 + " bij een telling; MEMBERS de leden van een kwantorvouw die haar uitkomst dragen, met members (m),"
-                + " holding (k) en unjudged; GROUND de grondslag, het laatste stuk van de zin, met de punt en"
+                + " holding (k) en unjudged, of de leden van een vouw in een berekening met wat elk bijdroeg, met alleen"
+                + " members; COMPUTATION hoe de regel van een berekende waarde haar berekende, na de naam van de regel en"
+                + " met de dubbele punt: de regeltekst van haar waarde, elke waarde die de berekening las of vouwde, en de"
+                + " waarde vóór een afronding en vóór een begrenzing; VARIANT een schrijver van een berekende waarde die"
+                + " haar niet schreef, met '; ' ervoor, met decided: false en displaced: true bij een initialisatie die"
+                + " niet aan de beurt was; GROUND de grondslag, het laatste stuk van de zin, met de punt en"
                 + " 'Grondslag: ' als TEXT ervoor, en met de beslisser waarvan het de statuteAnnotations zijn, in de"
                 + " termen van het IR: bij een regel rule, de naam van haar vorm in rules.rules; bij een default group,"
                 + " de naam van zijn groep in rules.prioritizedDefaults (null waar het document de groep geen naam"
@@ -624,7 +631,8 @@ public final class OpenApiEmitter {
                 "rule", "pointer", "variant"})
             props.putObject(key).put("type", "string");
         for (String key : new String[]{"owner", "group"}) props.putObject(key).put("type", "string").put("nullable", true);
-        for (String key : new String[]{"empty", "holds", "followed"}) props.putObject(key).put("type", "boolean");
+        for (String key : new String[]{"empty", "timeline", "holds", "decided", "displaced", "followed"})
+            props.putObject(key).put("type", "boolean");
         for (String key : new String[]{"threshold", "members", "holding", "unjudged", "position"})
             props.putObject(key).put("type", "integer");
         return s;

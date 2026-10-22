@@ -286,15 +286,16 @@ public final class DecisionCore {
         }
     }
 
-    /** The attribution rules of {@code model} that {@code scoped} does not carry, by form name, each with the object
-     *  type of its target, in the order of the model: the explanation names them as outside the computation. */
+    /** The rules of {@code model} that {@code scoped} does not carry and that attribute a characteristic or write an
+     *  attribute, by form name, each with the object type of its target, in the order of the model: the explanation
+     *  names them as outside the computation. */
     private static Map<String, String> outsideScope(RegelSpraakModel model, RegelSpraakModel scoped) {
         java.util.Set<String> carried = new java.util.HashSet<>();
         for (ResolvedRule r : scoped.resolvedRules) carried.add(RegelSpraakModel.formName(r.name()));
         Map<String, String> outside = new LinkedHashMap<>();
         for (ResolvedRule r : model.resolvedRules) {
             String form = RegelSpraakModel.formName(r.name());
-            if (r.kind() != ResolvedRule.Kind.KENMERKTOEKENNING || carried.contains(form)) continue;
+            if (carried.contains(form)) continue;
             if (r.target() instanceof dev.uchar.regelspraak.ir.Expr.AttributeReference ref && ref.objectType() != null)
                 outside.putIfAbsent(form, ref.objectType().name);
         }

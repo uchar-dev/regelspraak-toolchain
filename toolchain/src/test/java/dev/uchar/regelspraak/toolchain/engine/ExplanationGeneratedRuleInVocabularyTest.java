@@ -108,6 +108,14 @@ class ExplanationGeneratedRuleInVocabularyTest {
     private static final String V2_AUTHOR =
             "V2 is niet zelf gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is";
 
+    /** The sentence of the computed value the author's rule 'melding' writes on {@code label} (card
+     *  explanation-computed-attributes): the generated attribute {@code berekende <name>}, named in the vocabulary;
+     *  the rule text as written. */
+    private static String melding(String label, String name) {
+        return label + " heeft als berekende " + name + " 13-03-2026 volgens de regel 'melding' (onvoorwaardelijk): de"
+                + " vinddag van de Vondst plus 3 dagen, met de vinddag van de Vondst (10-03-2026)";
+    }
+
     @Test
     void canonical_uchar_text_is_there_as_uchar_writes_it() {
         assertEquals(List.of(
@@ -117,11 +125,13 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " (12-03-2026) is ongelijk aan zijn berekende meldingsdatum (13-03-2026)",
                 "V1 heeft als meldingsdatum 12-03-2026 volgens 'opgegeven meldingsdatum' (onvoorwaardelijk);"
                         + " verdrongen: 'berekende meldingsdatum'",
+                melding("V1", "meldingsdatum"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave meldingsdatum, want niet geldt: zijn opgegeven meldingsdatum"
                         + " (onbekend) gevuld is",
                 "V2 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk);"
-                        + " 'opgegeven meldingsdatum' gaf geen waarde"),
+                        + " 'opgegeven meldingsdatum' gaf geen waarde",
+                melding("V2", "meldingsdatum")),
                 explanation(Naming.CANONICAL));
     }
 
@@ -135,11 +145,13 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " melding vondst (13-03-2026)",
                 "V1 heeft als Datum melding vondst 12-03-2026 volgens 'opgegeven Datum melding vondst'"
                         + " (onvoorwaardelijk); verdrongen: 'berekende Datum melding vondst'",
+                melding("V1", "Datum melding vondst"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is",
                 "V2 heeft als Datum melding vondst 13-03-2026 volgens 'berekende Datum melding vondst'"
-                        + " (onvoorwaardelijk); 'opgegeven Datum melding vondst' gaf geen waarde"),
+                        + " (onvoorwaardelijk); 'opgegeven Datum melding vondst' gaf geen waarde",
+                melding("V2", "Datum melding vondst")),
                 explanation("cgm"));
     }
 
@@ -153,11 +165,13 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " (13-03-2026)",
                 "V1 heeft als dag van de melding 12-03-2026 volgens 'opgegeven dag van de melding'"
                         + " (onvoorwaardelijk); verdrongen: 'berekende dag van de melding'",
+                melding("V1", "dag van de melding"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave dag van de melding, want niet geldt: zijn opgegeven dag van de"
                         + " melding (onbekend) gevuld is",
                 "V2 heeft als dag van de melding 13-03-2026 volgens 'berekende dag van de melding'"
-                        + " (onvoorwaardelijk); 'opgegeven dag van de melding' gaf geen waarde"),
+                        + " (onvoorwaardelijk); 'opgegeven dag van de melding' gaf geen waarde",
+                melding("V2", "dag van de melding")),
                 explanation("handboek"));
     }
 

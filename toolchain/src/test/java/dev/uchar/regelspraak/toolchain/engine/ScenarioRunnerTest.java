@@ -113,9 +113,12 @@ class ScenarioRunnerTest {
         assertEquals(1, u.size());
         assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
         assertNull(u.get(0).explanationError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).explanationError());
-        assertEquals(1, u.get(0).explanation().size(), u.get(0).explanation()::toString);
+        // the characteristic, and since card explanation-computed-attributes the computed heffing
+        assertEquals(2, u.get(0).explanation().size(), u.get(0).explanation()::toString);
         String sentence = u.get(0).explanation().get(0);
         assertTrue(sentence.startsWith("V1 is belast, omdat") && sentence.contains("200"), sentence);
+        assertTrue(u.get(0).explanation().get(1).startsWith("V1 heeft als heffing 60,00"),
+                u.get(0).explanation()::toString);
     }
 
     /** The explanation of a characteristic whose condition reads a derived value. The session of the explanation fills,
@@ -149,7 +152,9 @@ class ScenarioRunnerTest {
         assertEquals(List.of("retourafstandregel", "belastregel"),
                 r.trace().firings().stream().map(ScenarioResult.Firing::rule).toList(), r.trace()::toString);
         assertNull(u.get(0).explanationError(), () -> "de eigen sessie hoort uchars replay te volgen: " + u.get(0).explanationError());
-        assertEquals(List.of("V1 is belast, omdat de retourafstand van de Vlucht (400) is groter dan 300"),
+        assertEquals(List.of("V1 is belast, omdat de retourafstand van de Vlucht (400) is groter dan 300",
+                "V1 heeft als retourafstand 400 volgens de regel 'retourafstandregel' (onvoorwaardelijk): de afstand tot"
+                        + " bestemming van de Vlucht maal 2, met de afstand tot bestemming van de Vlucht (200)"),
                 u.get(0).explanation());
     }
 

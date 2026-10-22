@@ -93,6 +93,13 @@ class ExplanationRolePathServiceTest {
             { "type": "Maandinkomen", "id": "M4", "attributes": { "inkomen": 2800.00 } } ] }""";
 
     private static final List<String> EXPECTED = List.of(
+            // the computed values (card explanation-computed-attributes)
+            "R1 heeft als herlevingsgrens 2.625,00 volgens de regel 'herlevingsgrens': (het maandloon van het Recht maal"
+                    + " 0,875) naar beneden afgerond op 2 decimalen, met het maandloon van het Recht (3.000,00); vóór"
+                    + " de afronding 2.625, omdat zijn maandloon (3.000,00) gevuld is",
+            "D1 heeft als maximeringsfactor 1 volgens de regel 'maximeringsfactor' (onvoorwaardelijk): 1",
+            "R2 heeft geen herlevingsgrens, want geen regel gold; de regel 'herlevingsgrens' gold niet, want niet geldt:"
+                    + " zijn maandloon (onbekend) gevuld is",
             "M1 heeft de herlevingsgrens overschreden, omdat zijn inkomen (2.800,01) gevuld is en de herlevingsgrens van"
                     + " het recht van het Maandinkomen (2.625,00) gevuld is en zijn inkomen maal de maximeringsfactor van"
                     + " het dagloon van het recht van het Maandinkomen (2.800,01) is groter dan de herlevingsgrens van het"

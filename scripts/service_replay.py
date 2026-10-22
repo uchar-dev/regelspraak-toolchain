@@ -14,9 +14,10 @@ Uitvoer: per golden één regel "<golden>\\t<STATUS>\\t<detail>" in de volgorde 
   FAIL     een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is (detail: wat).
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
-haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt drie velden erbij: het
-aantal uitlegzinnen, het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want ") en het aantal
-voorkomens van "niet is vast te stellen".
+haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vier velden erbij: het
+aantal uitlegzinnen, het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want "), het aantal
+voorkomens van "niet is vast te stellen", en het aantal zinnen over een waarde die een gewone regel schreef (kaart
+explanation-computed-attributes: "<onderwerp> heeft als ..." met de berekening als stuk COMPUTATION).
 Het script oordeelt niet over de hele set: de poortscripts (check-service-replay.sh, check-twins.sh) doen dat.
 """
 import argparse
@@ -307,9 +308,9 @@ def first_difference(a, b, at):
     return f"{at or '/'}: zonder {json.dumps(a, default=str)[:200]}, met {json.dumps(b, default=str)[:200]}"
 
 
-PART_KINDS = {"SUBJECT", "NAME", "QUOTE", "VALUE", "RULE", "CONNECTIVE", "TEXT", "CONDITION", "MEMBERS", "GROUND",
-              "STATUTE", "LEMMA", "DEVIATION", "NOTE"}
-PART_GROUPS = {"CONDITION", "MEMBERS", "GROUND"}
+PART_KINDS = {"SUBJECT", "NAME", "QUOTE", "VALUE", "RULE", "CONNECTIVE", "TEXT", "CONDITION", "MEMBERS", "COMPUTATION",
+              "VARIANT", "GROUND", "STATUTE", "LEMMA", "DEVIATION", "NOTE"}
+PART_GROUPS = {"CONDITION", "MEMBERS", "COMPUTATION", "VARIANT", "GROUND"}
 
 
 def part_text(part, place):
@@ -328,8 +329,9 @@ def part_text(part, place):
 
 def explained(service, path, request, answer, name):
     """De uitleg van een verzoek waarvan de dienst `answer` gaf: (zinnen, uitgelegde voorwaarden, "niet is vast te
-    stellen"). Het antwoord met uitleg en stukken moet buiten die twee velden `answer` zijn, en per zin moeten de
-    teksten van de bladeren van haar stukken achter elkaar de zin zijn, met de grondslag als laatste stuk."""
+    stellen", zinnen over een berekende waarde die een regel schreef). Het antwoord met uitleg en stukken moet buiten
+    die twee velden `answer` zijn, en per zin moeten de teksten van de bladeren van haar stukken achter elkaar de zin
+    zijn, met de grondslag als laatste stuk."""
     status, text_ = service.ask("POST", path + "?explanation=true&explanationParts=true", request)
     if status != 200:
         raise Deviation(f"{name}: met uitleg {status} {text_[:500]}")
@@ -354,7 +356,15 @@ def explained(service, path, request, answer, name):
                         f"{first_difference(answer, given, '')}")
     conditions = sum(z.count("omdat ") + z.count("want ") for z in sentences)
     undetermined = sum(z.count("niet is vast te stellen") for z in sentences)
-    return len(sentences), conditions, undetermined
+    computations = sum(1 for roots in parts if computed(roots))
+    return len(sentences), conditions, undetermined, computations
+
+
+def computed(roots):
+    """Of een zin de waarde noemt die een gewone regel schreef: "<onderwerp> heeft als ...", met de berekening als
+    stuk COMPUTATION."""
+    return (len(roots) > 1 and roots[0]["kind"] == "SUBJECT" and roots[1]["kind"] == "TEXT"
+            and roots[1]["text"] == " heeft als " and any(r["kind"] == "COMPUTATION" for r in roots))
 
 
 def play(golden, map_, descriptor_path=None, explanation=False):
@@ -380,7 +390,7 @@ def play(golden, map_, descriptor_path=None, explanation=False):
                 path = "/replay"
             else:
                 path = "/" + json.load(open(descriptor_path))["entrypoints"][0]["path"]
-            totals = [0, 0, 0]
+            totals = [0, 0, 0, 0]
             with Service(descriptor_path, source, workdir) as service:
                 for name, v, c in requests:
                     status, text_ = service.ask("POST", path, v)

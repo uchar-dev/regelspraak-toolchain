@@ -31,7 +31,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * <p>The model: a Jutter is ervaren under a nested list (his leeftijd above the parameter minimumleeftijd, and at least
  * one of: more than 10 meldingen, ingezetene), with two {@code // Bron:} annotations; gelukkig when all his vondsten are
  * waardevol; has recht op strandgoed when ervaren; his premie is 100,00 when ervaren, and 50,00 under 18 by an
- * exception with its own annotation, which carries the condition of its base (ch. 7.9). A Vondst is aangemeld when its jutter is ingezetene. J1 meets the list through
+ * exception with its own annotation, which carries the condition of its base (ch. 7.9); his meldpremie is computed when
+ * he is ingezetene (card explanation-computed-attributes: a computation and a writer that did not write, the two kinds
+ * that card added). A Vondst is aangemeld when its jutter is ingezetene. J1 meets the list through
  * ingezetene and has one of two vondsten waardevol; J2 is 16 and ervaren from the input; J3 meets neither of the inner
  * list; J4 has no leeftijd.
  */
@@ -42,6 +44,7 @@ public class ExplanationPartsServiceTest {
                 de leeftijd Numeriek (geheel getal);
                 het aantal meldingen Numeriek (geheel getal);
                 de premie Numeriek (getal met 2 decimalen);
+                de meldpremie Numeriek (getal met 2 decimalen);
                 is ingezetene kenmerk (bijvoeglijk);
                 is ervaren kenmerk (bijvoeglijk);
                 is gelukkig kenmerk (bijvoeglijk);
@@ -94,12 +97,18 @@ public class ExplanationPartsServiceTest {
                 geldig altijd
                     De premie van een Jutter moet gesteld worden op 50,00
                     indien zijn leeftijd kleiner is dan 18.
+
+            Regel meldpremie
+                geldig altijd
+                    De meldpremie van een Jutter moet berekend worden als zijn aantal meldingen maal 2,50
+                    indien hij ingezetene is.
             """;
 
     public static final String DESCRIPTOR = """
             { "service": {"name":"Stukken van de uitleg","version":"1"},
               "entrypoints": [ { "name":"jutters","path":"jutters",
-                "scope": {"ruleNames": ["ervaren", "gelukkig", "recht op strandgoed", "aangemeld", "premie"]},
+                "scope": {"ruleNames": ["ervaren", "gelukkig", "recht op strandgoed", "aangemeld", "premie",
+                                        "meldpremie"]},
                 "input": ["Jutter", "Vondst"],
                 "output": ["Jutter:ervaren", "Jutter:gelukkig", "Jutter:recht op strandgoed", "Jutter.premie",
                            "Vondst:aangemeld"] } ],
@@ -128,6 +137,8 @@ public class ExplanationPartsServiceTest {
             "J1 heeft recht op strandgoed, omdat het onderwerp ervaren is",
             "J1 heeft als premie 100,00 volgens de regel 'premie', omdat het onderwerp ervaren is; 'jeugdpremie' gold"
                     + " niet, want niet geldt: zijn leeftijd (30) is kleiner dan 18",
+            "J1 heeft als meldpremie 7,50 volgens de regel 'meldpremie': zijn aantal meldingen maal 2,50, met zijn"
+                    + " aantal meldingen (3), omdat het onderwerp ingezetene is",
             "J2 is ervaren, maar de regel 'ervaren' gold niet, want niet geldt: zijn leeftijd (16) is groter dan de"
                     + " minimumleeftijd (17)" + GROUND,
             "J2 is gelukkig, omdat " + FOLD + " is voldaan: er is geen enkel lid",
@@ -135,20 +146,29 @@ public class ExplanationPartsServiceTest {
             "J2 heeft als premie 50,00 volgens 'jeugdpremie', omdat het onderwerp ervaren is en zijn leeftijd (16) is"
                     + " kleiner dan 18; verdrongen: de regel 'premie'. Grondslag: BWBR0004045&artikel=20&lid=2 · lemma's:"
                     + " jeugdpremie · afwijking: oude-premie",
+            noMeldpremie("J2"),
             "J3 is niet ervaren, want niet geldt: zijn aantal meldingen (3) is groter dan 10 of het onderwerp"
                     + " ingezetene is" + GROUND,
             "J3 is gelukkig, omdat " + FOLD + " is voldaan: er is geen enkel lid",
             "J3 heeft geen recht op strandgoed, want niet geldt: het onderwerp ervaren is",
             "J3 heeft geen premie, want geen variant besliste; 'jeugdpremie' gold niet, want niet geldt: het onderwerp"
                     + " ervaren is; de regel 'premie' gold niet, want niet geldt: het onderwerp ervaren is",
+            noMeldpremie("J3"),
             "J4 is niet ervaren, want niet geldt: zijn leeftijd (onbekend) is groter dan de minimumleeftijd (17)"
                     + GROUND,
             "J4 is gelukkig, omdat " + FOLD + " is voldaan: er is geen enkel lid",
             "J4 heeft geen recht op strandgoed, want niet geldt: het onderwerp ervaren is",
             "J4 heeft geen premie, want geen variant besliste; 'jeugdpremie' gold niet, want niet geldt: het onderwerp"
                     + " ervaren is; de regel 'premie' gold niet, want niet geldt: het onderwerp ervaren is",
+            noMeldpremie("J4"),
             "V1 is aangemeld, omdat de jutter ingezetene is",
             "V2 is aangemeld, omdat de jutter ingezetene is");
+
+    /** No rule writes the meldpremie of a Jutter who is not ingezetene. */
+    private static String noMeldpremie(String label) {
+        return label + " heeft geen meldpremie, want geen regel gold; de regel 'meldpremie' gold niet, want niet geldt:"
+                + " het onderwerp ingezetene is";
+    }
 
     private static final String GROUND_PARTS = "GROUND{rule=ervaren}[«. Grondslag: »"
             + " STATUTE{bwb=BWBR0004045, article=20, paragraph=1, part=b}«BWBR0004045&artikel=20&lid=1&o=b» « · »"
@@ -179,11 +199,11 @@ public class ExplanationPartsServiceTest {
                     + " CONNECTIVE«want» « » CONDITION{holds=false, quantifier=all}[«aan de voorwaarde \"»"
                     + " QUOTE«alle vondsten van de Jutter waardevol zijn» «\" is niet voldaan: »"
                     + " MEMBERS{members=2, holding=1, unjudged=0}[«niet voor » SUBJECT«V2» « (1 van de 2)»]]",
-            4, "SUBJECT«J2» « is » " + ERVAREN + " «, » CONNECTIVE«maar» « de regel '» RULE«ervaren» «' »"
+            5, "SUBJECT«J2» « is » " + ERVAREN + " «, » CONNECTIVE«maar» « de regel '» RULE«ervaren» «' »"
                     + " CONNECTIVE«gold niet» «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
                     + " CONDITION{holds=false}[" + LEEFTIJD + " « (» VALUE«16» «) is groter dan » " + MINIMUMLEEFTIJD
                     + " « (» VALUE«17» «)»] " + GROUND_PARTS,
-            7, "SUBJECT«J2» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie}«premie» « »"
+            8, "SUBJECT«J2» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie}«premie» « »"
                     + " VALUE«50,00» « volgens '» RULE«jeugdpremie» «', » CONNECTIVE«omdat» « »"
                     + " CONDITION{holds=true, quantifier=all}[CONDITION{holds=true}[«het onderwerp » " + ERVAREN
                     + " « is»] « » CONNECTIVE«en» « »"
@@ -192,17 +212,17 @@ public class ExplanationPartsServiceTest {
                     + " GROUND{group=premie, pointer=/defaults/0, position=1, variant=jeugdpremie}[«. Grondslag: »"
                     + " STATUTE{bwb=BWBR0004045, article=20, paragraph=2}«BWBR0004045&artikel=20&lid=2» « · lemma's: »"
                     + " LEMMA«jeugdpremie» « · afwijking: » DEVIATION{followed=true}«oude-premie»]",
-            8, "SUBJECT«J3» « is niet » " + ERVAREN + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
+            10, "SUBJECT«J3» « is niet » " + ERVAREN + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
                     + " CONDITION{holds=false, quantifier=atLeast, threshold=1}["
                     + "CONDITION{holds=false}[QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=aantal meldingen}"
                     + "«zijn aantal meldingen» « (» VALUE«3» «) is groter dan » VALUE«10»]"
                     + " « » CONNECTIVE«of» « »"
                     + " CONDITION{holds=false}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
                     + " canonical=ingezetene}«ingezetene» « is»]] " + GROUND_PARTS,
-            12, "SUBJECT«J4» « is niet » " + ERVAREN + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
+            15, "SUBJECT«J4» « is niet » " + ERVAREN + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
                     + " CONDITION{holds=false}[" + LEEFTIJD + " « (» VALUE{empty=true}«onbekend» «) is groter dan » "
                     + MINIMUMLEEFTIJD + " « (» VALUE«17» «)»] " + GROUND_PARTS,
-            16, "SUBJECT«V1» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=aangemeld}«aangemeld» «, »"
+            20, "SUBJECT«V1» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=aangemeld}«aangemeld» «, »"
                     + " CONNECTIVE«omdat» « » CONDITION{holds=true}[«de » NAME{declaration=ROL,"
                     + " owner=vondst van een jutter, canonical=jutter}«jutter» « » NAME{declaration=KENMERK,"
                     + " owner=Jutter, canonical=ingezetene}«ingezetene» « is»]");

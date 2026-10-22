@@ -18,7 +18,7 @@ public final class ExplanationPartsCheck {
 
     private ExplanationPartsCheck() {}
 
-    private static final Set<String> GROUPS = Set.of("CONDITION", "MEMBERS", "GROUND");
+    private static final Set<String> GROUPS = Set.of("CONDITION", "MEMBERS", "COMPUTATION", "VARIANT", "GROUND");
 
     /** Per sentence of {@code explanation} one entry of {@code explanationParts}, whose leaves, their texts after each
      *  other, are the sentence character for character; a leaf has a text and no parts, a group parts and no text, and

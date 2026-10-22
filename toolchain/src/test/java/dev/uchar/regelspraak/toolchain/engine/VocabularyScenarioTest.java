@@ -40,13 +40,23 @@ class VocabularyScenarioTest {
         assertNull(u.get(0).explanationError(), u.get(0)::explanationError);
         assertEquals(List.of(
                 "J1 is komt in aanmerking voor premie, omdat zijn vondstbedrag (12,60) is groter dan 10",
+                "J1 heeft als totale premie 12,60 volgens de regel 'vondstbedrag van een jutter' (onvoorwaardelijk):"
+                        + " de som van de premie van alle vondsten van de Jutter of 0 als die er niet zijn (12,60): over"
+                        + " V1 (9,00) en V2 (3,60) (2 leden)",
+                "J1 heeft als aantal vondsten van waarde 1 volgens de regel 'aantal waardevolle vondsten'"
+                        + " (onvoorwaardelijk): het aantal vondsten van de Jutter die waardevol zijn (1): over V1, het"
+                        + " enige lid",
                 "V1 is van waarde, omdat zijn soort (amber · barnsteen) is gelijk aan amber · barnsteen",
+                "V1 heeft als premie voor de vondst 9,00 volgens de regel 'premie van een vondst' (onvoorwaardelijk):"
+                        + " zijn gewicht maal het premietarief, met zijn gewicht (3,00) en het premietarief (3)",
                 "V2 is niet van waarde, want niet geldt: zijn soort (hout van een wrak · wrakhout) is gelijk aan"
-                        + " amber · barnsteen"),
+                        + " amber · barnsteen",
+                "V2 heeft als premie voor de vondst 3,60 volgens de regel 'premie van een vondst' (onvoorwaardelijk):"
+                        + " zijn gewicht maal het premietarief, met zijn gewicht (1,20) en het premietarief (3)"),
                 u.get(0).explanation());
         // canonically the same sentences in the canonical names
         List<ScenarioRunner.Explained> c = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(document()));
-        assertEquals("V1 is waardevol, omdat zijn soort (barnsteen) is gelijk aan barnsteen", c.get(0).explanation().get(1));
+        assertEquals("V1 is waardevol, omdat zijn soort (barnsteen) is gelijk aan barnsteen", c.get(0).explanation().get(3));
     }
 
     @Test
