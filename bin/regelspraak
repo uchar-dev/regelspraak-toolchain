@@ -16,6 +16,9 @@ usage: bin/regelspraak [--language nl|en] <command> [arguments]
   check <source.rgs...>                 parse and resolve; the diagnostics, then whether uchar carries the model
   ir <out.json> <source.rgs...>         the uchar-ir-v1 document of the model (uchar's emitter)
   cases <dir> <source.rgs...>           the scenarios lowered to case files in <dir>, beside <dir>/ir.json
+  tokens <out.json> <source.rgs...>     the semantic tokens of the sources (uchar's Resolver.tokens): per file the
+                                        spans with kind and position, and the diagnostics; written also when the
+                                        model has an error or a syntax error, then exit 0
   scenario [--trace] [--explanation] [--vocabulary <name>] <source.rgs...>
   scenario [--trace] --manifest <manifest> [--exclusions <list>]
                                         lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario;
@@ -123,6 +126,12 @@ case "$command" in
     case "$out" in -*) fail "ir: onbekende optie $out" ;; esac
     check_sources ir "$@"
     start "$RESOLVER" --ir "$out" "$@" ;;
+  tokens)
+    [ $# -ge 1 ] || fail "tokens: geen uit.json opgegeven"
+    out=$1; shift
+    case "$out" in -*) fail "tokens: onbekende optie $out" ;; esac
+    check_sources tokens "$@"
+    start "$RESOLVER" --tokens "$out" "$@" ;;
   cases)
     [ $# -ge 1 ] || fail "cases: geen map opgegeven"
     dir=$1; shift
