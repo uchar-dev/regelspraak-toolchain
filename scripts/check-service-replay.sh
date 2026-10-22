@@ -117,7 +117,12 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # die dezelfde waarde van haar voorganger leest; uit het ir.json), jutterswet-vrijstelling-drie-niveaus (drie niveaus
 # van geneste voorwaarden) en jutterswet-premietabel-twee-ofcellen (een beslistabelrij met twee of-cellen); alle drie
 # spelen ook door de dienst.
-EXPECTED_REPLAY_PLAYED=241
+# 2026-10-22, uchar's cards `instance-cycle-household-reads`, `check-admits-instance-cycle` en de fix
+# clingo-filter-guard-binding (pin 0866c03f): 243 — de set van gate 12 groeit van 271 naar 273 met
+# jutterswet-vergunningtermijnen (lezingen binnen het huishouden van een object op de instantiegeordende kring) en
+# jutterswet-vroege-vondsten-zonder-schorsing (een datumvergelijking in het filter van een vouw onder een ontkend
+# kenmerk); beide spelen ook door de dienst. jutterswet-vergunningketen speelt sindsdien uit haar source.rgs.
+EXPECTED_REPLAY_PLAYED=243
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
