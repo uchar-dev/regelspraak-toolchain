@@ -1245,7 +1245,7 @@ public final class Verbaliser {
         }
 
         /** Per binder-lezing onder {@code nodes} de tekst van de definitie van haar binder ({@code Daarbij geldt}): de
-         *  brontekst van de dichtstbijzijnde Let erboven met die binder, zonder de punt erachter. */
+         *  brontekst van de dichtstbijzijnde Let erboven met die binder. */
         private Map<Object, String> definitions(List<Object> nodes) {
             Map<Object, String> sink = new IdentityHashMap<>();
             for (Object n : nodes) {
@@ -1258,7 +1258,7 @@ public final class Verbaliser {
                     if (at.startsWith(p + "/") && p.length() > depth && l.source() != null
                             && l.source().snippet() != null && !l.source().snippet().isBlank()) {
                         depth = p.length();
-                        found = l.source().snippet().trim().replaceAll("\\.$", "");
+                        found = l.source().snippet().trim();
                     }
                 }
                 if (found != null) sink.put(n, found);
