@@ -181,6 +181,9 @@ class TokensCommandTest {
         assertEquals(2, run("tokens", "tokens.json", "ontbreekt.rgs").exit(), "een bron die niet bestaat");
         assertEquals(2, run("tokens", "--ir", "boten.rgs").exit(), "een optie als uitvoerbestand");
         assertEquals(2, run("tokens", "tokens.json", "--ir", "boten.rgs").exit(), "een optie tussen de bronnen");
+        Run missingDir = run("tokens", "geen-map/tokens.json", "boten.rgs");
+        assertEquals(2, missingDir.exit(), "een uitvoerbestand in een map die niet bestaat");
+        assertTrue(missingDir.stderr().contains("de map bestaat niet: geen-map"), missingDir.stderr());
         assertFalse(Files.exists(dir.resolve("tokens.json")), "verkeerd gebruik schrijft niets");
     }
 

@@ -90,6 +90,13 @@ start() {
 }
 
 # The sources of a command: at least one, each an existing file, and no option among them.
+# an output file goes into a directory that exists: uchar would otherwise stop with a stack trace
+check_out_dir() {
+  local command=$1 out=$2 parent
+  parent=$(dirname -- "$out")
+  [ -d "$parent" ] || fail "$command: de map bestaat niet: $parent"
+}
+
 check_sources() {
   local command=$1; shift
   [ $# -gt 0 ] || fail "$command: geen bron.rgs opgegeven"
@@ -124,12 +131,14 @@ case "$command" in
     [ $# -ge 1 ] || fail "ir: geen uit.json opgegeven"
     out=$1; shift
     case "$out" in -*) fail "ir: onbekende optie $out" ;; esac
+    check_out_dir ir "$out"
     check_sources ir "$@"
     start "$RESOLVER" --ir "$out" "$@" ;;
   tokens)
     [ $# -ge 1 ] || fail "tokens: geen uit.json opgegeven"
     out=$1; shift
     case "$out" in -*) fail "tokens: onbekende optie $out" ;; esac
+    check_out_dir tokens "$out"
     check_sources tokens "$@"
     start "$RESOLVER" --tokens "$out" "$@" ;;
   cases)
