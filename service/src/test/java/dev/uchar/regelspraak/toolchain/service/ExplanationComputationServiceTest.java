@@ -420,6 +420,32 @@ class ExplanationComputationServiceTest {
                 sentences(answer(fromSources(source, descriptor), request)));
     }
 
+    /** The year a computation reads out of a date is a year: "het jaar uit zijn startdag (2026)", without the
+     *  thousands point a number gets ("2.026"). */
+    @Test
+    void a_year_out_of_a_date_is_written_as_a_year() throws Exception {
+        String source = """
+                Objecttype de Jutter (mv: Jutters) (bezield)
+                    de startdag Datum in dagen;
+                    de nieuwjaarsdag Datum in dagen;
+
+                Regel nieuwjaarsdag
+                    geldig altijd
+                        De nieuwjaarsdag van een Jutter moet berekend worden als de datum met jaar: het jaar uit zijn startdag, maand: 1 en dag: 1.
+                """;
+        String descriptor = """
+                { "service": {"name":"Jaar uit een datum","version":"1"},
+                  "entrypoints": [ { "name":"jutters","path":"jutters", "scope": {"ruleNames": ["nieuwjaarsdag"]},
+                    "input": ["Jutter"], "output": ["Jutter.nieuwjaarsdag"] } ],
+                  "parameters": {} }""";
+        String request = """
+                { "instances": [ { "type": "Jutter", "id": "J1", "attributes": { "startdag": "2026-03-05" } } ] }""";
+        assertEquals(List.of("J1 heeft als nieuwjaarsdag 01-01-2026 volgens de regel 'nieuwjaarsdag' (onvoorwaardelijk):"
+                        + " de datum met jaar: het jaar uit zijn startdag, maand: 1 en dag: 1, met het jaar uit zijn"
+                        + " startdag (2026) en zijn startdag (05-03-2026)"),
+                sentences(answer(fromSources(source, descriptor), request)));
+    }
+
     /** uchar's golden jutterswet-wrakerfbasis: an ordinary rule on Strandrecht, and on its subtype Wrakrecht a defaults
      *  group on the same target. The stack of a Wrakrecht decides its uitkering (RUNTIME-SEMANTICS ch. 7.10) and the
      *  rule of the supertype does not run there: the engine gives no reading of it on W1, and the sentence of W1 is

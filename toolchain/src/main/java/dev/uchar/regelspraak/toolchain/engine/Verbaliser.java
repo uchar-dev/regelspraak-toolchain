@@ -1934,6 +1934,9 @@ public final class Verbaliser {
         if (v == null) return "onbekend";
         Datatype.Enumeration enumArray = enumerationOf(e);
         if (enumArray != null) return render(v, enumArray);
+        // een jaartal schrijft geen duizendtalpunt: "2026", niet "2.026"
+        if (e instanceof Expr.FunctionCall f && f.kind() == Expr.FunctionKind.JAAR_UIT && v instanceof BigDecimal y)
+            return y.toPlainString();
         Datatype type = typeOf(e);
         if (e instanceof Expr.Literal lit && v instanceof BigDecimal b) {
             int scale = lexemeScale(lit.valueText());
