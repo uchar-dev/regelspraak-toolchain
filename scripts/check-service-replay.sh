@@ -107,7 +107,12 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # 234 — de set van gate 12 groeit van 262 naar 264 met jutterswet-keurtermijn, een kwantorvouw die stopt vóór een lid
 # waarvan de dagsoortwandeling faalt, en jutterswet-tweeledige-grondslag, een defaults-blok met twee
 # `// Bron:`-annotaties; beide spelen ook door de dienst.
-EXPECTED_REPLAY_PLAYED=234
+# 2026-10-22, uchar's cards `date-with-in-ref-and-clingo`, `clingo-nested-aggregate-in-fold-filter`,
+# `fold-in-element-condition` en `rule-variable-in-subselection` (pin 5d8a06de): 238 — de set van gate 12 groeit van
+# 264 naar 268 met date-with-parts (de datumconstructie), fold-filter-nested-aggregate, fold-filter-inner-fold-via-
+# element-role en jutterswet-schone-maand-na-zware-klacht (een vouw in het filter van een andere vouw); alle vier
+# spelen ook door de dienst.
+EXPECTED_REPLAY_PLAYED=238
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
