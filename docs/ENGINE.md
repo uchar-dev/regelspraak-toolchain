@@ -241,9 +241,10 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   decider of a ground"), canonical like the IR and the DRL:
   - a rule of a form that is no defaults stack (the form's own rule and every rule its lowering adds, the
     contributions to a fold the form registered first among them): `rule`, the name of the form without a version
-    suffix;
+    suffix, in whichever list of the rule layer the form stands (`rules.rules`, `consistencies`, `uniquenesses`,
+    `allocations`, `objectCreations`, `factCreations`);
   - a rule of an effective defaults stack: `stack`, its name as the coverage and `generated` give it
-    (`defaults A:<type>.<member>`), and where it lowers one default (the default's own rule, its fall-back, the fault
+    (`defaults A:<type>.<member>` on an attribute, `defaults K:<type>.<member>` on a characteristic), and where it lowers one default (the default's own rule, its fall-back, the fault
     rule of its justification, the reconciliation of its exception groups, the contributions to the folds its
     justification or consequence reads) that default, as `group`, `pointer`, `position` and `variant`, or as `rule`
     for an ordinary rule the stack of a subtype takes in (uchar's RUNTIME-SEMANTICS ch. 7.10); a rule of the stack

@@ -234,3 +234,14 @@ post de bundel naar `/playground/analyse` en naar `?via=service`, en toetst met 
   verlaging; de werkbank die de DRL van een variant toont, selecteert op `group` en `pointer` en vindt ze zo in beide
   gevallen.
 - **`group: null`** (een document dat WF-107 breekt) is niet getoetst, zoals bij `GROUND`.
+
+### Review (2026-10-23)
+
+Review door een verse Opus-agent, alleen lezen, over `3ac2ecc7..a4730748` zonder backlog en submodule: geen fout. Twee
+kleine punten, verwerkt door de hoofdsessie:
+
+- de `switch` over `RuleOrigin.Kind` in `Playground.drlRules` was een opdracht zonder `default`, die Java 21 niet
+  uitputtend eist; een soort die een latere pin van uchar toevoegt, zou als regel van geen vorm doorgaan. Nu faalt zo'n
+  soort luid met de regelnaam en de herkomst;
+- `docs/ENGINE.md`: `rule` van een vorm staat in de lijst van de regellaag waar die vorm staat (niet alleen
+  `rules.rules`), en een stapel op een kenmerk heet `defaults K:…`.

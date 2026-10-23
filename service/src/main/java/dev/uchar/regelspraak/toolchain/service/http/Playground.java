@@ -642,6 +642,9 @@ public final class Playground {
                     n.put("stack", o.form());
                     decider(n, Verbaliser.decider(document, o.pointer()), model);
                 }
+                // a kind a later pin of uchar adds would otherwise pass as a rule of no form
+                default -> throw new IllegalStateException("uchar geeft de regel '" + name + "' een herkomst van"
+                        + " een soort die de playground niet kent: " + o);
             }
         }
         return sink;
