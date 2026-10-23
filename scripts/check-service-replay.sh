@@ -125,7 +125,10 @@ command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 # 2026-10-22, uchar's kaartloze fix instance-order-open-points (pin a6eed482): 244 — de set van gate 12 groeit van 273
 # naar 274 met jutterswet-termijnoverdracht (een kenmerk van een satelliet dat haar eigenaar ontkend leest op de
 # instantiegeordende kring); zij speelt ook door de dienst.
-EXPECTED_REPLAY_PLAYED=244
+# 2026-10-24, uchar's kaart subselection-reads-subject en de snippetfix daarna (pin 0321f96c): 249 — de set van gate 12
+# groeit van 274 naar 279 met de goldens van het vormanker (jutterswet-registervoorrang, fold-filter-subject-two-spellings,
+# anchor-once-per-member, anchor-forms, anchor-hub-own-hops); alle vijf spelen ook door de dienst, met uitleg.
+EXPECTED_REPLAY_PLAYED=249
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
