@@ -103,6 +103,10 @@ model declares) and the sentences of the messages, which keep their text. The ol
   an attribute, the variant that decided gets the same `COMPUTATION` after its name. This changes existing sentences:
   `"… volgens 'berekende maxdatum' (onvoorwaardelijk); …"` is now `"… volgens 'berekende maxdatum' (onvoorwaardelijk):
   zijn berekende maxdatum (01-01-2026); …"`. Nothing else in those sentences changes.
+- **A deviation names its layers** (card `ground-deviation`): a `DEVIATION` part carries `between` (the layers of
+  the pair in the order of the register, or the one layer of `deviatie binnen`) and `follows` (the layer the rule
+  set follows; absent within one layer) in place of `followed`. The old forms `afwijking: ` and `afwijking, niet
+  gevolgd: ` are a `NOTE`. `explanation` and the text of the parts are unchanged.
 
 ## The pin
 
