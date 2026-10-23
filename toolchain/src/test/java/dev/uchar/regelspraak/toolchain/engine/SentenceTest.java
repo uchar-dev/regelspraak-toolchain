@@ -2,6 +2,8 @@ package dev.uchar.regelspraak.toolchain.engine;
 
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Map;
 
@@ -60,5 +62,19 @@ class SentenceTest {
         assertThrows(IllegalArgumentException.class, () -> new Part(Part.Kind.CONDITION, "b", Map.of(), leaves));
         assertThrows(IllegalArgumentException.class, () -> new Part(Part.Kind.NOTE, "a", Map.of(), leaves));
         assertThrows(IllegalArgumentException.class, () -> Part.leaf(Part.Kind.VALUE, "1", Map.of("n", 1L)));
+    }
+
+    @Test
+    void a_list_in_meta_holds_only_strings_and_is_copied() {
+        IllegalArgumentException e = assertThrows(IllegalArgumentException.class,
+                () -> Part.leaf(Part.Kind.DEVIATION, "x", Map.of("between", List.of("wet", 1))));
+        assertEquals("het stuk DEVIATION draagt bij between een lijst met een Integer, en een lijst in een stuk draagt"
+                + " alleen teksten", e.getMessage());
+        assertThrows(IllegalArgumentException.class,
+                () -> Part.leaf(Part.Kind.DEVIATION, "x", Map.of("between", Arrays.asList("wet", null))));
+        List<String> layers = new ArrayList<>(List.of("wet", "hb"));
+        Part p = Part.leaf(Part.Kind.DEVIATION, "x", Map.of("between", layers));
+        layers.add("brm");
+        assertEquals(List.of("wet", "hb"), p.meta().get("between"));
     }
 }

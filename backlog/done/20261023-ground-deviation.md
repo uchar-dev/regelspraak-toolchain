@@ -115,7 +115,9 @@ Waarom zo:
 
 Op de kaartbasis met alleen de tests: `GroundTest` 3 van 8 rood, `ExplanationPartsServiceTest` 2 van 4 en
 `PlaygroundExplanationPartsTest` rood (het gedeelde model draagt de nieuwe vormen, de basis leest ze als `NOTE`, dus
-mist `DEVIATION`) (`logs/red.log`); `GroundDeviationServiceTest`: rood op de stukken van `GROUND` met de zinnen gelijk (eerst rood op een ontbrekende scope in de descriptor; na de toevoeging opnieuw op de kaartbasis gedraaid, met de main-bronnen van `f6cc3eb0`: `logs/red-service.log`). Groen na de wijziging (`logs/green-1.log`).
+mist `DEVIATION`) (`logs/red.log`); `GroundDeviationServiceTest`: rood op de stukken van `GROUND` met de zinnen gelijk
+(eerst rood op een ontbrekende scope in de descriptor; na de toevoeging opnieuw op de kaartbasis gedraaid, met de
+main-bronnen van `f6cc3eb0`: `logs/red-service.log`). Groen na de wijziging (`logs/green-1.log`).
 
 Aangepast, met reden (deze kaart verandert wat ze pinden; geen toets verzwakt):
 
@@ -140,7 +142,29 @@ Meetmap `meting/`: `measure.sh` en de zes verzoeken van de vorige kaart (`explan
 
 ### Gates
 
-`make gates` op `c7bab59f` met `TAG/CLUSTER=ground-deviation`: GROEN, 7 stappen in 11m19s (reactor 1654/172/375/53: toolchain +9 t.o.v. 163, dienst +1 nieuwe klasse; replay 244 goldens, 656 cases, pin 244; manifest 29 ok, 3 uitgesloten; image en kind-smoke groen; `logs/gates.log`). De landingscommit voegt een regel toe aan `README.md` (de lijst met contractwijzigingen).
+`make gates` op `c7bab59f` met `TAG/CLUSTER=ground-deviation`: GROEN, 7 stappen in 11m19s (reactor 1654/172/375/53,
+waarvan deze kaart 2 toolchain-tests toevoegt, `GroundTest` van 6 naar 8, en 1 dienst-test,
+`GroundDeviationServiceTest`; replay 244 goldens, 656 cases, pin 244; manifest 29 ok, 3 uitgesloten; image en kind-smoke
+groen; `logs/gates.log`). De landingscommit voegt een regel toe aan `README.md` (de lijst met contractwijzigingen).
+
+### Review (2026-10-23, na de landing)
+
+Op verzoek van de eigenaar een review door een verse Opus-agent, alleen lezen, over de diff `23f560b2..0b4bd3f3` zonder
+backlog en README, met de kaart zoals ze binnenkwam en zonder dit Result. Geen fout gevonden; de reguliere expressie is
+met vijftien randgevallen nagelopen (`binnen` als laag, cijfer of hoofdletter in een laag, spaties rond `/`, drie lagen,
+geen spatie na `:`), en de enige schrijver van meta naar JSON is `ExplanationParts`. Verwerkt in de vervolgcommit:
+
+- de weigering van een lijst met iets anders dan teksten, en de kopie van de lijst, stonden in geen test:
+  `SentenceTest.a_list_in_meta_holds_only_strings_and_is_copied`;
+- de melding bij zo'n lijst noemde de klasse van de JDK ("een List12"); ze noemt nu het element ("een lijst met een
+  Integer, en een lijst in een stuk draagt alleen teksten").
+
+**`ContractNamesInMessagesTest` blijft ongewijzigd**, al noemt de kaart hem. Zijn `OLD_KEYS` zijn de Nederlandse namen
+van de kaart `engelse-namen`, in de vormen die een sleutel noemen (tussen aanhalingstekens, als onderwerp van
+"ontbreekt"); `followed` is een vervallen Engelse uitvoersleutel, en de enige plek die hem noemde, de
+OpenAPI-beschrijving
+("met followed"), staat in geen van die vormen. Een terugkeer van `followed` vangen de vier byte-gepinde OpenAPI-goldens
+en de dienst-tests, die elke meta-sleutel tonen.
 
 ### Wat open bleef
 

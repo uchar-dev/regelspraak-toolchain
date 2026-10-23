@@ -82,8 +82,14 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         Map<String, Object> copy = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : meta.entrySet()) {
             Object v = e.getValue();
-            if (v instanceof List<?> l && l.stream().allMatch(String.class::isInstance)) v = List.copyOf(l);
-            else if (v != null && !(v instanceof String) && !(v instanceof Boolean) && !(v instanceof Integer))
+            if (v instanceof List<?> l) {
+                for (Object o : l)
+                    if (!(o instanceof String))
+                        throw new IllegalArgumentException("het stuk " + kind + " draagt bij " + e.getKey()
+                                + " een lijst met " + (o == null ? "null" : "een " + o.getClass().getSimpleName())
+                                + ", en een lijst in een stuk draagt alleen teksten");
+                v = List.copyOf(l);
+            } else if (v != null && !(v instanceof String) && !(v instanceof Boolean) && !(v instanceof Integer))
                 throw new IllegalArgumentException("het stuk " + kind + " draagt bij " + e.getKey() + " een "
                         + v.getClass().getSimpleName() + ", en een stuk draagt alleen teksten, booleans, gehele getallen,"
                         + " lijsten van teksten en null");
