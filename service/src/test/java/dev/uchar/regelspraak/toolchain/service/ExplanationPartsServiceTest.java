@@ -61,7 +61,7 @@ public class ExplanationPartsServiceTest {
 
             Parameter de minimumleeftijd : Numeriek (geheel getal);
 
-            // Bron: BWBR0004045&artikel=20&lid=1&o=b · "met ingang van de dag waarop hij ervaren is" · lemma's: ervaren-jutter · strandgoed · afwijking, niet gevolgd: oude-jutter
+            // Bron: BWBR0004045&artikel=20&lid=1&o=b · "met ingang van de dag waarop hij ervaren is" · lemma's: ervaren-jutter · strandgoed · deviatie wet/hb, volgt wet: oude-jutter
             // Bron: BWBR0004045&artikel=43
             Regel ervaren
                 geldig altijd
@@ -92,7 +92,7 @@ public class ExplanationPartsServiceTest {
                     De premie van een Jutter moet gesteld worden op 100,00
                     indien hij ervaren is.
 
-            // Bron: BWBR0004045&artikel=20&lid=2 · lemma's: jeugdpremie · afwijking: oude-premie
+            // Bron: BWBR0004045&artikel=20&lid=2 · lemma's: jeugdpremie · deviatie binnen hb: oude-premie
             Uitzondering op premie: jeugdpremie
                 geldig altijd
                     De premie van een Jutter moet gesteld worden op 50,00
@@ -126,7 +126,7 @@ public class ExplanationPartsServiceTest {
                 { "type": "Vondst", "id": "V2", "roles": { "jutter": "J1" } } ] }""";
 
     private static final String GROUND = ". Grondslag: BWBR0004045&artikel=20&lid=1&o=b · \"met ingang van de dag waarop"
-            + " hij ervaren is\" · lemma's: ervaren-jutter · strandgoed · afwijking, niet gevolgd: oude-jutter;"
+            + " hij ervaren is\" · lemma's: ervaren-jutter · strandgoed · deviatie wet/hb, volgt wet: oude-jutter;"
             + " BWBR0004045&artikel=43";
     private static final String FOLD = "aan de voorwaarde \"alle vondsten van de Jutter waardevol zijn\"";
 
@@ -145,7 +145,7 @@ public class ExplanationPartsServiceTest {
             "J2 heeft recht op strandgoed, omdat het onderwerp ervaren is",
             "J2 heeft als premie 50,00 volgens 'jeugdpremie': 50,00, omdat het onderwerp ervaren is en zijn leeftijd"
                     + " (16) is kleiner dan 18; verdrongen: de regel 'premie'. Grondslag: BWBR0004045&artikel=20&lid=2"
-                    + " · lemma's: jeugdpremie · afwijking: oude-premie",
+                    + " · lemma's: jeugdpremie · deviatie binnen hb: oude-premie",
             noMeldpremie("J2"),
             "J3 is niet ervaren, want niet geldt: zijn aantal meldingen (3) is groter dan 10 of het onderwerp"
                     + " ingezetene is" + GROUND,
@@ -173,7 +173,8 @@ public class ExplanationPartsServiceTest {
     private static final String GROUND_PARTS = "GROUND{rule=ervaren}[«. Grondslag: »"
             + " STATUTE{bwb=BWBR0004045, article=20, paragraph=1, part=b}«BWBR0004045&artikel=20&lid=1&o=b» « · »"
             + " NOTE«\"met ingang van de dag waarop hij ervaren is\"» « · lemma's: » LEMMA«ervaren-jutter» « · »"
-            + " LEMMA«strandgoed» « · afwijking, niet gevolgd: » DEVIATION{followed=false}«oude-jutter» «; »"
+            + " LEMMA«strandgoed» « · deviatie wet/hb, volgt wet: »"
+            + " DEVIATION{between=[\"wet\",\"hb\"], follows=wet}«oude-jutter» «; »"
             + " STATUTE{bwb=BWBR0004045, article=43}«BWBR0004045&artikel=43»]";
     private static final String ERVAREN = "NAME{declaration=KENMERK, owner=Jutter, canonical=ervaren}«ervaren»";
     private static final String LEEFTIJD =
@@ -212,7 +213,7 @@ public class ExplanationPartsServiceTest {
                     + " «; verdrongen: de regel '» RULE«premie» «'»"
                     + " GROUND{group=premie, pointer=/defaults/0, position=1, variant=jeugdpremie}[«. Grondslag: »"
                     + " STATUTE{bwb=BWBR0004045, article=20, paragraph=2}«BWBR0004045&artikel=20&lid=2» « · lemma's: »"
-                    + " LEMMA«jeugdpremie» « · afwijking: » DEVIATION{followed=true}«oude-premie»]",
+                    + " LEMMA«jeugdpremie» « · deviatie binnen hb: » DEVIATION{between=[\"hb\"]}«oude-premie»]",
             10, "SUBJECT«J3» « is niet » " + ERVAREN + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
                     + " CONDITION{holds=false, quantifier=atLeast, threshold=1}["
                     + "CONDITION{holds=false}[QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=aantal meldingen}"

@@ -24,10 +24,13 @@ final class Ground {
     static final String ANNOTATION_SEPARATOR = "; ";
 
     private static final String SLUG = "[\\p{L}\\p{N}-]+";
+    /** A layer of the wetsanalyse (wet, hb, brm): the werkbank chooses the codes, so the parser reads any. */
+    private static final String LAYER = "\\p{Ll}+";
     private static final Pattern STATUTE =
             Pattern.compile("(BWBR[0-9]{7})&artikel=([^&]+)(?:&lid=([^&]+))?(?:&o=([^&]+))?");
     private static final Pattern LEMMA_HEAD = Pattern.compile("(lemma's: )(" + SLUG + ")");
-    private static final Pattern DEVIATION = Pattern.compile("(afwijking(, niet gevolgd)?: )(" + SLUG + ")");
+    private static final Pattern DEVIATION = Pattern.compile("(deviatie (?:(" + LAYER + ")/(" + LAYER + "), volgt ("
+            + LAYER + ")|binnen (" + LAYER + ")): )(" + SLUG + ")");
     private static final Pattern LEMMA = Pattern.compile(SLUG);
 
     /** Writes {@code annotations}, each non-empty, as parts, with {@link #ANNOTATION_SEPARATOR} as glue between
@@ -40,8 +43,9 @@ final class Ground {
     }
 
     /** One annotation: its segments between {@link #SEGMENT_SEPARATOR}s. A segment {@code lemma's: <slug>} opens the
-     *  list of lemmas; after it a slug is a lemma and {@code afwijking: <slug>} or {@code afwijking, niet gevolgd:
-     *  <slug>} a deviation. */
+     *  list of lemmas; after it a slug is a lemma, and {@code deviatie <layer>/<layer>, volgt <layer>: <slug>} or
+     *  {@code deviatie binnen <layer>: <slug>} a deviation. Whether the followed layer is one of the pair, and whether
+     *  the deviation is in the register, is the werkbank's lint; the parser reads the form. */
     private static void annotation(Sentence.Builder b, String annotation) {
         String[] segments = annotation.split(Pattern.quote(SEGMENT_SEPARATOR), -1);
         boolean lemmas = false;
@@ -56,7 +60,9 @@ final class Ground {
                 lemmas = true;
                 b.text(m.group(1)).leaf(Part.Kind.LEMMA, m.group(2));
             } else if (lemmas && (m = DEVIATION.matcher(s)).matches()) {
-                b.text(m.group(1)).leaf(Part.Kind.DEVIATION, m.group(3), Part.meta("followed", m.group(2) == null));
+                b.text(m.group(1)).leaf(Part.Kind.DEVIATION, m.group(6), m.group(5) == null
+                        ? Part.meta("between", List.of(m.group(2), m.group(3)), "follows", m.group(4))
+                        : Part.meta("between", List.of(m.group(5))));
             } else if (lemmas && LEMMA.matcher(s).matches()) {
                 b.leaf(Part.Kind.LEMMA, s);
             } else {

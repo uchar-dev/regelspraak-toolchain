@@ -9,9 +9,10 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * The parser of the ground ({@link Ground}): each segment pattern of the werkbank's convention, a near-anchor and a slug
- * before the lemma head as a note, two annotations of a rule with "; " between them, and one annotation whose "; "
- * stays inside a segment. The texts of the parts after each other are always the annotations joined with "; ".
+ * The parser of the ground ({@link Ground}): each segment pattern of the werkbank's convention, a near-anchor, a slug
+ * and a deviation before the lemma head as a note, the layers of a deviation unjudged, the old forms of a deviation
+ * and a deviation off the grammar as notes, two annotations of a rule with "; " between them, and one annotation whose
+ * "; " stays inside a segment. The texts of the parts after each other are always the annotations joined with "; ".
  */
 class GroundTest {
 
@@ -43,14 +44,46 @@ class GroundTest {
                 "LEMMA«uitkeringsduur-verstreken»",
                 "« · »",
                 "LEMMA«maxdatum»",
-                "« · afwijking: »",
-                "DEVIATION«de-26-wekeneis»{followed=true}",
-                "« · afwijking, niet gevolgd: »",
-                "DEVIATION«de-25-wekendrempel»{followed=false}"),
+                "« · deviatie wet/hb, volgt hb: »",
+                "DEVIATION«de-26-wekeneis»{between=[wet, hb], follows=hb}",
+                "« · deviatie binnen brm: »",
+                "DEVIATION«de-25-wekendrempel»{between=[brm]}"),
                 parse("BWBR0004045&artikel=20&lid=1&o=b · BWBR0016001&artikel=1 · BWBR0004045&artikel=7:668a&lid=2"
                         + " · \"met ingang van de dag waarop de … uitkeringsduur is verstreken\": eindigt het recht (B12)"
-                        + " · lemma's: uitkeringsduur-verstreken · maxdatum · afwijking: de-26-wekeneis"
-                        + " · afwijking, niet gevolgd: de-25-wekendrempel"));
+                        + " · lemma's: uitkeringsduur-verstreken · maxdatum · deviatie wet/hb, volgt hb: de-26-wekeneis"
+                        + " · deviatie binnen brm: de-25-wekendrempel"));
+    }
+
+    @Test
+    void a_deviation_names_its_layers_and_the_parser_does_not_judge_them() {
+        // whether the followed layer is one of the pair is the werkbank's lint, not the parser's
+        assertEquals(List.of(
+                "« · deviatie wet/brm, volgt wet: »",
+                "DEVIATION«de-herlevingsgrens-op-daglonen»{between=[wet, brm], follows=wet}",
+                "« · deviatie hb/brm, volgt wet: »",
+                "DEVIATION«een-laag-buiten-het-paar»{between=[hb, brm], follows=wet}",
+                "« · deviatie binnen/hb, volgt hb: »",
+                "DEVIATION«binnen-als-laag»{between=[binnen, hb], follows=hb}"),
+                parse("lemma's: herleving · deviatie wet/brm, volgt wet: de-herlevingsgrens-op-daglonen"
+                        + " · deviatie hb/brm, volgt wet: een-laag-buiten-het-paar"
+                        + " · deviatie binnen/hb, volgt hb: binnen-als-laag").subList(2, 8));
+    }
+
+    @Test
+    void the_old_forms_and_a_deviation_off_the_grammar_are_notes() {
+        assertEquals(List.of(
+                "« · »", "NOTE«afwijking: de-26-wekeneis»",
+                "« · »", "NOTE«afwijking, niet gevolgd: de-25-wekendrempel»",
+                "« · »", "NOTE«deviatie Wet/hb, volgt hb: een-hoofdletter»",
+                "« · »", "NOTE«deviatie wet/hb: geen-gevolgde-laag»",
+                "« · »", "NOTE«deviatie wet, volgt wet: geen-paar»",
+                "« · »", "NOTE«deviatie binnen brm, volgt brm: binnen-met-gevolgde-laag»",
+                "« · »", "NOTE«deviatie binnen brm: »"),
+                parse("lemma's: wekeneis · afwijking: de-26-wekeneis · afwijking, niet gevolgd: de-25-wekendrempel"
+                        + " · deviatie Wet/hb, volgt hb: een-hoofdletter · deviatie wet/hb: geen-gevolgde-laag"
+                        + " · deviatie wet, volgt wet: geen-paar"
+                        + " · deviatie binnen brm, volgt brm: binnen-met-gevolgde-laag · deviatie binnen brm: ")
+                        .subList(2, 16));
     }
 
     @Test
@@ -64,13 +97,13 @@ class GroundTest {
                 "« · »",
                 "NOTE«maxdatum»",
                 "« · »",
-                "NOTE«afwijking: de-26-wekeneis»",
+                "NOTE«deviatie wet/hb, volgt hb: de-26-wekeneis»",
                 "« · lemma's: »",
                 "LEMMA«wekeneis»",
                 "« · »",
                 "NOTE«knoop 118»"),
                 parse("BWBR000404&artikel=20 · BWBR0004045&artikel=20&o=b&lid=1 · regelset-intern (CGM: geen element)"
-                        + " · maxdatum · afwijking: de-26-wekeneis · lemma's: wekeneis · knoop 118"));
+                        + " · maxdatum · deviatie wet/hb, volgt hb: de-26-wekeneis · lemma's: wekeneis · knoop 118"));
     }
 
     @Test

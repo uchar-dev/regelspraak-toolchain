@@ -10,7 +10,7 @@ import java.util.Objects;
  * One part of a sentence of the explanation ({@link Sentence}): a leaf with its text, or a group of parts, whose text
  * is by definition the concatenation of the texts of its parts. {@code meta} carries what the kind adds beside the
  * text (the declaration a {@link Kind#NAME} names, the verdict of a {@link Kind#CONDITION}, ...), as strings, booleans,
- * integers or null, in the order the consumer reads them.
+ * integers, lists of strings or null, in the order the consumer reads them.
  */
 public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> parts) {
 
@@ -62,7 +62,9 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         STATUTE,
         /** The slug of a lemma. */
         LEMMA,
-        /** The slug of a deviation, with {@code followed}. */
+        /** The slug of a deviation, with {@code between}, the layers it lies between in the order of the register (the
+         *  first is the layer the second deviates from), or the one layer it lies within, and {@code follows}, the layer
+         *  the rule set follows, absent for a deviation within one layer. */
         DEVIATION,
         /** A segment of an annotation that matches no other pattern: a quotation, a free note. */
         NOTE;
@@ -77,14 +79,17 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         Objects.requireNonNull(text, "text");
         Objects.requireNonNull(meta, "meta");
         Objects.requireNonNull(parts, "parts");
+        Map<String, Object> copy = new LinkedHashMap<>();
         for (Map.Entry<String, Object> e : meta.entrySet()) {
             Object v = e.getValue();
-            if (v != null && !(v instanceof String) && !(v instanceof Boolean) && !(v instanceof Integer))
+            if (v instanceof List<?> l && l.stream().allMatch(String.class::isInstance)) v = List.copyOf(l);
+            else if (v != null && !(v instanceof String) && !(v instanceof Boolean) && !(v instanceof Integer))
                 throw new IllegalArgumentException("het stuk " + kind + " draagt bij " + e.getKey() + " een "
-                        + v.getClass().getSimpleName() + ", en een stuk draagt alleen teksten, booleans, gehele getallen"
-                        + " en null");
+                        + v.getClass().getSimpleName() + ", en een stuk draagt alleen teksten, booleans, gehele getallen,"
+                        + " lijsten van teksten en null");
+            copy.put(e.getKey(), v);
         }
-        meta = Collections.unmodifiableMap(new LinkedHashMap<>(meta));
+        meta = Collections.unmodifiableMap(copy);
         parts = List.copyOf(parts);
         if (!kind.isGroup() && !parts.isEmpty())
             throw new IllegalArgumentException("het blad " + kind + " heeft stukken");

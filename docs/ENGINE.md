@@ -292,7 +292,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `VARIANT`).
 | `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | the decider whose annotations they are (below): `rule`, or `group`, `pointer`, `position` and `variant` where it has a name |
 | `STATUTE` | leaf | a Juriconnect anchor, literally | `bwb`, `article`, and `paragraph` and `part` where it names them |
 | `LEMMA` | leaf | the slug of a lemma | — |
-| `DEVIATION` | leaf | the slug of a deviation | `followed` |
+| `DEVIATION` | leaf | the slug of a deviation | `between`, the layers it lies between, or the one layer it lies within; `follows`, the layer the rule set follows, absent within one layer (below) |
 | `NOTE` | leaf | any other segment of an annotation: a quotation, a free note | — |
 
 Without its last part (`GROUND`) a sentence is the sentence a rule without annotations gets. There is no kind for a CGM
@@ -367,15 +367,27 @@ annotation  = segment { " · " segment }
 segment     = statute | lemma-head | deviation | lemma | note
 statute     = "BWBR" 7DIGIT "&artikel=" value [ "&lid=" value ] [ "&o=" value ]    (value: 1*, no "&")
 lemma-head  = "lemma's: " slug                        (opens the list of lemmas)
-deviation   = ( "afwijking: " | "afwijking, niet gevolgd: " ) slug     (only after the lemma head)
+deviation   = "deviatie " layer "/" layer ", volgt " layer ": " slug
+            | "deviatie binnen " layer ": " slug       (both only after the lemma head)
 lemma       = slug                                    (only after the lemma head)
 note        = any other text, also a slug before the lemma head and a near-anchor
 slug        = 1*( letter | DIGIT | "-" )
+layer       = 1*( lowercase letter )
 ```
 
 The separators `" · "`, `"; "`, `"lemma's: "` and the words of a deviation are `TEXT`; an empty segment adds only its
 separators. A rule and a default carry their annotations as a list (`statuteAnnotations`; a default those of its
 block), so the parser takes each entry as one annotation and never splits text: "; " also occurs within a note.
+
+**The layers of a deviation** (card `ground-deviation`). A deviation is an entry of the deviation register of the
+wetsanalyse, which names the layers of each entry (`wet→hb`, `intern brm`). `deviatie wet/hb, volgt hb: <slug>` is a
+deviation of `hb` from `wet` in which the rule set follows `hb`: `between: ["wet", "hb"]`, in the order of the
+register, and `follows: "hb"`. `deviatie binnen brm: <slug>` lies within one layer: `between: ["brm"]`, without
+`follows`; the note in the same annotation says which rule of that layer the rule set follows. `between` is one key
+for both forms, a list, so a reader finds the layers of every deviation in one place and tells the forms apart by its
+length. The werkbank chooses the layer codes; the parser does not know them, and it does not judge whether `follows`
+is one of the pair or whether the deviation is in the register (the werkbank's lint does). The old forms
+`afwijking: <slug>` and `afwijking, niet gevolgd: <slug>` are notes since this card.
 
 **peildatum-contract (multi-vintage deploys).** When the descriptor names a parameterset sidecar whose values
 carry more than one vintage, the service selects each parameter's vintage against ONE date authority: the request

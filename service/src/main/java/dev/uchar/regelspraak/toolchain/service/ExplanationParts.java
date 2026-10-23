@@ -41,6 +41,10 @@ public final class ExplanationParts {
             else if (v instanceof String t) n.put(e.getKey(), t);
             else if (v instanceof Boolean b) n.put(e.getKey(), b);
             else if (v instanceof Integer i) n.put(e.getKey(), i);
+            else if (v instanceof List<?> l) {
+                ArrayNode list = n.putArray(e.getKey());
+                for (Object o : l) list.add((String) o);
+            }
             else throw new IllegalStateException("het stuk " + p.kind() + " draagt bij " + e.getKey() + " een "
                     + v.getClass().getSimpleName());
         }

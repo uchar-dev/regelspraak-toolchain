@@ -616,8 +616,10 @@ public final class OpenApiEmitter {
                 + " /defaults/0/exceptions/members/0/defaults/0), position, zijn plaats in zijn keten (1-gebaseerd, zoals"
                 + " de zin 'de variant op plaats n' telt), en variant, zijn naam, waar hij er een heeft; STATUTE een"
                 + " Juriconnect-anker, met bwb, article en, waar het ze"
-                + " noemt, paragraph en part; LEMMA een lemma; DEVIATION een afwijking, met followed; NOTE elk ander"
-                + " segment van een annotatie.");
+                + " noemt, paragraph en part; LEMMA een lemma; DEVIATION een deviatie, met between, de lagen"
+                + " waartussen zij ligt in de volgorde van het register (de eerste is de laag waarvan de tweede"
+                + " afwijkt), of de ene laag waarbinnen zij ligt, en follows, de laag die de regelset volgt (ontbreekt"
+                + " bij een deviatie binnen één laag); NOTE elk ander segment van een annotatie.");
         s.putArray("required").add("kind");
         ObjectNode props = s.putObject("properties");
         ObjectNode kind = props.putObject("kind");
@@ -629,10 +631,13 @@ public final class OpenApiEmitter {
         parts.put("type", "array");
         parts.putObject("items").put("$ref", "#/components/schemas/ExplanationPart");
         for (String key : new String[]{"declaration", "canonical", "quantifier", "bwb", "article", "paragraph", "part",
-                "rule", "pointer", "variant"})
+                "rule", "pointer", "variant", "follows"})
             props.putObject(key).put("type", "string");
+        ObjectNode between = props.putObject("between");
+        between.put("type", "array");
+        between.putObject("items").put("type", "string");
         for (String key : new String[]{"owner", "group"}) props.putObject(key).put("type", "string").put("nullable", true);
-        for (String key : new String[]{"empty", "timeline", "holds", "decided", "displaced", "followed"})
+        for (String key : new String[]{"empty", "timeline", "holds", "decided", "displaced"})
             props.putObject(key).put("type", "boolean");
         for (String key : new String[]{"threshold", "members", "holding", "unjudged", "position"})
             props.putObject(key).put("type", "integer");
