@@ -245,3 +245,9 @@ kleine punten, verwerkt door de hoofdsessie:
   soort luid met de regelnaam en de herkomst;
 - `docs/ENGINE.md`: `rule` van een vorm staat in de lijst van de regellaag waar die vorm staat (niet alleen
   `rules.rules`), en een stapel op een kenmerk heet `defaults K:…`.
+
+### Landing (hoofdsessie, 2026-10-23)
+
+`make gates` op `c227966d` (na de review) met `TAG/CLUSTER=drl-rule-provenance`: GROEN, 7 stappen in 10m59s (reactor
+1662/173/379/53, replay 244 goldens en 656 cases, kind-smoke H2–H4 PASS). Fast-forward op main en gepusht, uchar vóór de
+toolchain (uchar main `f22c9ff5` stond al op origin).
