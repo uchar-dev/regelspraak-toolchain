@@ -211,7 +211,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
 - `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`). A source with a
   parse or resolver error gets its diagnostics and nothing else. A clean source gets the `uchar-ir-v1` document, the
   exec-model verdict (`executable` with the `coverage` and `generated`, or uchar's `refusal`), the DRL of the
-  DRL-text branch as a view (not the verdict), uchar's rule graph of the document its loader reads back, as Mermaid
+  DRL-text branch as a view (not the verdict: `drl`, or `drlError` with uchar's sentence and `drl` empty) with
+  `drlRules` beside it (below), uchar's rule graph of the document its loader reads back, as Mermaid
   (`graph`) and as `graphJson` (`{nodes:[{id,label,kind,endOutput}], edges:[{from,to}]}`), the `vocabularies` of the
   source (the declared ones, the chosen one, and per declaration its designation in each, with its source line `rule`
   and the `comment` directly above it, read from uchar's parse; the list `elements` is always filled, also without
@@ -234,6 +235,29 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `fixpointError` with the reason there is none. `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
   coverage, the explanation, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
   that differs (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
+- `drlRules` (card `drl-rule-provenance`) has one entry per rule of `drl`, in the order of its headers: `name`, the
+  rule's name, unescaped (the header `rule "…"` spells it as a DRL string literal, with `\\`, `\"`, `\n` and `\r`), and
+  what uchar says the rule lowers (`TmsTranspiler.originOf`), in the keys of the decider of a ground (below, "The
+  decider of a ground"), canonical like the IR and the DRL:
+  - a rule of a form that is no defaults stack (the form's own rule and every rule its lowering adds, the
+    contributions to a fold the form registered first among them): `rule`, the name of the form without a version
+    suffix;
+  - a rule of an effective defaults stack: `stack`, its name as the coverage and `generated` give it
+    (`defaults A:<type>.<member>`), and where it lowers one default (the default's own rule, its fall-back, the fault
+    rule of its justification, the reconciliation of its exception groups, the contributions to the folds its
+    justification or consequence reads) that default, as `group`, `pointer`, `position` and `variant`, or as `rule`
+    for an ordinary rule the stack of a subtype takes in (uchar's RUNTIME-SEMANTICS ch. 7.10); a rule of the stack
+    itself (the reconciliation of the groups at its root, the fault of a session without an evaluation date) has
+    `stack` only;
+  - a rule of no form (a standing, a link of the input, the comparison of two writers) has `name` only;
+  - `generatedFrom` (`{kind, owner, name, form}`, as in `vocabularies`) where uchar's frontend made the form of `rule`
+    or the group of `group`: the rules and the group of the opgave marker, a group `B voor S`, a row of a decision
+    table.
+
+  The pointer is uchar's, translated as the ground translates it (`Verbaliser.decider`); nothing is read off the name
+  of a rule, whose label (`default 0.1.2`, `bijdrage aan vouw 7`) is the lowering's own numbering. The DRL of a
+  variant is the entries with its `group` and `pointer`; with `drlError` there is no text and `drlRules` is an empty
+  list.
 - `POST /playground/analyse?via=service` gives the same answer, except that the service the process runs computes the
   scenarios, so that a PASS says: this service gives this answer. It shows the session of each scenario, so a service
   started without `DETAIL` answers it with a 400 that names `DETAIL` (`field` `via`), and another value of `via` is a

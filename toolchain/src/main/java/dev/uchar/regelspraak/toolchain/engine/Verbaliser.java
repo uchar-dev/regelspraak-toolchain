@@ -411,6 +411,89 @@ public final class Verbaliser {
         boolean holds(String p) { return p.equals(pointer) || p.startsWith(pointer + "/"); }
     }
 
+    /**
+     * De beslisser op {@code pointer} in de sleutels van een {@code GROUND} ({@link #deciderOf}): een default of de
+     * versie van een gewone regel die de stapel van een subtype opneemt (ch. 7.10), zoals de motor ze noemt
+     * ({@link DroolsBackend#decisionsOf}, {@code TmsTranspiler.originOf}). {@code document} is het document waarvan de
+     * motor de pointer gaf. Zo noemen de uitleg en de playground ({@code drlRules}) een beslisser op één manier.
+     *
+     * @throws IllegalStateException een pointer die niet op {@code document} terug te leggen is
+     */
+    public static Map<String, Object> decider(Document document, String pointer) {
+        return deciderOf(variantAt(document, pointer));
+    }
+
+    /** De variant op {@code pointer} in {@code document}; faalt luid op een pointer die er niet op terug te leggen
+     *  is. */
+    private static Variant variantAt(Document document, String pointer) {
+        Matcher dm = DEFAULT_POINTER.matcher(pointer);
+        if (dm.matches()) {
+            int i = Integer.parseInt(dm.group(1)), j = Integer.parseInt(dm.group(2));
+            if (i >= document.groups().size()) throw unresolved(pointer, "het document heeft "
+                    + document.groups().size() + " defaults-groep(en)");
+            PrioritizedDefaults g = document.groups().get(i);
+            if (j >= g.defaults().size()) throw unresolved(pointer, "de groep '" + g.name() + "' heeft "
+                    + g.defaults().size() + " default(s)");
+            Variant v = new Variant("/rules/prioritizedDefaults/" + i + "/defaults/" + j, g.defaults().get(j), null,
+                    g, null, -1, j);
+            Matcher step = NESTED_STEP.matcher(dm.group(3));
+            while (step.find()) {
+                int m = Integer.parseInt(step.group(1)), l = Integer.parseInt(step.group(2));
+                List<List<Variant>> members = v.members();
+                if (m >= members.size() || l >= members.get(m).size())
+                    throw unresolved(pointer, "bij " + v.pointer() + " staat geen uitzonderingsgroep " + m
+                            + " met een default " + l);
+                v = members.get(m).get(l);
+            }
+            return v;
+        }
+        Matcher rm = RULE_POINTER.matcher(pointer);
+        if (rm.matches())
+            return ruleVariant(document, pointer, Integer.parseInt(rm.group(1)), Integer.parseInt(rm.group(2)));
+        throw unresolved(pointer, "dat is geen pointer naar een default of een regelversie");
+    }
+
+    /** De regelversie {@code /rules/rules/k/versions/v}: het document schrijft de regels als vormen, een vorm met
+     *  meer versies als de opeenvolgende regels "… #1" tot en met "… #n" van het model, zoals uchar de pointer
+     *  maakt. */
+    private static Variant ruleVariant(Document document, String pointer, int form, int version) {
+        int k = -1, w = 0;
+        String previous = null;
+        for (ResolvedRule r : document.rules()) {
+            if (r.name() == null)
+                throw unresolved(pointer,
+                        "een regel zonder naam laat open bij welke vorm van het document hij hoort");
+            if (previous != null && nextVersion(previous, r.name())) w++;
+            else { k++; w = 0; }
+            previous = r.name();
+            if (k == form && w == version) return new Variant(pointer, null, r, null, null, -1, 0);
+            if (k > form) break;
+        }
+        throw unresolved(pointer, "het document heeft geen vorm " + form + " met een versie " + version);
+    }
+
+    private static IllegalStateException unresolved(String pointer, String why) {
+        return new IllegalStateException("de pointer " + pointer + " van de motor is niet op het document terug te"
+                + " leggen: " + why);
+    }
+
+    /** De beslisser waarvan de grondslag de annotaties is, in de termen van het IR, zodat een lezer hem en zijn
+     *  annotaties in het document vindt zonder de zin te lezen: een regel bij de naam van haar vorm
+     *  ({@link #ruleDecider}), een default bij de naam van zijn groep ({@code group}, null waar het document de groep
+     *  geen naam geeft), zijn pointer in die groep ({@code pointer}: die van de motor zonder de plaats van de groep
+     *  in het document, want een scope verschuift die en de naam niet), zijn plaats in zijn keten ({@code position},
+     *  1-gebaseerd, zoals de zin hem noemt) en zijn naam ({@code variant}) waar hij er een heeft. */
+    private static Map<String, Object> deciderOf(Variant v) {
+        if (v.rule() != null) return ruleDecider(v.rule());
+        Matcher m = IN_GROUP.matcher(v.pointer());
+        if (!m.matches())
+            throw new IllegalStateException("de default " + v.pointer() + " heeft geen pointer in een defaults-groep");
+        Map<String, Object> meta = Part.meta("group", v.group().name(), "pointer", m.group(1),
+                "position", v.place() + 1);
+        if (v.d().name() != null) meta.put("variant", v.d().name());
+        return meta;
+    }
+
     /** Wat een variant van een beslissing was: vóór de beslisser aan de beurt en niet beslist, de beslisser, erna en
      *  verdrongen, of een lid van een ongeordende groep na het lid dat besliste, dat niet anders besliste (het kan
      *  hetzelfde besloten hebben of niets: de motor noemt alleen het eerste). */
@@ -840,57 +923,9 @@ public final class Verbaliser {
 
         // ---- het model ----
 
-        /** De variant op {@code pointer} in het document; faalt luid op een pointer die er niet op terug te leggen
-         *  is. */
+        /** De variant op {@code pointer} in het document ({@link #variantAt}). */
         private Variant variant(String pointer) {
-            Matcher dm = DEFAULT_POINTER.matcher(pointer);
-            if (dm.matches()) {
-                int i = Integer.parseInt(dm.group(1)), j = Integer.parseInt(dm.group(2));
-                if (i >= document.groups().size()) throw unresolved(pointer, "het document heeft "
-                        + document.groups().size() + " defaults-groep(en)");
-                PrioritizedDefaults g = document.groups().get(i);
-                if (j >= g.defaults().size()) throw unresolved(pointer, "de groep '" + g.name() + "' heeft "
-                        + g.defaults().size() + " default(s)");
-                Variant v = new Variant("/rules/prioritizedDefaults/" + i + "/defaults/" + j, g.defaults().get(j), null,
-                        g, null, -1, j);
-                Matcher step = NESTED_STEP.matcher(dm.group(3));
-                while (step.find()) {
-                    int m = Integer.parseInt(step.group(1)), l = Integer.parseInt(step.group(2));
-                    List<List<Variant>> members = v.members();
-                    if (m >= members.size() || l >= members.get(m).size())
-                        throw unresolved(pointer, "bij " + v.pointer() + " staat geen uitzonderingsgroep " + m
-                                + " met een default " + l);
-                    v = members.get(m).get(l);
-                }
-                return v;
-            }
-            Matcher rm = RULE_POINTER.matcher(pointer);
-            if (rm.matches()) return ruleVariant(pointer, Integer.parseInt(rm.group(1)), Integer.parseInt(rm.group(2)));
-            throw unresolved(pointer, "dat is geen pointer naar een default of een regelversie");
-        }
-
-        /** De regelversie {@code /rules/rules/k/versions/v}: het document schrijft de regels als vormen, een vorm met
-         *  meer versies als de opeenvolgende regels "… #1" tot en met "… #n" van het model, zoals uchar de pointer
-         *  maakt. */
-        private Variant ruleVariant(String pointer, int form, int version) {
-            int k = -1, w = 0;
-            String previous = null;
-            for (ResolvedRule r : document.rules()) {
-                if (r.name() == null)
-                    throw unresolved(pointer,
-                            "een regel zonder naam laat open bij welke vorm van het document hij hoort");
-                if (previous != null && nextVersion(previous, r.name())) w++;
-                else { k++; w = 0; }
-                previous = r.name();
-                if (k == form && w == version) return new Variant(pointer, null, r, null, null, -1, 0);
-                if (k > form) break;
-            }
-            throw unresolved(pointer, "het document heeft geen vorm " + form + " met een versie " + version);
-        }
-
-        private IllegalStateException unresolved(String pointer, String why) {
-            return new IllegalStateException("de uitleg legt de pointer " + pointer + " van de motor niet op het"
-                    + " document terug: " + why);
+            return variantAt(document, pointer);
         }
 
         private void requireTarget(Variant v, String member) {
@@ -937,24 +972,6 @@ public final class Verbaliser {
             if (v.rule() != null) return sourceAnnotations(v.rule());
             if (generatedOpgave(v)) return List.of();
             return v.d().statuteAnnotations();
-        }
-
-        /** De beslisser waarvan de grondslag de annotaties is, in de termen van het IR, zodat een lezer hem en zijn
-         *  annotaties in het document vindt zonder de zin te lezen: een regel bij de naam van haar vorm
-         *  ({@link #ruleDecider}), een default bij de naam van zijn groep ({@code group}, null waar het document de groep
-         *  geen naam geeft), zijn pointer in die groep ({@code pointer}: die van de motor zonder de plaats van de groep
-         *  in het document, want een scope verschuift die en de naam niet), zijn plaats in zijn keten ({@code position},
-         *  1-gebaseerd, zoals {@link #name} hem noemt) en zijn naam ({@code variant}) waar hij er een heeft. */
-        private Map<String, Object> deciderOf(Variant v) {
-            if (v.rule() != null) return ruleDecider(v.rule());
-            Matcher m = IN_GROUP.matcher(v.pointer());
-            if (!m.matches())
-                throw new IllegalStateException("de default " + v.pointer() + " van " + label + " heeft geen pointer"
-                        + " in een defaults-groep");
-            Map<String, Object> meta = Part.meta("group", v.group().name(), "pointer", m.group(1),
-                    "position", v.place() + 1);
-            if (v.d().name() != null) meta.put("variant", v.d().name());
-            return meta;
         }
 
         /** Of de opgavemarkering deze default maakte: een default zonder naam in de groep {@code opgave boven

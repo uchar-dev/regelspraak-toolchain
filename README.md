@@ -107,6 +107,9 @@ model declares) and the sentences of the messages, which keep their text. The ol
   the pair in the order of the register, or the one layer of `deviatie binnen`) and `follows` (the layer the rule
   set follows; absent within one layer) in place of `followed`. The old forms `afwijking: ` and `afwijking, niet
   gevolgd: ` are a `NOTE`. `explanation` and the text of the parts are unchanged.
+- **The DRL names what each rule lowers** (card `drl-rule-provenance`): beside `drl` the playground gives `drlRules`,
+  per rule of the text its `name` and its decider in the keys of `GROUND`, with `stack` and `generatedFrom`
+  (`docs/ENGINE.md`); `drl` is unchanged, and with `drlError` the list is empty.
 
 ## The pin
 

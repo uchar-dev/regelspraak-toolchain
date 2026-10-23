@@ -14,6 +14,7 @@ import dev.uchar.regelspraak.engine.ScenarioResult.Firing;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.toolchain.engine.ScenarioRunner;
 import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
+import dev.uchar.regelspraak.toolchain.engine.Verbaliser;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceError;
 import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
@@ -39,6 +40,7 @@ import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.transpiler.core.Coverage;
 import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.TmsTranspiler;
 
 import org.antlr.v4.runtime.BaseErrorListener;
 import org.antlr.v4.runtime.CharStreams;
@@ -76,8 +78,10 @@ import java.util.Set;
  *       {@code vocabularies} with the element uchar made them from ({@link #generated}), or {@code false} with
  *       uchar's {@code weigering};</li>
  *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, a view and no verdict (that branch renders the
- *       analysis the exec-model branch fires as DRL text); {@code drlFout} carries its refusal, or uchar's sentence
- *       for a DRL text the Drools compiler rejects;</li>
+ *       analysis the exec-model branch fires as DRL text); {@code drlError} carries its refusal, or uchar's sentence
+ *       for a DRL text the Drools compiler rejects, with {@code drl} empty. Beside it {@code drlRules}: per rule of
+ *       that text, in its order, its name and what it lowers in the keys of the decider of a {@code GROUND}
+ *       ({@link #drlRules}), empty with {@code drlError}, since an empty text has no rule;</li>
  *   <li><b>graaf</b> and <b>graphJson</b> — uchar's rule graph of the document its loader reads back (the route
  *       uchar's gate 15 holds equal to the source route), as Mermaid source and as
  *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
@@ -219,12 +223,19 @@ public final class Playground {
 
         // 4. DRL — a view of the DRL-text branch, never the verdict. uchar's build of that branch throws an
         //    IllegalStateException for a DRL text the Drools compiler rejects, a fault of its rendering; the view
-        //    shows uchar's sentence for it as it shows a refusal
+        //    shows uchar's sentence for it as it shows a refusal. drlRules is read after that catch, so that a fault
+        //    of its own reading is no drlError
+        DroolsBackend.Build drlBuild = null;
         try {
-            root.put("drl", UcharBuild.assemble(model, DroolsBackend.Branch.DRL_TEXT).drl());
+            drlBuild = UcharBuild.assemble(model, DroolsBackend.Branch.DRL_TEXT);
         } catch (UcharBuild.NotCarried | IllegalStateException e) {
             root.put("drl", "");
+            root.putArray("drlRules");
             root.put("drlError", e.getMessage());
+        }
+        if (drlBuild != null) {
+            root.put("drl", drlBuild.drl());
+            root.set("drlRules", drlRules(drlBuild, ir, model));
         }
 
         // 5. GRAAF — uchar's rule graph of the document its loader reads back, with the defaults groups and the
@@ -581,6 +592,115 @@ public final class Playground {
             n.set("generatedFrom", generatedFrom(g));
         }
         return sink;
+    }
+
+    /**
+     * Per rule of the DRL text of {@code build}, in the order of the text, its {@code name} and what uchar says it
+     * lowers ({@code TmsTranspiler.originOf}), with the decider in the keys of a {@code GROUND}
+     * ({@link Verbaliser#decider}), canonical like the IR and the DRL:
+     * <ul>
+     *   <li>a rule of a form that is no defaults stack: {@code rule}, the name of the form without a version
+     *       suffix;</li>
+     *   <li>a rule of an effective defaults stack: {@code stack}, its name as the coverage and {@code generated} give
+     *       it, and where it lowers a default that default: {@code group}, {@code pointer}, {@code position} and
+     *       {@code variant}, or {@code rule} for an ordinary rule the stack of a subtype takes in (RUNTIME-SEMANTICS
+     *       ch. 7.10); a rule of the stack itself has {@code stack} only;</li>
+     *   <li>a rule of no form has {@code name} only;</li>
+     *   <li>{@code generatedFrom} where the form of {@code rule} or the group of {@code group} is one uchar's frontend
+     *       made ({@link RegelSpraakModel#generatedFrom}), the opgave marker's among them.</li>
+     * </ul>
+     * {@code name} is the name of the rule, unescaped: the header {@code rule "…"} spells it as a DRL string literal.
+     * {@code ir} is the document the emitter writes of {@code model}, the one the build was built from, on which the
+     * pointers of uchar lie.
+     */
+    static ArrayNode drlRules(DroolsBackend.Build build, com.fasterxml.jackson.databind.JsonNode ir,
+                              RegelSpraakModel model) {
+        if (ir == null)
+            throw new IllegalStateException("de DRL-teksttak bouwde een model waarvan de emitter geen document"
+                    + " schreef");
+        List<String> names = drlRuleNames(build.drl());
+        List<String> inBase = new ArrayList<>();
+        for (org.kie.api.definition.KiePackage p : build.kieBase().getKiePackages())
+            for (org.kie.api.definition.rule.Rule r : p.getRules()) inBase.add(r.getName());
+        List<String> inText = new ArrayList<>(names);
+        java.util.Collections.sort(inText);
+        java.util.Collections.sort(inBase);
+        if (!inText.equals(inBase))
+            throw new IllegalStateException("de koppen van de DRL-tekst noemen " + inText.size() + " regel(s), de"
+                    + " KieBase van die tekst " + inBase.size() + ": " + inText + " tegen " + inBase);
+        Verbaliser.Document document = Verbaliser.Document.of(IrLoader.loadWithPositions(ir));
+        ArrayNode sink = NF.arrayNode();
+        for (String name : names) {
+            TmsTranspiler.RuleOrigin o = build.execModelTranspiler().originOf(name);
+            ObjectNode n = sink.addObject();
+            n.put("name", name);
+            switch (o.kind()) {
+                case NO_FORM -> { }
+                case FORM -> decider(n, Map.of("rule", RegelSpraakModel.formName(o.form())), model);
+                case STACK -> n.put("stack", o.form());
+                case DEFAULT -> {
+                    n.put("stack", o.form());
+                    decider(n, Verbaliser.decider(document, o.pointer()), model);
+                }
+            }
+        }
+        return sink;
+    }
+
+    /** Puts the keys of {@code decider} on {@code n}, and {@code generatedFrom} where uchar's frontend made the form
+     *  of its {@code rule} or its {@code group}. */
+    private static void decider(ObjectNode n, Map<String, Object> decider, RegelSpraakModel model) {
+        for (Map.Entry<String, Object> e : decider.entrySet()) {
+            Object v = e.getValue();
+            if (v == null) n.putNull(e.getKey());
+            else if (v instanceof String t) n.put(e.getKey(), t);
+            else if (v instanceof Integer i) n.put(e.getKey(), i);
+            else throw new IllegalStateException("de beslisser " + decider + " draagt bij '" + e.getKey()
+                        + "' een " + v.getClass().getSimpleName());
+        }
+        Object form = decider.containsKey("rule") ? decider.get("rule") : decider.get("group");
+        if (form instanceof String f)
+            model.generatedFrom(Designatable.form(f)).ifPresent(g -> n.set("generatedFrom", generatedFrom(g)));
+    }
+
+    /** The header of a rule in uchar's DRL text: {@code rule} and the name as a DRL string literal
+     *  ({@code Namen.drlString}), alone on its line. */
+    private static final java.util.regex.Pattern RULE_HEADER =
+            java.util.regex.Pattern.compile("^rule \"((?:[^\"\\\\]|\\\\.)*)\"$", java.util.regex.Pattern.MULTILINE);
+
+    /**
+     * The names of the rules of {@code drl}, uchar's DRL text, in its order, unescaped: the four escapes
+     * {@code Namen.drlString} writes in a header ({@code \\}, {@code \"}, {@code \r}, {@code \n}) are undone. A
+     * line that begins with {@code rule "} and is no such header, or another escape, fails: uchar wrote a header this
+     * reading does not know.
+     */
+    static List<String> drlRuleNames(String drl) {
+        List<String> names = new ArrayList<>();
+        int headers = 0;
+        for (String line : drl.split("\n", -1)) if (line.startsWith("rule \"")) headers++;
+        java.util.regex.Matcher m = RULE_HEADER.matcher(drl);
+        while (m.find()) names.add(unescape(m.group(1)));
+        if (names.size() != headers)
+            throw new IllegalStateException("de DRL-tekst heeft " + headers + " regel(s) die met 'rule \"' beginnen,"
+                    + " en " + names.size() + " daarvan zijn een kop met een naam als stringliteral");
+        return names;
+    }
+
+    private static String unescape(String literal) {
+        StringBuilder b = new StringBuilder();
+        for (int i = 0; i < literal.length(); i++) {
+            char c = literal.charAt(i);
+            if (c != '\\') { b.append(c); continue; }
+            char next = literal.charAt(++i);
+            switch (next) {
+                case '\\', '"' -> b.append(next);
+                case 'n' -> b.append('\n');
+                case 'r' -> b.append('\r');
+                default -> throw new IllegalStateException("de kop van een regel in de DRL-tekst draagt de escape \\"
+                        + next + ", die uchar niet schrijft: " + literal);
+            }
+        }
+        return b.toString();
     }
 
     /** The rule graph as {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, each label in the names of
