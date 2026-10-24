@@ -29,7 +29,7 @@ class ExplanationOriginFromIrTest {
                 de vinddag Datum in dagen;
                 de meldingsdatum (cgm: Datum melding vondst) (handboek: dag van de melding) Datum in dagen
                     (mag opgegeven worden);
-                is zelf gemeld kenmerk (bijvoeglijk);
+                is eigenhandig gemeld kenmerk (bijvoeglijk);
 
             Regel melding
                 geldig altijd
@@ -37,7 +37,7 @@ class ExplanationOriginFromIrTest {
 
             Regel afwijking opgave vinddag
                 geldig altijd
-                    Een Vondst is zelf gemeld
+                    Een Vondst is eigenhandig gemeld
                     indien zijn opgegeven meldingsdatum gevuld is.
             """;
 
@@ -55,12 +55,12 @@ class ExplanationOriginFromIrTest {
         beans.put("V2", v2);
 
         List<String> expected = List.of(
-                "V1 is zelf gemeld, omdat zijn opgegeven meldingsdatum (12-03-2026) gevuld is",
+                "V1 is eigenhandig gemeld, omdat zijn opgegeven meldingsdatum (12-03-2026) gevuld is",
                 "V1 heeft afwijkende opgave Datum melding vondst, omdat zijn opgegeven Datum melding vondst"
                         + " (12-03-2026) gevuld is en zijn berekende Datum melding vondst (13-03-2026) gevuld is en"
                         + " zijn opgegeven Datum melding vondst (12-03-2026) is ongelijk aan zijn berekende Datum"
                         + " melding vondst (13-03-2026)",
-                "V2 is niet zelf gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
+                "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is");
         // since card explanation-from-readings every route explains on the model uchar's loader reads from the

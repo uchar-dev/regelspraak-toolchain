@@ -39,7 +39,7 @@ class ExplanationGeneratedRuleInVocabularyTest {
                 de vinddag Datum in dagen;
                 de meldingsdatum (cgm: Datum melding vondst) (handboek: dag van de melding) Datum in dagen
                     (mag opgegeven worden);
-                is zelf gemeld kenmerk (bijvoeglijk);
+                is eigenhandig gemeld kenmerk (bijvoeglijk);
 
             Regel melding
                 geldig altijd
@@ -47,7 +47,7 @@ class ExplanationGeneratedRuleInVocabularyTest {
 
             Regel afwijking opgave vinddag
                 geldig altijd
-                    Een Vondst is zelf gemeld
+                    Een Vondst is eigenhandig gemeld
                     indien zijn opgegeven meldingsdatum gevuld is.
             """;
 
@@ -62,9 +62,9 @@ class ExplanationGeneratedRuleInVocabularyTest {
             - de vinddag is 10-03-2026
             Met als verwacht resultaat:
             - V1 heeft afwijkende opgave meldingsdatum
-            - V1 is zelf gemeld
+            - V1 is eigenhandig gemeld
             - V2 heeft geen afwijkende opgave meldingsdatum
-            - V2 is niet zelf gemeld
+            - V2 is niet eigenhandig gemeld
             - de gegevens zijn inconsistent volgens "controle opgave meldingsdatum" voor V1
             """;
 
@@ -104,9 +104,9 @@ class ExplanationGeneratedRuleInVocabularyTest {
 
     /** The author's rule, the same in every vocabulary: it reads the generated attribute in the author's words. */
     private static final String V1_AUTHOR =
-            "V1 is zelf gemeld, omdat zijn opgegeven meldingsdatum (12-03-2026) gevuld is";
+            "V1 is eigenhandig gemeld, omdat zijn opgegeven meldingsdatum (12-03-2026) gevuld is";
     private static final String V2_AUTHOR =
-            "V2 is niet zelf gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is";
+            "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is";
 
     /** The sentence of the computed value the author's rule 'melding' writes on {@code label} (card
      *  explanation-computed-attributes): the generated attribute {@code berekende <name>}, named in the vocabulary;
@@ -198,7 +198,7 @@ class ExplanationGeneratedRuleInVocabularyTest {
         Object v2 = engine.newInstance("Vondst");
         RegelSpraakRuntime.set(v2, Namen.ident("vinddag", false), LocalDate.of(2026, 3, 10));
         assertEquals(List.of(
-                "V2 is niet zelf gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
+                "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
                         + " vondst (onbekend) gevuld is"),
                 engine.explain("cgm", "Vondst", Map.of("V2", v2)));
