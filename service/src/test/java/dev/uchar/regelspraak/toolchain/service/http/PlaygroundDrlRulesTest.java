@@ -24,6 +24,8 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -45,7 +47,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * the answer, with {@code typeCanonical} beside it where that differs, and its {@code composition}
  * ({@code TmsTranspiler.Stack.composition}): its chains, each its defaults highest first in the keys of the decider
  * of a {@code GROUND}, a default with exception groups with those below it in the same form, and {@code unordered}
- * where chains stand side by side.
+ * where chains stand side by side. Card drl-rule-functions-fields: every rule has its {@code piece} of {@code drl}
+ * ({@code TmsTranspiler.drlPieces}): the places of the rule with its functions, in UTF-16 code units of the {@code drl}
+ * of the same answer, and per function its name and places.
  *
  * <p>The own model: the flat group 'premie' on Jutter (the base and two exceptions at the root; 'premie bij veel
  * vondsten' reads the fold "het aantal vondsten"), the ordinary rule 'strandpremie' on the subtype Strandjutter, which
@@ -329,7 +333,7 @@ class PlaygroundDrlRulesTest {
         JsonNode rules = a.get("drlRules");
         assertTrue(rules != null && rules.isArray(), "drlRules ontbreekt naast drl");
         List<String> actual = new ArrayList<>();
-        for (JsonNode r : rules) actual.add(r.toString());
+        for (JsonNode r : rules) actual.add(withoutPiece(r).toString());
         List<String> expected = new ArrayList<>();
         for (String e : EXPECTED) expected.add(JSON.readTree(e).toString());
         assertEquals(expected, actual);
@@ -356,6 +360,14 @@ class PlaygroundDrlRulesTest {
                     r.toString());
         }
         assertEquals(FOLD_TEXT.size(), folds);
+    }
+
+    /** The entry without the {@code piece} that card drl-rule-functions-fields adds: what the pins of the decider, the
+     *  role and the fold above it are about. */
+    private static JsonNode withoutPiece(JsonNode entry) {
+        ObjectNode copy = entry.deepCopy();
+        copy.remove("piece");
+        return copy;
     }
 
     /** The group {@code group} of entry {@code r} names in {@code ir}, or else the form its {@code rule} names, in
@@ -525,13 +537,9 @@ class PlaygroundDrlRulesTest {
      */
     @Test
     void over_the_corpus_every_fold_lies_in_the_group_or_form_of_its_entry() throws Exception {
-        List<Path> goldens;
-        try (Stream<Path> s = Files.walk(TokaSource.REPO.resolve("uchar/corpus/golden"))) {
-            goldens = s.filter(p -> p.getFileName().toString().equals("ir.json")).sorted().toList();
-        }
         List<String> errors = new ArrayList<>();
         int built = 0, roles = 0, folds = 0;
-        for (Path p : goldens) {
+        for (Path p : goldenDocuments()) {
             JsonNode ir = JSON.readTree(p.toFile());
             DroolsBackend.Build build;
             try {
@@ -560,6 +568,277 @@ class PlaygroundDrlRulesTest {
         assertTrue(b >= MIN_BUILT && n >= MIN_ROLES && f >= MIN_FOLDS, () -> b + " goldens gebouwd, " + n
                 + " vermeldingen met een rol, " + f + " met een vouw; de vloeren "
                 + List.of(MIN_BUILT, MIN_ROLES, MIN_FOLDS));
+    }
+
+    /** The {@code ir.json} of every golden of uchar, sorted. */
+    private static List<Path> goldenDocuments() throws java.io.IOException {
+        try (Stream<Path> s = Files.walk(TokaSource.REPO.resolve("uchar/corpus/golden"))) {
+            return s.filter(p -> p.getFileName().toString().equals("ir.json")).sorted().toList();
+        }
+    }
+
+    private static final Pattern FUNCTION_DECLARATION = Pattern.compile("^function [^(\n]*? ([A-Za-z0-9_$]+)\\(");
+    private static final Pattern CALL = Pattern.compile("(?<![A-Za-z0-9_$.])(r[0-9]+_[a-z]+[0-9]+)\\(");
+
+    /**
+     * The {@code piece} of every entry of {@code rules} (the {@code drlRules} of an answer, as JSON) against a reading
+     * of its {@code drl} by this test, which does not consult uchar's rendering. The text is read by lines, and a place
+     * is an index of {@code String}, a UTF-16 code unit, as {@code JSON.parse} and {@code slice} count in a browser.
+     * The faults, none for a text whose pieces follow it: one piece per header {@code rule "…"} in its order; the
+     * first begins where the header of the text (package, imports, globals) ends, each where the previous one ends,
+     * the last ends with the text; {@code ruleStart} is on the header of the rule, and the piece ends after its
+     * {@code end} and the empty line; its functions are the declarations {@code function …} of the text, each once,
+     * from {@code start} to {@code ruleStart} without a gap, each beginning with the comment line {@code // …} above
+     * its declaration where it has one and ending after its closing brace and an empty line; and a call of a function
+     * in the piece is a call of a function of that piece.
+     */
+    static List<String> piecesFollowTheText(String drl, JsonNode rules) {
+        List<String> faults = new ArrayList<>();
+        List<Integer> headers = new ArrayList<>(), declarations = new ArrayList<>();
+        List<String> declared = new ArrayList<>();
+        int head = drl.length();
+        boolean inHead = true;
+        for (int at = 0; at < drl.length(); ) {
+            int eol = drl.indexOf('\n', at);
+            String line = drl.substring(at, eol < 0 ? drl.length() : eol);
+            if (inHead && !(line.isEmpty() || line.startsWith("package ") || line.startsWith("import ")
+                    || line.startsWith("global "))) {
+                head = at;
+                inHead = false;
+            }
+            if (line.startsWith("rule \"")) headers.add(at);
+            Matcher m = FUNCTION_DECLARATION.matcher(line);
+            if (m.find()) {
+                declarations.add(at);
+                declared.add(m.group(1));
+            }
+            at = eol < 0 ? drl.length() : eol + 1;
+        }
+        if (rules.size() != headers.size()) {
+            faults.add(rules.size() + " vermeldingen, " + headers.size() + " koppen in de tekst");
+            return faults;
+        }
+        int previousEnd = head, functions = 0;
+        for (int i = 0; i < rules.size(); i++) {
+            String name = rules.get(i).get("name").asText();
+            String where = "'" + name + "': ";
+            JsonNode p = rules.get(i).path("piece");
+            if (!p.isObject()) {
+                faults.add(where + "geen piece");
+                continue;
+            }
+            int start = p.path("start").asInt(-1), ruleStart = p.path("ruleStart").asInt(-1),
+                    end = p.path("end").asInt(-1);
+            if (start != previousEnd)
+                faults.add(where + "begint op " + start + ", het vorige stuk eindigt op " + previousEnd);
+            if (ruleStart != headers.get(i))
+                faults.add(where + "ruleStart " + ruleStart + ", de kop staat op " + headers.get(i));
+            if (!drl.startsWith("rule " + Namen.drlString(name) + "\n", ruleStart))
+                faults.add(where + "op ruleStart staat de kop van de regel niet");
+            if (!drl.startsWith("end\n\n", end - 5)) faults.add(where + "het stuk eindigt niet na `end` en een lege regel");
+            previousEnd = end;
+            Set<String> own = new java.util.HashSet<>();
+            int at = start;
+            for (JsonNode f : p.path("functions")) {
+                String fname = f.path("name").asText();
+                int fs = f.path("start").asInt(-1), decl = f.path("declaration").asInt(-1), fe = f.path("end").asInt(-1);
+                String fwhere = where + "functie " + fname + ": ";
+                boolean known = functions < declared.size();
+                if (!known || !fname.equals(declared.get(functions)) || decl != declarations.get(functions))
+                    faults.add(fwhere + "declaratie op " + decl + ", de tekst heeft "
+                            + (known ? declared.get(functions) + " op " + declarations.get(functions) : "er geen"));
+                functions++;
+                if (fs != at) faults.add(fwhere + "begint op " + fs + ", waar de vorige eindigt is " + at);
+                int lineBefore = decl <= 1 ? 0 : drl.lastIndexOf('\n', decl - 2) + 1;
+                boolean commented = lineBefore < decl && drl.startsWith("// ", lineBefore);
+                if (fs != (commented ? lineBefore : decl))
+                    faults.add(fwhere + "begint op " + fs + ", het commentaar " + (commented ? "begint op " + lineBefore
+                            : "ontbreekt, de declaratie staat op " + decl));
+                if (!drl.startsWith("}\n\n", fe - 3)) faults.add(fwhere + "eindigt niet na de accolade en een lege regel");
+                at = fe;
+                own.add(fname);
+            }
+            if (at != ruleStart) faults.add(where + "de functies eindigen op " + at + ", de regel begint op " + ruleStart);
+            for (Matcher m = CALL.matcher(drl.substring(Math.max(start, 0), Math.max(start, end))); m.find(); )
+                if (!own.contains(m.group(1))) faults.add(where + "roept " + m.group(1) + " van een ander stuk");
+        }
+        if (previousEnd != drl.length())
+            faults.add("het laatste stuk eindigt op " + previousEnd + ", de tekst op " + drl.length());
+        if (functions != declared.size())
+            faults.add("de tekst declareert " + declared.size() + " functies, de stukken noemen er " + functions);
+        return faults;
+    }
+
+    private static final List<String> PIECE_KEYS = List.of("start", "ruleStart", "end", "functions");
+    private static final List<String> FUNCTION_KEYS = List.of("name", "start", "declaration", "end");
+
+    private static JsonNode named(JsonNode rules, String name) {
+        for (JsonNode r : rules) if (r.get("name").asText().equals(name)) return r;
+        throw new AssertionError("geen vermelding '" + name + "' in " + rules);
+    }
+
+    private static List<String> calls(String code, String self) {
+        List<String> out = new ArrayList<>();
+        for (Matcher m = CALL.matcher(code); m.find(); )
+            if (!m.group(1).equals(self) && !out.contains(m.group(1))) out.add(m.group(1));
+        return out;
+    }
+
+    /** The table of the piece of {@code entry}: per function its name, its comment (the sentence at the places of the
+     *  function, {@code -} for none) and the functions it calls, then the functions the rule calls, read off the text
+     *  by this test. */
+    private static List<String> table(String drl, JsonNode entry) {
+        JsonNode piece = entry.get("piece");
+        List<String> out = new ArrayList<>();
+        for (JsonNode f : piece.get("functions")) {
+            String comment = drl.substring(f.get("start").asInt(), f.get("declaration").asInt());
+            out.add(f.get("name").asText() + " | " + (comment.isEmpty() ? "-" : comment.strip().substring(3))
+                    + " | roept " + calls(drl.substring(f.get("declaration").asInt(), f.get("end").asInt()),
+                            f.get("name").asText()));
+        }
+        out.add("regel | roept " + calls(drl.substring(piece.get("ruleStart").asInt(), piece.get("end").asInt()), null));
+        return out;
+    }
+
+    @Test
+    void every_rule_of_the_drl_text_has_its_piece_with_its_functions() throws Exception {
+        // the answer as the adapter writes it and a browser reads it: JSON text and back
+        JsonNode a = JSON.readTree(JSON.writeValueAsString(Playground.analyze(SOURCE)));
+        assertFalse(a.has("drlError"), a.path("drlError").asText());
+        String drl = a.get("drl").asText();
+        JsonNode rules = a.get("drlRules");
+        assertEquals(List.of(), piecesFollowTheText(drl, rules));
+        // the piece is the last key of an entry, and it and its functions have uchar's keys in uchar's order
+        int functions = 0;
+        for (JsonNode r : rules) {
+            List<String> keys = fieldNames(r);
+            assertEquals("piece", keys.get(keys.size() - 1), r.get("name").asText());
+            assertEquals(PIECE_KEYS, fieldNames(r.get("piece")), r.get("name").asText());
+            for (JsonNode f : r.get("piece").get("functions")) {
+                assertEquals(FUNCTION_KEYS, fieldNames(f), r.get("name").asText());
+                functions++;
+            }
+        }
+        assertEquals(36, functions);
+        // a rule without functions is its rule alone, to its `end` and the empty line after it
+        JsonNode bare = named(rules, "kenmerkstand Vondst.afwijkende opgave meldingsdatum: onwaar").get("piece");
+        assertEquals(0, bare.get("functions").size());
+        assertEquals(bare.get("start").asInt(), bare.get("ruleStart").asInt());
+        assertTrue(drl.substring(bare.get("start").asInt(), bare.get("end").asInt()).startsWith(
+                "rule \"kenmerkstand Vondst.afwijkende opgave meldingsdatum: onwaar\"\n"));
+        assertEquals(drl.length(), bare.get("end").asInt());
+        // a function with a sentence and one without; the rule calls its functions
+        assertEquals(List.of(
+                "r2_waarde0 | de vinddag van de Vondst plus 3 dagen | roept []",
+                "regel | roept [r2_waarde0]"), table(drl, named(rules, "melding")));
+        assertEquals(List.of(
+                "r12_afloop0 | - | roept []",
+                "regel | roept [r12_afloop0]"), table(drl, named(rules, "defaults A:Vondst.waarde: eens 0")));
+        // a composite condition: the test calls the function of its composite, of the same piece; the sentence is
+        // that of the condition the exception 'zeer zware vondst' shares with the one it is nested in
+        String both = "zijn gewicht groter is dan 10 en zijn gewicht groter is dan 20";
+        assertEquals(List.of(
+                "r11_toets0 | " + both + " | roept [r11_samengesteld1]",
+                "r11_samengesteld1 | " + both + " | roept []",
+                "r11_afloop2 | 25 | roept []",
+                "regel | roept [r11_toets0, r11_afloop2]"),
+                table(drl, named(rules, "defaults A:Vondst.waarde: default 0.0.0")));
+        // the fall-back of the default of an exception group, between its agreement and the next default
+        assertEquals(List.of(
+                "r13_toets0 | zijn gewicht groter is dan 10 | roept []",
+                "r13_afloop1 | 50 | roept []",
+                "regel | roept [r13_toets0, r13_afloop1]"),
+                table(drl, named(rules, "defaults A:Vondst.waarde: terugval 0")));
+        JsonNode agreement = named(rules, "defaults A:Vondst.waarde: eens 0").get("piece");
+        JsonNode fallback = named(rules, "defaults A:Vondst.waarde: terugval 0").get("piece");
+        JsonNode next = named(rules, "defaults A:Vondst.waarde: default 1").get("piece");
+        assertEquals(agreement.get("end"), fallback.get("start"));
+        assertEquals(fallback.get("end"), next.get("start"));
+        // the same pieces in a vocabulary and through the service: the places are those of the one text
+        assertEquals(Playground.analyze(SOURCE_CGM).get("drlRules"), Playground.analyze(SOURCE_CGM, "cgm").get("drlRules"));
+    }
+
+    @Test
+    void a_place_counts_utf16_code_units() throws Exception {
+        // the rule 'melding' is named with a character outside the Basic Multilingual Plane, two code units and one
+        // code point, so each place after it is one more in code units than in code points
+        String astral = "\uD835\uDD18";
+        RegelSpraakModel model = Resolver.resolve(SOURCE);
+        JsonNode ir = JSON.readTree(UcharBuild.document(model).replace("\"melding\"", "\"melding " + astral + "\""));
+        DroolsBackend.Build build = UcharBuild.assemble(ir, DroolsBackend.Branch.DRL_TEXT);
+        assertTrue(build.drl().contains("rule \"melding " + astral + "\"\n"), "de naam staat niet in de tekst");
+        ObjectNode answer = JSON.createObjectNode();
+        answer.put("drl", build.drl());
+        answer.set("drlRules", Playground.drlRules(build, ir, build.model()));
+        JsonNode read = JSON.readTree(JSON.writeValueAsString(answer));
+        assertEquals(build.drl(), read.get("drl").asText());
+        assertEquals(List.of(), piecesFollowTheText(read.get("drl").asText(), read.get("drlRules")));
+        int after = named(read.get("drlRules"), "afwijking opgave meldingsdatum").get("piece").get("ruleStart").asInt();
+        // the name stands in the text more than once before that place (the name of a rule is also used in the rule
+        // itself); each occurrence is one code point and two code units
+        String before = build.drl().substring(0, after);
+        int occurrences = before.split(java.util.regex.Pattern.quote(astral), -1).length - 1;
+        assertTrue(occurrences > 0, before);
+        assertEquals(after - occurrences, before.codePointCount(0, after));
+    }
+
+    @Test
+    void pieces_that_do_not_fit_the_text_are_a_fault() {
+        String drl = "package p;\n\nrule \"a\"\nend\n\nrule \"b\"\nend\n\n";
+        int a = drl.indexOf("rule \"a\""), b = drl.indexOf("rule \"b\""), last = drl.length();
+        List<String> names = List.of("a", "b");
+        TmsTranspiler.DrlPiece pa = new TmsTranspiler.DrlPiece("a", a, a, b, List.of());
+        TmsTranspiler.DrlPiece pb = new TmsTranspiler.DrlPiece("b", b, b, last, List.of());
+        Playground.checkPieces(drl, names, List.of(pa, pb));
+        // one piece fewer than the text has headers
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(pa)))
+                .getMessage().contains("1 stuk"));
+        // a piece of another rule than the header it lies on, in the same order
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(pa,
+                new TmsTranspiler.DrlPiece("c", b, b, last, List.of())))).getMessage().contains("'c'"));
+        // a gap between two pieces, and a text that goes on after the last
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(
+                new TmsTranspiler.DrlPiece("a", a, a, b - 1, List.of()), pb))).getMessage().contains("eindigt"));
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(pa,
+                new TmsTranspiler.DrlPiece("b", b, b, last - 1, List.of())))).getMessage().contains("tekst"));
+        // a rule start that is not on its header
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(
+                new TmsTranspiler.DrlPiece("a", a, a, b + 1, List.of()),
+                new TmsTranspiler.DrlPiece("b", b + 1, b + 1, last, List.of())))).getMessage().contains("kop"));
+    }
+
+    /** Floors of the sweep below, measured 2026-10-24 on uchar's corpus at the pin of this card: goldens the
+     *  DRL-text branch builds, their pieces (a piece per rule) and their functions (uchar's own witness counts the
+     *  same). */
+    private static final int MIN_PIECES = 2124, MIN_FUNCTIONS = 2499;
+
+    /** Over every golden of uchar that the DRL-text branch builds, the pieces follow the text ({@link
+     *  #piecesFollowTheText}), the places that of the one text of the answer. */
+    @Test
+    void over_the_corpus_every_piece_follows_the_text() throws Exception {
+        List<String> errors = new ArrayList<>();
+        int built = 0, pieces = 0, functions = 0;
+        for (Path p : goldenDocuments()) {
+            JsonNode ir = JSON.readTree(p.toFile());
+            DroolsBackend.Build build;
+            try {
+                build = UcharBuild.assemble(ir, DroolsBackend.Branch.DRL_TEXT);
+            } catch (UcharBuild.NotCarried n) {
+                continue;
+            }
+            built++;
+            JsonNode rules = Playground.drlRules(build, ir, build.model());
+            String golden = TokaSource.REPO.resolve("uchar/corpus/golden").relativize(p.getParent()).toString();
+            for (String fault : piecesFollowTheText(build.drl(), rules)) errors.add(golden + ": " + fault);
+            for (JsonNode r : rules) {
+                pieces++;
+                functions += r.get("piece").get("functions").size();
+            }
+        }
+        assertEquals(List.of(), errors);
+        int b = built, n = pieces, f = functions;
+        assertTrue(b >= MIN_BUILT && n >= MIN_PIECES && f >= MIN_FUNCTIONS, () -> b + " goldens gebouwd, " + n
+                + " stukken, " + f + " functies; de vloeren " + List.of(MIN_BUILT, MIN_PIECES, MIN_FUNCTIONS));
     }
 
     @Test

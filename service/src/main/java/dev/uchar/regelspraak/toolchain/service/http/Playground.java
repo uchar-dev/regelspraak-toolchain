@@ -82,7 +82,8 @@ import java.util.Set;
  *       analysis the exec-model branch fires as DRL text); {@code drlError} carries its refusal, or uchar's sentence
  *       for a DRL text the Drools compiler rejects, with {@code drl} empty. Beside it {@code drlRules}: per rule of
  *       that text, in its order, its name, its role in the lowering and what it lowers in the keys of the decider of
- *       a {@code GROUND} ({@link #drlRules}), empty with {@code drlError}, since an empty text has no rule;</li>
+ *       a {@code GROUND}, and its {@code piece} of the text with its functions ({@link #drlRules}), empty with
+ *       {@code drlError}, since an empty text has no rule;</li>
  *   <li><b>graaf</b> and <b>graphJson</b> — uchar's rule graph of the document its loader reads back (the route
  *       uchar's gate 15 holds equal to the source route), as Mermaid source and as
  *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
@@ -666,7 +667,14 @@ public final class Playground {
      *       made ({@link RegelSpraakModel#generatedFrom}), the opgave marker's among them;</li>
      *   <li>a rule of a fold has {@code fold}, the node of the fold ({@code Aggregation} or {@code QuantifierFold}) in
      *       the group of {@code group} or else the form of {@code rule}, as {@code pointer} lies in its group
-     *       ({@link #fold}).</li>
+     *       ({@link #fold});</li>
+     *   <li>{@code piece}, the last key of every entry: the piece of {@code drl} that belongs to the rule
+     *       ({@code TmsTranspiler.drlPieces}), {@code {start, ruleStart, end, functions}}: its functions (every test
+     *       and every value of the rule's plan, a function in the Java dialect with the RegelSpraak sentence of its
+     *       node as a comment) and the rule up to its {@code end} and the empty line after it, each function as
+     *       {@code {name, start, declaration, end}} with the comment between {@code start} and {@code declaration}
+     *       ({@link #piece}). The places are indices of the {@code drl} of the same answer in UTF-16 code units, as a
+     *       Java {@code String} and JavaScript count; they are checked against the text ({@link #checkPieces}).</li>
      * </ul>
      * {@code name} is the name of the rule, unescaped: the header {@code rule "…"} spells it as a DRL string literal.
      * {@code ir} is the document the emitter writes of {@code model}, the one the build was built from, on which the
@@ -687,9 +695,12 @@ public final class Playground {
         if (!inText.equals(inBase))
             throw new IllegalStateException("de koppen van de DRL-tekst noemen " + inText.size() + " regel(s), de"
                     + " KieBase van die tekst " + inBase.size() + ": " + inText + " tegen " + inBase);
+        List<TmsTranspiler.DrlPiece> pieces = build.execModelTranspiler().drlPieces();
+        checkPieces(build.drl(), names, pieces);
         Verbaliser.Document document = Verbaliser.Document.of(IrLoader.loadWithPositions(ir));
         ArrayNode sink = NF.arrayNode();
-        for (String name : names) {
+        for (int i = 0; i < names.size(); i++) {
+            String name = names.get(i);
             TmsTranspiler.RuleOrigin o = build.execModelTranspiler().originOf(name);
             ObjectNode n = sink.addObject();
             n.put("name", name);
@@ -707,8 +718,55 @@ public final class Playground {
                         + " een soort die de playground niet kent: " + o);
             }
             if (o.fold() != null) n.put("fold", fold(n, o.fold(), ir));
+            n.set("piece", piece(pieces.get(i)));
         }
         return sink;
+    }
+
+    /**
+     * Fails unless the pieces of uchar ({@code DrlPiece}) lie where the headers of {@code drl} say: as many pieces as
+     * headers, the i-th piece of the rule of the i-th header, each beginning where the one before it ends, the last
+     * ending with the text, and each {@code ruleStart} on the header of its rule. A reader cuts {@code drl} at the
+     * places, and a place that is off would cut another text without saying so.
+     */
+    static void checkPieces(String drl, List<String> names, List<TmsTranspiler.DrlPiece> pieces) {
+        if (pieces.size() != names.size())
+            throw new IllegalStateException("uchar geeft " + pieces.size() + " stuk(ken) van de DRL-tekst, en de"
+                    + " koppen van die tekst noemen " + names.size() + " regel(s)");
+        for (int i = 0; i < pieces.size(); i++) {
+            TmsTranspiler.DrlPiece p = pieces.get(i);
+            if (!p.rule().equals(names.get(i)))
+                throw new IllegalStateException("het stuk " + i + " van uchar is van de regel '" + p.rule()
+                        + "', en de kop op die plaats van de DRL-tekst noemt '" + names.get(i) + "'");
+            if (i > 0 && p.start() != pieces.get(i - 1).end())
+                throw new IllegalStateException("het stuk van de regel '" + p.rule() + "' begint op " + p.start()
+                        + ", en het vorige stuk eindigt op " + pieces.get(i - 1).end());
+            if (!drl.startsWith("rule " + Namen.drlString(p.rule()) + "\n", p.ruleStart()))
+                throw new IllegalStateException("het stuk van de regel '" + p.rule() + "' laat de regel beginnen op "
+                        + p.ruleStart() + ", en daar staat zijn kop niet");
+        }
+        if (!pieces.isEmpty() && pieces.get(pieces.size() - 1).end() != drl.length())
+            throw new IllegalStateException("het laatste stuk eindigt op " + pieces.get(pieces.size() - 1).end()
+                    + ", en de DRL-tekst op " + drl.length());
+    }
+
+    /** A piece of uchar ({@code DrlPiece}) as {@code {start, ruleStart, end, functions}}, each function as
+     *  {@code {name, start, declaration, end}}: uchar's places, in the UTF-16 code units of the {@code drl} of the same
+     *  answer. {@code functions} is always there, empty for a rule without. */
+    private static ObjectNode piece(TmsTranspiler.DrlPiece p) {
+        ObjectNode n = NF.objectNode();
+        n.put("start", p.start());
+        n.put("ruleStart", p.ruleStart());
+        n.put("end", p.end());
+        ArrayNode functions = n.putArray("functions");
+        for (TmsTranspiler.DrlPiece.DrlFunction f : p.functions()) {
+            ObjectNode fn = functions.addObject();
+            fn.put("name", f.name());
+            fn.put("start", f.start());
+            fn.put("declaration", f.declaration());
+            fn.put("end", f.end());
+        }
+        return n;
     }
 
     /** uchar's pointer of a group or a form of the rule layer and what follows it: {@code /rules/<list>/<i>/…}. */

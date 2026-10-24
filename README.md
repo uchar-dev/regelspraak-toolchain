@@ -115,6 +115,10 @@ model declares) and the sentences of the messages, which keep their text. The ol
   like `pointer`); a stack in `generated` has `type`, with `typeCanonical` where that differs, and `composition`, its
   defaults in the order of priority across its groups, in the keys of `drlRules`, with their `exceptions` below them
   (`docs/ENGINE.md`).
+- **The DRL gives each rule its piece** (card `drl-rule-functions-fields`): an entry of `drlRules` has `piece`, the last
+  key, uchar's piece of `drl` for that rule: `{start, ruleStart, end, functions}`, with per function `{name, start,
+  declaration, end}` (`TmsTranspiler.drlPieces`). The places are indices in the `drl` of the same answer, in UTF-16 code
+  units as JavaScript counts a string (`docs/ENGINE.md`). `drl` is unchanged, and with `drlError` the list is empty.
 
 ## The pin
 
