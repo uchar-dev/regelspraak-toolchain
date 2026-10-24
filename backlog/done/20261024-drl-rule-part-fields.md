@@ -453,3 +453,11 @@ Result-commit raakt alleen deze kaart.
 - **Twee keer het document laden per antwoord**: `drlRules` en `generated` lezen elk `IrLoader.loadWithPositions(ir)`.
   Eén keer laden in `analyze` en doorgeven scheelt een lading, maar verandert twee signaturen voor geen gedrag; niet
   gedaan.
+
+### Landing (hoofdsessie, 2026-10-24)
+
+Uchar landde `drl-rule-part` als `42ed425d` (gepusht), met daarin de samenstelling en de wijzigingen na een Fable-advies
+(`stacks()` in plaats van `stackTypes()`); deze tak bouwde op de kaarttak `b0d5241c`, en de pin staat nu op de
+landingscommit (`396dcd25`; de landing voegt aan `b0d5241c` alleen de kaart naar done toe). `make gates` op `396dcd25`
+met `TAG/CLUSTER=drl-rule-part-fields`: GROEN, 7 stappen in 10m33s (reactor 1684/173/384/53, replay 249 goldens en 673
+cases, kind-smoke H2–H4 PASS). Fast-forward op main en gepusht, uchar vóór de toolchain.
