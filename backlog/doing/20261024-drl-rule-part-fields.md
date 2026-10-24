@@ -70,14 +70,16 @@ Tak `card/drl-rule-part-fields` in de worktree `wt-tc/drl-rule-part-fields`, van
 kaart naar `doing/` (`fb32e315`). Gebouwd door een Opus-bouwer; de landing doet de hoofdsessie.
 
 - `e39328b4` pin uchar `e3985673` (de tip van de uchar-kaarttak `drl-rule-part`, nog niet op uchar main), na
-  `make check-pin`. De pin raakt alleen uchars backend en zijn getuigen; geen golden verandert.
+  `make check-pin`. De pin raakt alleen uchars backend en zijn getuigen; geen golden verandert. Sinds `1d68c408` staat
+  de pin op `b0d5241c`, met de samenstelling (zie "De samenstelling (uitbreiding van 16:01)").
 - `d8bbc0cd` `role` en `fold` in `drlRules`, `type` in `generated`: `Playground`, de tests, `docs/ENGINE.md`, README.
 - dit Result, in het commit na `d8bbc0cd`.
 
 ### De velden
 
 Alles komt uit `build.execModelTranspiler()`: `originOf(name)` (`RuleOrigin(form, kind, role, pointer, fold)`) voor
-`drlRules`, `stackTypes()` voor `generated`. Geen naam wordt gelezen; het label van een regelnaam (`default 2`,
+`drlRules`, `stacks()` voor `generated` (tot de pin op `b0d5241c` heette dat `stackTypes()`, met alleen het type).
+Geen naam wordt gelezen; het label van een regelnaam (`default 2`,
 `bijdrage aan vouw 17`) komt nergens in de toolchain voor.
 
 `drlRules`, per vermelding:
@@ -104,7 +106,7 @@ Voorbeelden uit de meting (a):
 
 | sleutel | waarde |
 |---|---|
-| `type` | het objecttype waarvoor de stapel loopt, `stackTypes().get(name)`, genoemd als `naming.name(type)`: de benaming in het gekozen vocabulaire, anders de canonieke naam |
+| `type` | het objecttype waarvoor de stapel loopt, `stacks().get(name).type()`, genoemd als `naming.name(type)`: de benaming in het gekozen vocabulaire, anders de canonieke naam |
 | `typeCanonical` | `type.name()`, alleen waar die van `type` verschilt |
 
 ```json
@@ -149,7 +151,7 @@ Waarom zo:
    canonieke naam ernaast precies waar die verschilt, zoals bij `name`. `name` van een stapel blijft canoniek, want een
    stapelnaam is geen vorm en `Naming.form` laat haar staan; het type is wel een declaratie en wordt dus genoemd.
 5. **Alleen bij een stapel.** Een versie (`versie`) heeft geen type; uchar geeft er ook geen. De toolchain eist dat
-   `stackTypes` precies de stapels van `generated` een type geeft en faalt anders luid met de naam.
+   `stacks()` precies bij de stapels van `generated` een vermelding heeft en faalt anders luid met de naam.
 6. **`drl`, de dekking, de trace en het exec-model veranderen niet.** De meting toetst `drl` tegen
    `bin/regelspraak drl` (gelijk); `Playground` leest alleen.
 
@@ -224,7 +226,8 @@ naar `rules-ece012e/`, de werkbank niet aangeraakt), zet de bundel samen zoals d
 start `bin/regelspraak serve` van de worktree met `PLAYGROUND=true --detail` en
 `v2/herleving-ww/service/herleving.service.json`, post de bundel naar `/playground/analyse`, `?via=service`,
 `?vocabulary=cgm` en `?vocabulary=cgm&via=service`, en toetst met `check-drl-rules.py` (uitgebreid). Log:
-`measure.log` (toolchain `d8bbc0cd`, uchar `e3985673`). PASS:
+`measure-1.log` (toolchain `d8bbc0cd`, uchar `e3985673`; `measure.log` is sinds de uitbreiding de meting met de
+samenstelling erbij, met dezelfde uitkomsten 1 tot en met 7). PASS:
 
 1. `drl` heeft 339 regels, `drlRules` 339 vermeldingen, elk op de plaats en met de naam van haar kop.
 2. Elke vermelding met een vorm heeft een rol uit de zeventien sleutels, de 162 zonder vorm geen. Per soort en rol:
@@ -266,8 +269,8 @@ Result-commit raakt alleen deze kaart.
 - **`drlError` naast een gebouwde exec-model-tak** komt alleen voor bij een DRL-tekst die de Drools-compiler weigert;
   zo'n bron is niet bekend, dus (c) is getoetst op de bouw van de exec-model-tak zonder DRL, niet op een antwoord met
   `drlError` en `generated` samen (zie "Zonder DRL").
-- **De pin staat op de kaarttak van uchar** (`e3985673`); de hoofdsessie zet hem vóór de landing op de landingscommit
-  van uchar.
+- **De pin staat op de kaarttak van uchar** (sinds `1d68c408` op `b0d5241c`, daarvoor `e3985673`); de hoofdsessie zet
+  hem vóór de landing op de landingscommit van uchar.
 - **`reading`, `condition-deposit`, `no-evaluation-date`, de `uniqueness-`- en `allocation-`rollen en
   `fold-member-fault`/`fold-filter-deposit`** komen in v2 en in het eigen model niet voor; de corpusveeg ziet ze in
   uchars goldens (behalve `reading`, dat alleen in een bouw met lezingen bestaat, en de playground toont de DRL van een
@@ -275,3 +278,178 @@ Result-commit raakt alleen deze kaart.
 - **Een vouw die twee stapels lezen** heeft, zoals in `drl-rule-provenance`, haar bijdrageregels alleen bij de stapel
   die haar als eerste inschreef (v2: vouw 17 bij `Recht op uitkering WW`); de werkbank selecteert op `group` en
   `pointer` en vindt ze zo voor beide stapels.
+
+### De samenstelling (uitbreiding van 16:01)
+
+Om 16:01 breidde de werkbank de kaart uit met de samenstelling van een stapel (Doel, de bullet "Elke stapel krijgt haar
+samenstelling", en acceptatie (a)); die tekst staat sinds `4e4728c1` in de kaart. Uchar bouwde daarvoor de uitbreiding
+en veranderde na een advies van Fable de ingang: `TmsTranspiler.stacks()` (`Map<String, Stack>`, `record
+Stack(Designatable type, StackComposition composition)`) in plaats van `stackTypes()` (uchar
+`backlog/doing/20261024-drl-rule-part.md`, "De samenstelling (uitbreiding van 16:01)"). Gebouwd door een tweede
+Opus-bouwer op `4e4728c1`:
+
+- `1d68c408` pin uchar `b0d5241c` (de tip van de uchar-kaarttak `drl-rule-part`, niet op uchar main, niet gepusht), na
+  `make check-pin`; in hetzelfde commit leest `Playground.generated` het type uit `stacks().get(name).type()`, want
+  `stackTypes()` bestaat op die pin niet meer en anders compileert het commit niet. De kruiscontrole "type precies bij
+  een stapel" is nu "een vermelding in `stacks()` precies bij een stapel".
+- `0cb78d7d` `composition` in `generated`: `Playground`, de tests, `docs/ENGINE.md`, README "Contract change". De
+  OpenAPI noemt de velden van de playground niet (`OpenApiEmitter` beschrijft alleen de ingangen van de dienst); daar
+  veranderde niets.
+- deze sectie, in het commit na `0cb78d7d`.
+
+#### De velden
+
+Per stapel van `generated`, na `generatedFrom`, het veld `composition`, uit `stacks().get(name).composition()`:
+
+```json
+{"name": "defaults A:RechtOpUitkeringWwBijOntslag.herlevingstermijn", "kind": "defaults",
+ "type": "RechtOpUitkeringWwBijOntslag", "generatedFrom": {…},
+ "composition": {"unordered": false, "chains": [[
+   {"group": "herlevingstermijn art. 21 lid 3 en 5 voor RechtOpUitkeringWwBijOntslag", "pointer": "/defaults/0",
+    "position": 1, "generatedFrom": {"kind": "VORM", "owner": null, "name": "herlevingstermijn art. 21 lid 3 en 5",
+                                     "form": "uitzondering-voor-subtype"},
+    "exceptions": {"unordered": false, "chains": [[
+      {"group": "… voor RechtOpUitkeringWwBijOntslag", "pointer": "/defaults/0/exceptions/members/0/defaults/0",
+       "position": 1, "variant": "resterende uitkeringsduur art. 21 lid 4", "generatedFrom": {…}},
+      {"group": "…", "pointer": "/defaults/0/exceptions/members/0/defaults/1", "position": 2,
+       "variant": "herkrijgingstermijn na de startperiode art. 8 lid 3", "generatedFrom": {…},
+       "exceptions": {"unordered": false, "chains": [[{… "variant": "halve maand na de startperiode art. 8 lid 3" …}]]}},
+      {"group": "…", "pointer": "/defaults/0/exceptions/members/0/defaults/2", "position": 3,
+       "variant": "herkrijgingstermijn na zelfstandig werk art. 8 lid 3", "generatedFrom": {…},
+       "exceptions": {"unordered": false, "chains": [[{… "variant": "halve maand na zelfstandig werk art. 8 lid 3" …}]]}}]]}},
+   {"group": "herlevingstermijn art. 21 lid 3 en 5", "pointer": "/defaults/0", "position": 1,
+    "variant": "herlevingstermijn art. 21 lid 3 en 5"}]]}}
+```
+
+(uit `meting/analyse.json`, ingekort met `…`.)
+
+| sleutel | waar | waarde |
+|---|---|---|
+| `composition` | na `generatedFrom`, bij elke stapel; een versie heeft er geen | `{unordered, chains}` |
+| `chains` | in elke samenstelling | uchars `StackComposition.chains()`: de ketens aan de wortel, of onder een default zijn uitzonderingsgroepen, elk de defaults van hoog naar laag |
+| `unordered` | in elke samenstelling, `true` of `false` | uchars `StackComposition.unordered()`: meer dan één keten, die naast elkaar staan |
+| per default | in een keten | de sleutels van de beslisser van een grondslag uit `Verbaliser.decider(document, e.pointer())`, met dezelfde helper als `drlRules`: `group`, `pointer`, `position`, `variant` (waar de default een naam heeft), of `rule`; en `generatedFrom` waar uchars frontend de groep of vorm maakte |
+| `exceptions` | na die sleutels, bij een default met uitzonderingsgroepen (uchars `Entry.exceptions()` niet null) | dezelfde vorm `{unordered, chains}`, één keten per uitzonderingsgroep |
+
+Waarom zo:
+
+1. **`composition`, `chains`, `unordered` en `exceptions` heten zoals uchars componenten** (`Stack.composition`,
+   `StackComposition.chains`, `unordered()`, `Entry.exceptions`), om dezelfde reden als `role` en `fold`: een lezer
+   van uchars Result en javadoc vindt ze terug, en de toolchain voegt geen eigen woord toe.
+2. **Een default in precies de sleutels van `drlRules`**, met dezelfde helper (`Playground.decider`, die ook
+   `generatedFrom` zet). Zo koppelt de werkbank een default van een samenstelling aan zijn DRL-regels op `group` en
+   `pointer` (of `rule`), zonder vertaling; en `pointer` is relatief in de groep om de reden die "The decider of a
+   ground" noemt (een scope verschuift de plaats van de groep, niet haar naam). Uchars ruwe pointer staat er niet bij:
+   die vorm heeft `drlRules` ook niet.
+3. **Alleen wat uchar levert.** Geen blok van ch. 7.10 (eigen uitzondering, geërfde, basis, initialisatie), geen
+   niveau en geen plaats in de samengestelde keten: de volgorde van de lijst is de voorrang, en uchar geeft die
+   indeling bewust niet ("Waarom zo" 2 van de uchar-kaart). `position` is die van de beslisser, de plaats in de keten
+   van de groep in het IR, zoals in `drlRules` en een `GROUND`.
+4. **`unordered` altijd, ook `false`.** Uchars vorm ter oriëntatie schrijft het zo, en een lezer hoeft geen standaard
+   te kennen. Het is uchars `unordered()` (meer dan één keten) en niet de markering van het document; uchar legt die
+   keuze vast als voorlopig besluit (een enkele keten is geordend, ook waar het document `unordered: true` draagt).
+   Wie de markering van de auteur wil tonen, leest haar in het IR op de pointer.
+5. **`exceptions` alleen waar uchar ze geeft**, zoals `variant` alleen staat waar een default een naam heeft.
+6. **Na `generatedFrom`, als laatste sleutel.** Het is het geneste deel; de platte sleutels van de stapel staan eerst.
+7. **Canoniek in elk vocabulaire**, zoals `drlRules` en `generatedFrom`: de sleutels zijn zoeksleutels in `ir` (een
+   groepsnaam, een pointer), geen declaraties die `Naming` vertaalt.
+8. **Luid falen.** Een gedragen stapel zonder samenstelling (uchar: alleen een geweigerde stapel heeft er geen, en
+   dan weigert de backend het hele document), een pointer die niet op het document ligt (`Verbaliser.decider`), en een
+   bouw zonder document zijn een 500, geen veld zonder waarde. `generated` krijgt daarvoor het document mee, zoals
+   `drlRules`: `generated(build, ir, model, naming)`, met `Verbaliser.Document.of(IrLoader.loadWithPositions(ir))`.
+
+Voorlopige besluiten (niet uit de kaart of de code te halen):
+
+- **`generatedFrom` bij een default van een samenstelling.** De opdracht noemt `group`, `pointer`, `position`,
+  `variant` of `rule`; `drlRules` zet bij dezelfde beslisser ook `generatedFrom` als uchars frontend de groep maakte
+  (een groep `B voor S`, de groep van de opgave-marker). Ik nam de helper van `drlRules` over, zodat een default in
+  beide velden dezelfde sleutels heeft. Afweging: het herhaalt `generatedFrom` bij elke default van zo'n groep; daar
+  staat tegenover dat de werkbank niet hoeft te weten dat het ene veld een sleutel minder heeft dan het andere.
+- **Een tweede bron in de test voor (b), niet het eigen model uitgebreid.** Het eigen model van `drl-rule-provenance`
+  heeft een stapel over een subtype met een eigen basis (`strandpremie`), maar geen eigen uitzondering. Een
+  `Afwijking van premie` erbij weigert uchars frontend: "afwijking 'seniorpremie' schrijft voor het subtype
+  Strandjutter, en Strandjutter heeft een eigen basisregel 'strandpremie' voor 'premie', die 'premie' voor
+  Strandjutter vervangt (RUNTIME-SEMANTICS ch. 7.10) — een eigen uitzondering van Strandjutter hangt onder die
+  basisregel" (`logs/red-2.log`). `SOURCE_COMPOSED` is daarom het eigen model zonder `strandpremie`, met de
+  `Afwijking van premie: seniorpremie` op Strandjutter (de vorm van v2: een groep `premie voor Strandjutter` met één
+  groep-default en de afwijking in zijn uitzonderingsgroep) en met `vindersloon` op Vondst, twee groepen onder
+  `Uitzonderingen ongeordend:`, zodat ook `unordered: true` gepind is. De pins van `drlRules` op het eigen model
+  blijven zo ongewijzigd.
+
+#### Rood eerst (b) en (c)
+
+Eerst alleen de nieuwe signatuur van `generated` (met `ir`, nog ongebruikt), zodat de tests compileren; daarop de
+tests van `0cb78d7d`: rood, 5 failures van 14 (`werk/toolchain-2026-10-24/drl-rule-part-fields/logs/red-3.log` voor
+`PlaygroundDrlRulesTest`, 3 van 9; `logs/red-2.log` voor `PlaygroundGeneratedFromTest`, 2 van 5). Daarna de
+samenstelling: groen, 14 van 14 (`logs/green-3.log`), met de verwachtingen zoals ze uit het model geschreven waren.
+
+`PlaygroundDrlRulesTest`:
+
+- `every_stack_of_generated_names_the_type_it_runs_for_and_its_composition` (was `…_the_type_it_runs_for`,
+  verwachting uitgebreid): de vier stapels met hun samenstelling, geschreven uit het model en ch. 7.9/7.10: `Jutter`
+  `[[jeugdpremie, premie bij veel vondsten, premie]]`; `Strandjutter` `[[jeugdpremie, premie bij veel vondsten,
+  {rule: strandpremie}]]` (de geërfde uitzonderingen boven de eigen basis); `waarde` `[[zware vondst {exceptions
+  [[zeer zware vondst]]}, waarde]]`; de opgave-groep met `generatedFrom`. Elke default van elke samenstelling wijst,
+  gevonden zoals een lezer hem vindt, een `Default` met de naam van `variant` in het IR van het antwoord aan, met
+  `exceptions` precies waar die ze heeft, of een vorm; `unordered` precies bij meer dan één keten. In het vocabulaire
+  `cgm` dezelfde samenstellingen.
+- `the_stack_of_a_subtype_has_its_own_exception_above_the_inherited_ones` (nieuw, b): op `SOURCE_COMPOSED` de vijf
+  stapels; die van een Strandjutter is `[[{group: "premie voor Strandjutter", pointer: "/defaults/0", position: 1,
+  generatedFrom: …, exceptions [[seniorpremie]]}, jeugdpremie, premie bij veel vondsten, premie]]`, de eigen
+  uitzondering boven de geërfde uitzonderingen en de geërfde basis; die van `vindersloon` `{unordered: true, chains:
+  [[vindersloon bij zware vondst], [vindersloon bij lichte vondst]]}`; de sleutels van een stapel in de volgorde
+  `name, kind, type, generatedFrom, composition`.
+- `the_type_and_composition_of_a_stack_come_from_the_analysis_without_a_drl_text` (was `the_type_of_a_stack_comes_…`,
+  c): de bouw van de exec-model-tak heeft geen DRL (`assertNull(build.drl())`), en `generated` daarop geeft de vier
+  stapels met type en samenstelling, gelijk aan `generated` van `analyze`.
+- `both_routes_give_the_same_drl_rules` ongewijzigd: `via=service` geeft hetzelfde `generated`, de samenstelling dus
+  ook.
+
+`PlaygroundGeneratedFromTest`, twee tests aangepast omdat de kaart het gedrag verandert dat zij toetsen:
+`a_stack_in_the_coverage_is_in_generated_with_the_member_like_declared` pint de sleutels van een stapel nu als
+`name, kind, type, generatedFrom, composition`; de corpusveeg `every_golden_has_per_element_a_declaration_or_an_origin`
+eist een `composition` bij elke stapel en geen bij een versie (rood: 41 stapels van het corpus zonder).
+
+#### Meting (a)
+
+`meting/check-drl-rules.py` heeft een stap 8 (`check-drl-rules-1.py.bak` is het script van de eerste bouwer);
+`run-measure.sh` is op twee commentaarregels na ongewijzigd. Log: `meting/measure.log` (toolchain `0cb78d7d`, uchar `b0d5241c`, regels
+`ece012e`). PASS; stap 1 tot en met 7 met dezelfde uitkomsten als in `measure-1.log` (zelfde tellingen per rol, 27
+stapels, `drl` gelijk aan `bin/regelspraak drl`, 748 007 tekens). Stap 8:
+
+- elke stapel van `generated` heeft een `composition`, een versie geen: 27 stapels, 69 defaults, waarvan 8 onder een
+  default; 5 defaults met uitzonderingsgroepen, elk met zoveel ketens als het IR leden; `unordered` overal `false`
+  (v2 heeft geen ketens naast elkaar); één stapel over meer dan één groep;
+- elke default wijst, gevonden zoals een lezer hem vindt (de groep van `group` bij naam, daarin `pointer`), een
+  `Default` in het IR van het antwoord aan met de naam van `variant`, en heeft `exceptions` precies waar die Default
+  ze heeft; geen regelversie in v2; elke default staat één keer in zijn samenstelling;
+- elke vermelding van `drlRules` met een stapel en een default (116) noemt een default die in de samenstelling van
+  die stapel staat;
+- `defaults A:RechtOpUitkeringWwBijOntslag.herlevingstermijn` is één keten: eerst de default van de groep
+  `herlevingstermijn art. 21 lid 3 en 5 voor RechtOpUitkeringWwBijOntslag` (zonder `variant`, de groep-default) met in
+  `exceptions` één keten van drie afwijkingen (`resterende uitkeringsduur art. 21 lid 4`; `herkrijgingstermijn na de
+  startperiode art. 8 lid 3` met daaronder zijn eigen uitzondering `halve maand na de startperiode art. 8 lid 3`;
+  `herkrijgingstermijn na zelfstandig werk art. 8 lid 3` met daaronder `halve maand na zelfstandig werk art. 8 lid 3`),
+  dan de basisregel, de default `/defaults/0` van de groep `herlevingstermijn art. 21 lid 3 en 5`. Uchar verwachtte
+  een eigen uitzonderingsgroep alleen bij de middelste afwijking; gemeten hebben de tweede en de derde er elk een, zoals
+  het IR van het antwoord ze heeft (stap 8 toetst `exceptions` tegen het IR);
+- `?vocabulary=cgm`, `?via=service` en beide samen: dezelfde samenstelling per stapel, canoniek.
+
+#### Suites en `make gates`
+
+`make gates` op `0cb78d7d` met `TAG/CLUSTER=drl-rule-part-fields`
+(`werk/toolchain-2026-10-24/drl-rule-part-fields/logs/gates-2.log`, de uitvoer in `out/gates/`): GROEN, 7 stappen in
+12m10s. Reactor 1684 (Drools, de pin: 12 meer dan op `e3985673`) / 173 (toolchain) / 384 (dienst, één meer: de nieuwe
+test van (b)) / 53 (Quarkus), skip-pin PASS in elke module; tweelingen 3 (18 cases); replay 249 goldens, 673 cases (pin
+249); TOKA-manifest 29 ok, 3 uitgesloten; image `decision-service:drl-rule-part-fields`; kind-smoke H2/H3/H4 PASS. Het
+Result-commit raakt alleen deze kaart.
+
+#### Wat open bleef
+
+- **De pin staat op `b0d5241c`, de tip van de uchar-kaarttak** (uchars gate-run liep toen nog); de hoofdsessie zet hem
+  vóór de landing op de landingscommit van uchar.
+- **`unordered: true` en een regelversie in een samenstelling** komen in v2 niet voor; ze zijn gepind in de eigen test
+  (`vindersloon`, `strandpremie`), en uchars `StackCompositionCorpusWitnessTest` ziet ze in het corpus.
+- **Twee keer het document laden per antwoord**: `drlRules` en `generated` lezen elk `IrLoader.loadWithPositions(ir)`.
+  Eén keer laden in `analyze` en doorgeven scheelt een lading, maar verandert twee signaturen voor geen gedrag; niet
+  gedaan.
