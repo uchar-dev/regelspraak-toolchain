@@ -232,7 +232,7 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   each have their own `type`. It is named in the chosen vocabulary, with `typeCanonical` beside it where that differs;
   a version has no `type`. It comes from uchar's analysis of the exec-model branch, not from the DRL. Nothing is read
   off a name: all of it comes from uchar's tables (`RegelSpraakModel.generated`, `TmsTranspiler.generated`,
-  `TmsTranspiler.stackTypes`). Per scenario it gets uchar's report with its
+  `TmsTranspiler.stacks`). Per scenario it gets uchar's report with its
   `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`rule`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in), and the `fixpoint`

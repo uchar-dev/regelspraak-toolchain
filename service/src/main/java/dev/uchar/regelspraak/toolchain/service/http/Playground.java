@@ -570,7 +570,7 @@ public final class Playground {
      *  ({@code TmsTranspiler.generated}): an effective defaults stack, a version of a form. {@code name} is spelled
      *  as the coverage and trace of a scenario spell it ({@link Naming#form}), with {@code nameCanonical} beside it
      *  where that differs from uchar's name; {@code kind} is the kind of the coverage. A stack has {@code type}, the
-     *  object type it runs for ({@code TmsTranspiler.stackTypes}: the type that declares the member of
+     *  object type it runs for ({@code TmsTranspiler.stacks}: the type that declares the member of
      *  {@code generatedFrom}, or a subtype of it), named by {@code naming} ({@link Naming#name}), with
      *  {@code typeCanonical} beside it where that differs; a version has none. The build is the exec-model branch's,
      *  which has no DRL text, so the type is there without one. A name of the coverage that is no form of the model and
@@ -579,7 +579,7 @@ public final class Playground {
         Set<String> forms = new HashSet<>();
         for (Designatable b : model.designatable()) if (b.kind() == Designatable.Kind.VORM) forms.add(b.name());
         Map<String, GeneratedFrom> table = build.execModelTranspiler().generated();
-        Map<String, Designatable> types = build.execModelTranspiler().stackTypes();
+        Map<String, TmsTranspiler.Stack> stacks = build.execModelTranspiler().stacks();
         ArrayNode sink = NF.arrayNode();
         for (Coverage d : build.coverage()) {
             GeneratedFrom g = table.get(d.name());
@@ -594,12 +594,13 @@ public final class Playground {
             n.put("name", chosen);
             if (!chosen.equals(d.name())) n.put("nameCanonical", d.name());
             n.put("kind", d.category());
-            Designatable type = types.get(d.name());
-            if ((type != null) != (g.form() == RegelSpraakModel.OriginForm.DEFAULTS_STACK))
+            TmsTranspiler.Stack stack = stacks.get(d.name());
+            if ((stack != null) != (g.form() == RegelSpraakModel.OriginForm.DEFAULTS_STACK))
                 throw new IllegalStateException("uchar noemt bij " + g.form().key() + " '" + d.name() + "' "
-                        + (type == null ? "geen type waarvoor de stapel loopt" : "het type " + type.name()
+                        + (stack == null ? "geen stapel" : "de stapel van " + stack.type().name()
                         + ", en het is geen stapel"));
-            if (type != null) {
+            if (stack != null) {
+                Designatable type = stack.type();
                 String named = naming.name(type);
                 n.put("type", named);
                 if (!named.equals(type.name())) n.put("typeCanonical", type.name());

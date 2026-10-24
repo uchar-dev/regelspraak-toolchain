@@ -41,7 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * drl-rule-part-fields: a rule with a form also has its {@code role} in the lowering, uchar's key
  * ({@code RuleOrigin.Role.key()}), and a rule of a fold the {@code fold}, uchar's pointer of the fold's node without
  * the place of its group or form in the document, as {@code pointer} lies in its group; every stack of
- * {@code generated} has the {@code type} it runs for ({@code TmsTranspiler.stackTypes}), named in the vocabulary of
+ * {@code generated} has the {@code type} it runs for ({@code TmsTranspiler.stacks}), named in the vocabulary of
  * the answer, with {@code typeCanonical} beside it where that differs.
  *
  * <p>The own model: the flat group 'premie' on Jutter (the base and two exceptions at the root; 'premie bij veel
