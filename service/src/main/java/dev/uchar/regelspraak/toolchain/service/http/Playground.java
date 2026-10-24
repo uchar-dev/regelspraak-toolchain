@@ -75,13 +75,13 @@ import java.util.Set;
  *       refusal;</li>
  *   <li><b>uitvoerbaar</b> — uchar's verdict on the exec-model branch, the branch that fires: {@code true} with the
  *       {@code dekking} per form and {@code generated}, the names of that coverage that name no element of
- *       {@code vocabularies} with the element uchar made them from ({@link #generated}), or {@code false} with
- *       uchar's {@code weigering};</li>
+ *       {@code vocabularies} with the element uchar made them from and, for a stack, the type it runs for
+ *       ({@link #generated}), or {@code false} with uchar's {@code weigering};</li>
  *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, a view and no verdict (that branch renders the
  *       analysis the exec-model branch fires as DRL text); {@code drlError} carries its refusal, or uchar's sentence
  *       for a DRL text the Drools compiler rejects, with {@code drl} empty. Beside it {@code drlRules}: per rule of
- *       that text, in its order, its name and what it lowers in the keys of the decider of a {@code GROUND}
- *       ({@link #drlRules}), empty with {@code drlError}, since an empty text has no rule;</li>
+ *       that text, in its order, its name, its role in the lowering and what it lowers in the keys of the decider of
+ *       a {@code GROUND} ({@link #drlRules}), empty with {@code drlError}, since an empty text has no rule;</li>
  *   <li><b>graaf</b> and <b>graphJson</b> — uchar's rule graph of the document its loader reads back (the route
  *       uchar's gate 15 holds equal to the source route), as Mermaid source and as
  *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
@@ -566,15 +566,20 @@ public final class Playground {
     }
 
     /** The names of the coverage of {@code build} that name no element of {@link RegelSpraakModel#designatable}, each as
-     *  {@code {naam, soort, generatedFrom}} in the order of the coverage, with uchar's origin of it
-     *  ({@code TmsTranspiler.generated}): an effective defaults stack, a version of a form. {@code naam} is spelled
-     *  as the coverage and trace of a scenario spell it ({@link Naming#form}), with {@code naamCanoniek} beside it
-     *  where that differs from uchar's name; {@code soort} is the kind of the coverage. A name of the coverage that is
-     *  no form of the model and has no origin in uchar's table is a fault of the analysis, not an answer. */
+     *  {@code {name, kind, type, generatedFrom}} in the order of the coverage, with uchar's origin of it
+     *  ({@code TmsTranspiler.generated}): an effective defaults stack, a version of a form. {@code name} is spelled
+     *  as the coverage and trace of a scenario spell it ({@link Naming#form}), with {@code nameCanonical} beside it
+     *  where that differs from uchar's name; {@code kind} is the kind of the coverage. A stack has {@code type}, the
+     *  object type it runs for ({@code TmsTranspiler.stackTypes}: the type that declares the member of
+     *  {@code generatedFrom}, or a subtype of it), named by {@code naming} ({@link Naming#name}), with
+     *  {@code typeCanonical} beside it where that differs; a version has none. The build is the exec-model branch's,
+     *  which has no DRL text, so the type is there without one. A name of the coverage that is no form of the model and
+     *  has no origin in uchar's table, and a stack without a type, is a fault of the analysis, not an answer. */
     static ArrayNode generated(DroolsBackend.Build build, RegelSpraakModel model, Naming naming) {
         Set<String> forms = new HashSet<>();
         for (Designatable b : model.designatable()) if (b.kind() == Designatable.Kind.VORM) forms.add(b.name());
         Map<String, GeneratedFrom> table = build.execModelTranspiler().generated();
+        Map<String, Designatable> types = build.execModelTranspiler().stackTypes();
         ArrayNode sink = NF.arrayNode();
         for (Coverage d : build.coverage()) {
             GeneratedFrom g = table.get(d.name());
@@ -589,6 +594,16 @@ public final class Playground {
             n.put("name", chosen);
             if (!chosen.equals(d.name())) n.put("nameCanonical", d.name());
             n.put("kind", d.category());
+            Designatable type = types.get(d.name());
+            if ((type != null) != (g.form() == RegelSpraakModel.OriginForm.DEFAULTS_STACK))
+                throw new IllegalStateException("uchar noemt bij " + g.form().key() + " '" + d.name() + "' "
+                        + (type == null ? "geen type waarvoor de stapel loopt" : "het type " + type.name()
+                        + ", en het is geen stapel"));
+            if (type != null) {
+                String named = naming.name(type);
+                n.put("type", named);
+                if (!named.equals(type.name())) n.put("typeCanonical", type.name());
+            }
             n.set("generatedFrom", generatedFrom(g));
         }
         return sink;
@@ -606,8 +621,14 @@ public final class Playground {
      *       {@code variant}, or {@code rule} for an ordinary rule the stack of a subtype takes in (RUNTIME-SEMANTICS
      *       ch. 7.10); a rule of the stack itself has {@code stack} only;</li>
      *   <li>a rule of no form has {@code name} only;</li>
+     *   <li>a rule with a form has {@code role}, uchar's key of what it does in the lowering of its form, default or
+     *       stack ({@code RuleOrigin.Role.key()}: {@code own}, {@code fallback}, {@code reconcile-agreement},
+     *       {@code fold-contribution}, …);</li>
      *   <li>{@code generatedFrom} where the form of {@code rule} or the group of {@code group} is one uchar's frontend
-     *       made ({@link RegelSpraakModel#generatedFrom}), the opgave marker's among them.</li>
+     *       made ({@link RegelSpraakModel#generatedFrom}), the opgave marker's among them;</li>
+     *   <li>a rule of a fold has {@code fold}, the node of the fold ({@code Aggregation} or {@code QuantifierFold}) in
+     *       the group of {@code group} or else the form of {@code rule}, as {@code pointer} lies in its group
+     *       ({@link #fold}).</li>
      * </ul>
      * {@code name} is the name of the rule, unescaped: the header {@code rule "…"} spells it as a DRL string literal.
      * {@code ir} is the document the emitter writes of {@code model}, the one the build was built from, on which the
@@ -634,6 +655,7 @@ public final class Playground {
             TmsTranspiler.RuleOrigin o = build.execModelTranspiler().originOf(name);
             ObjectNode n = sink.addObject();
             n.put("name", name);
+            if (o.role() != null) n.put("role", o.role().key());
             switch (o.kind()) {
                 case NO_FORM -> { }
                 case FORM -> decider(n, Map.of("rule", RegelSpraakModel.formName(o.form())), model);
@@ -646,8 +668,36 @@ public final class Playground {
                 default -> throw new IllegalStateException("uchar geeft de regel '" + name + "' een herkomst van"
                         + " een soort die de playground niet kent: " + o);
             }
+            if (o.fold() != null) n.put("fold", fold(n, o.fold(), ir));
         }
         return sink;
+    }
+
+    /** uchar's pointer of a group or a form of the rule layer and what follows it: {@code /rules/<list>/<i>/…}. */
+    private static final java.util.regex.Pattern IN_RULE_LAYER =
+            java.util.regex.Pattern.compile("^/rules/([^/]+)/(\\d+)(/.+)$");
+
+    /**
+     * The fold of entry {@code n}: uchar's pointer {@code fold} of its node in {@code ir} without the place of its
+     * group or form in the document, as {@code pointer} is uchar's pointer of a default without the place of its
+     * group, because a scope moves that place and not the name. It lies in the group {@code group} names, or else in
+     * the form {@code rule} names. A pointer that lies elsewhere, or names no node of {@code ir}, is a fault, not an
+     * answer.
+     */
+    private static String fold(ObjectNode n, String fold, com.fasterxml.jackson.databind.JsonNode ir) {
+        java.util.regex.Matcher m = IN_RULE_LAYER.matcher(fold);
+        boolean inGroup = n.has("group");
+        String holder = n.path(inGroup ? "group" : "rule").asText(null);
+        if (!m.matches() || inGroup != m.group(1).equals("prioritizedDefaults") || holder == null
+                || !holder.equals(ir.path("rules").path(m.group(1)).path(Integer.parseInt(m.group(2)))
+                        .path("name").asText(null)))
+            throw new IllegalStateException("uchar noemt bij de regel '" + n.get("name").asText() + "' de vouw "
+                    + fold + ", en die ligt niet in " + (inGroup ? "de groep '" : "de vorm '") + holder
+                    + "' van het document");
+        if (!ir.at(fold).isObject())
+            throw new IllegalStateException("uchar noemt bij de regel '" + n.get("name").asText() + "' de vouw "
+                    + fold + ", en die is geen knoop van het document");
+        return m.group(3);
     }
 
     /** Puts the keys of {@code decider} on {@code n}, and {@code generatedFrom} where uchar's frontend made the form

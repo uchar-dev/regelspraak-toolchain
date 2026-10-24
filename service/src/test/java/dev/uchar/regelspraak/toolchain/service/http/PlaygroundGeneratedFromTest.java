@@ -175,7 +175,7 @@ class PlaygroundGeneratedFromTest {
                 "defaults A:RechtOpUitkeringPeriode.herlevingsdatum",
                 "defaults <- ATTRIBUUT RechtOpUitkeringPeriode.herlevingsdatum (defaultsstapel)"),
                 generatedNames(a));
-        assertEquals(List.of("name", "kind", "generatedFrom"), fieldNames(a.get("generated").get(0)));
+        assertEquals(List.of("name", "kind", "type", "generatedFrom"), fieldNames(a.get("generated").get(0)));
         // every name of the coverage is an element or stands in gegenereerd
         Set<String> forms = new HashSet<>();
         for (JsonNode e : a.get("vocabularies").get("elements"))
@@ -218,7 +218,7 @@ class PlaygroundGeneratedFromTest {
     /**
      * Over every golden of uchar with a {@code source.rgs}: an element has a declaration ({@code line}) or an origin
      * ({@code generatedFrom}), never both, and every name of the coverage of a golden the exec-model branch builds
-     * is an element or stands in {@code generated}.
+     * is an element or stands in {@code generated}, a stack there with its {@code type}.
      */
     /** Floors of the sweep below, measured 2026-10-15 on uchar's corpus at the pin of this card: elements, elements with
      *  an origin, goldens the exec-model branch builds, and effective stacks in their coverage. */
@@ -260,6 +260,9 @@ class PlaygroundGeneratedFromTest {
             for (JsonNode g : names) {
                 named.add(g.get("name").asText());
                 if (g.get("kind").asText().equals("defaults")) stacks++;
+                // a stack has the type it runs for, a version of a form none
+                boolean stack = g.get("generatedFrom").get("form").asText().equals("defaultsstapel");
+                if (stack != g.has("type")) errors.add(golden + ": " + g + (stack ? " zonder type" : " met een type"));
             }
             for (var d : build.coverage())
                 if (forms.contains(d.name()) == named.contains(d.name()))

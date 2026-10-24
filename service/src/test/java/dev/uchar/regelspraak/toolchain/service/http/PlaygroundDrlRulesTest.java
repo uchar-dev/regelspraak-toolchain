@@ -4,18 +4,31 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.resolver.Resolver;
+import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
+import dev.uchar.regelspraak.toolchain.service.TokaSource;
 import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.TmsTranspiler;
 
 import org.junit.jupiter.api.Test;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -24,7 +37,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * order the rule's {@code name} and what uchar says it lowers ({@code TmsTranspiler.originOf}), in the keys of the
  * decider of a {@code GROUND}: {@code rule} for a form, {@code group}, {@code pointer}, {@code position} and
  * {@code variant} for a default, with {@code stack} for every rule of an effective defaults stack and
- * {@code generatedFrom} for a form or group uchar's frontend made; a rule of no form has its name only.
+ * {@code generatedFrom} for a form or group uchar's frontend made; a rule of no form has its name only. Card
+ * drl-rule-part-fields: a rule with a form also has its {@code role} in the lowering, uchar's key
+ * ({@code RuleOrigin.Role.key()}), and a rule of a fold the {@code fold}, uchar's pointer of the fold's node without
+ * the place of its group or form in the document, as {@code pointer} lies in its group; every stack of
+ * {@code generated} has the {@code type} it runs for ({@code TmsTranspiler.stackTypes}), named in the vocabulary of
+ * the answer, with {@code typeCanonical} beside it where that differs.
  *
  * <p>The own model: the flat group 'premie' on Jutter (the base and two exceptions at the root; 'premie bij veel
  * vondsten' reads the fold "het aantal vondsten"), the ordinary rule 'strandpremie' on the subtype Strandjutter, which
@@ -106,6 +124,7 @@ class PlaygroundDrlRulesTest {
                 "output": ["Jutter.premie", "Jutter.totaalgewicht", "Vondst.waarde", "Vondst.meldingsdatum"] } ],
               "parameters": {} }""";
 
+    private static final String OWN = "\"role\":\"own\"";
     private static final String OPGAVE = "\"generatedFrom\":{\"kind\":\"ATTRIBUUT\",\"owner\":\"Vondst\","
             + "\"name\":\"meldingsdatum\",\"form\":\"opgave-boven-berekening\"}";
     private static final String JUTTER = "\"stack\":\"defaults A:Jutter.premie\"";
@@ -119,47 +138,87 @@ class PlaygroundDrlRulesTest {
     private static final String ZWARE_VONDST =
             "\"group\":\"waarde\",\"pointer\":\"/defaults/0\",\"position\":1,\"variant\":\"zware vondst\"";
 
-    /** Every rule of the DRL text, in its order, with its decider; written from the IR of the model (the groups and
-     *  their defaults on their pointers) and from what each rule of uchar's lowering is for, not from the answer. */
+    /** Every rule of the DRL text, in its order, with its role and its decider; written from the IR of the model (the
+     *  groups and their defaults on their pointers, the two Aggregation nodes, at {@code /rules/rules/1/versions/0/value}
+     *  and {@code /rules/prioritizedDefaults/0/defaults/1/justification/left}) and from what each rule of uchar's
+     *  lowering is for, not from the answer. */
     private static final List<String> EXPECTED = List.of(
-            "{\"name\":\"strandpremie\",\"rule\":\"strandpremie\"}",
-            "{\"name\":\"totaalgewicht\",\"rule\":\"totaalgewicht\"}",
-            "{\"name\":\"melding\",\"rule\":\"melding\"}",
-            "{\"name\":\"afwijking opgave meldingsdatum\",\"rule\":\"afwijking opgave meldingsdatum\"," + OPGAVE + "}",
-            "{\"name\":\"controle opgave meldingsdatum\",\"rule\":\"controle opgave meldingsdatum\"," + OPGAVE + "}",
+            "{\"name\":\"strandpremie\"," + OWN + ",\"rule\":\"strandpremie\"}",
+            "{\"name\":\"totaalgewicht\"," + OWN + ",\"rule\":\"totaalgewicht\"}",
+            "{\"name\":\"melding\"," + OWN + ",\"rule\":\"melding\"}",
+            "{\"name\":\"afwijking opgave meldingsdatum\"," + OWN + ",\"rule\":\"afwijking opgave meldingsdatum\","
+                    + OPGAVE + "}",
+            "{\"name\":\"controle opgave meldingsdatum\"," + OWN + ",\"rule\":\"controle opgave meldingsdatum\","
+                    + OPGAVE + "}",
             // the flat group in the stack of a Jutter
-            "{\"name\":\"defaults A:Jutter.premie: default 0\"," + JUTTER + "," + JEUGDPREMIE + "}",
-            "{\"name\":\"defaults A:Jutter.premie: default 1\"," + JUTTER + "," + VEEL_VONDSTEN + "}",
-            "{\"name\":\"defaults A:Jutter.premie: default 2\"," + JUTTER
+            "{\"name\":\"defaults A:Jutter.premie: default 0\"," + OWN + "," + JUTTER + "," + JEUGDPREMIE + "}",
+            "{\"name\":\"defaults A:Jutter.premie: default 1\"," + OWN + "," + JUTTER + "," + VEEL_VONDSTEN + "}",
+            "{\"name\":\"defaults A:Jutter.premie: default 2\"," + OWN + "," + JUTTER
                     + ",\"group\":\"premie\",\"pointer\":\"/defaults/2\",\"position\":3,\"variant\":\"premie\"}",
             // the stack of the subtype: the two exceptions of the group on Jutter, and 'strandpremie' as its base
-            "{\"name\":\"defaults A:Strandjutter.premie: default 0\"," + STRANDJUTTER + "," + JEUGDPREMIE + "}",
-            "{\"name\":\"defaults A:Strandjutter.premie: default 1\"," + STRANDJUTTER + "," + VEEL_VONDSTEN + "}",
-            "{\"name\":\"defaults A:Strandjutter.premie: default 2\"," + STRANDJUTTER + ",\"rule\":\"strandpremie\"}",
-            // the nested exception, and the reconciliation of the exception group of 'zware vondst' under it
-            "{\"name\":\"defaults A:Vondst.waarde: default 0.0.0\"," + WAARDE + ",\"group\":\"waarde\","
+            "{\"name\":\"defaults A:Strandjutter.premie: default 0\"," + OWN + "," + STRANDJUTTER + "," + JEUGDPREMIE
+                    + "}",
+            "{\"name\":\"defaults A:Strandjutter.premie: default 1\"," + OWN + "," + STRANDJUTTER + ","
+                    + VEEL_VONDSTEN + "}",
+            "{\"name\":\"defaults A:Strandjutter.premie: default 2\"," + OWN + "," + STRANDJUTTER
+                    + ",\"rule\":\"strandpremie\"}",
+            // the nested exception, and the reconciliation of the exception group of 'zware vondst' under it: the
+            // agreement of its members, and the decision of 'zware vondst' itself where that group does not settle
+            "{\"name\":\"defaults A:Vondst.waarde: default 0.0.0\"," + OWN + "," + WAARDE + ",\"group\":\"waarde\","
                     + "\"pointer\":\"/defaults/0/exceptions/members/0/defaults/0\",\"position\":1,"
                     + "\"variant\":\"zeer zware vondst\"}",
-            "{\"name\":\"defaults A:Vondst.waarde: eens 0\"," + WAARDE + "," + ZWARE_VONDST + "}",
-            "{\"name\":\"defaults A:Vondst.waarde: terugval 0\"," + WAARDE + "," + ZWARE_VONDST + "}",
-            "{\"name\":\"defaults A:Vondst.waarde: default 1\"," + WAARDE
+            "{\"name\":\"defaults A:Vondst.waarde: eens 0\",\"role\":\"reconcile-agreement\"," + WAARDE + ","
+                    + ZWARE_VONDST + "}",
+            "{\"name\":\"defaults A:Vondst.waarde: terugval 0\",\"role\":\"fallback\"," + WAARDE + ","
+                    + ZWARE_VONDST + "}",
+            "{\"name\":\"defaults A:Vondst.waarde: default 1\"," + OWN + "," + WAARDE
                     + ",\"group\":\"waarde\",\"pointer\":\"/defaults/1\",\"position\":2,\"variant\":\"waarde\"}",
             // a rule of the stack itself: the agreement of the groups at its root, of no default
-            "{\"name\":\"defaults A:Vondst.waarde: eens wortel\"," + WAARDE + "}",
+            "{\"name\":\"defaults A:Vondst.waarde: eens wortel\",\"role\":\"reconcile-agreement\"," + WAARDE + "}",
             // the group the opgave marker makes: its defaults have no name
-            "{\"name\":\"defaults A:Vondst.meldingsdatum: default 0\"," + MELDING + ",\"group\":\"opgave boven"
-                    + " berekening meldingsdatum\",\"pointer\":\"/defaults/0\",\"position\":1," + OPGAVE + "}",
-            "{\"name\":\"defaults A:Vondst.meldingsdatum: default 1\"," + MELDING + ",\"group\":\"opgave boven"
-                    + " berekening meldingsdatum\",\"pointer\":\"/defaults/1\",\"position\":2," + OPGAVE + "}",
-            // the contributions to a fold: of the ordinary rule, and of the variant whose condition reads it
-            "{\"name\":\"totaalgewicht: bijdrage aan vouw 0\",\"rule\":\"totaalgewicht\"}",
-            "{\"name\":\"defaults A:Jutter.premie: bijdrage aan vouw 1\"," + JUTTER + "," + VEEL_VONDSTEN + "}",
-            // rules of no form
+            "{\"name\":\"defaults A:Vondst.meldingsdatum: default 0\"," + OWN + "," + MELDING
+                    + ",\"group\":\"opgave boven berekening meldingsdatum\",\"pointer\":\"/defaults/0\",\"position\":1,"
+                    + OPGAVE + "}",
+            "{\"name\":\"defaults A:Vondst.meldingsdatum: default 1\"," + OWN + "," + MELDING
+                    + ",\"group\":\"opgave boven berekening meldingsdatum\",\"pointer\":\"/defaults/1\",\"position\":2,"
+                    + OPGAVE + "}",
+            // the contributions to a fold: of the ordinary rule, and of the variant whose condition reads it, each
+            // with the fold in its form or its group, as the pointer of a default lies in its group
+            "{\"name\":\"totaalgewicht: bijdrage aan vouw 0\",\"role\":\"fold-contribution\","
+                    + "\"rule\":\"totaalgewicht\",\"fold\":\"/versions/0/value\"}",
+            "{\"name\":\"defaults A:Jutter.premie: bijdrage aan vouw 1\",\"role\":\"fold-contribution\"," + JUTTER
+                    + "," + VEEL_VONDSTEN + ",\"fold\":\"/defaults/1/justification/left\"}",
+            // rules of no form: no role
             "{\"name\":\"stand Vondst.berekende meldingsdatum: uit een afleiding\"}",
             "{\"name\":\"stand Vondst.berekende meldingsdatum: uit de invoer\"}",
             "{\"name\":\"kenmerkstand Vondst.afwijkende opgave meldingsdatum: waar uit de invoer\"}",
             "{\"name\":\"kenmerkstand Vondst.afwijkende opgave meldingsdatum: waar uit een afleiding\"}",
             "{\"name\":\"kenmerkstand Vondst.afwijkende opgave meldingsdatum: onwaar\"}");
+
+    /** The text of each fold of the model, the {@code source.snippet} of its node. */
+    private static final Map<String, String> FOLD_TEXT = Map.of(
+            "totaalgewicht: bijdrage aan vouw 0", "de som van het gewicht van alle vondsten van de Jutter",
+            "defaults A:Jutter.premie: bijdrage aan vouw 1", "het aantal vondsten van de Jutter");
+
+    private static String stack(String name, String type, String typeCanonical, String owner, String member) {
+        return "{\"name\":\"" + name + "\",\"kind\":\"defaults\",\"type\":\"" + type + "\""
+                + (typeCanonical == null ? "" : ",\"typeCanonical\":\"" + typeCanonical + "\"")
+                + ",\"generatedFrom\":{\"kind\":\"ATTRIBUUT\",\"owner\":\"" + owner + "\",\"name\":\"" + member
+                + "\",\"form\":\"defaultsstapel\"}}";
+    }
+
+    /** Every stack of {@code generated} with the type it runs for: the stack of a Strandjutter decides the member
+     *  declared on Jutter, for a Strandjutter. Written from the model, sorted. */
+    private static final List<String> EXPECTED_STACKS = List.of(
+            stack("defaults A:Jutter.premie", "Jutter", null, "Jutter", "premie"),
+            stack("defaults A:Strandjutter.premie", "Strandjutter", null, "Jutter", "premie"),
+            stack("defaults A:Vondst.meldingsdatum", "Vondst", null, "Vondst", "meldingsdatum"),
+            stack("defaults A:Vondst.waarde", "Vondst", null, "Vondst", "waarde"));
+
+    /** The model with a vocabulary in which the subtype has a designation and Jutter and Vondst have none. */
+    private static final String SOURCE_CGM = "Vocabulaire cgm (taal: nl)\n\n" + SOURCE.replace(
+            "Objecttype de Strandjutter is een Jutter (mv: Strandjutters)",
+            "Objecttype de Strandjutter is een Jutter (mv: Strandjutters) (cgm: STRANDJUTTER)");
 
     @Test
     void every_rule_of_the_drl_text_names_its_decider() throws Exception {
@@ -179,31 +238,97 @@ class PlaygroundDrlRulesTest {
         List<String> fromNames = new ArrayList<>();
         for (JsonNode r : rules) fromNames.add("rule " + Namen.drlString(r.get("name").asText()));
         assertEquals(headers, fromNames);
-        // every pointer of a default names a default of that group in the IR of the answer, with that name
+        // every pointer of a default names a default of that group in the IR of the answer, with that name; every
+        // fold names a node of its group or form there, with the text of the fold
+        int folds = 0;
         for (JsonNode r : rules) {
-            if (!r.has("pointer")) continue;
-            JsonNode group = null;
-            for (JsonNode g : a.get("ir").get("rules").get("prioritizedDefaults"))
-                if (g.get("name").asText().equals(r.get("group").asText())) group = g;
-            assertTrue(group != null, r.toString());
-            JsonNode d = group.at(r.get("pointer").asText());
-            assertTrue(d.isObject(), r.toString());
-            assertEquals(d.path("name").asText(null), r.path("variant").asText(null), r.toString());
+            if (r.has("pointer")) {
+                JsonNode d = holder(a.get("ir"), r).at(r.get("pointer").asText());
+                assertTrue(d.isObject(), r.toString());
+                assertEquals(d.path("name").asText(null), r.path("variant").asText(null), r.toString());
+            }
+            if (!r.has("fold")) continue;
+            folds++;
+            JsonNode fold = holder(a.get("ir"), r).at(r.get("fold").asText());
+            assertEquals("Aggregation", fold.path("node").asText(), r.toString());
+            assertEquals(FOLD_TEXT.get(r.get("name").asText()), fold.path("source").path("snippet").asText(),
+                    r.toString());
         }
+        assertEquals(FOLD_TEXT.size(), folds);
+    }
+
+    /** The group {@code group} of entry {@code r} names in {@code ir}, or else the form its {@code rule} names, in
+     *  whichever list of the rule layer it stands: what the pointer and the fold of the entry lie in. */
+    private static JsonNode holder(JsonNode ir, JsonNode r) {
+        List<JsonNode> found = new ArrayList<>();
+        if (r.has("group")) {
+            for (JsonNode g : ir.get("rules").get("prioritizedDefaults"))
+                if (g.path("name").asText().equals(r.get("group").asText())) found.add(g);
+        } else {
+            for (Iterator<JsonNode> lists = ir.get("rules").elements(); lists.hasNext(); )
+                for (JsonNode f : lists.next())
+                    if (f.path("name").asText().equals(r.get("rule").asText())) found.add(f);
+        }
+        assertEquals(1, found.size(), () -> "het IR heeft " + found.size() + " groep(en) of vorm(en) van " + r);
+        return found.get(0);
+    }
+
+    private static List<String> sortedStacks(JsonNode generated) {
+        List<String> sink = new ArrayList<>();
+        for (JsonNode g : generated) if (g.get("kind").asText().equals("defaults")) sink.add(g.toString());
+        java.util.Collections.sort(sink);
+        return sink;
+    }
+
+    private static List<String> normalised(List<String> json) throws Exception {
+        List<String> sink = new ArrayList<>();
+        for (String e : json) sink.add(JSON.readTree(e).toString());
+        return sink;
+    }
+
+    @Test
+    void every_stack_of_generated_names_the_type_it_runs_for() throws Exception {
+        ObjectNode a = Playground.analyze(SOURCE);
+        assertTrue(a.get("executable").asBoolean(), a.path("refusal").asText());
+        assertEquals(normalised(EXPECTED_STACKS), sortedStacks(a.get("generated")));
+        // in a vocabulary the type is named there, with its canonical name beside it where that differs
+        ObjectNode cgm = Playground.analyze(SOURCE_CGM, "cgm");
+        assertTrue(cgm.get("resolver").get("ok").asBoolean(), cgm.get("resolver").toString());
+        assertEquals(normalised(List.of(
+                stack("defaults A:Jutter.premie", "Jutter", null, "Jutter", "premie"),
+                stack("defaults A:Strandjutter.premie", "STRANDJUTTER", "Strandjutter", "Jutter", "premie"),
+                stack("defaults A:Vondst.meldingsdatum", "Vondst", null, "Vondst", "meldingsdatum"),
+                stack("defaults A:Vondst.waarde", "Vondst", null, "Vondst", "waarde"))),
+                sortedStacks(cgm.get("generated")));
+    }
+
+    @Test
+    void the_type_of_a_stack_comes_from_the_analysis_without_a_drl_text() throws Exception {
+        // generated reads the build of the exec-model branch, which has no DRL text: the type does not depend on
+        // the DRL, so an answer with drlError beside a built exec-model branch has it as well
+        RegelSpraakModel model = Resolver.resolve(SOURCE);
+        DroolsBackend.Build build = UcharBuild.assemble(model, DroolsBackend.Branch.EXEC_MODEL);
+        assertNull(build.drl());
+        JsonNode generated = Playground.generated(build, model, Naming.canonical(model));
+        assertEquals(normalised(EXPECTED_STACKS), sortedStacks(generated));
+        assertEquals(Playground.analyze(SOURCE).get("generated"), generated);
     }
 
     @Test
     void both_routes_give_the_same_drl_rules() {
         DecisionCore core = DecisionCore.assemble(DESCRIPTOR, Map.of("jutters.rgs", SOURCE),
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
-        JsonNode viaService = Playground.analyze(SOURCE, null, core).get("drlRules");
-        assertEquals(Playground.analyze(SOURCE).get("drlRules"), viaService);
-        assertEquals(EXPECTED.size(), viaService.size(), viaService.toString());
+        ObjectNode viaService = Playground.analyze(SOURCE, null, core);
+        ObjectNode own = Playground.analyze(SOURCE);
+        assertEquals(own.get("drlRules"), viaService.get("drlRules"));
+        assertEquals(EXPECTED.size(), viaService.get("drlRules").size(), viaService.get("drlRules").toString());
+        assertEquals(own.get("generated"), viaService.get("generated"));
     }
 
     @Test
     void without_drl_the_list_is_empty() {
-        // resolves cleanly, and uchar's analysis does not lower the rule: no DRL text, so no rule in it
+        // resolves cleanly, and uchar's analysis does not lower the rule: no DRL text, so no rule in it. The refusal
+        // is the analysis', so the exec-model branch refuses too, and there is no generated either
         ObjectNode a = Playground.analyze("""
             Objecttype de Vlucht (mv: Vluchten)
                 de heffing Numeriek (niet-negatief geheel getal);
@@ -217,6 +342,69 @@ class PlaygroundDrlRulesTest {
         assertTrue(a.get("drlError").asText().contains("heffing markert"), a.toString());
         assertTrue(a.get("drlRules").isArray(), a.toString());
         assertEquals(0, a.get("drlRules").size(), a.toString());
+        assertFalse(a.get("executable").asBoolean(), a.toString());
+        assertFalse(a.has("generated"), a.toString());
+    }
+
+    /** The keys {@code docs/ENGINE.md} lists for {@code role}, uchar's {@code RuleOrigin.Role.key()}: a pin of uchar
+     *  that adds a role fails here, so that the list there is brought along. */
+    @Test
+    void the_roles_are_the_keys_of_uchar() {
+        List<String> keys = new ArrayList<>();
+        for (TmsTranspiler.RuleOrigin.Role r : TmsTranspiler.RuleOrigin.Role.values()) keys.add(r.key());
+        assertEquals(List.of("own", "fallback", "condition-fault", "condition-deposit", "no-evaluation-date",
+                "reading", "reconcile-pass-on", "reconcile-difference", "reconcile-agreement", "fold-contribution",
+                "fold-filter-fault", "fold-member-fault", "fold-filter-deposit", "uniqueness-key",
+                "uniqueness-key-form-fault", "uniqueness-channel", "allocation-recipient"), keys);
+    }
+
+    /** Floors of the sweep below, measured 2026-10-24 on uchar's corpus at the pin of this card: goldens the
+     *  DRL-text branch builds, entries with a role, entries with a fold. */
+    private static final int MIN_BUILT = 282, MIN_ROLES = 1437, MIN_FOLDS = 291;
+
+    /**
+     * Over every golden of uchar ({@code ir.json}, the document uchar's emitter writes) that the DRL-text branch
+     * builds: an entry has a role exactly where it has a form ({@code rule} or {@code stack}), a fold exactly where its
+     * role is one of a fold, and the fold names an {@code Aggregation} or {@code QuantifierFold} in the group or form
+     * of the entry, found by name as a reader of the answer finds it.
+     */
+    @Test
+    void over_the_corpus_every_fold_lies_in_the_group_or_form_of_its_entry() throws Exception {
+        List<Path> goldens;
+        try (Stream<Path> s = Files.walk(TokaSource.REPO.resolve("uchar/corpus/golden"))) {
+            goldens = s.filter(p -> p.getFileName().toString().equals("ir.json")).sorted().toList();
+        }
+        List<String> errors = new ArrayList<>();
+        int built = 0, roles = 0, folds = 0;
+        for (Path p : goldens) {
+            JsonNode ir = JSON.readTree(p.toFile());
+            DroolsBackend.Build build;
+            try {
+                build = UcharBuild.assemble(ir, DroolsBackend.Branch.DRL_TEXT);
+            } catch (UcharBuild.NotCarried n) {
+                continue;
+            }
+            built++;
+            String golden = TokaSource.REPO.resolve("uchar/corpus/golden").relativize(p.getParent()).toString();
+            for (JsonNode r : Playground.drlRules(build, ir, build.model())) {
+                boolean form = r.has("rule") || r.has("stack");
+                String role = r.path("role").asText(null);
+                if (form != (role != null)) errors.add(golden + ": " + r + (form ? " zonder rol" : " met een rol"));
+                if (role == null) continue;
+                roles++;
+                if (role.startsWith("fold-") != r.has("fold")) errors.add(golden + ": " + r + " rol en vouw");
+                if (!r.has("fold")) continue;
+                folds++;
+                JsonNode node = holder(ir, r).at(r.get("fold").asText());
+                if (!Set.of("Aggregation", "QuantifierFold").contains(node.path("node").asText()))
+                    errors.add(golden + ": " + r + " noemt " + node.path("node").asText("geen knoop"));
+            }
+        }
+        assertEquals(List.of(), errors);
+        int b = built, n = roles, f = folds;
+        assertTrue(b >= MIN_BUILT && n >= MIN_ROLES && f >= MIN_FOLDS, () -> b + " goldens gebouwd, " + n
+                + " vermeldingen met een rol, " + f + " met een vouw; de vloeren "
+                + List.of(MIN_BUILT, MIN_ROLES, MIN_FOLDS));
     }
 
     @Test

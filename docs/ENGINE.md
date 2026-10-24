@@ -222,11 +222,17 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   it comes from, canonical like an element's own `kind`, `owner` and `canonical`, and uchar's fixed key of the form
   that made it (`opgave-boven-berekening`, `uitzondering-voor-subtype`, `beslistabelrij`, `stappen-na-de-verzameling`,
   `startpunt`). Beside the `coverage`, `generated` lists each name of it that is no element (an effective defaults
-  stack `defaults A:<type>.<member>` or `defaults K:<type>.<member>`, a version `<form> #<k>`) as `{naam, soort,
-  gegenereerdUit}`, with the key `defaultsstapel` or `versie`; `naam` is spelled as the coverage and the trace of a
+  stack `defaults A:<type>.<member>` or `defaults K:<type>.<member>`, a version `<form> #<k>`) as `{name, kind,
+  generatedFrom}`, with the key `defaultsstapel` or `versie`; `name` is spelled as the coverage and the trace of a
   scenario spell it, with `nameCanonical` beside it where that differs, so every name of the coverage and the trace is
-  found by its exact text among the elements or in `generated`. Nothing is read off a name: both come from uchar's
-  tables (`RegelSpraakModel.generated`, `TmsTranspiler.generated`). Per scenario it gets uchar's report with its
+  found by its exact text among the elements or in `generated`. A stack has `type` beside `kind` (card
+  `drl-rule-part-fields`): the object type it runs for (uchar's RUNTIME-SEMANTICS ch. 7.10, "the effective stack per
+  type"), the type that declares the member of `generatedFrom` or a subtype of it, so two stacks of one inherited
+  member (`defaults K:Recht op uitkering WW.…` and `defaults K:RechtOpUitkeringWwBijOntslag.…`, one `generatedFrom`)
+  each have their own `type`. It is named in the chosen vocabulary, with `typeCanonical` beside it where that differs;
+  a version has no `type`. It comes from uchar's analysis of the exec-model branch, not from the DRL. Nothing is read
+  off a name: all of it comes from uchar's tables (`RegelSpraakModel.generated`, `TmsTranspiler.generated`,
+  `TmsTranspiler.stackTypes`). Per scenario it gets uchar's report with its
   `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`rule`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in), and the `fixpoint`
@@ -253,12 +259,43 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   - a rule of no form (a standing, a link of the input, the comparison of two writers) has `name` only;
   - `generatedFrom` (`{kind, owner, name, form}`, as in `vocabularies`) where uchar's frontend made the form of `rule`
     or the group of `group`: the rules and the group of the opgave marker, a group `B voor S`, a row of a decision
-    table.
+    table;
+  - `role` (card `drl-rule-part-fields`), after `name` on every entry with a form (`rule` or `stack`; a rule of no form
+    has none): what the rule does in the lowering of its form, its default or its stack, uchar's fixed key
+    (`TmsTranspiler.RuleOrigin.Role.key()`), as uchar's lowering noted it when it built the rule:
+    - `own`: the rule of the form itself (the rule that writes or attributes, deposits the inconsistency of a
+      consistency, marks a colliding key, distributes, creates), or of a default the rule of its own decision, an
+      ordinary rule a subtype's stack takes in among them;
+    - `fallback`: the own decision of a default with exception groups, where none of them settles (ch. 7.9);
+    - `condition-fault`: the fault of a condition, assertion or justification that can fault;
+    - `condition-deposit`: the §9.5 inconsistency of a form's condition (ch. 1.2);
+    - `no-evaluation-date`: the fault of a session without an evaluation date, beside a form with a bounded validity or
+      for a stack with a dated group (ch. 8.1);
+    - `reading`: the reading rule of a build with readings (ch. 5.12); the DRL shown is built without, so it does not
+      occur here;
+    - `reconcile-pass-on`, `reconcile-difference`, `reconcile-agreement`: the reconciliation of a default's exception
+      groups (ch. 7.9) or, on an entry with `stack` only, of the groups at the stack's root (ch. 7.2): pass on the
+      first conflict, make a conflict where two members decide differently, take the decision of the first deciding
+      member;
+    - `fold-contribution`, `fold-filter-fault`, `fold-member-fault`, `fold-filter-deposit`: of a fold (ch. 3.4): insert
+      the contribution of a member that passes the filter, note a member whose filter faults (ch. 5.11), a member whose
+      timeline the case gives as the asOfDate-bucket scalar (ch. 3.6, 8.4), a member whose filter deposits (ch. 5.10);
+    - `uniqueness-key`, `uniqueness-key-form-fault`, `uniqueness-channel`: of a uniqueness (ch. 5.9): insert the key of
+      an instance, fault an instance whose key on a timeline is given as a bucket scalar, put the violation on the §9.5
+      channel (ch. 5.6);
+    - `allocation-recipient`: of an allocation, insert a recipient of a source (ch. 4);
+  - `fold` on an entry with a `fold-` role: the node of its fold, an `Aggregation` or a `QuantifierFold`, as a JSON
+    Pointer in the group `group` names or else in the form `rule` names (in whichever list of the rule layer it
+    stands), the way `pointer` lies in its group: uchar's pointer (`RuleOrigin.fold()`) without `/rules/<list>/<index>`,
+    because a scope moves that index and not the name. Under a default it begins with the default's `pointer`
+    (`/defaults/2/justification/left`), under a form with the form's own keys (`/versions/0/value`); the text of the
+    fold is `source.snippet` of that node.
 
-  The pointer is uchar's, translated as the ground translates it (`Verbaliser.decider`); nothing is read off the name
-  of a rule, whose label (`default 0.1.2`, `bijdrage aan vouw 7`) is the lowering's own numbering. The DRL of a
-  variant is the entries with its `group` and `pointer`; with `drlError` there is no text and `drlRules` is an empty
-  list.
+  The pointers are uchar's, translated as the ground translates them (`Verbaliser.decider`); nothing is read off the
+  name of a rule, whose label (`default 0.1.2`, `bijdrage aan vouw 7`) is the lowering's own numbering. The DRL of a
+  variant is the entries with its `group` and `pointer`: its own decision has the role `own` (or `fallback`), a
+  collection step for its justification `fold-contribution` with the `fold` it collects for. With `drlError` there is
+  no text and `drlRules` is an empty list.
 - `POST /playground/analyse?via=service` gives the same answer, except that the service the process runs computes the
   scenarios, so that a PASS says: this service gives this answer. It shows the session of each scenario, so a service
   started without `DETAIL` answers it with a 400 that names `DETAIL` (`field` `via`), and another value of `via` is a
