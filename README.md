@@ -110,9 +110,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
 - **The DRL names what each rule lowers** (card `drl-rule-provenance`): beside `drl` the playground gives `drlRules`,
   per rule of the text its `name` and its decider in the keys of `GROUND`, with `stack` and `generatedFrom`
   (`docs/ENGINE.md`); `drl` is unchanged, and with `drlError` the list is empty.
-- **The DRL names the role of each rule, a stack its type** (card `drl-rule-part-fields`): an entry of `drlRules`
-  with a form has `role` (uchar's key) and a rule of a fold `fold` (its node, within the group or form like `pointer`);
-  a stack in `generated` has `type`, with `typeCanonical` where that differs (`docs/ENGINE.md`).
+- **The DRL names the role of each rule, a stack its type and composition** (card `drl-rule-part-fields`): an entry
+  of `drlRules` with a form has `role` (uchar's key) and a rule of a fold `fold` (its node, within the group or form
+  like `pointer`); a stack in `generated` has `type`, with `typeCanonical` where that differs, and `composition`, its
+  defaults in the order of priority across its groups, in the keys of `drlRules`, with their `exceptions` below them
+  (`docs/ENGINE.md`).
 
 ## The pin
 

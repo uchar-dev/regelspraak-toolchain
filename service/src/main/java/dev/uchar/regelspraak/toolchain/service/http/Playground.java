@@ -40,6 +40,7 @@ import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.transpiler.core.Coverage;
 import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.StackComposition;
 import dev.uchar.regelspraak.transpiler.tms.TmsTranspiler;
 
 import org.antlr.v4.runtime.BaseErrorListener;
@@ -75,8 +76,8 @@ import java.util.Set;
  *       refusal;</li>
  *   <li><b>uitvoerbaar</b> — uchar's verdict on the exec-model branch, the branch that fires: {@code true} with the
  *       {@code dekking} per form and {@code generated}, the names of that coverage that name no element of
- *       {@code vocabularies} with the element uchar made them from and, for a stack, the type it runs for
- *       ({@link #generated}), or {@code false} with uchar's {@code weigering};</li>
+ *       {@code vocabularies} with the element uchar made them from and, for a stack, the type it runs for and its
+ *       composition ({@link #generated}), or {@code false} with uchar's {@code weigering};</li>
  *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, a view and no verdict (that branch renders the
  *       analysis the exec-model branch fires as DRL text); {@code drlError} carries its refusal, or uchar's sentence
  *       for a DRL text the Drools compiler rejects, with {@code drl} empty. Beside it {@code drlRules}: per rule of
@@ -215,7 +216,7 @@ public final class Playground {
                 dn.put("name", d.name());
                 dn.put("verdict", d.verdict().name());
             }
-            root.set("generated", generated(build, model, naming));
+            root.set("generated", generated(build, ir, model, naming));
         } catch (UcharBuild.NotCarried e) {
             root.put("executable", false);
             root.put("refusal", locale == null ? e.getMessage() : e.message(locale));
@@ -566,16 +567,25 @@ public final class Playground {
     }
 
     /** The names of the coverage of {@code build} that name no element of {@link RegelSpraakModel#designatable}, each as
-     *  {@code {name, kind, type, generatedFrom}} in the order of the coverage, with uchar's origin of it
+     *  {@code {name, kind, type, generatedFrom, composition}} in the order of the coverage, with uchar's origin of it
      *  ({@code TmsTranspiler.generated}): an effective defaults stack, a version of a form. {@code name} is spelled
      *  as the coverage and trace of a scenario spell it ({@link Naming#form}), with {@code nameCanonical} beside it
      *  where that differs from uchar's name; {@code kind} is the kind of the coverage. A stack has {@code type}, the
      *  object type it runs for ({@code TmsTranspiler.stacks}: the type that declares the member of
      *  {@code generatedFrom}, or a subtype of it), named by {@code naming} ({@link Naming#name}), with
-     *  {@code typeCanonical} beside it where that differs; a version has none. The build is the exec-model branch's,
-     *  which has no DRL text, so the type is there without one. A name of the coverage that is no form of the model and
-     *  has no origin in uchar's table, and a stack without a type, is a fault of the analysis, not an answer. */
-    static ArrayNode generated(DroolsBackend.Build build, RegelSpraakModel model, Naming naming) {
+     *  {@code typeCanonical} beside it where that differs, and {@code composition}, how uchar composed it
+     *  ({@code TmsTranspiler.Stack.composition}, {@link #composition}); a version has neither. The build is the
+     *  exec-model branch's, which has no DRL text, so type and composition are there without one. {@code ir} is the
+     *  document the emitter writes of {@code model}, the one the build was built from, on which the pointers of the
+     *  composition lie. A name of the coverage that is no form of the model and has no origin in uchar's table, a
+     *  stack without an entry in {@code stacks()} or a version with one, and a stack without a composition, is a
+     *  fault of the analysis, not an answer. */
+    static ArrayNode generated(DroolsBackend.Build build, com.fasterxml.jackson.databind.JsonNode ir,
+                               RegelSpraakModel model, Naming naming) {
+        if (ir == null)
+            throw new IllegalStateException("de exec-model-tak bouwde een model waarvan de emitter geen document"
+                    + " schreef");
+        Verbaliser.Document document = Verbaliser.Document.of(IrLoader.loadWithPositions(ir));
         Set<String> forms = new HashSet<>();
         for (Designatable b : model.designatable()) if (b.kind() == Designatable.Kind.VORM) forms.add(b.name());
         Map<String, GeneratedFrom> table = build.execModelTranspiler().generated();
@@ -606,8 +616,35 @@ public final class Playground {
                 if (!named.equals(type.name())) n.put("typeCanonical", type.name());
             }
             n.set("generatedFrom", generatedFrom(g));
+            if (stack == null) continue;
+            if (stack.composition() == null)
+                throw new IllegalStateException("uchar geeft de gedragen stapel '" + d.name() + "' geen samenstelling");
+            n.set("composition", composition(stack.composition(), document, model));
         }
         return sink;
+    }
+
+    /**
+     * A composition of uchar ({@code StackComposition}) as {@code {unordered, chains}}: {@code chains} its chains,
+     * each its defaults highest first, a default in the keys of the decider of a {@code GROUND} as {@code drlRules}
+     * names one ({@link Verbaliser#decider}: {@code group}, {@code pointer}, {@code position} and {@code variant}, or
+     * {@code rule}, and {@code generatedFrom} where uchar's frontend made the group or form), with its exception
+     * groups as {@code exceptions} in this same form where it has them; {@code unordered} whether the chains stand
+     * side by side ({@code StackComposition.unordered()}). A pointer that is not on {@code document} is a fault.
+     */
+    private static ObjectNode composition(StackComposition c, Verbaliser.Document document, RegelSpraakModel model) {
+        ObjectNode n = NF.objectNode();
+        n.put("unordered", c.unordered());
+        ArrayNode chains = n.putArray("chains");
+        for (List<StackComposition.Entry> chain : c.chains()) {
+            ArrayNode entries = chains.addArray();
+            for (StackComposition.Entry e : chain) {
+                ObjectNode en = entries.addObject();
+                decider(en, Verbaliser.decider(document, e.pointer()), model);
+                if (e.exceptions() != null) en.set("exceptions", composition(e.exceptions(), document, model));
+            }
+        }
+        return n;
     }
 
     /**

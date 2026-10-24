@@ -223,16 +223,33 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   that made it (`opgave-boven-berekening`, `uitzondering-voor-subtype`, `beslistabelrij`, `stappen-na-de-verzameling`,
   `startpunt`). Beside the `coverage`, `generated` lists each name of it that is no element (an effective defaults
   stack `defaults A:<type>.<member>` or `defaults K:<type>.<member>`, a version `<form> #<k>`) as `{name, kind,
-  generatedFrom}`, with the key `defaultsstapel` or `versie`; `name` is spelled as the coverage and the trace of a
+  generatedFrom}` (a stack as `{name, kind, type, generatedFrom, composition}`), with the key `defaultsstapel` or
+  `versie`; `name` is spelled as the coverage and the trace of a
   scenario spell it, with `nameCanonical` beside it where that differs, so every name of the coverage and the trace is
   found by its exact text among the elements or in `generated`. A stack has `type` beside `kind` (card
   `drl-rule-part-fields`): the object type it runs for (uchar's RUNTIME-SEMANTICS ch. 7.10, "the effective stack per
   type"), the type that declares the member of `generatedFrom` or a subtype of it, so two stacks of one inherited
   member (`defaults K:Recht op uitkering WW.…` and `defaults K:RechtOpUitkeringWwBijOntslag.…`, one `generatedFrom`)
   each have their own `type`. It is named in the chosen vocabulary, with `typeCanonical` beside it where that differs;
-  a version has no `type`. It comes from uchar's analysis of the exec-model branch, not from the DRL. Nothing is read
-  off a name: all of it comes from uchar's tables (`RegelSpraakModel.generated`, `TmsTranspiler.generated`,
-  `TmsTranspiler.stacks`). Per scenario it gets uchar's report with its
+  a version has no `type`. After `generatedFrom` a stack has `composition`: how uchar composed it
+  (`TmsTranspiler.Stack.composition`, RUNTIME-SEMANTICS ch. 7.2, 7.9 and 7.10), as `{unordered, chains}`. `chains`
+  are the chains at its root, each its defaults highest first, across the groups the stack is made of; where a type
+  contributes its own group or rule over an inherited one, the root is one chain in the block order of ch. 7.10 (its
+  own exceptions, the inherited exceptions, the base, the initialisations). A default is named in the keys of the decider
+  of a ground, as `drlRules` names one (below, "The decider of a ground"): `group`, `pointer`, `position` and
+  `variant`, or `rule` for an ordinary rule a subtype's stack takes in, with `generatedFrom` where uchar's frontend
+  made the group or form (a group `B voor S`, the group of the opgave marker). A default with exception groups
+  (ch. 7.9) has `exceptions` after those keys, in the same form `{unordered, chains}`, one chain per exception group.
+  `unordered` is `true` where more than one chain stands side by side without an order between them (ch. 7.2 at the
+  root, ch. 7.9 below a default); a single chain is ordered, also where the document marks it `unordered`. Each
+  default of the stack stands in it once. In herleving-ww v2 the stack
+  `defaults A:RechtOpUitkeringWwBijOntslag.herlevingstermijn` is one chain: first `{group: "herlevingstermijn art. 21
+  lid 3 en 5 voor RechtOpUitkeringWwBijOntslag", pointer: "/defaults/0", position: 1, generatedFrom: …, exceptions:
+  {unordered: false, chains: [[…three deviations…]]}}`, then the base of the group `herlevingstermijn art. 21 lid 3
+  en 5`. The keys are canonical, like the IR, in every vocabulary. Type and composition come from uchar's analysis of
+  the exec-model branch, not from the DRL. Nothing is read off a name (the label `default 0.0.1.0.0` of a rule) or
+  off the order of the DRL text: all of it comes from uchar's tables (`RegelSpraakModel.generated`,
+  `TmsTranspiler.generated`, `TmsTranspiler.stacks`). Per scenario it gets uchar's report with its
   `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`rule`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in), and the `fixpoint`

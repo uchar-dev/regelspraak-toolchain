@@ -42,7 +42,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * ({@code RuleOrigin.Role.key()}), and a rule of a fold the {@code fold}, uchar's pointer of the fold's node without
  * the place of its group or form in the document, as {@code pointer} lies in its group; every stack of
  * {@code generated} has the {@code type} it runs for ({@code TmsTranspiler.stacks}), named in the vocabulary of
- * the answer, with {@code typeCanonical} beside it where that differs.
+ * the answer, with {@code typeCanonical} beside it where that differs, and its {@code composition}
+ * ({@code TmsTranspiler.Stack.composition}): its chains, each its defaults highest first in the keys of the decider
+ * of a {@code GROUND}, a default with exception groups with those below it in the same form, and {@code unordered}
+ * where chains stand side by side.
  *
  * <p>The own model: the flat group 'premie' on Jutter (the base and two exceptions at the root; 'premie bij veel
  * vondsten' reads the fold "het aantal vondsten"), the ordinary rule 'strandpremie' on the subtype Strandjutter, which
@@ -200,20 +203,118 @@ class PlaygroundDrlRulesTest {
             "totaalgewicht: bijdrage aan vouw 0", "de som van het gewicht van alle vondsten van de Jutter",
             "defaults A:Jutter.premie: bijdrage aan vouw 1", "het aantal vondsten van de Jutter");
 
-    private static String stack(String name, String type, String typeCanonical, String owner, String member) {
+    private static String stack(String name, String type, String typeCanonical, String owner, String member,
+                                String composition) {
         return "{\"name\":\"" + name + "\",\"kind\":\"defaults\",\"type\":\"" + type + "\""
                 + (typeCanonical == null ? "" : ",\"typeCanonical\":\"" + typeCanonical + "\"")
                 + ",\"generatedFrom\":{\"kind\":\"ATTRIBUUT\",\"owner\":\"" + owner + "\",\"name\":\"" + member
-                + "\",\"form\":\"defaultsstapel\"}}";
+                + "\",\"form\":\"defaultsstapel\"},\"composition\":" + composition + "}";
     }
 
-    /** Every stack of {@code generated} with the type it runs for: the stack of a Strandjutter decides the member
-     *  declared on Jutter, for a Strandjutter. Written from the model, sorted. */
+    /** A composition: whether its chains stand side by side, and the chains, each its defaults highest first. */
+    private static String composition(boolean unordered, String... chains) {
+        return "{\"unordered\":" + unordered + ",\"chains\":[" + String.join(",", chains) + "]}";
+    }
+
+    private static String chain(String... entries) {
+        return "[" + String.join(",", entries) + "]";
+    }
+
+    /** A default of a chain, in the keys of its decider, with its exception groups below it where it has them. */
+    private static String entry(String decider, String exceptions) {
+        return "{" + decider + (exceptions == null ? "" : ",\"exceptions\":" + exceptions) + "}";
+    }
+
+    private static final String PREMIE =
+            "\"group\":\"premie\",\"pointer\":\"/defaults/2\",\"position\":3,\"variant\":\"premie\"";
+    private static final String STRANDPREMIE = "\"rule\":\"strandpremie\"";
+    private static final String WAARDE_BASE =
+            "\"group\":\"waarde\",\"pointer\":\"/defaults/1\",\"position\":2,\"variant\":\"waarde\"";
+    private static final String ZEER_ZWARE_VONDST = "\"group\":\"waarde\","
+            + "\"pointer\":\"/defaults/0/exceptions/members/0/defaults/0\",\"position\":1,\"variant\":\"zeer zware vondst\"";
+    private static final String OPGAVE_GROUP = "\"group\":\"opgave boven berekening meldingsdatum\"";
+
+    /** The compositions, written from the model and RUNTIME-SEMANTICS ch. 7.9 and 7.10: the flat group of a Jutter;
+     *  for a Strandjutter the two inherited exceptions above its own base, the ordinary rule 'strandpremie'; the
+     *  group 'waarde' with 'zeer zware vondst' in the exception group of 'zware vondst'; the group of the opgave
+     *  marker. One chain each, so none unordered. */
+    private static final String JUTTER_COMPOSITION = composition(false,
+            chain(entry(JEUGDPREMIE, null), entry(VEEL_VONDSTEN, null), entry(PREMIE, null)));
+    private static final String STRANDJUTTER_COMPOSITION = composition(false,
+            chain(entry(JEUGDPREMIE, null), entry(VEEL_VONDSTEN, null), entry(STRANDPREMIE, null)));
+    private static final String WAARDE_COMPOSITION = composition(false,
+            chain(entry(ZWARE_VONDST, composition(false, chain(entry(ZEER_ZWARE_VONDST, null)))),
+                    entry(WAARDE_BASE, null)));
+    private static final String MELDING_COMPOSITION = composition(false,
+            chain(entry(OPGAVE_GROUP + ",\"pointer\":\"/defaults/0\",\"position\":1," + OPGAVE, null),
+                    entry(OPGAVE_GROUP + ",\"pointer\":\"/defaults/1\",\"position\":2," + OPGAVE, null)));
+
+    /** Every stack of {@code generated} with the type it runs for and its composition: the stack of a Strandjutter
+     *  decides the member declared on Jutter, for a Strandjutter. Written from the model, sorted. */
     private static final List<String> EXPECTED_STACKS = List.of(
-            stack("defaults A:Jutter.premie", "Jutter", null, "Jutter", "premie"),
-            stack("defaults A:Strandjutter.premie", "Strandjutter", null, "Jutter", "premie"),
-            stack("defaults A:Vondst.meldingsdatum", "Vondst", null, "Vondst", "meldingsdatum"),
-            stack("defaults A:Vondst.waarde", "Vondst", null, "Vondst", "waarde"));
+            stack("defaults A:Jutter.premie", "Jutter", null, "Jutter", "premie", JUTTER_COMPOSITION),
+            stack("defaults A:Strandjutter.premie", "Strandjutter", null, "Jutter", "premie",
+                    STRANDJUTTER_COMPOSITION),
+            stack("defaults A:Vondst.meldingsdatum", "Vondst", null, "Vondst", "meldingsdatum", MELDING_COMPOSITION),
+            stack("defaults A:Vondst.waarde", "Vondst", null, "Vondst", "waarde", WAARDE_COMPOSITION));
+
+    /** The own model with the shape of herleving-ww v2 for a Strandjutter: instead of its own base 'strandpremie'
+     *  its own exception 'seniorpremie', an Afwijking that uchar's frontend puts in a group of its own,
+     *  'premie voor Strandjutter', as the exception group of the one default of that group (uchar's frontend refuses
+     *  an Afwijking of a rule beside an own base rule of the subtype); and the member 'vindersloon' of a Vondst with
+     *  two unordered groups at its root. */
+    private static final String SOURCE_COMPOSED = SOURCE
+            .replace("    de meldingsdatum Datum in dagen (mag opgegeven worden);\n",
+                    "    de meldingsdatum Datum in dagen (mag opgegeven worden);\n    de vindersloon Numeriek (geheel getal);\n")
+            .replace("""
+                    Regel strandpremie
+                        geldig altijd
+                            De premie van een Strandjutter moet berekend worden als 7.
+
+                    """, "")
+            + """
+
+            Afwijking van premie: seniorpremie
+                geldig altijd
+                    De premie van een Strandjutter moet gesteld worden op 15
+                    indien zijn leeftijd groter is dan 65.
+
+            Uitzonderingen ongeordend:
+            Regel vindersloon bij zware vondst
+                geldig altijd
+                    De vindersloon van een Vondst moet gesteld worden op 5
+                    indien zijn gewicht groter is dan 10.
+
+            Regel vindersloon bij lichte vondst
+                geldig altijd
+                    De vindersloon van een Vondst moet gesteld worden op 1
+                    indien zijn gewicht kleiner is dan 2.
+            """;
+
+    /** The origin of the group uchar's frontend makes for the Afwijking. */
+    private static final String SUBTYPE_GROUP = "\"generatedFrom\":{\"kind\":\"VORM\",\"owner\":null,"
+            + "\"name\":\"premie\",\"form\":\"uitzondering-voor-subtype\"}";
+    private static final String SENIOR_GROUP = "\"group\":\"premie voor Strandjutter\"";
+
+    /** The stacks of {@code SOURCE_COMPOSED}, written from the model and ch. 7.10: for a Strandjutter its own exception
+     *  (the default of 'premie voor Strandjutter', which has no content of its own and carries 'seniorpremie' in its
+     *  exception group) above the inherited exceptions and the inherited base; 'vindersloon' with its two groups side
+     *  by side. The other stacks as in the own model. Sorted. */
+    private static final List<String> EXPECTED_COMPOSED_STACKS = List.of(
+            stack("defaults A:Jutter.premie", "Jutter", null, "Jutter", "premie", JUTTER_COMPOSITION),
+            stack("defaults A:Strandjutter.premie", "Strandjutter", null, "Jutter", "premie", composition(false,
+                    chain(entry(SENIOR_GROUP + ",\"pointer\":\"/defaults/0\",\"position\":1," + SUBTYPE_GROUP,
+                                    composition(false, chain(entry(SENIOR_GROUP + ",\"pointer\":"
+                                            + "\"/defaults/0/exceptions/members/0/defaults/0\",\"position\":1,"
+                                            + "\"variant\":\"seniorpremie\"," + SUBTYPE_GROUP, null)))),
+                            entry(JEUGDPREMIE, null), entry(VEEL_VONDSTEN, null), entry(PREMIE, null)))),
+            stack("defaults A:Vondst.meldingsdatum", "Vondst", null, "Vondst", "meldingsdatum", MELDING_COMPOSITION),
+            stack("defaults A:Vondst.vindersloon", "Vondst", null, "Vondst", "vindersloon", composition(true,
+                    chain(entry("\"group\":\"vindersloon bij zware vondst\",\"pointer\":\"/defaults/0\","
+                            + "\"position\":1,\"variant\":\"vindersloon bij zware vondst\"", null)),
+                    chain(entry("\"group\":\"vindersloon bij lichte vondst\",\"pointer\":\"/defaults/0\","
+                            + "\"position\":1,\"variant\":\"vindersloon bij lichte vondst\"", null)))),
+            stack("defaults A:Vondst.waarde", "Vondst", null, "Vondst", "waarde", WAARDE_COMPOSITION));
 
     /** The model with a vocabulary in which the subtype has a designation and Jutter and Vondst have none. */
     private static final String SOURCE_CGM = "Vocabulaire cgm (taal: nl)\n\n" + SOURCE.replace(
@@ -287,29 +388,83 @@ class PlaygroundDrlRulesTest {
     }
 
     @Test
-    void every_stack_of_generated_names_the_type_it_runs_for() throws Exception {
+    void every_stack_of_generated_names_the_type_it_runs_for_and_its_composition() throws Exception {
         ObjectNode a = Playground.analyze(SOURCE);
         assertTrue(a.get("executable").asBoolean(), a.path("refusal").asText());
         assertEquals(normalised(EXPECTED_STACKS), sortedStacks(a.get("generated")));
-        // in a vocabulary the type is named there, with its canonical name beside it where that differs
+        compositionsLieInTheIr(a);
+        // in a vocabulary the type is named there, with its canonical name beside it where that differs; the
+        // composition stays canonical, its keys are those of the IR
         ObjectNode cgm = Playground.analyze(SOURCE_CGM, "cgm");
         assertTrue(cgm.get("resolver").get("ok").asBoolean(), cgm.get("resolver").toString());
         assertEquals(normalised(List.of(
-                stack("defaults A:Jutter.premie", "Jutter", null, "Jutter", "premie"),
-                stack("defaults A:Strandjutter.premie", "STRANDJUTTER", "Strandjutter", "Jutter", "premie"),
-                stack("defaults A:Vondst.meldingsdatum", "Vondst", null, "Vondst", "meldingsdatum"),
-                stack("defaults A:Vondst.waarde", "Vondst", null, "Vondst", "waarde"))),
+                stack("defaults A:Jutter.premie", "Jutter", null, "Jutter", "premie", JUTTER_COMPOSITION),
+                stack("defaults A:Strandjutter.premie", "STRANDJUTTER", "Strandjutter", "Jutter", "premie",
+                        STRANDJUTTER_COMPOSITION),
+                stack("defaults A:Vondst.meldingsdatum", "Vondst", null, "Vondst", "meldingsdatum",
+                        MELDING_COMPOSITION),
+                stack("defaults A:Vondst.waarde", "Vondst", null, "Vondst", "waarde", WAARDE_COMPOSITION))),
                 sortedStacks(cgm.get("generated")));
     }
 
     @Test
-    void the_type_of_a_stack_comes_from_the_analysis_without_a_drl_text() throws Exception {
-        // generated reads the build of the exec-model branch, which has no DRL text: the type does not depend on
-        // the DRL, so an answer with drlError beside a built exec-model branch has it as well
+    void the_stack_of_a_subtype_has_its_own_exception_above_the_inherited_ones() throws Exception {
+        assertFalse(SOURCE_COMPOSED.contains("strandpremie"), SOURCE_COMPOSED);
+        ObjectNode a = Playground.analyze(SOURCE_COMPOSED);
+        assertTrue(a.get("resolver").get("ok").asBoolean(), a.get("resolver").toString());
+        assertTrue(a.get("executable").asBoolean(), a.path("refusal").asText());
+        assertEquals(normalised(EXPECTED_COMPOSED_STACKS), sortedStacks(a.get("generated")));
+        assertEquals(List.of("name", "kind", "type", "generatedFrom", "composition"),
+                fieldNames(a.get("generated").get(0)));
+        compositionsLieInTheIr(a);
+    }
+
+    /** Every default of every composition of {@code a} names, by its keys, a default of its group in the IR of the
+     *  answer with the name {@code variant} gives, or the form of its {@code rule}: found as a reader finds it. */
+    private static void compositionsLieInTheIr(JsonNode a) {
+        int defaults = 0;
+        for (JsonNode g : a.get("generated")) {
+            if (!g.get("kind").asText().equals("defaults")) continue;
+            List<JsonNode> entries = new ArrayList<>();
+            entries(g.get("composition"), entries);
+            for (JsonNode e : entries) {
+                defaults++;
+                JsonNode holder = holder(a.get("ir"), e);
+                if (e.has("rule")) continue;
+                JsonNode d = holder.at(e.get("pointer").asText());
+                assertTrue(d.isObject() && d.path("node").asText().equals("Default"), e.toString());
+                assertEquals(d.path("name").asText(null), e.path("variant").asText(null), e.toString());
+                assertEquals(d.has("exceptions"), e.has("exceptions"), e.toString());
+            }
+        }
+        assertTrue(defaults > 0, a.get("generated").toString());
+    }
+
+    private static void entries(JsonNode composition, List<JsonNode> sink) {
+        assertEquals(composition.get("chains").size() > 1, composition.get("unordered").asBoolean(),
+                composition.toString());
+        for (JsonNode chain : composition.get("chains"))
+            for (JsonNode e : chain) {
+                sink.add(e);
+                if (e.has("exceptions")) entries(e.get("exceptions"), sink);
+            }
+    }
+
+    private static List<String> fieldNames(JsonNode n) {
+        List<String> sink = new ArrayList<>();
+        n.fieldNames().forEachRemaining(sink::add);
+        return sink;
+    }
+
+    @Test
+    void the_type_and_composition_of_a_stack_come_from_the_analysis_without_a_drl_text() throws Exception {
+        // generated reads the build of the exec-model branch, which has no DRL text: the type and the composition
+        // do not depend on the DRL, so an answer with drlError beside a built exec-model branch has them as well
         RegelSpraakModel model = Resolver.resolve(SOURCE);
         DroolsBackend.Build build = UcharBuild.assemble(model, DroolsBackend.Branch.EXEC_MODEL);
         assertNull(build.drl());
-        JsonNode generated = Playground.generated(build, model, Naming.canonical(model));
+        JsonNode ir = JSON.readTree(UcharBuild.document(model));
+        JsonNode generated = Playground.generated(build, ir, model, Naming.canonical(model));
         assertEquals(normalised(EXPECTED_STACKS), sortedStacks(generated));
         assertEquals(Playground.analyze(SOURCE).get("generated"), generated);
     }

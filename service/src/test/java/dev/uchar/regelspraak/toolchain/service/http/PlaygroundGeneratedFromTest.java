@@ -175,7 +175,8 @@ class PlaygroundGeneratedFromTest {
                 "defaults A:RechtOpUitkeringPeriode.herlevingsdatum",
                 "defaults <- ATTRIBUUT RechtOpUitkeringPeriode.herlevingsdatum (defaultsstapel)"),
                 generatedNames(a));
-        assertEquals(List.of("name", "kind", "type", "generatedFrom"), fieldNames(a.get("generated").get(0)));
+        assertEquals(List.of("name", "kind", "type", "generatedFrom", "composition"),
+                fieldNames(a.get("generated").get(0)));
         // every name of the coverage is an element or stands in gegenereerd
         Set<String> forms = new HashSet<>();
         for (JsonNode e : a.get("vocabularies").get("elements"))
@@ -218,7 +219,7 @@ class PlaygroundGeneratedFromTest {
     /**
      * Over every golden of uchar with a {@code source.rgs}: an element has a declaration ({@code line}) or an origin
      * ({@code generatedFrom}), never both, and every name of the coverage of a golden the exec-model branch builds
-     * is an element or stands in {@code generated}, a stack there with its {@code type}.
+     * is an element or stands in {@code generated}, a stack there with its {@code type} and its {@code composition}.
      */
     /** Floors of the sweep below, measured 2026-10-15 on uchar's corpus at the pin of this card: elements, elements with
      *  an origin, goldens the exec-model branch builds, and effective stacks in their coverage. */
@@ -255,14 +256,17 @@ class PlaygroundGeneratedFromTest {
                 continue;
             }
             built++;
-            JsonNode names = Playground.generated(build, model, naming);
+            JsonNode ir = new com.fasterxml.jackson.databind.ObjectMapper().readTree(UcharBuild.document(model));
+            JsonNode names = Playground.generated(build, ir, model, naming);
             Set<String> named = new HashSet<>();
             for (JsonNode g : names) {
                 named.add(g.get("name").asText());
                 if (g.get("kind").asText().equals("defaults")) stacks++;
-                // a stack has the type it runs for, a version of a form none
+                // a stack has the type it runs for and its composition, a version of a form neither
                 boolean stack = g.get("generatedFrom").get("form").asText().equals("defaultsstapel");
                 if (stack != g.has("type")) errors.add(golden + ": " + g + (stack ? " zonder type" : " met een type"));
+                if (stack != g.has("composition"))
+                    errors.add(golden + ": " + g + (stack ? " zonder samenstelling" : " met een samenstelling"));
             }
             for (var d : build.coverage())
                 if (forms.contains(d.name()) == named.contains(d.name()))
