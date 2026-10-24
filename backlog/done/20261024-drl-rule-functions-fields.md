@@ -209,3 +209,15 @@ Result-commit raakt alleen deze kaart.
   elk `IrLoader.loadWithPositions(ir)`.
 - **De gate-images** `decision-service:drl-rule-functions-fields`, `…-h4a` en `…-h4b` staan nog in Docker; de kind-cluster
   is door de smoke verwijderd.
+
+### Na de fixronde van uchar (2026-10-24, werkbank-sessie)
+
+De review van de uchar-kaart `drl-rule-functions` leidde tot een fixronde op de uchar-tak (tip `229c5141`): de
+constructors van `DrlPiece` en `DrlFunction` gooien bij een boekhoudfout een `IllegalStateException`, zoals de rendering
+zelf, zodat `Playground` een `drlError` geeft in plaats van een 500; de corpusgetuige pint de ene onbereikte binder bij
+naam. De signatuur van `drlPieces()` bleef gelijk; `Playground` verandert niet.
+
+- `b48278f9` pin uchar `229c5141`, na `make check-pin` (PASS).
+- `make gates` op `b48278f9`: GROEN, 7 stappen in 11m31s (reactor 1691/173/388/53, tweelingen 3, replay 249 goldens en
+  673 cases, manifest 29 ok en 3 uitgesloten, image, kind-smoke H2–H4 PASS). Log:
+  `/Users/yeb/Developer/uchar-dev/werk/toolchain-2026-10-24/drl-rule-functions-fields/logs/gates-2.log`.
