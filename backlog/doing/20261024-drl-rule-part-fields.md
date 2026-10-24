@@ -1,4 +1,4 @@
-# drl-rule-part-fields: drlRules noemt de rol van elke regel, generated het type van een stapel
+# drl-rule-part-fields: drlRules noemt de rol van elke regel, generated het type en de samenstelling van een stapel
 
 *Voorstel van de werkbank (2026-10-24), met akkoord van de eigenaar door de werkbank-sessie in deze backlog gezet (niet
 gecommit). Vervolg op `drl-rule-provenance` (done). Wacht op de uchar-kaart `drl-rule-part`
@@ -26,9 +26,17 @@ naam:
   default de IR aanwijst.
 - Elke stapel in `generated` krijgt het type waarvoor zij loopt, in het vocabulaire van het antwoord zoals `name` dat
   al volgt (`Naming`), met de canonieke naam ernaast waar die verschilt.
+- Elke stapel krijgt haar samenstelling uit uchar: de defaults in volgorde van voorrang over de groepen heen, met de
+  nesting, in de sleutels van de beslisser van een grondslag (`group`, `pointer`, `position`, `variant`, of `rule`),
+  zoals `drlRules` ze al noemt; en waar groepen zonder volgorde naast elkaar staan, dat ook. Gemeten op v2: in
+  `defaults A:RechtOpUitkeringWwBijOntslag.herlevingstermijn` gaat de groep
+  `herlevingstermijn art. 21 lid 3 en 5 voor RechtOpUitkeringWwBijOntslag` voor op de basisregel; nu staat dat alleen in
+  labels en in de volgorde van `drl`.
 - `docs/ENGINE.md` (de velden van de playground: `drlRules`, `generated`) en de javadoc van `Playground.java` bij; de
   OpenAPI als die de velden noemt. De toolchain kiest de namen van de velden en de sleutels en zegt waarom; ze vertaalt
-  wat uchar levert en voegt geen eigen indeling toe (`CLAUDE.md`).
+  wat uchar levert en voegt geen eigen indeling toe (`CLAUDE.md`). Daarbij: ENGINE.md en de javadoc van
+  `Playground.generated` (r. ±569) noemen de velden van `generated` `{naam, soort, gegenereerdUit}` of
+  `{naam, soort, generatedFrom}`, het antwoord geeft `{name, kind, generatedFrom}` (de werkbank vond dit 2026-10-24).
 - `drl`, de coverage, de trace en het exec-model veranderen niet.
 
 ## Acceptatie
@@ -39,7 +47,9 @@ naam:
   van `Recht op uitkering WW` en in die van `RechtOpUitkeringWwBijOntslag`) en één bijdrage aan een vouw; als de pointer
   van de vouw er is, wijst die naar de maximale waarde van het maandloon in haar rechtvaardiging. In `generated` heeft
   de stapel `defaults K:RechtOpUitkeringWwBijOntslag.indicatie herleving recht op uitkering` het type
-  `RechtOpUitkeringWwBijOntslag` en die van `Recht op uitkering WW` het type `Recht op uitkering WW`.
+  `RechtOpUitkeringWwBijOntslag` en die van `Recht op uitkering WW` het type `Recht op uitkering WW`. De samenstelling
+  van `defaults A:RechtOpUitkeringWwBijOntslag.herlevingstermijn` noemt eerst de default van de groep `… voor
+  RechtOpUitkeringWwBijOntslag` met daaronder zijn drie afwijkingen, dan de basisregel.
 - (b) Een eigen klein model met een uitzonderingsgroep, een vouw in een voorwaarde en een stapel over een subtype: elke
   DRL-regel met zijn rol, elke stapel met haar type.
 - (c) Zonder DRL (`drlError`): `drlRules` blijft een lege lijst; `generated` heeft het type ook dan, als het uit de
