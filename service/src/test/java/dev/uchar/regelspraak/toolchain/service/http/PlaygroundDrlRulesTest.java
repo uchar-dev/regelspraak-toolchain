@@ -591,9 +591,8 @@ class PlaygroundDrlRulesTest {
     }
 
     /** A call of one of the functions {@code declared}: its name, not after a letter, a digit, {@code _}, {@code $} or a
-     *  dot, and an opening parenthesis. The names come from the declarations of the text, never from a form of the name
-     *  (uchar's card drl-function-names-from-rule changed that form); the longest first, so a name that begins another
-     *  is not read in its place. */
+     *  dot, and an opening parenthesis. The names come from the declarations of the text, never from a pattern of the
+     *  name, which is uchar's to choose; the longest first, so a name that begins another is not read in its place. */
     private static Pattern callOf(List<String> declared) {
         if (declared.isEmpty()) return Pattern.compile("(?!)");
         List<String> longestFirst = new ArrayList<>(declared);
@@ -835,8 +834,8 @@ class PlaygroundDrlRulesTest {
 
     /** Floors of the sweep below, measured 2026-10-24 on uchar's corpus at the pin of card drl-rule-functions-fields:
      *  goldens the DRL-text branch builds, their pieces (a piece per rule) and their functions (uchar's own witness
-     *  counts the same). The functions measured 2026-10-25 at the pin of card drl-readable-functions-pin: 2201, since
-     *  uchar's card drl-no-passthrough-functions writes a function only where it tests or computes something. */
+     *  counts the same). The functions measured 2026-10-25 at the pin of card drl-readable-functions-pin: 2201; uchar
+     *  writes a function only where it tests or computes something (card drl-no-passthrough-functions). */
     private static final int MIN_PIECES = 2124, MIN_FUNCTIONS = 2201;
 
     /** Over every golden of uchar that the DRL-text branch builds, the pieces follow the text ({@link
