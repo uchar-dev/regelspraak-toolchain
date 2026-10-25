@@ -577,8 +577,31 @@ class PlaygroundDrlRulesTest {
         }
     }
 
-    private static final Pattern FUNCTION_DECLARATION = Pattern.compile("^function [^(\n]*? ([A-Za-z0-9_$]+)\\(");
-    private static final Pattern CALL = Pattern.compile("(?<![A-Za-z0-9_$.])(r[0-9]+_[a-z]+[0-9]+)\\(");
+    /** A declaration {@code function <type> <name>(}; a name carries the name of its rule, so any letter or digit. */
+    private static final Pattern FUNCTION_DECLARATION = Pattern.compile("^function [^(\n]*? ([\\p{L}\\p{N}_$]+)\\(");
+
+    /** The names of the functions {@code drl} declares, in the order of the text. */
+    private static List<String> declaredFunctions(String drl) {
+        List<String> out = new ArrayList<>();
+        for (String line : drl.split("\n", -1)) {
+            Matcher m = FUNCTION_DECLARATION.matcher(line);
+            if (m.find()) out.add(m.group(1));
+        }
+        return out;
+    }
+
+    /** A call of one of the functions {@code declared}: its name, not after a letter, a digit, {@code _}, {@code $} or a
+     *  dot, and an opening parenthesis. The names come from the declarations of the text, never from a form of the name
+     *  (uchar's card drl-function-names-from-rule changed that form); the longest first, so a name that begins another
+     *  is not read in its place. */
+    private static Pattern callOf(List<String> declared) {
+        if (declared.isEmpty()) return Pattern.compile("(?!)");
+        List<String> longestFirst = new ArrayList<>(declared);
+        longestFirst.sort(java.util.Comparator.comparingInt(String::length).reversed());
+        StringBuilder alternatives = new StringBuilder();
+        for (String n : longestFirst) alternatives.append(alternatives.isEmpty() ? "" : "|").append(Pattern.quote(n));
+        return Pattern.compile("(?<![\\p{L}\\p{N}_$.])(" + alternatives + ")\\(");
+    }
 
     /**
      * The {@code piece} of every entry of {@code rules} (the {@code drlRules} of an answer, as JSON) against a reading
@@ -618,6 +641,7 @@ class PlaygroundDrlRulesTest {
             faults.add(rules.size() + " vermeldingen, " + headers.size() + " koppen in de tekst");
             return faults;
         }
+        Pattern call = callOf(declared);
         int previousEnd = head, functions = 0;
         for (int i = 0; i < rules.size(); i++) {
             String name = rules.get(i).get("name").asText();
@@ -659,7 +683,7 @@ class PlaygroundDrlRulesTest {
                 own.add(fname);
             }
             if (at != ruleStart) faults.add(where + "de functies eindigen op " + at + ", de regel begint op " + ruleStart);
-            for (Matcher m = CALL.matcher(drl.substring(Math.max(start, 0), Math.max(start, end))); m.find(); )
+            for (Matcher m = call.matcher(drl.substring(Math.max(start, 0), Math.max(start, end))); m.find(); )
                 if (!own.contains(m.group(1))) faults.add(where + "roept " + m.group(1) + " van een ander stuk");
         }
         if (previousEnd != drl.length())
@@ -677,9 +701,9 @@ class PlaygroundDrlRulesTest {
         throw new AssertionError("geen vermelding '" + name + "' in " + rules);
     }
 
-    private static List<String> calls(String code, String self) {
+    private static List<String> calls(Pattern call, String code, String self) {
         List<String> out = new ArrayList<>();
-        for (Matcher m = CALL.matcher(code); m.find(); )
+        for (Matcher m = call.matcher(code); m.find(); )
             if (!m.group(1).equals(self) && !out.contains(m.group(1))) out.add(m.group(1));
         return out;
     }
@@ -689,14 +713,16 @@ class PlaygroundDrlRulesTest {
      *  by this test. */
     private static List<String> table(String drl, JsonNode entry) {
         JsonNode piece = entry.get("piece");
+        Pattern call = callOf(declaredFunctions(drl));
         List<String> out = new ArrayList<>();
         for (JsonNode f : piece.get("functions")) {
             String comment = drl.substring(f.get("start").asInt(), f.get("declaration").asInt());
             out.add(f.get("name").asText() + " | " + (comment.isEmpty() ? "-" : comment.strip().substring(3))
-                    + " | roept " + calls(drl.substring(f.get("declaration").asInt(), f.get("end").asInt()),
+                    + " | roept " + calls(call, drl.substring(f.get("declaration").asInt(), f.get("end").asInt()),
                             f.get("name").asText()));
         }
-        out.add("regel | roept " + calls(drl.substring(piece.get("ruleStart").asInt(), piece.get("end").asInt()), null));
+        out.add("regel | roept " + calls(call, drl.substring(piece.get("ruleStart").asInt(), piece.get("end").asInt()),
+                null));
         return out;
     }
 
@@ -719,7 +745,7 @@ class PlaygroundDrlRulesTest {
                 functions++;
             }
         }
-        assertEquals(36, functions);
+        assertEquals(24, functions);
         // a rule without functions is its rule alone, to its `end` and the empty line after it
         JsonNode bare = named(rules, "kenmerkstand Vondst.afwijkende opgave meldingsdatum: onwaar").get("piece");
         assertEquals(0, bare.get("functions").size());
@@ -729,25 +755,25 @@ class PlaygroundDrlRulesTest {
         assertEquals(drl.length(), bare.get("end").asInt());
         // a function with a sentence and one without; the rule calls its functions
         assertEquals(List.of(
-                "r2_waarde0 | de vinddag van de Vondst plus 3 dagen | roept []",
-                "regel | roept [r2_waarde0]"), table(drl, named(rules, "melding")));
+                "waarde_melding | de vinddag van de Vondst plus 3 dagen | roept []",
+                "regel | roept [waarde_melding]"), table(drl, named(rules, "melding")));
         assertEquals(List.of(
-                "r12_afloop0 | - | roept []",
-                "regel | roept [r12_afloop0]"), table(drl, named(rules, "defaults A:Vondst.waarde: eens 0")));
-        // a composite condition: the test calls the function of its composite, of the same piece; the sentence is
-        // that of the condition the exception 'zeer zware vondst' shares with the one it is nested in
+                "afloop_defaultsAVondstWaardeEens0 | - | roept []",
+                "regel | roept [afloop_defaultsAVondstWaardeEens0]"),
+                table(drl, named(rules, "defaults A:Vondst.waarde: eens 0")));
+        // a composite condition: the test carries its composite, one function; the sentence is that of the condition
+        // the exception 'zeer zware vondst' shares with the one it is nested in
         String both = "zijn gewicht groter is dan 10 en zijn gewicht groter is dan 20";
         assertEquals(List.of(
-                "r11_toets0 | " + both + " | roept [r11_samengesteld1]",
-                "r11_samengesteld1 | " + both + " | roept []",
-                "r11_afloop2 | 25 | roept []",
-                "regel | roept [r11_toets0, r11_afloop2]"),
+                "toets_defaultsAVondstWaardeDefault000 | " + both + " | roept []",
+                "afloop_defaultsAVondstWaardeDefault000 | 25 | roept []",
+                "regel | roept [toets_defaultsAVondstWaardeDefault000, afloop_defaultsAVondstWaardeDefault000]"),
                 table(drl, named(rules, "defaults A:Vondst.waarde: default 0.0.0")));
         // the fall-back of the default of an exception group, between its agreement and the next default
         assertEquals(List.of(
-                "r13_toets0 | zijn gewicht groter is dan 10 | roept []",
-                "r13_afloop1 | 50 | roept []",
-                "regel | roept [r13_toets0, r13_afloop1]"),
+                "toets_defaultsAVondstWaardeTerugval0 | zijn gewicht groter is dan 10 | roept []",
+                "afloop_defaultsAVondstWaardeTerugval0 | 50 | roept []",
+                "regel | roept [toets_defaultsAVondstWaardeTerugval0, afloop_defaultsAVondstWaardeTerugval0]"),
                 table(drl, named(rules, "defaults A:Vondst.waarde: terugval 0")));
         JsonNode agreement = named(rules, "defaults A:Vondst.waarde: eens 0").get("piece");
         JsonNode fallback = named(rules, "defaults A:Vondst.waarde: terugval 0").get("piece");
@@ -807,10 +833,11 @@ class PlaygroundDrlRulesTest {
                 new TmsTranspiler.DrlPiece("b", b + 1, b + 1, last, List.of())))).getMessage().contains("kop"));
     }
 
-    /** Floors of the sweep below, measured 2026-10-24 on uchar's corpus at the pin of this card: goldens the
-     *  DRL-text branch builds, their pieces (a piece per rule) and their functions (uchar's own witness counts the
-     *  same). */
-    private static final int MIN_PIECES = 2124, MIN_FUNCTIONS = 2499;
+    /** Floors of the sweep below, measured 2026-10-24 on uchar's corpus at the pin of card drl-rule-functions-fields:
+     *  goldens the DRL-text branch builds, their pieces (a piece per rule) and their functions (uchar's own witness
+     *  counts the same). The functions measured 2026-10-25 at the pin of card drl-readable-functions-pin: 2201, since
+     *  uchar's card drl-no-passthrough-functions writes a function only where it tests or computes something. */
+    private static final int MIN_PIECES = 2124, MIN_FUNCTIONS = 2201;
 
     /** Over every golden of uchar that the DRL-text branch builds, the pieces follow the text ({@link
      *  #piecesFollowTheText}), the places that of the one text of the answer. */

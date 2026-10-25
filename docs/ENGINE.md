@@ -309,20 +309,22 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
     fold is `source.snippet` of that node;
   - `piece` (card `drl-rule-functions-fields`), the last key of every entry: the piece of `drl` that belongs to the
     rule, as uchar gives it (`TmsTranspiler.drlPieces`), as `{start, ruleStart, end, functions}`. Every test and every
-    value of a rule's plan is a function in the Java dialect that stands in the text before the rule, with the
-    RegelSpraak sentence of its node as a comment line above it, and the rule calls it; the piece is the rule with its
-    functions. `start` is where the piece begins: its first function, with the comment of that function (`ruleStart`
-    for a rule without functions); `ruleStart` is where the line `rule "…"` begins; `end` is where the piece ends,
-    after the line `end` and the empty line after it, which is where the next piece begins, or the end of `drl`.
-    `functions` lists the functions of the rule in the order of the text, an empty list for a rule without, each as
-    `{name, start, declaration, end}`: `name` as the rule and the other functions of the piece spell it (`r118_afloop2`;
-    the name of a function is the plan's own numbering, as the label of a rule is), `start` where the function begins,
-    with its comment, `declaration` where the line `function …` begins, `end` after its closing brace and the empty line
-    after it, which is where the next function begins, or `ruleStart`. Between `start` and `declaration` stands one line,
-    `// `, the RegelSpraak sentence of the function's node (a line break in it as a space) and a line break; where the
-    node has no sentence nothing stands there and `start` equals `declaration`. A piece holds the calls of its own
-    functions only. The pieces follow one another in the order of the text, from the end of its header (package,
-    imports, globals) to the end of `drl`, without a gap or an overlap.
+    value of a rule's plan that tests or computes something is a function in the Java dialect that stands in the text
+    before the rule, with the RegelSpraak sentence of its node as a comment line above it, and the rule calls it; the
+    piece is the rule with its functions. `start` is where the piece begins: its first function, with the comment of
+    that function (`ruleStart` for a rule without functions); `ruleStart` is where the line `rule "…"` begins; `end`
+    is where the piece ends, after the line `end` and the empty line after it, which is where the next piece begins,
+    or the end of `drl`. `functions` lists the functions of the rule in the order of the text, an empty list for a
+    rule without, each as `{name, start, declaration, end}`: `name` as the rule and the other functions of the piece
+    spell it (`afloop_defaultsAEindigingsgrondHerlevingsdatumTerugval2`: the kind of the function, a number after it
+    where the rule has more than one of that kind, `_` and the name of the rule in one word, so a reader of the text
+    or of a stack trace sees whose it is; which functions are a rule's, the piece says, never the name), `start` where
+    the function begins, with its comment, `declaration` where the line `function …` begins, `end` after its closing
+    brace and the empty line after it, which is where the next function begins, or `ruleStart`. Between `start` and
+    `declaration` stands one line, `// `, the RegelSpraak sentence of the function's node (a line break in it as a
+    space) and a line break; where the node has no sentence nothing stands there and `start` equals `declaration`. A
+    piece holds the calls of its own functions only. The pieces follow one another in the order of the text, from the
+    end of its header (package, imports, globals) to the end of `drl`, without a gap or an overlap.
 
     **The unit of a place** is the UTF-16 code unit, an index into the `drl` of the same answer as JavaScript counts a
     string (`drl.slice(start, end)` is the piece, and `drl.slice(f.start, f.declaration)` the comment line of a
