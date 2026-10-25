@@ -8,8 +8,8 @@
 #   H4  rollout         — a rebuilt image with a changed parameter (volwassenleeftijd)
 #                         changes the decision, proving descriptor overlay + rollout
 #
-# One linear gate sequence; --teardown deletes the kind cluster at the end, a failed run
-# keeps it for debugging and says how to delete it. Every kubectl
+# One linear gate sequence; --teardown deletes the kind cluster and the two H4 images at the end, a failed run
+# keeps them for debugging and says how to delete the cluster. Every kubectl
 # and helm call names the cluster's context, so the current context of the caller does
 # not decide where the releases land. Needs docker, kind, kubectl, helm, mvn, python3.
 set -euo pipefail
@@ -245,6 +245,8 @@ if [ "$TEARDOWN" = true ]; then
   step "teardown"
   h uninstall "$RELEASE" || true
   kind delete cluster --name "$CLUSTER"
+  # the two images H4 built for the rollout; the image under $TAG belongs to `make image` and stays
+  docker image rm "$IMG_REPO:$TAG-h4a" "$IMG_REPO:$TAG-h4b"
 fi
 
 echo "=================================================================="
