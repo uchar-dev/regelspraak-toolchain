@@ -744,7 +744,7 @@ class PlaygroundDrlRulesTest {
                 functions++;
             }
         }
-        assertEquals(24, functions);
+        assertEquals(10, functions);
         // a rule without functions is its rule alone, to its `end` and the empty line after it
         JsonNode bare = named(rules, "kenmerkstand Vondst.afwijkende opgave meldingsdatum: onwaar").get("piece");
         assertEquals(0, bare.get("functions").size());
@@ -752,27 +752,23 @@ class PlaygroundDrlRulesTest {
         assertTrue(drl.substring(bare.get("start").asInt(), bare.get("end").asInt()).startsWith(
                 "rule \"kenmerkstand Vondst.afwijkende opgave meldingsdatum: onwaar\"\n"));
         assertEquals(drl.length(), bare.get("end").asInt());
-        // a function with a sentence and one without; the rule calls its functions
+        // a value that computes something is a function, with its sentence, and the rule calls it; a value that
+        // computes nothing, the bound value of an agreement, is no function: the rule carries it
         assertEquals(List.of(
                 "waarde_melding | de vinddag van de Vondst plus 3 dagen | roept []",
                 "regel | roept [waarde_melding]"), table(drl, named(rules, "melding")));
-        assertEquals(List.of(
-                "afloop_defaultsAVondstWaardeEens0 | - | roept []",
-                "regel | roept [afloop_defaultsAVondstWaardeEens0]"),
-                table(drl, named(rules, "defaults A:Vondst.waarde: eens 0")));
+        assertEquals(List.of("regel | roept []"), table(drl, named(rules, "defaults A:Vondst.waarde: eens 0")));
         // a composite condition: the test carries its composite, one function; the sentence is that of the condition
-        // the exception 'zeer zware vondst' shares with the one it is nested in
+        // the exception 'zeer zware vondst' shares with the one it is nested in; its value, a constant, is no function
         String both = "zijn gewicht groter is dan 10 en zijn gewicht groter is dan 20";
         assertEquals(List.of(
                 "toets_defaultsAVondstWaardeDefault000 | " + both + " | roept []",
-                "afloop_defaultsAVondstWaardeDefault000 | 25 | roept []",
-                "regel | roept [toets_defaultsAVondstWaardeDefault000, afloop_defaultsAVondstWaardeDefault000]"),
+                "regel | roept [toets_defaultsAVondstWaardeDefault000]"),
                 table(drl, named(rules, "defaults A:Vondst.waarde: default 0.0.0")));
         // the fall-back of the default of an exception group, between its agreement and the next default
         assertEquals(List.of(
                 "toets_defaultsAVondstWaardeTerugval0 | zijn gewicht groter is dan 10 | roept []",
-                "afloop_defaultsAVondstWaardeTerugval0 | 50 | roept []",
-                "regel | roept [toets_defaultsAVondstWaardeTerugval0, afloop_defaultsAVondstWaardeTerugval0]"),
+                "regel | roept [toets_defaultsAVondstWaardeTerugval0]"),
                 table(drl, named(rules, "defaults A:Vondst.waarde: terugval 0")));
         JsonNode agreement = named(rules, "defaults A:Vondst.waarde: eens 0").get("piece");
         JsonNode fallback = named(rules, "defaults A:Vondst.waarde: terugval 0").get("piece");
@@ -834,9 +830,9 @@ class PlaygroundDrlRulesTest {
 
     /** Floors of the sweep below, measured 2026-10-24 on uchar's corpus at the pin of card drl-rule-functions-fields:
      *  goldens the DRL-text branch builds, their pieces (a piece per rule) and their functions (uchar's own witness
-     *  counts the same). The functions measured 2026-10-25 at the pin of card drl-readable-functions-pin: 2201; uchar
-     *  writes a function only where it tests or computes something (card drl-no-passthrough-functions). */
-    private static final int MIN_PIECES = 2124, MIN_FUNCTIONS = 2201;
+     *  counts the same). The functions measured 2026-10-25 at the pin of card drl-value-functions-pin: 1871; uchar
+     *  writes a function only where it tests or computes something. */
+    private static final int MIN_PIECES = 2124, MIN_FUNCTIONS = 1871;
 
     /** Over every golden of uchar that the DRL-text branch builds, the pieces follow the text ({@link
      *  #piecesFollowTheText}), the places that of the one text of the answer. */

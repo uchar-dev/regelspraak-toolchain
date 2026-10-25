@@ -310,13 +310,15 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   - `piece` (card `drl-rule-functions-fields`), the last key of every entry: the piece of `drl` that belongs to the
     rule, as uchar gives it (`TmsTranspiler.drlPieces`), as `{start, ruleStart, end, functions}`. Every test and every
     value of a rule's plan that tests or computes something is a function in the Java dialect that stands in the text
-    before the rule, with the RegelSpraak sentence of its node as a comment line above it, and the rule calls it; the
-    piece is the rule with its functions. `start` is where the piece begins: its first function, with the comment of
-    that function (`ruleStart` for a rule without functions); `ruleStart` is where the line `rule "…"` begins; `end`
-    is where the piece ends, after the line `end` and the empty line after it, which is where the next piece begins,
-    or the end of `drl`. `functions` lists the functions of the rule in the order of the text, an empty list for a
-    rule without, each as `{name, start, declaration, end}`: `name` as the rule and the other functions of the piece
-    spell it (`afloop_defaultsAEindigingsgrondHerlevingsdatumTerugval2`: the kind of the function, a number after it
+    before the rule, with the RegelSpraak sentence of its node as a comment line above it, and the rule calls it; a
+    value that computes nothing, a constant or the value a binding binds, stands in the rule's `then` part itself, with
+    its sentence as a comment line above it. The piece is the rule with its functions. `start` is where the piece
+    begins: its first function, with the comment of that function (`ruleStart` for a rule without functions);
+    `ruleStart` is where the line `rule "…"` begins; `end` is where the piece ends, after the line `end` and the empty
+    line after it, which is where the next piece begins, or the end of `drl`. `functions` lists the functions of the
+    rule in the order of the text, an empty list for a rule without, each as `{name, start, declaration, end}`: `name`
+    as the rule and the other functions of the piece spell it
+    (`afloop_defaultsAEindigingsgrondHerlevingsdatumTerugval2`: the kind of the function, a number after it
     where the rule has more than one of that kind, `_` and the name of the rule in one word, so a reader of the text
     or of a stack trace sees whose it is; which functions are a rule's, the piece says, never the name), `start` where
     the function begins, with its comment, `declaration` where the line `function …` begins, `end` after its closing
