@@ -25,7 +25,6 @@ cd "$(dirname "$0")/.."
 fail() { echo "check-service-replay: FAIL — $*" >&2; exit 1; }
 command -v java >/dev/null 2>&1 || fail "java ontbreekt"
 command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
-command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 
 # Het aantal goldens dat door de dienst speelt. 2026-09-26: 188 van de 215 die gate 12 speelt; de
 # 27 andere staan hieronder, alle met een tijdlijnvorm.
@@ -225,10 +224,10 @@ done < <(find uchar/corpus/golden -name ir.json | sort)
   || fail "${#set_goldens[@]} goldens afgeleid, uchars gate 12 speelt er $uchar_played: de afleiding volgt $DROOLS niet meer"
 
 # --- de dienst ---------------------------------------------------------------------------------------------
-# De jar van bin/regelspraak, vers gebouwd vóór de diensten tegelijk starten, zodat geen van hen hem zelf bouwt.
-log=$(mktemp); trap 'rm -f "$log"' EXIT
-mvn -B -o -q -DskipTests package -pl service -am >"$log" 2>&1 \
-  || { tail -20 "$log" >&2; fail "de dienst bouwt niet"; }
+# De jar van bin/regelspraak is bij voordat de diensten tegelijk starten, zodat geen van hen hem bouwt. bin/regelspraak
+# jar bouwt hem alleen als een bron nieuwer is; na de reactor (make gates) herschrijft deze poort hem dus niet terwijl
+# de tweelingen en het manifest, die tegelijk draaien, eruit lezen.
+bin/regelspraak jar >/dev/null || fail "de jar van bin/regelspraak bouwt niet"
 
 begin=$(date +%s)
 output=$(python3 scripts/service_replay.py --corpus uchar/corpus/golden --explanation \

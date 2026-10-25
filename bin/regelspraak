@@ -31,6 +31,7 @@ usage: bin/regelspraak [--language nl|en] <command> [arguments]
   drl <source.rgs...>                   the DRL text of uchar's DRL-text branch
   graph [--mmd] <out> <source.rgs...>   the rule graph as an HTML page, or with --mmd as Mermaid text
   facts <outdir> <source.rgs...>        the fact beans uchar's generator writes for the model
+  jar                                   the path of the jar the commands run from, built first when a source is newer
 
 Several sources are read as one model, concatenated in the order given; paths are relative to the directory the
 command is given in. Exit codes: 0 done, 1 an error in the model or a failed scenario, 2 a wrong invocation, 3 the
@@ -172,6 +173,10 @@ case "$command" in
     case "$outdir" in -*) fail "facts: onbekende optie $outdir" ;; esac
     check_sources facts "$@"
     start "$CLI" --facts "$outdir" "$@" ;;
+  jar)
+    [ $# -eq 0 ] || fail "jar: neemt geen argumenten"
+    jar_ready
+    echo "$JAR" ;;
   *)
     fail "onbekende opdracht: $command" ;;
 esac

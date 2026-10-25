@@ -204,6 +204,7 @@ English, and the playground of the service does so per request for an `Accept-La
 | `drl <source.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
 | `graph [--mmd] <out> <source.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
 | `facts <outdir> <source.rgs...>` | the fact beans uchar's generator writes for the model |
+| `jar` | the path of the jar the commands run from, after the rebuild below when it is due; the service gates call it once before they start their services side by side |
 
 Exit 2 is a wrong invocation. Every command runs from one jar the reactor builds. In a checkout `bin/regelspraak`
 first rebuilds that jar when it is missing or older than one of its sources (the poms, the own main sources, uchar's

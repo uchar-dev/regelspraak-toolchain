@@ -29,7 +29,6 @@ cd "$(dirname "$0")/.."
 fail() { echo "check-twins: FAIL — $*" >&2; exit 1; }
 command -v java >/dev/null 2>&1 || fail "java ontbreekt"
 command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
-command -v mvn >/dev/null 2>&1 || fail "mvn ontbreekt"
 
 TWINS=(
   "ww-herleving-inkomen-rgs|10"
@@ -46,10 +45,10 @@ EXPECTED_MIN_WITNESSES=4
 
 [ ${#TWINS[@]} -gt 0 ] || fail "geen tweeling om te spelen (een lege set is een faal)"
 
-# De jar van bin/regelspraak, vers gebouwd vóór de diensten tegelijk starten, zodat geen van hen hem zelf bouwt.
-log=$(mktemp); trap 'rm -f "$log"' EXIT
-mvn -B -o -q -DskipTests package -pl service -am >"$log" 2>&1 \
-  || { tail -20 "$log" >&2; fail "de dienst bouwt niet"; }
+# De jar van bin/regelspraak is bij voordat de diensten tegelijk starten, zodat geen van hen hem bouwt. bin/regelspraak
+# jar bouwt hem alleen als een bron nieuwer is; na de reactor (make gates) herschrijft deze poort hem dus niet terwijl
+# de replay en het manifest, die tegelijk draaien, eruit lezen.
+bin/regelspraak jar >/dev/null || fail "de jar van bin/regelspraak bouwt niet"
 
 goldens=(); descriptors=()
 for t in "${TWINS[@]}"; do
