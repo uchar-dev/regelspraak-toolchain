@@ -136,6 +136,19 @@ opnieuw (48s), want `pom.xml` was veranderd; in de andere runs kwam het uit de c
 van `service` (1m52s tot 2m48s). Uptime vóór en na: `logs/load-<n>.log` (eerste en laatste regel), met alle logs onder
 `/Users/yeb/Developer/uchar-dev/werk/gates-design/toolchain-gates/logs/`.
 
+### Definitieve meting (hoofdsessie)
+
+`make gates` in twee verse worktrees, na elkaar, gestart toen geen andere gate-set liep, met `TAG`/`CLUSTER`
+`timing-before` en `timing-after` (`werk/gates-design/toolchain-gates/timing/timing.txt`):
+
+| run | commit | pin | reactor | twins | replay | manifest | image | kind-smoke | totaal | load1 begin → eind |
+|-----|--------|-----|---------|-------|--------|----------|-------|------------|--------|--------------------|
+| vóór | `51326c01` | 0s | 7m56s | 8s | 1m05s | 2s | 1s | 1m20s | 10m32s | 8,6 → 9,5 |
+| na | `0ae0760a` | 0s | 1m56s | 3s (tegelijk) | 1m00s (tegelijk) | 1s (tegelijk) | 2s | 1m19s | 4m17s | 7,1 → 10,8 |
+
+Van 10m32s naar 4m17s. De reactor telt na de kaart de suites `173/388/53` van de eigen modules; de 1702 tests van
+uchar's backend draaien in uchar's gate 12 op de gepinde commit.
+
 ### Rode standen
 
 - (b) De submodule op `099e96e7` (`card/drools-suite-forks`, uit de lokale uchar-repo gehaald), `git add uchar`, `make
@@ -162,8 +175,7 @@ van `service` (1m52s tot 2m48s). Uptime vóór en na: `logs/load-<n>.log` (eerst
 
 - De suite van `service` (388 tests, `forkCount 1` met `reuseForks false`, dus een nieuwe JVM per testklasse, één
   tegelijk) is nu het grootste deel van de reactor. Forks parallel draaien is een eigen kaart (`service/pom.xml`).
-- `kind-smoke.sh` bouwt het image zelf nog eens (`make image`, uit de cache) en ook de H4-images `<TAG>-h4a` en
-  `<TAG>-h4b`; die blijven na een run staan (hier opgeruimd met `docker rmi`).
+- `kind-smoke.sh` bouwt het image zelf nog eens (`make image`, uit de cache). De H4-images `<TAG>-h4a` en `<TAG>-h4b`
+  ruimt de teardown sinds `0ae0760a` (hoofdsessie) zelf op; een mislukte run laat ze staan om te debuggen.
 - De vijf waarschuwingen over het deprecated `skipExec`. Surefire 3.5.2 heeft de parameter nog; verdwijnt hij in een
   latere surefire, dan draait de backend-suite weer mee, wat traag maar niet fout is.
-- De definitieve meting vóór/na op een rustige machine (de hoofdsessie, bij de landing).
