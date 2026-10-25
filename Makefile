@@ -44,13 +44,16 @@ help:
 	@echo "  make kind-smoke                      (host only) kind H2/H3/H4 gates against the live service, then delete the cluster"
 
 # The pin is the commit the uchar submodule is checked out at: this target fails when the
-# submodule is missing, moved or dirty, or when the parent pom's versions drift from uchar's.
+# submodule is missing, moved or dirty, when that commit is not on uchar's main (the submodule's origin/main), or
+# when the parent pom's versions drift from uchar's.
 check-pin:
 	bash scripts/check-pin.sh
 
-# The whole reactor offline: uchar's backend suite, the toolchain core, the service and the Quarkus adapter.
+# The whole reactor offline. uchar's backend and frontend are built without their suites: the backend's pom reads
+# -Dmaven.test.skip.exec=true, the frontend has no tests, and uchar runs its suites before a commit lands on its main.
+# The toolchain core, the service and the Quarkus adapter run their suites, each held to its floor (tools/check-skips.sh).
 verify: check-pin
-	$(MVN) -B -o verify
+	$(MVN) -B -o verify -Dmaven.test.skip.exec=true
 
 # The service gates: each starts the JDK service itself (on a free port) and replays uchar case files over HTTP.
 check-twins:

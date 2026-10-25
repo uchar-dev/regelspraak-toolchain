@@ -27,11 +27,11 @@
     The aggregator and parent of the distribution. This repository carries no parser, loader,
     transpiler or runtime of its own: it builds them from the uchar submodule.
 
-      uchar/backends/drools  uchar's own pom, unchanged: its versions, its tests run with this build.
-                             It is not a child of this parent, so the dependencyManagement below
-                             does not reach it.
+      uchar/backends/drools  uchar's own pom, unchanged: its versions; its suite does not run in the
+                             reactor (maven-surefire-plugin below). It is not a child of this parent,
+                             so the dependencyManagement below does not reach it.
       uchar-frontend         uchar's RegelSpraak frontend (grammar, resolver, emitter) compiled from
-                             the submodule's source tree.
+                             the submodule's source tree; its main sources only, so it has no tests.
       toolchain              the own core: CLI, engine facade, scenario runner and its CLI, the
                              verbaliser and the parameterset loader (dev.uchar.regelspraak.toolchain.*).
       service                the decision service on the JDK HttpServer.
@@ -140,10 +140,18 @@
           <artifactId>maven-compiler-plugin</artifactId>
           <version>3.13.0</version>
         </plugin>
+        <!-- The reactor runs with -Dmaven.test.skip.exec=true (make verify, scripts/gates.sh). uchar's backend reads
+             that property and builds without running its suite: uchar runs that suite in its gates before a commit
+             lands on its main, and scripts/check-pin.sh accepts only a pin on that main. This parent does not reach
+             the backend's pom, but it reaches every own module, and there skipExec stays false, so their suites
+             run; -DskipTests still skips them. -->
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>
           <artifactId>maven-surefire-plugin</artifactId>
           <version>3.5.2</version>
+          <configuration>
+            <skipExec>false</skipExec>
+          </configuration>
         </plugin>
         <plugin>
           <groupId>org.apache.maven.plugins</groupId>

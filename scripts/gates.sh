@@ -2,7 +2,7 @@
 # De controle vóór elke landing: de hele reeks poorten lokaal, in vaste volgorde, tot de eerste rode stap.
 #
 #   1 pin         scripts/check-pin.sh            de submodule op de pin, schoon, de versies van uchar
-#   2 reactor     mvn -B -o verify                de reactor met zijn suites en vloeren
+#   2 reactor     mvn -B -o verify -Dmaven.test.skip.exec=true   uchars modules zonder hun suites; de eigen suites met hun vloeren
 #   3 twins  scripts/check-twins.sh     de dialect-tweelingen en de vocabulairetweeling over HTTP
 #   4 replay      scripts/check-service-replay.sh  de goldens van uchars gate 12 door de dienst
 #   5 manifest    make scenario-test              het gouden TOKA-manifest
@@ -59,7 +59,7 @@ step() {
 }
 
 step pin        bash scripts/check-pin.sh
-step reactor    mvn -B -o verify
+step reactor    mvn -B -o verify -Dmaven.test.skip.exec=true
 step twins    bash scripts/check-twins.sh
 step replay     bash scripts/check-service-replay.sh
 step manifest   make --no-print-directory scenario-test
