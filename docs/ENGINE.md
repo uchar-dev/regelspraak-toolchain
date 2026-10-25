@@ -60,8 +60,8 @@ wants to see them.
 ## Building
 
 ```
-make verify          # check-pin, then mvn -B -o verify over the whole reactor
-mvn -B -o verify -pl toolchain -am      # only the toolchain core and what it needs from uchar
+make verify          # check-pin, then mvn -B -o verify -Dmaven.test.skip.exec=true over the whole reactor
+mvn -B -o verify -Dmaven.test.skip.exec=true -pl toolchain -am   # only the toolchain core and what it needs from uchar
 ```
 
 `RegelSpraakEngineTest` is the end-to-end proof: a rule compiles, fires over generated beans through uchar's entry

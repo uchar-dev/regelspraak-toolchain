@@ -32,23 +32,35 @@ map; `docs/ENGINE.md` describes the engine and the service.
 
 ```
 git submodule update --init --recursive
-make check-pin        # scripts/check-pin.sh: submodule initialised, clean, on the recorded commit; versions = uchar's
-mvn -B -o verify      # the reactor: uchar's backend suite, then toolchain, service, service-quarkus
+make check-pin        # scripts/check-pin.sh: submodule initialised, clean, on the recorded commit, which is on uchar's
+                      # main (the submodule's origin/main); versions = uchar's
+make verify           # check-pin, then the reactor: mvn -B -o verify -Dmaven.test.skip.exec=true
 ```
 
 The reactor needs no `mvn install`. The first build on a machine needs the network once
 (`mvn -B -DskipTests package`), for the plugins and dependencies the local Maven repository lacks, the
 antlr4-maven-plugin among them; after that, build offline.
 
-Green means `make gates` passes (`make gates-no-docker` is its first five steps): check-pin, `mvn -B -o verify`, the two service gates and the golden TOKA
-manifest (README, "The gates"). Each own module ends its tests with the skip-pin step (`tools/check-skips.sh`):
+The reactor runs the suites of the own modules, `toolchain`, `service` and `service-quarkus`, and builds uchar's
+modules without theirs: `uchar/backends/drools` builds with uchar's own pom, which reads
+`-Dmaven.test.skip.exec=true` and skips its suite, and `uchar-frontend` compiles uchar's main sources only. The parent
+pom sets `skipExec` to false in the own modules, so their suites run. uchar runs its suites, with its whole gate set,
+before a commit lands on its main, and check-pin fails on a pin that is not on that main; the pin is therefore a
+tested commit.
+
+Green means `make gates` passes (README, "The gates"): check-pin and the reactor, one after the other; then the two
+service gates and the golden TOKA manifest at the same time; then the image and the kind smoke, one after the other.
+`make gates-no-docker` runs the first five steps. Both run `scripts/gates.sh`, which reports one line per step and
+runs nothing after a red step. Each own module ends its tests with the skip-pin step (`tools/check-skips.sh`):
 every skipped or aborted test is printed by name and fails the build unless it is pinned with a reason, a test
 class that produced no test case fails, and each module is held to a floor (`FLOORS` in the script). Floors are
 lower bounds: growth needs no bump; a deliberate removal lowers the floor in the same commit.
 
 The service gates (`scripts/check-twins.sh`, `scripts/check-service-replay.sh`) start the JDK service
-themselves and replay uchar's case files over HTTP; the replay takes its set from uchar's gate 12 and pins the
-number that plays (an equality) beside a reason-carrying list of the goldens that do not, which fails when stale.
+themselves, each instance on a free port, from the jar `bin/regelspraak jar` names (it builds the jar only when a
+source is newer, so neither gate rewrites it while the other gates read it), and replay uchar's case files over
+HTTP; the replay takes its set from uchar's gate 12 and pins the number that plays (an equality) beside a
+reason-carrying list of the goldens that do not, which fails when stale.
 `make scenario-test` runs the golden TOKA manifest; the scenarios uchar's scenario resolver refuses are listed with
 a fragment of the refusal in `scripts/toka-manifest-exclusions.txt`.
 

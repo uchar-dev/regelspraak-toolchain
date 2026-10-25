@@ -24,18 +24,23 @@ repositories are public.
 Java 21 or later and Maven. The root `pom.xml` is the reactor:
 
 ```
-make check-pin        # the submodule is checked out, clean, and the versions match uchar's
-mvn -B -o verify      # the whole reactor, offline (make verify runs both)
+make check-pin        # the submodule is checked out, clean, on uchar's main, and the versions match uchar's
+mvn -B -o verify -Dmaven.test.skip.exec=true   # the whole reactor, offline (make verify runs both)
 ```
 
 `-o` builds from the local Maven repository alone. The first build on a machine needs the network once
 (`mvn -B -DskipTests package`) to fill that repository with the plugins and dependencies, the antlr4-maven-plugin
 and the ANTLR tool among them; after that every build runs offline.
 
+The reactor runs the test suites of `toolchain`, `service` and `service-quarkus` and builds uchar's two modules
+without suites. `-Dmaven.test.skip.exec=true` skips the suite of uchar's backend, whose pom the parent pom does not
+reach; the parent pom keeps the suites of the own modules running. uchar runs its suites before a commit lands on its
+main, and the pin is always a commit of that main ("The pin").
+
 | Module | What it is |
 |--------|------------|
-| `uchar/backends/drools` | uchar's Drools backend, built with uchar's own pom; its test suite runs with every build |
-| `uchar-frontend/` | uchar's RegelSpraak frontend compiled from `uchar/frontends/regelspraak`: the parser generated from uchar's grammar, the resolver and the emitters |
+| `uchar/backends/drools` | uchar's Drools backend, built with uchar's own pom, without its test suite |
+| `uchar-frontend/` | uchar's RegelSpraak frontend compiled from `uchar/frontends/regelspraak`: the parser generated from uchar's grammar, the resolver and the emitters; the main sources only, so no tests |
 | `toolchain/` | the CLI (`RegelSpraakCli`), the engine facade (`RegelSpraakEngine`), the scenario runner and its CLI, the verbaliser and the parameterset loader |
 | `service/` | the decision service on the JDK `HttpServer` (`DecisionCore`, `ServiceMain`, OpenAPI emitter, dev-only playground); its build also bundles the distribution into the one jar `bin/regelspraak` runs from |
 | `service-quarkus/` | the Quarkus adapter over the same service core |
@@ -124,8 +129,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
 
 The commit the submodule is checked out at is the pin: there is no other version to keep in step. The parent
 pom pins Jackson, the ANTLR runtime, Drools and JUnit on uchar's versions, and `scripts/check-pin.sh` fails when
-they drift, when the submodule is not initialised or not on the recorded commit, or when it has local changes. To
-move the pin:
+they drift, when the submodule is not initialised or not on the recorded commit, when it has local changes, or when
+the recorded commit is not on uchar's main (`git -C uchar merge-base --is-ancestor HEAD origin/main`). The pin must
+be a commit of uchar's main because the reactor here does not run uchar's suites: uchar runs them, with its whole
+gate set, before a commit lands on its main. The script fetches nothing; when the pin is on main but the submodule's
+`origin/main` is older, it fails and says to run `git -C uchar fetch origin`. To move the pin:
 
 ```
 git -C uchar fetch && git -C uchar checkout <commit on uchar's main>
@@ -138,24 +146,33 @@ counts of the twins); such a count is set deliberately, with its reason in the s
 
 ## The gates
 
-`make gates` is the check before every landing. It runs the whole sequence on this machine, in this order, and stops
-at the first red step, with one summary line per step and a closing line; the full output of each step lands in
-`out/gates/`:
+`make gates` is the check before every landing. It runs the gates on this machine (`scripts/gates.sh`), with one
+summary line per step in the order below and a closing line; the full output of each step lands in `out/gates/`.
+Steps 1 and 2 run one after the other; steps 3, 4 and 5 then run at the same time; step 6 and then step 7 run after
+those three:
 
 ```
-scripts/check-pin.sh      # the submodule is initialised, clean, on the recorded commit; the versions are uchar's
-mvn -B -o verify          # the reactor; each own module holds its test count to a floor (tools/check-skips.sh)
-make check-twins     # the three dialect twins and the vocabulary twin, over HTTP, with their case expectations
-make check-service-replay  # every golden uchar's gate 12 plays, replayed through the service
-make scenario-test        # the golden TOKA scenario manifest
-make image                # the service image ("The container")
-make kind-smoke           # that image in kind: the golden scenarios over HTTP, the marker, a rollout
+1 scripts/check-pin.sh        # the submodule is initialised, clean, on the recorded commit, which is on uchar's main;
+                              # the versions are uchar's
+2 mvn -B -o verify -Dmaven.test.skip.exec=true
+                              # the reactor: the suites of toolchain, service and service-quarkus, each holding its
+                              # test count to a floor (tools/check-skips.sh); uchar's modules without their suites
+3 make check-twins            # the three dialect twins and the vocabulary twin, over HTTP, with their case expectations
+4 make check-service-replay   # every golden uchar's gate 12 plays, replayed through the service
+5 make scenario-test          # the golden TOKA scenario manifest
+6 make image                  # the service image ("The container")
+7 make kind-smoke             # that image in kind: the golden scenarios over HTTP, the marker, a rollout
 ```
+
+A red step is reported with the last lines of its log, and no step after it runs; when one of steps 3, 4 and 5 is
+red, the other two still finish and are reported, and steps 6 and 7 do not run. Steps 3, 4 and 5 share no port and no
+file: each service they start takes a free port, each step writes its own log and temporary directories, and none of
+them rebuilds the jar the reactor built (`bin/regelspraak jar` builds it only when a source is newer).
 
 It needs, beside the checked-out submodule and the Maven repository of a first build: Java 21, Maven, python3,
-Docker, kind, kubectl and helm. The first five steps are `make gates-no-docker`, which needs no Docker: green there means
-the distribution builds and answers as uchar does. No hosted CI runs the gates; `TAG=`, `DESCRIPTOR_SRC=` and
-`CLUSTER=` pass on to the image and the kind smoke.
+Docker, kind, kubectl and helm. `make gates-no-docker` runs steps 1 to 5 in the same way and needs no Docker: green
+there means the distribution builds and answers as uchar does. No hosted CI runs the gates; `TAG=`,
+`DESCRIPTOR_SRC=` and `CLUSTER=` pass on to the image and the kind smoke.
 
 The two service gates start the JDK service themselves (`bin/regelspraak serve` on the jar the reactor builds, on a
 free port of 127.0.0.1, removed when done) and turn every uchar case file into a request; the answer must give each
