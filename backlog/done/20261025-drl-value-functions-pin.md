@@ -42,3 +42,23 @@ veranderen niet.
 ## Out of scope
 
 De velden van `drlRules`, de Playground zelf, de werkbank.
+
+## Result (2026-10-25, hoofdsessie)
+
+Tak `card/drl-value-functions-pin`, vanaf main `628c3380` plus de kaart (`9511b6a0`) en de claim (`bfa43e58`).
+
+- `7e92f3f3` pin uchar `c6a45d89` (de landing van `drl-no-trivial-value-functions`), met de verwachtingen en de doc.
+- (a) `make check-pin` PASS op `c6a45d89`.
+- (b) `PlaygroundDrlRulesTest` groen, 13 van 13. Aangepaste verwachtingen, uit de nieuwe tekst:
+  - `every_rule_of_the_drl_text_has_its_piece_with_its_functions`: 24 → 10 functies; `defaults A:Vondst.waarde: eens 0`
+    heeft geen functie meer (`regel | roept []`, was `afloop_defaultsAVondstWaardeEens0`); `default 0.0.0` en
+    `terugval 0` houden hun `toets_…` en verliezen `afloop_…` (de constanten 25 en 50). `waarde_melding` blijft: "de
+    vinddag van de Vondst plus 3 dagen" berekent iets (de kaart verwachtte dat zij zou wegvallen).
+  - `over_the_corpus_every_piece_follows_the_text`: `MIN_FUNCTIONS` 2201 → 1871, gemeten op deze pin (282 goldens,
+    2124 stukken); uchars eigen corpusgetuige telt hetzelfde. `MIN_PIECES` blijft 2124.
+  - `docs/ENGINE.md` bij `piece`: een zin dat een waarde die niets berekent, een constante of de waarde die een binding
+    bindt, in het `then`-deel van de regel staat, met haar zin als commentaarregel. Het voorbeeld
+    `afloop_defaultsAEindigingsgrondHerlevingsdatumTerugval2` blijft.
+- (c) `make gates` op `7e92f3f3`: groen, 7 stappen in 4m48s (reactor 1m49s, testgevallen per module 173/388/53;
+  replay 249 goldens, 673 cases; kind-smoke H2–H4 PASS). Log `werk/drl-value-functions-pin/landing-make-gates.log`.
+- `Playground.drlRules` en zijn velden zijn ongewijzigd.
