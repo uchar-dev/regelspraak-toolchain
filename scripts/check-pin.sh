@@ -11,7 +11,13 @@
 #   2. de submodule heeft wijzigingen of onbekende bestanden
 #      (`git -C uchar status --porcelain` niet leeg; bestanden die uchars eigen
 #      .gitignore negeert, zoals target/, tellen niet);
-#   3. de versies in de ouder-pom wijken af van die van uchar: antlr.version van
+#   3. de vastgelegde commit staat niet op uchars main, de origin/main van de
+#      submodule (`git -C uchar merge-base --is-ancestor HEAD origin/main`).
+#      De reactor draait uchars suites niet: uchar draait ze, met zijn hele
+#      gate-set, voordat een commit op zijn main landt. Een pin buiten main is
+#      daarom niet getest. Het script haalt niets op; een verouderde origin/main
+#      laat het falen met de opdracht om hem op te halen;
+#   4. de versies in de ouder-pom wijken af van die van uchar: antlr.version van
 #      ANTLR4_VERSION in uchar/frontends/regelspraak/Makefile, drools.version,
 #      jackson.version en junit.version van uchar/backends/drools/pom.xml.
 #      De ouder-pom pint die versies voor de eigen modules; uchars backend bouwt
@@ -53,11 +59,25 @@ if [ -e uchar/.git ]; then
     fail "submodule uchar heeft wijzigingen of onbekende bestanden:"
     printf '%s\n' "$dirty" | sed 's/^/    /'
   fi
+  # --- 3. de pin staat op uchars main --------------------------------------------
+  pin=$(git -C uchar rev-parse --short HEAD) || broken "git -C uchar rev-parse HEAD faalt"
+  if ! main=$(git -C uchar rev-parse -q --verify --short 'origin/main^{commit}'); then
+    fail "de submodule kent origin/main niet, dus is niet na te gaan of de pin $pin op uchars main staat;" \
+      "haal hem op: git -C uchar fetch origin"
+  else
+    git -C uchar merge-base --is-ancestor HEAD origin/main
+    case $? in
+      0) echo "ok  : de pin $pin staat op uchars main (origin/main van de submodule: $main)" ;;
+      1) fail "de pin $pin staat niet op uchars main (origin/main van de submodule: $main). Pin een commit die op" \
+           "uchars main geland is; staat hij daar wel, dan is origin/main verouderd: git -C uchar fetch origin" ;;
+      *) broken "git -C uchar merge-base --is-ancestor HEAD origin/main faalt" ;;
+    esac
+  fi
 else
   fail "uchar/.git ontbreekt, de submodule is niet uitgecheckt"
 fi
 
-# --- 3. versies gelijk aan uchar -----------------------------------------------
+# --- 4. versies gelijk aan uchar -----------------------------------------------
 [ -f uchar/frontends/regelspraak/Makefile ] && [ -f uchar/backends/drools/pom.xml ] \
   || { echo "FAIL: de versiebronnen in uchar/ ontbreken; zie de meldingen hierboven"; exit 1; }
 
@@ -110,6 +130,6 @@ compare jackson.version "$jackson" "$BACKEND" jackson.version "$u_jackson"
 compare junit.version "$junit" "$BACKEND" "de version van junit-jupiter" "$u_junit"
 
 if [ "$status" -eq 0 ]; then
-  echo "PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit; de versies zijn gelijk"
+  echo "PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit, die op uchars main staat; de versies zijn gelijk"
 fi
 exit $status
