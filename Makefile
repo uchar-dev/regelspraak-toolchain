@@ -14,13 +14,16 @@ CP_FILE     := toolchain/target/runtime-classpath.txt
 REGELSPRAAK := bin/regelspraak
 
 help:
-	@echo "  make check-pin                       Verify the uchar submodule is initialised, clean, and version-aligned"
-	@echo "  make verify                          check-pin, then mvn -B -o verify over the whole reactor"
+	@echo "  make check-pin                       Verify the uchar submodule is initialised, clean, on a commit of uchar's main,"
+	@echo "                                       and version-aligned"
+	@echo "  make verify                          check-pin, then the reactor offline: the suites of toolchain, service and"
+	@echo "                                       service-quarkus with their floors; uchar's modules built without their suites"
 	@echo "  make check-twins                 The dialect twins and the vocabulary twin fire over HTTP with all their case expectations"
 	@echo "  make check-service-replay              Every golden uchar's gate 12 plays, replayed through the service"
-	@echo "  make gates-no-docker                          verify, both service gates and the golden TOKA manifest"
-	@echo "  make gates                           The check before every landing: gates-no-docker, image and kind-smoke in"
-	@echo "                                       order, one line per step, stopping at the first red step (host only)"
+	@echo "  make gates-no-docker                 Steps 1 to 5 of make gates: check-pin and the reactor, then check-twins,"
+	@echo "                                       check-service-replay and scenario-test at the same time"
+	@echo "  make gates                           The check before every landing: gates-no-docker, then image and kind-smoke"
+	@echo "                                       one after the other; one line per step, nothing after a red step (host only)"
 	@echo "  make scenario-test                   The golden TOKA scenario manifest (a step of gates-no-docker)"
 	@echo ""
 	@echo "  The commands of bin/regelspraak (bin/regelspraak help), with FILE the sources in model order:"
@@ -62,13 +65,14 @@ check-twins:
 check-service-replay:
 	bash scripts/check-service-replay.sh
 
-# Everything that calls this distribution green: the pin, the reactor with its per-module floors, the two service
-# gates and the golden TOKA manifest.
-gates-no-docker: verify check-twins check-service-replay
-	$(MAKE) --no-print-directory scenario-test
+# The steps of make gates that need no Docker: the pin, the reactor, then the two service gates and the golden TOKA
+# manifest at the same time.
+gates-no-docker:
+	@bash scripts/gates.sh no-docker
 
-# The check before every landing: the steps of gates-no-docker, then the image and the kind smoke, in that order, one summary
-# line per step, stopping at the first red one (scripts/gates.sh; the full output lands in out/gates/).
+# The check before every landing (scripts/gates.sh; the full output lands in out/gates/): the pin and the reactor, one
+# after the other; then check-twins, check-service-replay and scenario-test at the same time; then the image and the
+# kind smoke, one after the other. One summary line per step; nothing runs after a red step.
 gates:
 	@bash scripts/gates.sh
 
