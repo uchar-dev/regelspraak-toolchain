@@ -80,3 +80,71 @@ landt), en deze kaart.
   weergave samen uit `holds` (besluit van de eigenaar, 2026-10-27).
 - `explanation-part-groups`.
 - De werkbank.
+
+## Result deel 1 (2026-10-27)
+
+Tak `card/explanation-read-objects` in `wt-tc/explanation-read-objects`, vanaf toolchain main `b4f3ab94`, uchar-pin
+`c6a45d89` ongewijzigd. Werkmap `werk/toolchain-2026-10-27/read-objects/` (`meting/`, `logs/`, `tools/`).
+
+**Ontwerp.** Naar het Fable-advies `research/uitleg-gelezen-objecten-2026-10-27/fable-advies.md` (§4.1, beslispunten
+D1 en D8), als voorlopig besluit van de hoofdsessie:
+
+- Eén sleutel `object` op elke `NAME` en `QUOTE` met de sleutels van een attribuut of kenmerk waarvan de zin de
+  waarde op één object noemt: het label zoals `SUBJECT` het schrijft (een gemaakt object bij zijn naam). Ook op de
+  kopnaam van elke zin (het onderwerp), zodat elk paar (`object`, `canonical`) dezelfde opzoekregel heeft: de zin van
+  dat paar is de zin waarvan de kop hetzelfde paar draagt.
+- Eén label, geen lijst. `object: null` bij een lezing over een rol waarvan een link ontbreekt (de lezing is leeg).
+- Geen `object` (uitzonderingen met reden): een parameter (van geen object); een `ROL`-naam; de tekst en het filter van
+  een vouw over een verzameling (per lid gelezen; de leden staan als `SUBJECT` in `MEMBERS`); een lezing die de motor
+  niet bereikte; de naam van een default die de opgavemarkering maakte ("'opgegeven maxdatum'"), die een variant noemt
+  en geen waarde.
+- **Bron van het object: `DroolsBackend.reached`** (uchars bestaande ingang, over de wandeling die de lader naast de
+  lezing geeft), als overbrugging (D1). Een kenmerkcheck over een rol gaat er ook door, met een `AttributeReference`
+  op het kenmerk en het type dat de wandeling bereikt, omdat `reached` geen check neemt. Fable beveelt aan het object in
+  de lezing van uchar te zetten (RUNTIME-SEMANTICS ch. 5.12): uchar-kaart `reading-read-objects` (in de bouw). Met de
+  pin van deel 2 leest de uitleg het object uit `NodeReading.object` en vervalt de omweg; de uitvoer blijft dezelfde,
+  want uchars getuige houdt het object van de lezing gelijk aan `reached`.
+
+**Wat er veranderde.** `Verbaliser`: `Read` kent het object van de lezing en het objecttype van het onderwerp van de
+vorm; `On` zegt van welk object een naam de waarde noemt; `declaration(d, on)` schrijft `object`; de kop van elke zin,
+de eigen leden van het onderwerp ("de X in de invoer leeg was", "de X had een invoerwaarde"), elk operand in een
+voorwaarde en een berekening (`readOn`) en elke kenmerkcheck (`checkOn`) geven het mee. `OpenApiEmitter`: de
+beschrijving van `ExplanationPart` en de eigenschap `object` (string, nullable); de vier goldens overgeschreven (alleen
+die twee verschillen). `docs/ENGINE.md` ("The object of a value", de rijen `NAME` en `QUOTE`), README ("Contract
+change"), de javadoc van `Part`.
+
+**Getuigen.**
+
+- `ExplanationReadObjectsServiceTest` (dienst, uit bronnen en uit het IR-document): per zin elke naam met haar object
+  op een eigen model: de kop, een eigen lid, een rol van één stap (M1 → R1; M3 → R2, waar de waarde leeg is), van twee
+  stappen (M1 → D1; M3 → `null`, R2 heeft geen dagloon), een afwezige link (M4 → `null`), een kenmerkcheck over een rol
+  (M1 → R1, M4 → `null`), een vouw zonder `object`. Rood op de code van `beba0959`: geen enkele naam draagt `object`.
+- Replay-leg (`scripts/service_replay.py`, `read_links`): op elke golden van gate 12 vindt elke gelezen waarde met een
+  schrijver de zin van (object, `canonical`); "met een schrijver" = een vorm van de scope schrijft dat lid op het type
+  van het object of een supertype (een regel van `rules.rules`, een defaults-groep); het type staat in het verzoek, of
+  is het `createdType` van de creatie (bij een versie die van de versie). Een golden zonder die zin faalt. Gemeten: 4248
+  koppelingen over 249 goldens en 673 cases, de vloer `EXPECTED_MIN_READ_LINKS=4248` in `check-service-replay.sh`. Rood met de jar van main: 0 koppelingen
+  (`anchor/jutterswet-kustwacht` 0 tegen 36, `jutterswet-aanmelderkrediet` 0 tegen 6).
+- Bestaande tests die stukken met meta pinnen (de kaart verandert wat ze pinden; geen toets verzwakt): elke wijziging
+  is het invoegen van `object=…`, nagerekend met een tijdelijke dump in `ExplanationPartsCheck.render` (alle tests groen
+  met `object` weggestreept, `tools/repin.py`): `ExplanationPartsServiceTest` (zinnen 0, 5, 8, 10, 15, 20; de constanten
+  `ERVAREN` en `LEEFTIJD` werden functies van het object), `ExplanationComputationServiceTest`,
+  `ExplanationDefaultsComputationServiceTest`, `ExplanationMadeObjectsServiceTest` (een gemaakt object als object van
+  zijn eigen lid).
+
+**Meting (acceptatie (a) en (c)) op de vijf service-verzoeken van v2/herleving-ww en s01** (regels `ece012e`;
+`meting/measure.sh`, `meting/objects.py`, `meting/links.py`; vóór: jar van `b4f3ab94`, na: de jar van de tak):
+
+- zonder vlag, met `?explanation=true` en de platte zinnen bytegelijk; de stukken gelijk op `object` na. Deel 1
+  verandert dus 0 zinnen.
+- 384 kopnamen en eigen leden op zinsniveau, elk met hun onderwerp; 595 gelezen waarden met een object, 92 met
+  `object: null` (een afwezige link: "de code sz product van de uitkering van het RechtOpUitkering (onbekend)"), 57
+  zonder (vouwteksten en filters).
+- van de 595 vinden er 338 de zin van (object, `canonical`); de overige 257 zijn invoer zonder schrijver ('code reden
+  beëindiging recht op uitkering ww' 115 keer, 'eerste rechtdag', 'jareneis', …). Met de kopnamen erbij vinden 648
+  gelezen waarden met een schrijver hun zin (`read_links`, 0 zonder).
+- Voorbeeld, s01 zin 9: `QUOTE «zijn herlevingstermijn» {declaration: ATTRIBUUT, owner: "Recht op uitkering WW",
+  canonical: "herlevingstermijn"}` krijgt `object: "R1"`, en zin 10 begint met `SUBJECT «R1»` en `NAME
+  {canonical: "herlevingstermijn", object: "R1"}`. Zin 10: `NAME «werkzaamheden-als-politiek ambtsdrager»` over de rol
+  'aanvraag uitkering' krijgt `object: "A1"`; zin 35: «de herlevingsgrens van het recht van het Inkomen
+  in-een-kalendermaand» krijgt `object: "R1"`.

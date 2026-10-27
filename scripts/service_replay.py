@@ -14,11 +14,12 @@ Uitvoer: per golden één regel "<golden>\\t<STATUS>\\t<detail>" in de volgorde 
   FAIL     een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is (detail: wat).
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
-haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vier velden erbij: het
+haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vijf velden erbij: het
 aantal uitlegzinnen, het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want "), het aantal
-voorkomens van "niet is vast te stellen", en het aantal zinnen over een waarde die een gewone regel schreef (kaart
+voorkomens van "niet is vast te stellen", het aantal zinnen over een waarde die een gewone regel schreef (kaart
 explanation-computed-attributes: "<onderwerp> heeft als ..." met de berekening als stuk COMPUTATION), sinds de kaart
-explanation-defaults-computation ook die over een waarde die een defaults-groep besliste.
+explanation-defaults-computation ook die over een waarde die een defaults-groep besliste, en het aantal gelezen waarden
+met een schrijver die de zin van hun (object, canonical) vinden (kaart explanation-read-objects-and-displaced).
 Het script oordeelt niet over de hele set: de poortscripts (check-service-replay.sh, check-twins.sh) doen dat.
 """
 import argparse
@@ -372,7 +373,8 @@ def read_links(parts, request, document, scope, place):
     geen zin en telt niet. Het type van een object staat in `request`, of is het `createdType` van de creatie die het
     maakte."""
     supertype = {t["name"]: t.get("supertype") for t in document["model"].get("objectTypes", [])}
-    created = {c["name"]: c["versions"][0]["createdType"] for c in document["rules"].get("objectCreations", [])}
+    created = {c["name"]: [v["createdType"] for v in c["versions"]]
+               for c in document["rules"].get("objectCreations", [])}
     types = {i["id"]: i["type"] for i in request.get("instances", [])}
     writers = set()
     for r in document["rules"].get("rules", []):
@@ -394,11 +396,15 @@ def read_links(parts, request, document, scope, place):
     def type_of(label):
         if label in types:
             return types[label]
-        # een gemaakt object heet «"<creatie>"»(<onderwerp>)#1; zijn type is het createdType van die creatie
+        # een gemaakt object heet «"<creatie>"»(<onderwerp>)#1, de creatie bij haar versie ("<vorm> #i") waar de vorm
+        # er meer heeft; zijn type is het createdType van die creatie
         m = re.match(r'«"((?:[^"\\]|\\.)*)"»', label)
         creation = m and re.sub(r"\\(.)", lambda e: {"n": "\n", "r": "\r"}.get(e.group(1), e.group(1)), m.group(1))
-        if creation in created:
-            return created[creation]
+        version = creation and re.fullmatch(r"(.*) #([0-9]+)", creation)
+        if creation in created and len(created[creation]) == 1:
+            return created[creation][0]
+        if version and version.group(1) in created and 0 < int(version.group(2)) <= len(created[version.group(1)]):
+            return created[version.group(1)][int(version.group(2)) - 1]
         raise Deviation(f"{place}: een gelezen waarde staat op {label!r}, en dat is geen object van het verzoek en"
                         f" geen gemaakt object van een creatie van het document")
 

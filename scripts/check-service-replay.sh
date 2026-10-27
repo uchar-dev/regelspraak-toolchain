@@ -189,8 +189,9 @@ EXPECTED_MIN_EXPLAINED_COMPUTATIONS=1852
 # Kaart explanation-read-objects-and-displaced: het aantal gelezen waarden met een schrijver (een NAME of QUOTE met de
 # sleutels van een attribuut of kenmerk en een object, waarvan een vorm van de scope dat lid schrijft op het type van
 # het object) die de zin van (object, canonical) in dezelfde uitleg vinden; service_replay.py faalt de golden waar die
-# zin ontbreekt. Een ondergrens, gemeten MEASURED; een leg die stilletjes minder waarden aan hun zin koppelt, faalt.
-EXPECTED_MIN_READ_LINKS=0
+# zin ontbreekt. Een ondergrens, gemeten 2026-10-27 bij die kaart (4248 over 249 goldens en 673 cases); een leg die
+# stilletjes minder waarden aan hun zin koppelt, faalt.
+EXPECTED_MIN_READ_LINKS=4248
 
 is_undetermined_listed() {
   local e; for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
