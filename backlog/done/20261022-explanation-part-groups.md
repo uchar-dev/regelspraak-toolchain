@@ -95,3 +95,7 @@ die stukken blijft van 242.145 tekens 173.478 over (28,4 % weglaatbaar), en elke
 "G1 heeft als herlevingsdatum 01-08-2025 volgens 'gewenste maand in het herlevingsverzoek art. 21 lid 1 na onderdeel
 c': de eerste kalendermaand zonder overschrijding-vanaf-de-gewenste-maand van het recht van de Eindigingsgrond, omdat
 het onderwerp de indicatie kan herleefd worden heeft en … . Grondslag: …".
+
+**Gates (acceptatie (b)).** `make gates` op `81dba69e` groen, 7 stappen in 4m58s (`logs/gates-pg1.log`): reactor
+173/392/53 testgevallen, replay 249 goldens en 673 cases, met de lijmtoets en 4248 koppelingen van deel 1, twins,
+manifest, image, kind-smoke.
