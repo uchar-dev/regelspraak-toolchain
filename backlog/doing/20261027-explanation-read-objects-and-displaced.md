@@ -152,3 +152,75 @@ change"), de javadoc van `Part`.
 **Gates (acceptatie (d)).** `make gates` op `7b52bb08` groen, 7 stappen in 5m05s (`logs/gates-1.log`): reactor
 173/390/53 testgevallen, replay 249 goldens en 673 cases met 4248 koppelingen, twins, manifest, image, kind-smoke.
 Deel 1 landt los; de kaart blijft in `doing/` voor deel 2.
+
+## Result deel 2 (2026-10-27)
+
+Tak `card/explanation-displaced` in `wt-tc/explanation-read-objects`, op toolchain main `8616d9b8` (deel 1 en
+`explanation-part-groups` geland). Werkmap `werk/toolchain-2026-10-27/read-objects/` (`meting/displaced.py`, `tools/`).
+
+**uchar.** De meting vooraf (2026-10-27) liet zien dat geen motor een lagere variant uitrekent: de DRL-verlaging zet
+`not Decides(…, index < n)` vóór de toets van een lagere default, en de lezing van zo'n default was `DISPLACED` zonder
+knopen; dienst en playground lezen beide uchars build met lezingen. Twee uchar-kaarten, naar het Fable-advies
+`research/uitleg-gelezen-objecten-2026-10-27/fable-advies.md` (beslispunten D1–D11, voorlopige besluiten van de
+hoofdsessie), elk geland en gepusht:
+
+- `reading-read-objects` (uchar `c6a45d89..f0ff72ab`): RUNTIME-SEMANTICS ch. 5.12 noemt bij een knoop die een lid van
+  één object leest het object waarop zij het las; ref, beide Drools-takken, gate 17.
+- `readings-of-displaced-defaults` (uchar `f0ff72ab..81036336`): een default die een hogere verdrong, wordt gelezen
+  zoals aan de beurt, status `DISPLACED` met knopen. In dezelfde landing de reparatie van een regressie van de eerste
+  kaart (`f5d668de`): het objectslot telde als invoer van de toets, en de build met lezingen weigerde de v2-groep
+  'duurverlenging bij-een-nieuw recht' (17 > 13 gebonden waarden, DROOLS-264); gevonden met de meting van deze kaart.
+
+**Wat er veranderde in de toolchain.**
+
+- Pin `81036336` (`75677ea7`, `9cf88df5`).
+- `6fda98d1` De uitleg leest het object van een gelezen waarde uit de lezing (`NodeReading.object`); de omweg van deel 1
+  over `DroolsBackend.reached` en de `AttributeReference` voor een kenmerkcheck vervallen, `Read` heeft zijn oude vorm.
+  De objecten zijn dezelfde: alle tests ongewijzigd groen, op v2 997 objecten gelijk.
+- `d280dd1c` Een verdrongen variant zegt wat zij vond (`Verbaliser.displacedVariant`), uit haar lezing: de knoop van
+  haar voorwaarde (`holds`), en waar die geldt de wortel van haar waarde (na de knopen van de voorwaarde), in de opmaak
+  van de kop. De groep `VARIANT {decided: false, displaced: true}` krijgt `holds`, de waarde als `VALUE`, bij een kenmerk
+  `decision`, en `unreadable` waar de lezing een fout droeg. OpenAPI (beschrijving, `decision` en `unreadable`; de vier
+  goldens overgeschreven), `docs/ENGINE.md` ("What a displaced variant found", de rij `VARIANT`), README, `Part`.
+
+**De zinsvorm.** De standaardvorm van de kaart: "(gold, 01-07-2025)", "(gold, gaf geen waarde)", "(gold niet)", zonder
+reden. Afwijkingen, voorlopig besluit naar het advies (D9), met voor en na:
+
+- Een kenmerk: "(gold, toekennen)" of "(gold, niet toekennen)" naar het besluit van de variant (`Default.decision`), want
+  een kenmerkvariant geeft geen waarde. Voor: "…; verdrongen: 'uitsluiting bij dienstverband', de regel 'penning'"; na:
+  "…; verdrongen: 'uitsluiting bij dienstverband' (gold, niet toekennen), de regel 'penning' (gold, toekennen)".
+- Een variant zonder voorwaarde: "(onvoorwaardelijk, …)", zoals de beslisser " (onvoorwaardelijk)" heet. Voor: "…;
+  verdrongen: 'berekende meldingsdatum'"; na: "…; verdrongen: 'berekende meldingsdatum' (onvoorwaardelijk,
+  13-03-2026)".
+- Een initialisatiedefault waarvan de invoer het doel vulde (de motor leest haar niet: geen knopen): "(gold niet)", zoals
+  zo'n variant vóór de beslisser "gold niet, want de X had een invoerwaarde" heet.
+- Buiten haar geldigheid: "(buiten haar geldigheid)"; een lezing met een fout (die de sessie niet had): de naam alleen,
+  `unreadable: true`. Geen van beide komt voor op de goldens of op v2.
+- Niet veranderd: "verdrongen: de regel 'X'" in de zin van een berekende waarde, een initialisatie die een andere
+  schrijver verdrong; die heeft geen lezing (uchar D6).
+
+**Getuigen.**
+
+- Acceptatie (b): `ExplanationDisplacedServiceTest`, uchars golden `anchor/jutterswet-nestuitzondering` case 1: de
+  eigen inhoud van de default die de beslissende uitzonderingsgroep draagt "(gold, 40,00)" met `holds: true` en `VALUE
+  «40,00»`, de twee leden van de groep van de basis "(gold niet)" met `holds: false`. Rood op `8616d9b8`: daar stonden
+  zij bij naam alleen.
+- Bestaande tests die zinnen of stukken met een verdrongen variant pinnen (de kaart verandert wat ze pinden; geen toets
+  verzwakt; elk verschil is het invoegen van de uitkomst na de naam, nagerekend met een tijdelijke dump van (oud, nieuw)
+  per zin en per gepinde weergave, `tools/repin2.py` en `tools/repin3.py`): `ExplanationDefaultsTest`,
+  `ExplanationDefaultsComputationTest`, `ExplanationGeneratedRuleInVocabularyTest`, `ExplanationStatuteAnnotationTest`,
+  `ExplanationDefaultsServiceTest`, `ExplanationDefaultsComputationServiceTest`, `ExplanationDefaultStatuteAnnotationsServiceTest`,
+  `ExplanationGroundSourceServiceTest`, `ExplanationPartsServiceTest`, `ExplanationStatuteAnnotationServiceTest`,
+  `GroundDeviationServiceTest`.
+
+**Meting (acceptatie (c))** op de vijf service-verzoeken en s01 (`meting/displaced.py`, jar van de tak tegen die van
+`explanation-part-groups`): het antwoord zonder vlag bytegelijk; elke zin gelijk op de uitkomst van een verdrongen
+variant na; de lijmtoets van `explanation-part-groups` op 0; 648 gelezen waarden met een schrijver vinden hun zin. Deel 2
+verandert 9 zinnen op de vijf verzoeken (detentie 0, herkrijging 3, inkomen 2, intrekking 2, restant 2) en 5 op s01; 18
+verdrongen varianten: 10 "gold", 4 "gold niet", 3 "onvoorwaardelijk", 1 in de zin van een berekende waarde
+(ongewijzigd). Voorbeeld, herkrijging zin 10, voor: "…; verdrongen: de regel 'herlevingstermijn art. 21 lid 3 en 5'.
+Grondslag: …"; na: "…; verdrongen: de regel 'herlevingstermijn art. 21 lid 3 en 5' (gold niet). Grondslag: …". En het
+voorbeeld van de kaart, s01 zin 47, nu: "…; verdrongen: 'herleving per de maand van het einde bij de inkomensgrond art.
+21 lid 1 na onderdeel c' (uitzondering op …) (gold niet), 'herleving per de maand van het einde art. 21 lid 1 na
+onderdeel c' (uitzondering op …) (gold niet), 'herleving per kalendermaand art. 21 lid 1 na onderdeel c' (gold,
+01-07-2025), de regel 'herleving na het vervallen art. 21 lid 1' (gold, 01-07-2025)".
