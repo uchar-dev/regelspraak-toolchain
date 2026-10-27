@@ -126,15 +126,16 @@ class ExplanationMadeObjectsServiceTest {
 
     /** The parts of two sentences: a made object as a member of a fold, and as the subject. */
     private static final Map<Integer, String> PARTS = Map.of(
-            0, "SUBJECT«J1» « is niet » NAME{declaration=KENMERK, owner=Jutter, canonical=beloond}«beloond» «, »"
+            0, "SUBJECT«J1» « is niet » NAME{declaration=KENMERK, owner=Jutter, canonical=beloond, object=J1}«beloond»"
+                    + " «, »"
                     + " CONNECTIVE«want» « » CONDITION{holds=false, quantifier=all}[«aan de voorwaarde \"»"
                     + " QUOTE«alle penningen van de Jutter waardevol zijn» «\" is niet voldaan: »"
                     + " MEMBERS{members=2, holding=1, unjudged=0}[«niet voor » SUBJECT«" + BONUS_J1 + "»"
                     + " « (1 van de 2)»]]",
             9, "SUBJECT«" + RECEIPT_CATCH_J1 + "» « is » NAME{declaration=KENMERK, owner=Kwitantie,"
-                    + " canonical=geldig}«geldig» «, » CONNECTIVE«omdat» « » CONDITION{holds=true}["
-                    + "QUOTE{declaration=ATTRIBUUT, owner=Kwitantie, canonical=bedrag}«zijn bedrag» « (» VALUE«30 EUR»"
-                    + " «) is groter dan » VALUE«0 EUR»]");
+                    + " canonical=geldig, object=" + RECEIPT_CATCH_J1 + "}«geldig» «, » CONNECTIVE«omdat» « »"
+                    + " CONDITION{holds=true}[QUOTE{declaration=ATTRIBUUT, owner=Kwitantie, canonical=bedrag, object="
+                    + RECEIPT_CATCH_J1 + "}«zijn bedrag» « (» VALUE«30 EUR» «) is groter dan » VALUE«0 EUR»]");
 
     private static DecisionCore fromSources() {
         return DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", SOURCE), CoreConfig.strict(),

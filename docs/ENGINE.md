@@ -395,8 +395,8 @@ part a consumer may leave out with its glue (`COMPUTATION`, `VARIANT`).
 | kind | leaf or group | what | meta |
 |---|---|---|---|
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
-| `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]` |
-| `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute or parameter |
+| `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below) |
+| `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute or parameter, and `object` as on `NAME` |
 | `VALUE` | leaf | a value as the engine read it, with its unit; a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for "een tijdlijn", the value of a timeline target |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
@@ -413,6 +413,17 @@ part a consumer may leave out with its glue (`COMPUTATION`, `VARIANT`).
 
 Without its last part (`GROUND`) a sentence is the sentence a rule without annotations gets. There is no kind for a CGM
 concept: no rule annotation carries one.
+
+**The object of a value** (card `explanation-read-objects-and-displaced`). A `NAME` or `QUOTE` with the keys of an
+attribute or a characteristic carries `object` where the sentence names the value of that member on one object: the
+label as `SUBJECT` writes it, a made object by its name. The head of a sentence names its subject; an own member in a
+condition or a computation names the object of the reading; a read over a role names the object its walk reaches, as
+uchar navigates it (`DroolsBackend.reached`, over the walk the loader gives beside the read), and `object: null` where a
+link on the walk is absent, so that the read is empty (uchar's RUNTIME-SEMANTICS ch. 5.8). With `canonical`, `object` is
+the pair a consumer looks up: the sentence of the writer of that value begins with `SUBJECT` equal to `object` and its
+first `NAME` has the same `canonical`. An input value has no such sentence; `object` then says whose input it is. No
+`object` stands on a parameter, a role, the text and the filter of a fold over a set (read per member; the members stand
+in `MEMBERS`), a read the engine did not reach, and the name of a default the opgave marker made, which names a variant.
 
 **The sentence of a computed value** (card `explanation-computed-attributes`). Every attribute an ordinary rule of the
 document writes on an object of the session (an equation, a calculation, an initialisation; not a rule that uchar's

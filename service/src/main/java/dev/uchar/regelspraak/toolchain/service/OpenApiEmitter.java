@@ -593,8 +593,13 @@ public final class OpenApiEmitter {
                 + " kind: SUBJECT het"
                 + " label van een instantie, het onderwerp of een lid van een kwantorvouw; NAME een gedeclareerde naam"
                 + " in het vocabulaire van het antwoord, met declaration (ATTRIBUUT, KENMERK, ROL of PARAMETER), owner"
-                + " en canonical, de sleutels kind, owner en canonical van een element van vocabularies; QUOTE"
-                + " regeltekst zoals geschreven, met dezelfde drie waar het operand één declaratie leest; VALUE een"
+                + " en canonical, de sleutels kind, owner en canonical van een element van vocabularies, en bij een"
+                + " attribuut of kenmerk waarvan de zin de waarde van één object noemt object: het label van dat object"
+                + " zoals SUBJECT het noemt (de kopnaam van een zin het onderwerp, een lezing het object waarop de motor"
+                + " haar las, ook over een rol), null waar een link op de rol ontbreekt; geen object bij een parameter,"
+                + " een rol, de tekst en het filter van een vouw over een verzameling (per lid gelezen; de leden staan"
+                + " in MEMBERS) en een lezing die de motor niet bereikte; QUOTE regeltekst zoals geschreven, met"
+                + " dezelfde drie waar het operand één declaratie leest, en object zoals bij NAME; VALUE een"
                 + " waarde met haar eenheid, met empty: true bij een lege en timeline: true bij 'een tijdlijn', de waarde"
                 + " van een tijdlijn-doel; RULE de naam van een regel of van een variant"
                 + " van een defaults-groep; CONNECTIVE een woord dat de logica tussen de delen draagt (omdat, want,"
@@ -636,7 +641,8 @@ public final class OpenApiEmitter {
         ObjectNode between = props.putObject("between");
         between.put("type", "array");
         between.putObject("items").put("type", "string");
-        for (String key : new String[]{"owner", "group"}) props.putObject(key).put("type", "string").put("nullable", true);
+        for (String key : new String[]{"owner", "group", "object"})
+            props.putObject(key).put("type", "string").put("nullable", true);
         for (String key : new String[]{"empty", "timeline", "holds", "decided", "displaced"})
             props.putObject(key).put("type", "boolean");
         for (String key : new String[]{"threshold", "members", "holding", "unjudged", "position"})

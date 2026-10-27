@@ -186,6 +186,11 @@ EXPECTED_MIN_EXPLAINED_CONDITIONS=1241
 # zin van een defaults-groep op een attribuut de berekening van de variant die besliste, en telt die zin mee (gemeten
 # 2026-10-22: 2046); de vloer bleef staan.
 EXPECTED_MIN_EXPLAINED_COMPUTATIONS=1852
+# Kaart explanation-read-objects-and-displaced: het aantal gelezen waarden met een schrijver (een NAME of QUOTE met de
+# sleutels van een attribuut of kenmerk en een object, waarvan een vorm van de scope dat lid schrijft op het type van
+# het object) die de zin van (object, canonical) in dezelfde uitleg vinden; service_replay.py faalt de golden waar die
+# zin ontbreekt. Een ondergrens, gemeten MEASURED; een leg die stilletjes minder waarden aan hun zin koppelt, faalt.
+EXPECTED_MIN_READ_LINKS=0
 
 is_undetermined_listed() {
   local e; for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
@@ -234,16 +239,17 @@ output=$(python3 scripts/service_replay.py --corpus uchar/corpus/golden --explan
     --workers "${REPLAY_WORKERS:-4}" "${set_goldens[@]}") || fail "de replay-driver faalde"
 duration=$(( $(date +%s) - begin ))
 
-played=0; excl=0; cases=0; sentences=0; conditions=0; computations=0
+played=0; excl=0; cases=0; sentences=0; conditions=0; computations=0; links=0
 deviations=(); unnamed=(); outdated=(); undetermined=(); explained_goldens=()
-while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined g_computations; do
+while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined g_computations g_links; do
   [ -n "$g" ] || continue
   case "$status" in
     PLAYED)
       is_excluded "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_EXCLUDED")
-      [ -n "$g_undetermined" ] && [ -n "$g_computations" ] || fail "$g: de replay-driver gaf geen telling van de uitleg"
+      [ -n "$g_undetermined" ] && [ -n "$g_computations" ] && [ -n "$g_links" ] \
+        || fail "$g: de replay-driver gaf geen telling van de uitleg"
       sentences=$((sentences + g_sentences)); conditions=$((conditions + g_conditions))
-      computations=$((computations + g_computations))
+      computations=$((computations + g_computations)); links=$((links + g_links))
       explained_goldens+=("$g")
       if [ "$g_undetermined" -gt 0 ]; then
         is_undetermined_listed "$g" \
@@ -291,6 +297,8 @@ fi
   || fail "de uitleg verwoordde $conditions voorwaarden, de vloer EXPECTED_MIN_EXPLAINED_CONDITIONS is $EXPECTED_MIN_EXPLAINED_CONDITIONS"
 [ "$computations" -ge "$EXPECTED_MIN_EXPLAINED_COMPUTATIONS" ] \
   || fail "de uitleg verwoordde $computations berekende waarden, de vloer EXPECTED_MIN_EXPLAINED_COMPUTATIONS is $EXPECTED_MIN_EXPLAINED_COMPUTATIONS"
+[ "$links" -ge "$EXPECTED_MIN_READ_LINKS" ] \
+  || fail "de uitleg koppelde $links gelezen waarden aan hun zin, de vloer EXPECTED_MIN_READ_LINKS is $EXPECTED_MIN_READ_LINKS"
 [ "$played" -eq "$EXPECTED_REPLAY_PLAYED" ] \
   || fail "$played goldens speelden, EXPECTED_REPLAY_PLAYED pint $EXPECTED_REPLAY_PLAYED (een nieuwe speler: zet het getal bij)"
 
@@ -298,5 +306,5 @@ echo "check-service-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
 echo "  uitgesloten: $excl, bij naam met reden"
-echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), $computations berekende waarden (vloer $EXPECTED_MIN_EXPLAINED_COMPUTATIONS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
+echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), $computations berekende waarden (vloer $EXPECTED_MIN_EXPLAINED_COMPUTATIONS), $links gelezen waarden aan hun zin gekoppeld (vloer $EXPECTED_MIN_READ_LINKS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
 echo "  duur: ${duration}s met ${REPLAY_WORKERS:-4} diensten tegelijk"

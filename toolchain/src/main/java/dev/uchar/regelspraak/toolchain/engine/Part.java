@@ -22,9 +22,11 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
          *  the sentence, or a member of a quantifier fold. */
         SUBJECT,
         /** A declared name as {@link Naming} names it, with {@code declaration}, {@code owner} and {@code canonical}
-         *  where the declaration is known. */
+         *  where the declaration is known, and {@code object}, the label of the object whose value of an attribute or
+         *  characteristic the sentence names, null where a link on the walk of the read is absent. */
         NAME,
-        /** Rule text as written, with the three keys of {@link #NAME} where the operand reads one declaration. */
+        /** Rule text as written, with the three keys of {@link #NAME} where the operand reads one declaration, and
+         *  {@code object} as on {@link #NAME}. */
         QUOTE,
         /** A value as the engine read it, with its unit; {@code empty: true} for an empty one, and
          *  {@code timeline: true} for "een tijdlijn", the value of a timeline target, which the sentence does not

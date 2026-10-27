@@ -176,58 +176,64 @@ public class ExplanationPartsServiceTest {
             + " LEMMA«strandgoed» « · deviatie wet/hb, volgt wet: »"
             + " DEVIATION{between=[\"wet\",\"hb\"], follows=wet}«oude-jutter» «; »"
             + " STATUTE{bwb=BWBR0004045, article=43}«BWBR0004045&artikel=43»]";
-    private static final String ERVAREN = "NAME{declaration=KENMERK, owner=Jutter, canonical=ervaren}«ervaren»";
-    private static final String LEEFTIJD =
-            "QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=leeftijd}«zijn leeftijd»";
+    private static String ervaren(String object) {
+        return "NAME{declaration=KENMERK, owner=Jutter, canonical=ervaren, object=" + object + "}«ervaren»";
+    }
+
+    private static String leeftijd(String object) {
+        return "QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=leeftijd, object=" + object + "}«zijn leeftijd»";
+    }
     private static final String MINIMUMLEEFTIJD =
             "QUOTE{declaration=PARAMETER, owner=null, canonical=minimumleeftijd}«de minimumleeftijd»";
 
     /** The parts of the sentences that carry the nested list, the fold, a rule that did not hold beside a
      *  characteristic of the input, and a defaults group with the ground of a default. */
     static final Map<Integer, String> PARTS = Map.of(
-            0, "SUBJECT«J1» « is » " + ERVAREN + " «, » CONNECTIVE«omdat» « »"
+            0, "SUBJECT«J1» « is » " + ervaren("J1") + " «, » CONNECTIVE«omdat» « »"
                     + " CONDITION{holds=true, quantifier=all}["
-                    + "CONDITION{holds=true}[" + LEEFTIJD + " « (» VALUE«30» «) is groter dan » " + MINIMUMLEEFTIJD
-                    + " « (» VALUE«17» «)»]"
+                    + "CONDITION{holds=true}[" + leeftijd("J1") + " « (» VALUE«30» «) is groter dan » "
+                    + MINIMUMLEEFTIJD + " « (» VALUE«17» «)»]"
                     + " « » CONNECTIVE«en» « »"
                     + " CONDITION{holds=true, quantifier=atLeast, threshold=1}["
-                    + "CONDITION{holds=false}[QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=aantal meldingen}"
-                    + "«zijn aantal meldingen» « (» VALUE«3» «) is groter dan » VALUE«10»]"
+                    + "CONDITION{holds=false}[QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=aantal meldingen,"
+                    + " object=J1}«zijn aantal meldingen» « (» VALUE«3» «) is groter dan » VALUE«10»]"
                     + " « » CONNECTIVE«of» « »"
                     + " CONDITION{holds=true}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
-                    + " canonical=ingezetene}«ingezetene» « is»]]] " + GROUND_PARTS,
-            1, "SUBJECT«J1» « is niet » NAME{declaration=KENMERK, owner=Jutter, canonical=gelukkig}«gelukkig» «, »"
-                    + " CONNECTIVE«want» « » CONDITION{holds=false, quantifier=all}[«aan de voorwaarde \"»"
-                    + " QUOTE«alle vondsten van de Jutter waardevol zijn» «\" is niet voldaan: »"
+                    + " canonical=ingezetene, object=J1}«ingezetene» « is»]]] " + GROUND_PARTS,
+            1, "SUBJECT«J1» « is niet » NAME{declaration=KENMERK, owner=Jutter, canonical=gelukkig,"
+                    + " object=J1}«gelukkig» «, » CONNECTIVE«want» « » CONDITION{holds=false, quantifier=all}[«aan de"
+                    + " voorwaarde \"» QUOTE«alle vondsten van de Jutter waardevol zijn» «\" is niet voldaan: »"
                     + " MEMBERS{members=2, holding=1, unjudged=0}[«niet voor » SUBJECT«V2» « (1 van de 2)»]]",
-            5, "SUBJECT«J2» « is » " + ERVAREN + " «, » CONNECTIVE«maar» « de regel '» RULE«ervaren» «' »"
+            5, "SUBJECT«J2» « is » " + ervaren("J2") + " «, » CONNECTIVE«maar» « de regel '» RULE«ervaren» «' »"
                     + " CONNECTIVE«gold niet» «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
-                    + " CONDITION{holds=false}[" + LEEFTIJD + " « (» VALUE«16» «) is groter dan » " + MINIMUMLEEFTIJD
+                    + " CONDITION{holds=false}[" + leeftijd("J2") + " « (» VALUE«16» «) is groter dan » "
+                    + MINIMUMLEEFTIJD
                     + " « (» VALUE«17» «)»] " + GROUND_PARTS,
-            8, "SUBJECT«J2» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie}«premie» « »"
+            8, "SUBJECT«J2» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie, object=J2}"
+                    + "«premie» « »"
                     + " VALUE«50,00» « volgens '» RULE«jeugdpremie» «'» COMPUTATION[«: » QUOTE«50,00»] «, »"
                     + " CONNECTIVE«omdat» « »"
-                    + " CONDITION{holds=true, quantifier=all}[CONDITION{holds=true}[«het onderwerp » " + ERVAREN
-                    + " « is»] « » CONNECTIVE«en» « »"
-                    + " CONDITION{holds=true}[" + LEEFTIJD + " « (» VALUE«16» «) is kleiner dan » VALUE«18»]]"
+                    + " CONDITION{holds=true, quantifier=all}[CONDITION{holds=true}[«het onderwerp » "
+                    + ervaren("J2") + " « is»] « » CONNECTIVE«en» « »"
+                    + " CONDITION{holds=true}[" + leeftijd("J2") + " « (» VALUE«16» «) is kleiner dan » VALUE«18»]]"
                     + " «; verdrongen: de regel '» RULE«premie» «'»"
                     + " GROUND{group=premie, pointer=/defaults/0, position=1, variant=jeugdpremie}[«. Grondslag: »"
                     + " STATUTE{bwb=BWBR0004045, article=20, paragraph=2}«BWBR0004045&artikel=20&lid=2» « · lemma's: »"
                     + " LEMMA«jeugdpremie» « · deviatie binnen hb: » DEVIATION{between=[\"hb\"]}«oude-premie»]",
-            10, "SUBJECT«J3» « is niet » " + ERVAREN + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
+            10, "SUBJECT«J3» « is niet » " + ervaren("J3") + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
                     + " CONDITION{holds=false, quantifier=atLeast, threshold=1}["
-                    + "CONDITION{holds=false}[QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=aantal meldingen}"
-                    + "«zijn aantal meldingen» « (» VALUE«3» «) is groter dan » VALUE«10»]"
+                    + "CONDITION{holds=false}[QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=aantal meldingen,"
+                    + " object=J3}«zijn aantal meldingen» « (» VALUE«3» «) is groter dan » VALUE«10»]"
                     + " « » CONNECTIVE«of» « »"
                     + " CONDITION{holds=false}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
-                    + " canonical=ingezetene}«ingezetene» « is»]] " + GROUND_PARTS,
-            15, "SUBJECT«J4» « is niet » " + ERVAREN + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
-                    + " CONDITION{holds=false}[" + LEEFTIJD + " « (» VALUE{empty=true}«onbekend» «) is groter dan » "
+                    + " canonical=ingezetene, object=J3}«ingezetene» « is»]] " + GROUND_PARTS,
+            15, "SUBJECT«J4» « is niet » " + ervaren("J4") + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
+                    + " CONDITION{holds=false}[" + leeftijd("J4") + " « (» VALUE{empty=true}«onbekend» «) is groter dan » "
                     + MINIMUMLEEFTIJD + " « (» VALUE«17» «)»] " + GROUND_PARTS,
-            20, "SUBJECT«V1» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=aangemeld}«aangemeld» «, »"
-                    + " CONNECTIVE«omdat» « » CONDITION{holds=true}[«de » NAME{declaration=ROL,"
-                    + " owner=vondst van een jutter, canonical=jutter}«jutter» « » NAME{declaration=KENMERK,"
-                    + " owner=Jutter, canonical=ingezetene}«ingezetene» « is»]");
+            20, "SUBJECT«V1» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=aangemeld, object=V1}«aangemeld»"
+                    + " «, » CONNECTIVE«omdat» « » CONDITION{holds=true}[«de » NAME{declaration=ROL, owner=vondst van"
+                    + " een jutter, canonical=jutter}«jutter» « » NAME{declaration=KENMERK, owner=Jutter,"
+                    + " canonical=ingezetene, object=J1}«ingezetene» « is»]");
 
     private static DecisionCore fromSources() {
         return DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", SOURCE), CoreConfig.strict(),

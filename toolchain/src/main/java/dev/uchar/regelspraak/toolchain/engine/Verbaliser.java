@@ -131,7 +131,9 @@ import java.util.regex.Pattern;
  * verbindingswoorden en de lijm, een voorwaarde als groep met het oordeel van de motor op haar knoop, de leden van een
  * kwantorvouw als groep met hun telling, en de grondslag als laatste stuk, ontleed ({@link Ground}). De platte zin is
  * {@link Sentence#text()}, de tekst van de stukken achter elkaar: {@link #verbalise} geeft die, {@link #sentences} de
- * zinnen zelf.
+ * zinnen zelf. Een naam van een attribuut of kenmerk waarvan de zin de waarde op één object noemt, zegt van welk object
+ * ({@link On}): de kop van een zin het onderwerp, een lezing het object waarop de motor haar las, ook over een rol; zo
+ * vindt een lezer bij elke gelezen waarde de zin over (object, lid).
  */
 public final class Verbaliser {
 
@@ -709,11 +711,11 @@ public final class Verbaliser {
          *  waarde in de opmaak van een operand. */
         private void outcome(Sentence.Builder b, String member, boolean characteristic, Object decision) {
             if (characteristic) {
-                predicateOf(member, Boolean.TRUE.equals(decision)).mainClause(b);
+                predicateOf(member, Boolean.TRUE.equals(decision)).mainClause(b, new On(label));
                 return;
             }
             b.text("heeft als ");
-            attributeName(b, type, member);
+            attributeName(b, type, member, new On(label));
             b.text(" ");
             value(b, render(decision, type.attribute(member)), decision == null);
         }
@@ -723,11 +725,11 @@ public final class Verbaliser {
         private void standing(Sentence.Builder b, String member, boolean characteristic) {
             if (characteristic) {
                 boolean present = readBoolean(bean, member);
-                predicateOf(member, present).mainClause(b);
+                predicateOf(member, present).mainClause(b, new On(label));
                 if (present) b.text(" uit de invoer");
                 return;
             }
-            attributeStanding(b, bean, type, member);
+            attributeStanding(b, bean, label, type, member);
         }
 
         private Predicate predicateOf(String member, boolean present) {
@@ -750,7 +752,7 @@ public final class Verbaliser {
                 if (characteristic) b.text("het kenmerk");
                 else {
                     b.text("de ");
-                    attributeName(b, type, targetOf(v));
+                    attributeName(b, type, targetOf(v), new On(label));
                 }
                 b.text(" in de invoer leeg was");
                 return;
@@ -762,7 +764,7 @@ public final class Verbaliser {
                 return;
             }
             ConditionReading.Status status = reading(v.pointer(), bean, label).status();
-            Read read = read(v.pointer(), bean, label, c);
+            Read read = read(v.pointer(), bean, label, subjectOf(v), c);
             if (status != ConditionReading.Status.HOLDS)
                 throw new IllegalStateException("de beslisser " + v.pointer() + " van " + label + " heeft de lezing "
                         + status + ", en een variant die besliste heeft een voorwaarde die geldt");
@@ -782,7 +784,7 @@ public final class Verbaliser {
             Expr value = v.rule() != null ? v.rule().value() : v.d().consequence();
             Condition c = conditionOf(v);
             int offset = c == null ? 0 : document.positions().subtree(c).size();
-            computations.computation(b, value, ucharText(v), read(v.pointer(), bean, label, value, offset));
+            computations.computation(b, value, ucharText(v), read(v.pointer(), bean, label, subjectOf(v), value, offset));
         }
 
         /** Waarom een variant die aan de beurt was niet besliste: een kenmerkvariant waarvan de voorwaarde geldt,
@@ -815,7 +817,7 @@ public final class Verbaliser {
                             + " voorwaarde geldt, beslist altijd");
                 }
                 case FAILS -> {
-                    Read read = read(v.pointer(), bean, label, c);
+                    Read read = read(v.pointer(), bean, label, subjectOf(v), c);
                     didNotHoldBecause(b).text(" ");
                     firstFailing(b, c, read, subject, ucharText(v));
                 }
@@ -840,7 +842,7 @@ public final class Verbaliser {
                 return;
             }
             didNotHoldBecause(b).text(" de ");
-            attributeName(b, type, member);
+            attributeName(b, type, member, new On(label));
             b.text(" had een invoerwaarde");
         }
 
@@ -1104,7 +1106,7 @@ public final class Verbaliser {
             List<Writer> deciders = wrote.isEmpty() ? empty : wrote;
             if (!wrote.isEmpty()) {
                 b.text("heeft als ");
-                attributeName(b, type, member);
+                attributeName(b, type, member, new On(label));
                 b.text(" ");
                 Writer first = wrote.get(0);
                 if (timeline) b.leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
@@ -1145,11 +1147,11 @@ public final class Verbaliser {
         private void standing(Sentence.Builder b, String member, boolean timeline) {
             Object v = readRaw(bean, Namen.getter(member));
             if (!timeline || v == null) {
-                attributeStanding(b, bean, type, member);
+                attributeStanding(b, bean, label, type, member);
                 return;
             }
             b.text("houdt als ");
-            attributeName(b, type, member);
+            attributeName(b, type, member, new On(label));
             b.text(" de invoerwaarde ").leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
         }
 
@@ -1166,11 +1168,11 @@ public final class Verbaliser {
             if (!timeline) computation(b, r.value(), writtenByUchar(r), valueRead(w));
             if (c != null) {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
-                verbaliseCondition(b, c, read(w.pointer(), bean, label, c), w.target().objectType(),
+                verbaliseCondition(b, c, read(w.pointer(), bean, label, w.target().objectType(), c), w.target().objectType(),
                         writtenByUchar(r));
             } else if (initialisation) {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" de ");
-                attributeName(b, type, member);
+                attributeName(b, type, member, new On(label));
                 b.text(" in de invoer leeg was");
             }
         }
@@ -1196,7 +1198,7 @@ public final class Verbaliser {
                             throw new IllegalStateException("de motor noemt de voorwaarde van '" + w.rule().name()
                                     + "' op " + label + " onwaar, en de regel heeft er geen");
                         didNotHoldBecause(b).text(" ");
-                        firstFailing(b, c, read(w.pointer(), bean, label, c), w.target().objectType(),
+                        firstFailing(b, c, read(w.pointer(), bean, label, w.target().objectType(), c), w.target().objectType(),
                                 writtenByUchar(w.rule()));
                     }
                     case OUTSIDE_VALIDITY ->
@@ -1212,7 +1214,7 @@ public final class Verbaliser {
         private Read valueRead(Writer w) {
             Condition c = w.rule().condition();
             int offset = c == null ? 0 : document.positions().subtree(c).size();
-            return read(w.pointer(), bean, label, w.rule().value(), offset);
+            return read(w.pointer(), bean, label, w.target().objectType(), w.rule().value(), offset);
         }
 
         /** Hoe een vorm waarde {@code root} berekende, met de dubbele punt ervoor; {@code read} is haar lezing op de
@@ -1301,7 +1303,7 @@ public final class Verbaliser {
             Expr.FunctionCall fold = overASet(e, read) ? (Expr.FunctionCall) e : null;
             if (fold != null) foldText(b, fold);
             else if (definitions.containsKey(e)) b.leaf(Part.Kind.QUOTE, definitions.get(e));
-            else describe(b, e, ucharText);
+            else describe(b, e, ucharText, readOn(e, read));
             if (!read.reached(e)) return;
             ConditionReading.NodeReading n = read.of(e);
             b.text(" (");
@@ -1468,7 +1470,7 @@ public final class Verbaliser {
                     + subject.name + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
         boolean ucharText = writtenByUchar(r);
         Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
-        predicate.mainClause(b);
+        predicate.mainClause(b, new On(label));
         if (v == null) {
             b.text(" (onvoorwaardelijk toegekend)");
         } else {
@@ -1482,12 +1484,12 @@ public final class Verbaliser {
                     if (!present)
                         throw new IllegalStateException("de voorwaarde van '" + r.name() + "' geldt volgens de motor op "
                                 + label + ", en het kenmerk '" + characteristic + "' staat niet");
-                    Read read = read(pointer, bean, label, v);
+                    Read read = read(pointer, bean, label, subject, v);
                     b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
                     verbaliseCondition(b, v, read, subject, ucharText);
                 }
                 case FAILS -> {
-                    Read read = read(pointer, bean, label, v);
+                    Read read = read(pointer, bean, label, subject, v);
                     but(b, present, r);
                     firstFailing(b, v, read, subject, ucharText);
                 }
@@ -1539,6 +1541,13 @@ public final class Verbaliser {
         b.close(Part.Kind.GROUND);
     }
 
+    /** Van welk object een gedeclareerde naam de waarde noemt: {@code label} zijn naam zoals {@code SUBJECT} het noemt,
+     *  null waar een link op de wandeling van de lezing ontbreekt en de lezing dus van geen object is
+     *  (RUNTIME-SEMANTICS ch. 5.8 regels 1 en 3). Een naam zonder {@code On} noemt geen waarde van één object: een
+     *  parameter, een rol, de tekst of het filter van een vouw over een verzameling, die per lid gelezen worden, een
+     *  lezing die de motor niet bereikte. */
+    private record On(String label) {}
+
     /** Een gedeclareerde naam zoals {@link Naming} haar noemt, met de sleutels van zijn declaratie {@code d}, de
      *  sleutels van {@code vocabularies.elements[]}; zonder sleutels waar de declaratie niet bekend is. */
     private static void declaredName(Sentence.Builder b, String text, Designatable d) {
@@ -1546,12 +1555,27 @@ public final class Verbaliser {
     }
 
     private static Map<String, Object> declaration(Designatable d) {
-        return d == null ? Map.of() : Part.meta("declaration", d.kind().name(), "owner", d.owner(), "canonical", d.name());
+        return declaration(d, null);
     }
 
-    /** Attribuut {@code member} van {@code holder} in het vocabulaire. */
+    /** De sleutels van declaratie {@code d}, en met {@code on} de sleutel {@code object}: van welk object de zin de
+     *  waarde van die declaratie noemt. */
+    private static Map<String, Object> declaration(Designatable d, On on) {
+        if (d == null) return Map.of();
+        Map<String, Object> meta = Part.meta("declaration", d.kind().name(), "owner", d.owner(), "canonical", d.name());
+        if (on != null) meta.put("object", on.label());
+        return meta;
+    }
+
+    /** Attribuut {@code member} van {@code holder} in het vocabulaire, als naam van een variant: geen waarde. */
     private void attributeName(Sentence.Builder b, ObjectType holder, String member) {
-        declaredName(b, naming.attribute(holder, member), Naming.attributeOf(holder, member));
+        attributeName(b, holder, member, null);
+    }
+
+    /** Attribuut {@code member} van {@code holder} in het vocabulaire, met het object waarvan de zin zijn waarde noemt
+     *  ({@link On}). */
+    private void attributeName(Sentence.Builder b, ObjectType holder, String member, On on) {
+        b.leaf(Part.Kind.NAME, naming.attribute(holder, member), declaration(Naming.attributeOf(holder, member), on));
     }
 
     /** Een waarde in de opmaak van de zin; {@code empty} bij een lege. */
@@ -1559,17 +1583,17 @@ public final class Verbaliser {
         b.leaf(Part.Kind.VALUE, text, empty ? Part.meta("empty", true) : Map.of());
     }
 
-    /** Wat attribuut {@code member} van {@code bean}, van objecttype {@code type}, houdt waar niemand het schreef:
-     *  leeg, of de invoerwaarde, van de bean gelezen. */
-    private void attributeStanding(Sentence.Builder b, Object bean, ObjectType type, String member) {
+    /** Wat attribuut {@code member} van {@code bean}, van objecttype {@code type} en met naam {@code label}, houdt waar
+     *  niemand het schreef: leeg, of de invoerwaarde, van de bean gelezen. */
+    private void attributeStanding(Sentence.Builder b, Object bean, String label, ObjectType type, String member) {
         Object v = readRaw(bean, Namen.getter(member));
         if (v == null) {
             b.text("heeft geen ");
-            attributeName(b, type, member);
+            attributeName(b, type, member, new On(label));
             return;
         }
         b.text("houdt als ");
-        attributeName(b, type, member);
+        attributeName(b, type, member, new On(label));
         b.text(" de invoerwaarde ");
         value(b, render(v, type.attribute(member)), false);
     }
@@ -1584,22 +1608,23 @@ public final class Verbaliser {
         return r;
     }
 
-    /** De lezing van vorm {@code form} op {@code bean} met de nummers van de knopen van voorwaarde {@code c}. */
-    private Read read(String form, Object bean, String label, Condition c) {
-        return read(form, bean, label, c, 0);
+    /** De lezing van vorm {@code form}, met onderwerp {@code subject}, op {@code bean} met de nummers van de knopen van
+     *  voorwaarde {@code c}. */
+    private Read read(String form, Object bean, String label, ObjectType subject, Condition c) {
+        return read(form, bean, label, subject, c, 0);
     }
 
     /** De lezing van vorm {@code form} op {@code bean} met de nummers van de knopen onder {@code root}, een voorwaarde
      *  of een waarde van het document, vanaf {@code offset}: de knopen van de waarde van een vorm volgen op die van haar
      *  voorwaarde (RUNTIME-SEMANTICS ch. 5.12). */
-    private Read read(String form, Object bean, String label, Object root, int offset) {
+    private Read read(String form, Object bean, String label, ObjectType subject, Object root, int offset) {
         ConditionReading r = reading(form, bean, label);
         Map<Object, Integer> numbers = new IdentityHashMap<>();
         List<Object> nodes = document.positions().subtree(root);
         for (int i = 0; i < nodes.size(); i++) numbers.put(nodes.get(i), offset + i);
         Map<Integer, ConditionReading.NodeReading> perNumber = new HashMap<>();
         for (ConditionReading.NodeReading n : r.nodes()) perNumber.put(n.node(), n);
-        return new Read(form, label, numbers, perNumber);
+        return new Read(form, label, bean, subject, numbers, perNumber);
     }
 
     private static IllegalStateException faulted(String form, String label) {
@@ -1607,9 +1632,10 @@ public final class Verbaliser {
                 + " uitleg volgt een sessie zonder fout");
     }
 
-    /** De lezing van één vorm op één object, op de knopen van haar voorwaarde gelegd. Een knoop zonder eigen lezing
-     *  staat in het filter, de matrix of de bron van een vouw: de zin noemt hem alleen in de tekst van de vouw. */
-    private record Read(String form, String label, Map<Object, Integer> numbers,
+    /** De lezing van één vorm op één object, op de knopen van haar voorwaarde gelegd: {@code object} is dat object,
+     *  {@code subject} het objecttype van het onderwerp van de vorm. Een knoop zonder eigen lezing staat in het filter,
+     *  de matrix of de bron van een vouw: de zin noemt hem alleen in de tekst van de vouw. */
+    private record Read(String form, String label, Object object, ObjectType subject, Map<Object, Integer> numbers,
                         Map<Integer, ConditionReading.NodeReading> perNumber) {
 
         /** De lezing van knoop {@code node}; faalt luid waar de knoop niet tot de voorwaarde hoort of de motor er
@@ -1713,7 +1739,7 @@ public final class Verbaliser {
             return b -> {
                 who(b, walk);
                 b.text(" ");
-                predicate.clause(b);
+                predicate.clause(b, checkOn(k, walk, holder, read));
             };
         }
         if (c instanceof Condition.RoleMembership rl)
@@ -1900,6 +1926,17 @@ public final class Verbaliser {
         b.leaf(Part.Kind.CONNECTIVE, "niet geldt").text(": ");
     }
 
+    /** Het object waarop kenmerkcheck {@code k} het kenmerk las: het object van de lezing, of over {@code walk} het
+     *  object dat uchar bereikt ({@link DroolsBackend#reached}, dat een lezing van een lid neemt: hier het kenmerk op
+     *  {@code holder}, het type dat de wandeling bereikt); zonder object waar een link op de wandeling ontbreekt. */
+    private On checkOn(Condition.CharacteristicCheck k, List<RoleBindingRef> walk, ObjectType holder, Read read) {
+        if (walk.isEmpty()) return new On(read.label());
+        Expr.AttributeReference member = new Expr.AttributeReference(k.characteristic(), holder, null, null, null,
+                k.source(), false, List.of(), List.of(), null, 0);
+        Object o = DroolsBackend.reached(model, read.object(), read.subject(), member, walk);
+        return new On(o == null ? null : nameOf(o, k.characteristic(), read));
+    }
+
     /** De wandeling van een kenmerkcheck over een rol, zoals de lader haar naast de check gaf; leeg voor een kenmerk
      *  van het onderwerp zelf. */
     private List<RoleBindingRef> walkOf(Condition.CharacteristicCheck k) {
@@ -2025,7 +2062,7 @@ public final class Verbaliser {
             value(b, renderOperand(e, read), read.of(e).value() == null);
             return;
         }
-        describe(b, e, ucharText);
+        describe(b, e, ucharText, readOn(e, read));
         b.text(" (");
         value(b, renderOperand(e, read), read.of(e).value() == null);
         b.text(")");
@@ -2083,25 +2120,59 @@ public final class Verbaliser {
      *  regeltekst en blijft zoals hij geschreven is, behalve de naam van een gelezen attribuut in een regel die uchar
      *  schreef ({@code ucharText}). Zonder brontekst noemt hij de declaratie. */
     private void describe(Sentence.Builder b, Expr e, boolean ucharText) {
+        describe(b, e, ucharText, null);
+    }
+
+    /** {@link #describe(Sentence.Builder, Expr, boolean)}, met het object waarop de motor de waarde las die de zin
+     *  erachter noemt ({@link #readOn}), op het stuk met de sleutels van de declaratie. */
+    private void describe(Sentence.Builder b, Expr e, boolean ucharText, On on) {
         if (e == null) {
             b.text("de waarde");
             return;
         }
         String source = e.source().snippet();
         if (source != null && !source.isBlank()) {
-            if (ucharText && e instanceof Expr.AttributeReference ref) inVocabulary(b, source.trim(), ref);
-            else b.leaf(Part.Kind.QUOTE, source.trim(), declaration(declarationOf(e)));
+            if (ucharText && e instanceof Expr.AttributeReference ref) inVocabulary(b, source.trim(), ref, on);
+            else b.leaf(Part.Kind.QUOTE, source.trim(), declaration(declarationOf(e), on));
             return;
         }
         if (e instanceof Expr.AttributeReference ref) {
             b.text("de ");
-            attributeName(b, ref.objectType(), ref.attribute());
+            attributeName(b, ref.objectType(), ref.attribute(), on);
         } else if (e instanceof Expr.ParameterRef pr) {
             b.text("de ");
             declaredName(b, naming.parameter(pr.parameter().name()), Designatable.parameter(pr.parameter().name()));
         } else {
             b.text("de waarde");
         }
+    }
+
+    /** Van welk object operand {@code e} de waarde las die de zin noemt: bij een lezing van een attribuut het object
+     *  waarop de motor haar las ({@link #objectOn}); null waar de zin geen gelezen waarde van een attribuut noemt: een
+     *  ander operand, of een dat de motor niet bereikte. */
+    private On readOn(Expr e, Read read) {
+        if (!(e instanceof Expr.AttributeReference ref) || declarationOf(e) == null || !read.has(e) || !read.reached(e))
+            return null;
+        return objectOn(ref, read);
+    }
+
+    /** Het object waarop lezing {@code ref} haar lid las, op het object van {@code read}: over de wandeling die de lader
+     *  naast de lezing gaf, zoals uchar haar loopt ({@link DroolsBackend#reached}), zonder wandeling het object van de
+     *  lezing; zonder object waar een link op de wandeling ontbreekt. */
+    private On objectOn(Expr.AttributeReference ref, Read read) {
+        List<RoleBindingRef> walk = document.loaded().navigationBindings().get(ref);
+        Object o = DroolsBackend.reached(model, read.object(), read.subject(), ref, walk == null ? List.of() : walk);
+        return new On(o == null ? null : nameOf(o, ref.attribute(), read));
+    }
+
+    /** De naam van object {@code o}, waarop {@code read} lid {@code member} las ({@link #labels}). */
+    private String nameOf(Object o, String member, Read read) {
+        String name = labels.get(o);
+        if (name == null)
+            throw new IllegalStateException("de lezing van '" + member + "' in " + read.form() + " op " + read.label()
+                    + " staat op een " + o.getClass().getSimpleName() + " zonder naam: de uitleg noemt de objecten van"
+                    + " de invoer en de gemaakte objecten van het fixpunt");
+        return name;
     }
 
     /** De declaratie die operand {@code e} leest, waar het één leest: een attribuut of een parameter; anders null. */
@@ -2115,7 +2186,7 @@ public final class Verbaliser {
      *  gelezen attribuut via {@link Naming}: "zijn opgegeven Datum einde recht op uitkering". De lezing die uchars
      *  IR-lader leest draagt het onderwerpwoord niet, dus blijft de tekst de bron en verandert alleen de naam erin: het
      *  laatste voorkomen, want uchar schrijft de lezing als "zijn &lt;naam&gt;". */
-    private void inVocabulary(Sentence.Builder b, String text, Expr.AttributeReference ref) {
+    private void inVocabulary(Sentence.Builder b, String text, Expr.AttributeReference ref, On on) {
         Matcher m = Pattern.compile("(?iu)" + namePattern(ref.attribute())).matcher(text);
         int begin = -1, end = -1;
         while (m.find()) { begin = m.start(); end = m.end(); }
@@ -2124,7 +2195,7 @@ public final class Verbaliser {
                     + "', zonder die naam: de uitleg kan haar niet in het vocabulaire noemen");
         // de tekst om de naam heen is uchars regeltekst
         if (begin > 0) b.leaf(Part.Kind.QUOTE, text.substring(0, begin));
-        attributeName(b, ref.objectType(), ref.attribute());
+        attributeName(b, ref.objectType(), ref.attribute(), on);
         if (end < text.length()) b.leaf(Part.Kind.QUOTE, text.substring(end));
     }
 
@@ -2132,14 +2203,16 @@ public final class Verbaliser {
      *  declaratie {@code declaration}, in de volgorde van een hoofdzin ("heeft de uitkeringsduur verstreken") of een
      *  bijzin ("de uitkeringsduur verstreken heeft"). */
     private record Predicate(String verb, String before, String name, Designatable declaration) {
-        void mainClause(Sentence.Builder b) {
+        /** De hoofdzin, met {@code on} het object waarvan de zin het kenmerk noemt. */
+        void mainClause(Sentence.Builder b, On on) {
             b.text(verb + " " + before);
-            declaredName(b, name, declaration);
+            b.leaf(Part.Kind.NAME, name, Verbaliser.declaration(declaration, on));
         }
 
-        void clause(Sentence.Builder b) {
+        /** De bijzin, met {@code on} het object waarop de motor het kenmerk las. */
+        void clause(Sentence.Builder b, On on) {
             b.text(before);
-            declaredName(b, name, declaration);
+            b.leaf(Part.Kind.NAME, name, Verbaliser.declaration(declaration, on));
             b.text(" " + verb);
         }
     }

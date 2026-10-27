@@ -241,41 +241,45 @@ class ExplanationComputationServiceTest {
      *  that held and gave no value (B); no writer held (C); a rounding with its value before it and a ground (A). */
     private static final Map<Integer, String> PARTS = Map.of(
             1, "SUBJECT«J1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=eerste waardevolle"
-                    + " vinddag}«eerste waardevolle vinddag» « » VALUE«01-02-2026» « volgens de regel '» RULE«eerste"
-                    + " waardevolle vinddag» «' (onvoorwaardelijk)» COMPUTATION[«: » QUOTE{declaration=ATTRIBUUT,"
-                    + " owner=Vondst, canonical=vinddag}«de eerste van de vinddag van alle vondsten van de Jutter die »"
-                    + " QUOTE{declaration=KENMERK, owner=Vondst, canonical=waardevol}«waardevol zijn» « (»"
-                    + " VALUE«01-02-2026» «): » MEMBERS{members=2}[«over » SUBJECT«V1» « (» VALUE«01-02-2026» «) en »"
-                    + " SUBJECT«V2» « (» VALUE«01-03-2026» «) (2 leden)»]]",
-            4, "SUBJECT«J1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=bonus}«bonus» « »"
-                    + " VALUE«25,00» « volgens de regel '» RULE«bonus voor ingezetenen» «'» COMPUTATION[«: »"
+                    + " vinddag, object=J1}«eerste waardevolle vinddag» « » VALUE«01-02-2026» « volgens de regel '»"
+                    + " RULE«eerste waardevolle vinddag» «' (onvoorwaardelijk)» COMPUTATION[«: »"
+                    + " QUOTE{declaration=ATTRIBUUT, owner=Vondst, canonical=vinddag}«de eerste van de vinddag van alle"
+                    + " vondsten van de Jutter die » QUOTE{declaration=KENMERK, owner=Vondst,"
+                    + " canonical=waardevol}«waardevol zijn» « (» VALUE«01-02-2026» «): » MEMBERS{members=2}[«over »"
+                    + " SUBJECT«V1» « (» VALUE«01-02-2026» «) en » SUBJECT«V2» « (» VALUE«01-03-2026» «) (2 leden)»]]",
+            4, "SUBJECT«J1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=bonus, object=J1}«bonus»"
+                    + " « » VALUE«25,00» « volgens de regel '» RULE«bonus voor ingezetenen» «'» COMPUTATION[«: »"
                     + " QUOTE«25,00»] «, » CONNECTIVE«omdat» « » CONDITION{holds=true}[«het onderwerp »"
-                    + " NAME{declaration=KENMERK, owner=Jutter, canonical=ingezetene}«ingezetene» « is»]"
+                    + " NAME{declaration=KENMERK, owner=Jutter, canonical=ingezetene, object=J1}«ingezetene» « is»]"
                     + " VARIANT{decided=false, displaced=true}[«; verdrongen: de regel '» RULE«bonus zonder voorwaarde»"
                     + " «'»]",
-            5, "SUBJECT«J1» « heeft geen » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=toelage}«toelage» «, »"
-                    + " CONNECTIVE«want» « de regel '» RULE«toelage» «' gaf geen waarde» COMPUTATION[«: »"
-                    + " QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=tarief}«zijn tarief» « (»"
-                    + " VALUE{empty=true}«onbekend» «)»] «, » CONNECTIVE«omdat» « » CONDITION{holds=true}[«het"
-                    + " onderwerp » NAME{declaration=KENMERK, owner=Jutter, canonical=ingezetene}«ingezetene» « is»]",
-            10, "SUBJECT«J2» « heeft geen » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie}«premie» «, »"
-                    + " CONNECTIVE«want» « geen regel gold» VARIANT{decided=false}[«; de regel '» RULE«premie» «' »"
-                    + " CONNECTIVE«gold niet» «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
-                    + " CONDITION{holds=false}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
-                    + " canonical=ingezetene}«ingezetene» « is»]]",
-            18, "SUBJECT«J3» « houdt als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=bonus}«bonus» « de"
-                    + " invoerwaarde » VALUE«7,50» «, » CONNECTIVE«want» « geen regel gold» VARIANT{decided=false}[«; de"
-                    + " regel '» RULE«bonus voor ingezetenen» «' » CONNECTIVE«gold niet» «, » CONNECTIVE«want» « »"
-                    + " CONNECTIVE«niet geldt» «: » CONDITION{holds=false}[«het onderwerp » NAME{declaration=KENMERK,"
-                    + " owner=Jutter, canonical=ingezetene}«ingezetene» « is»]] VARIANT{decided=false,"
-                    + " displaced=true}[«; verdrongen: de regel '» RULE«bonus zonder voorwaarde» «'»]",
-            22, "SUBJECT«V1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=vindersloon}«vindersloon»"
+            5, "SUBJECT«J1» « heeft geen » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=toelage,"
+                    + " object=J1}«toelage» «, » CONNECTIVE«want» « de regel '» RULE«toelage» «' gaf geen waarde»"
+                    + " COMPUTATION[«: » QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=tarief, object=J1}«zijn"
+                    + " tarief» « (» VALUE{empty=true}«onbekend» «)»] «, » CONNECTIVE«omdat» « »"
+                    + " CONDITION{holds=true}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
+                    + " canonical=ingezetene, object=J1}«ingezetene» « is»]",
+            10, "SUBJECT«J2» « heeft geen » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie,"
+                    + " object=J2}«premie» «, » CONNECTIVE«want» « geen regel gold» VARIANT{decided=false}[«; de regel"
+                    + " '» RULE«premie» «' » CONNECTIVE«gold niet» «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «:"
+                    + " » CONDITION{holds=false}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
+                    + " canonical=ingezetene, object=J2}«ingezetene» « is»]]",
+            18, "SUBJECT«J3» « houdt als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=bonus, object=J3}«bonus»"
+                    + " « de invoerwaarde » VALUE«7,50» «, » CONNECTIVE«want» « geen regel gold»"
+                    + " VARIANT{decided=false}[«; de regel '» RULE«bonus voor ingezetenen» «' » CONNECTIVE«gold niet»"
+                    + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: » CONDITION{holds=false}[«het onderwerp »"
+                    + " NAME{declaration=KENMERK, owner=Jutter, canonical=ingezetene, object=J3}«ingezetene» « is»]]"
+                    + " VARIANT{decided=false, displaced=true}[«; verdrongen: de regel '» RULE«bonus zonder voorwaarde»"
+                    + " «'»]",
+            22, "SUBJECT«V1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=vindersloon,"
+                    + " object=V1}«vindersloon»"
                     + " « » VALUE«15,43» « volgens de regel '» RULE«vindersloon» «'» COMPUTATION[«: » QUOTE«" + VINDERSLOON
                     + "» «, met » QUOTE{declaration=PARAMETER, owner=null, canonical=percentage vindersloon}«percentage"
                     + " vindersloon» « (» VALUE«12,5 %» «) en » QUOTE{declaration=ATTRIBUUT, owner=Vondst,"
-                    + " canonical=waarde}«zijn waarde» « (» VALUE«123,45» «); vóór de afronding » VALUE«15,43125»] «, »"
+                    + " canonical=waarde, object=V1}«zijn waarde» « (» VALUE«123,45» «); vóór de afronding »"
+                    + " VALUE«15,43125»] «, »"
                     + " CONNECTIVE«omdat» « » CONDITION{holds=true}[QUOTE{declaration=ATTRIBUUT, owner=Vondst,"
-                    + " canonical=waarde}«zijn waarde» « (» VALUE«123,45» «) is groter dan » VALUE«0»]"
+                    + " canonical=waarde, object=V1}«zijn waarde» « (» VALUE«123,45» «) is groter dan » VALUE«0»]"
                     + " GROUND{rule=vindersloon}[«. Grondslag: » NOTE«Jutterswet art. 10»]");
 
     private static String descriptor(String rules) {

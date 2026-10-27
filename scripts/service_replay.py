@@ -328,11 +328,12 @@ def part_text(part, place):
     return part["text"]
 
 
-def explained(service, path, request, answer, name):
+def explained(service, path, request, answer, name, document, scope):
     """De uitleg van een verzoek waarvan de dienst `answer` gaf: (zinnen, uitgelegde voorwaarden, "niet is vast te
-    stellen", zinnen over een berekende waarde die een regel schreef). Het antwoord met uitleg en stukken moet buiten
-    die twee velden `answer` zijn, en per zin moeten de teksten van de bladeren van haar stukken achter elkaar de zin
-    zijn, met de grondslag als laatste stuk."""
+    stellen", zinnen over een berekende waarde die een regel schreef, gelezen waarden met een schrijver). Het antwoord
+    met uitleg en stukken moet buiten die twee velden `answer` zijn, per zin moeten de teksten van de bladeren van haar
+    stukken achter elkaar de zin zijn, met de grondslag als laatste stuk, en elke gelezen waarde met een schrijver vindt
+    haar zin (`read_links`; `document` het IR-document, `scope` de namen van de vormen die het entrypoint draagt)."""
     status, text_ = service.ask("POST", path + "?explanation=true&explanationParts=true", request)
     if status != 200:
         raise Deviation(f"{name}: met uitleg {status} {text_[:500]}")
@@ -358,7 +359,76 @@ def explained(service, path, request, answer, name):
     conditions = sum(z.count("omdat ") + z.count("want ") for z in sentences)
     undetermined = sum(z.count("niet is vast te stellen") for z in sentences)
     computations = sum(1 for roots in parts if computed(roots))
-    return len(sentences), conditions, undetermined, computations
+    return len(sentences), conditions, undetermined, computations, read_links(parts, request, document, scope, name)
+
+
+def read_links(parts, request, document, scope, place):
+    """Het aantal gelezen waarden met een schrijver in de stukken `parts` van één uitleg (kaart
+    explanation-read-objects-and-displaced, deel 1). Een gelezen waarde is een blad NAME of QUOTE met de sleutels van
+    een attribuut of kenmerk en een object (`object` niet null); zij heeft een schrijver als een vorm van `scope` dat lid
+    schrijft op het type van het object of een supertype ervan: een regel van `rules.rules` met dat doel, of een
+    defaults-groep. De zin van die schrijver is de zin waarvan het eerste stuk het object als SUBJECT is en de eerste
+    NAME erna dezelfde `canonical` heeft; ontbreekt die, dan faalt de golden. Een invoerwaarde zonder schrijver heeft
+    geen zin en telt niet. Het type van een object staat in `request`, of is het `createdType` van de creatie die het
+    maakte."""
+    supertype = {t["name"]: t.get("supertype") for t in document["model"].get("objectTypes", [])}
+    created = {c["name"]: c["versions"][0]["createdType"] for c in document["rules"].get("objectCreations", [])}
+    types = {i["id"]: i["type"] for i in request.get("instances", [])}
+    writers = set()
+    for r in document["rules"].get("rules", []):
+        if r.get("name") not in scope:
+            continue
+        for v in r["versions"]:
+            t = v.get("target", {})
+            if t.get("node") == "AttributeReference" and t.get("subjectType"):
+                writers.add((t["subjectType"], t["attribute"]))
+    for g in document["rules"].get("prioritizedDefaults", []):
+        if g.get("name") in scope:
+            writers.add((g["subject"], g.get("attribute") or g.get("characteristic")))
+    heads = set()
+    for roots in parts:
+        name = next((p for p in roots if p["kind"] == "NAME"), None)
+        if roots and roots[0]["kind"] == "SUBJECT" and name is not None and "canonical" in name:
+            heads.add((roots[0]["text"], name["canonical"]))
+
+    def type_of(label):
+        if label in types:
+            return types[label]
+        # een gemaakt object heet «"<creatie>"»(<onderwerp>)#1; zijn type is het createdType van die creatie
+        m = re.match(r'«"((?:[^"\\]|\\.)*)"»', label)
+        creation = m and re.sub(r"\\(.)", lambda e: {"n": "\n", "r": "\r"}.get(e.group(1), e.group(1)), m.group(1))
+        if creation in created:
+            return created[creation]
+        raise Deviation(f"{place}: een gelezen waarde staat op {label!r}, en dat is geen object van het verzoek en"
+                        f" geen gemaakt object van een creatie van het document")
+
+    def has_writer(label, member):
+        t = type_of(label)
+        while t is not None:
+            if (t, member) in writers:
+                return True
+            t = supertype.get(t)
+        return False
+
+    links = 0
+
+    def walk(part, sentence):
+        nonlocal links
+        for c in part.get("parts", []):
+            walk(c, sentence)
+        if part["kind"] not in ("NAME", "QUOTE") or part.get("declaration") not in ("ATTRIBUUT", "KENMERK"):
+            return
+        if part.get("object") is None or not has_writer(part["object"], part["canonical"]):
+            return
+        if (part["object"], part["canonical"]) not in heads:
+            raise Deviation(f"{place}: zin {sentence}: de waarde van '{part['canonical']}' op {part['object']} heeft"
+                            f" een schrijver, en de uitleg heeft geen zin over die waarde")
+        links += 1
+
+    for i, roots in enumerate(parts):
+        for r in roots:
+            walk(r, i + 1)
+    return links
 
 
 def computed(roots):
@@ -391,7 +461,9 @@ def play(golden, map_, descriptor_path=None, explanation=False):
                 path = "/replay"
             else:
                 path = "/" + json.load(open(descriptor_path))["entrypoints"][0]["path"]
-            totals = [0, 0, 0, 0]
+            entrypoint = json.load(open(descriptor_path))["entrypoints"][0]
+            scope = set(entrypoint.get("scope", {}).get("ruleNames", forms(document)))
+            totals = [0, 0, 0, 0, 0]
             with Service(descriptor_path, source, workdir) as service:
                 for name, v, c in requests:
                     status, text_ = service.ask("POST", path, v)
@@ -408,7 +480,7 @@ def play(golden, map_, descriptor_path=None, explanation=False):
                     except Deviation as a:
                         raise Deviation(f"{name}: {a}")
                     if explanation:
-                        for k, n in enumerate(explained(service, path, v, read_json(text_), name)):
+                        for k, n in enumerate(explained(service, path, v, read_json(text_), name, document, scope)):
                             totals[k] += n
         if explanation:
             return golden, "PLAYED", "\t".join(str(n) for n in [len(cases)] + totals)

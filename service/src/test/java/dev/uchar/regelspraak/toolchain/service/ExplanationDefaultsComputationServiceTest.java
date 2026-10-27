@@ -145,35 +145,36 @@ class ExplanationDefaultsComputationServiceTest {
      *  makes, which reads 'berekende waarde' and names it with the keys of its declaration (V1), of the initialisation
      *  without a condition (V3), and of the subtype's rule without a condition in a stack (W1). */
     private static final Map<Integer, String> PARTS = Map.of(
-            1, "SUBJECT«J2» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie}«premie» « »"
-                    + " VALUE«15,43» « volgens '» RULE«premie uit bonus» «'» COMPUTATION[«: » QUOTE«(het percentage"
-                    + " premie van zijn bonus) naar beneden afgerond op 2 decimalen» «, met »"
+            1, "SUBJECT«J2» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie,"
+                    + " object=J2}«premie» « » VALUE«15,43» « volgens '» RULE«premie uit bonus» «'» COMPUTATION[«: »"
+                    + " QUOTE«(het percentage premie van zijn bonus) naar beneden afgerond op 2 decimalen» «, met »"
                     + " QUOTE{declaration=PARAMETER, owner=null, canonical=percentage premie}«percentage premie» « (»"
-                    + " VALUE«12,5 %» «) en » QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=bonus}«zijn bonus»"
-                    + " « (» VALUE«123,45» «); vóór de afronding » VALUE«15,43125»] «, » CONNECTIVE«omdat» « »"
-                    + " CONDITION{holds=true}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
-                    + " canonical=ingezetene}«ingezetene» « is»] «; verdrongen: de regel '» RULE«premie» «'»",
-            3, "SUBJECT«V1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=waarde}«waarde» « »"
-                    + " VALUE«110,00» « volgens '» NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=berekende"
-                    + " waarde}«berekende waarde» «' (onvoorwaardelijk)» COMPUTATION[«: » QUOTE«zijn »"
-                    + " NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=berekende waarde}«berekende waarde» « (»"
-                    + " VALUE«110,00» «)»] «; '» NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=opgegeven"
-                    + " waarde}«opgegeven waarde» «' gaf geen waarde; verdrongen: '» RULE«waarde bij onbekende"
-                    + " taxatie» «'»",
-            9, "SUBJECT«V3» « heeft als » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=waarde}«waarde» « »"
-                    + " VALUE«25,00» « volgens '» RULE«waarde bij onbekende taxatie» «'» COMPUTATION[«: »"
-                    + " QUOTE«25,00»] «, » CONNECTIVE«omdat» « de » NAME{declaration=ATTRIBUUT, owner=Vondst,"
-                    + " canonical=waarde}«waarde» « in de invoer leeg was; '» NAME{declaration=ATTRIBUUT,"
-                    + " owner=Vondst, canonical=opgegeven waarde}«opgegeven waarde» «' gaf geen waarde; '»"
-                    + " NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=berekende waarde}«berekende waarde» «' gaf"
-                    + " geen waarde»",
-            11, "SUBJECT«W1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Recht, canonical=uitkering}«uitkering»"
-                    + " « » VALUE«20,00» « volgens de regel '» RULE«uitkering van een wrakrecht» «' (onvoorwaardelijk)»"
-                    + " COMPUTATION[«: » QUOTE«zijn grondslag maal 2» «, met » QUOTE{declaration=ATTRIBUUT,"
-                    + " owner=Recht, canonical=grondslag}«zijn grondslag» « (» VALUE«10,00» «)»] «; '» RULE«betwiste"
-                    + " uitkering» «' » CONNECTIVE«gold niet» «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
-                    + " CONDITION{holds=false}[«het onderwerp » NAME{declaration=KENMERK, owner=Recht,"
-                    + " canonical=betwist}«betwist» « is»]");
+                    + " VALUE«12,5 %» «) en » QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=bonus,"
+                    + " object=J2}«zijn bonus» « (» VALUE«123,45» «); vóór de afronding » VALUE«15,43125»] «, »"
+                    + " CONNECTIVE«omdat» « » CONDITION{holds=true}[«het onderwerp » NAME{declaration=KENMERK,"
+                    + " owner=Jutter, canonical=ingezetene, object=J2}«ingezetene» « is»] «; verdrongen: de regel '»"
+                    + " RULE«premie» «'»",
+            3, "SUBJECT«V1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=waarde,"
+                    + " object=V1}«waarde» « » VALUE«110,00» « volgens '» NAME{declaration=ATTRIBUUT, owner=Vondst,"
+                    + " canonical=berekende waarde}«berekende waarde» «' (onvoorwaardelijk)» COMPUTATION[«: »"
+                    + " QUOTE«zijn » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=berekende waarde,"
+                    + " object=V1}«berekende waarde» « (» VALUE«110,00» «)»] «; '» NAME{declaration=ATTRIBUUT,"
+                    + " owner=Vondst, canonical=opgegeven waarde}«opgegeven waarde» «' gaf geen waarde; verdrongen: '»"
+                    + " RULE«waarde bij onbekende taxatie» «'»",
+            9, "SUBJECT«V3» « heeft als » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=waarde,"
+                    + " object=V3}«waarde» « » VALUE«25,00» « volgens '» RULE«waarde bij onbekende taxatie» «'»"
+                    + " COMPUTATION[«: » QUOTE«25,00»] «, » CONNECTIVE«omdat» « de » NAME{declaration=ATTRIBUUT,"
+                    + " owner=Vondst, canonical=waarde, object=V3}«waarde» « in de invoer leeg was; '»"
+                    + " NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=opgegeven waarde}«opgegeven waarde» «' gaf"
+                    + " geen waarde; '» NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=berekende waarde}«berekende"
+                    + " waarde» «' gaf geen waarde»",
+            11, "SUBJECT«W1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Recht, canonical=uitkering,"
+                    + " object=W1}«uitkering» « » VALUE«20,00» « volgens de regel '» RULE«uitkering van een wrakrecht»"
+                    + " «' (onvoorwaardelijk)» COMPUTATION[«: » QUOTE«zijn grondslag maal 2» «, met »"
+                    + " QUOTE{declaration=ATTRIBUUT, owner=Recht, canonical=grondslag, object=W1}«zijn grondslag» « (»"
+                    + " VALUE«10,00» «)»] «; '» RULE«betwiste uitkering» «' » CONNECTIVE«gold niet» «, »"
+                    + " CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: » CONDITION{holds=false}[«het onderwerp »"
+                    + " NAME{declaration=KENMERK, owner=Recht, canonical=betwist, object=W1}«betwist» « is»]");
 
     private static String document() {
         return UcharBuild.document(Resolver.resolve(SOURCE));
