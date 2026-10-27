@@ -390,7 +390,9 @@ of parts (`Part`, record `(kind, text, meta, parts)`); `Sentence.text()`, the te
 the only way to the plain sentence, so `explanation` and `explanationParts` cannot differ. The service
 (`ExplanationParts`) and both routes of the playground write the tree with one writer: a leaf as `{"kind", "text",
 <meta>}`, a group as `{"kind", <meta>, "parts"}`. The groups stand where the verbaliser is recursive, and around a
-part a consumer may leave out with its glue (`COMPUTATION`, `VARIANT`).
+part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`, `READING`; card
+`explanation-part-groups`): a sentence without every `MEMBERS`, every `VARIANT` with `decided: false` and every
+`READING` is still a sentence, with no bracket, colon or separator left over.
 
 | kind | leaf or group | what | meta |
 |---|---|---|---|
@@ -402,9 +404,10 @@ part a consumer may leave out with its glue (`COMPUTATION`, `VARIANT`).
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
-| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, after the colon; in a computation the members of a fold over a set, each with what it contributed | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
+| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
 | `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, after its name, with its colon (below) | — |
-| `VARIANT` | group | a writer of a computed value that did not write it, with the `"; "` before it | `decided: false`, and `displaced: true` for an initialisation that was not at its turn |
+| `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn |
+| `READING` | group | the value the engine read for the operand or the member right before it, with its brackets: `" ("`, the `VALUE`, `")"` | — |
 | `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | the decider whose annotations they are (below): `rule`, or `group`, `pointer`, `position` and `variant` where it has a name |
 | `STATUTE` | leaf | a Juriconnect anchor, literally | `bwb`, `article`, and `paragraph` and `part` where it names them |
 | `LEMMA` | leaf | the slug of a lemma | — |

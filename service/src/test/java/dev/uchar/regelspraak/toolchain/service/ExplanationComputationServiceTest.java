@@ -245,8 +245,9 @@ class ExplanationComputationServiceTest {
                     + " RULE«eerste waardevolle vinddag» «' (onvoorwaardelijk)» COMPUTATION[«: »"
                     + " QUOTE{declaration=ATTRIBUUT, owner=Vondst, canonical=vinddag}«de eerste van de vinddag van alle"
                     + " vondsten van de Jutter die » QUOTE{declaration=KENMERK, owner=Vondst,"
-                    + " canonical=waardevol}«waardevol zijn» « (» VALUE«01-02-2026» «): » MEMBERS{members=2}[«over »"
-                    + " SUBJECT«V1» « (» VALUE«01-02-2026» «) en » SUBJECT«V2» « (» VALUE«01-03-2026» «) (2 leden)»]]",
+                    + " canonical=waardevol}«waardevol zijn» READING[« (» VALUE«01-02-2026» «)»] MEMBERS{members=2}[«:"
+                    + " over » SUBJECT«V1» READING[« (» VALUE«01-02-2026» «)»] « en » SUBJECT«V2» READING[« (»"
+                    + " VALUE«01-03-2026» «)»] « (2 leden)»]]",
             4, "SUBJECT«J1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=bonus, object=J1}«bonus»"
                     + " « » VALUE«25,00» « volgens de regel '» RULE«bonus voor ingezetenen» «'» COMPUTATION[«: »"
                     + " QUOTE«25,00»] «, » CONNECTIVE«omdat» « » CONDITION{holds=true}[«het onderwerp »"
@@ -256,7 +257,7 @@ class ExplanationComputationServiceTest {
             5, "SUBJECT«J1» « heeft geen » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=toelage,"
                     + " object=J1}«toelage» «, » CONNECTIVE«want» « de regel '» RULE«toelage» «' gaf geen waarde»"
                     + " COMPUTATION[«: » QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=tarief, object=J1}«zijn"
-                    + " tarief» « (» VALUE{empty=true}«onbekend» «)»] «, » CONNECTIVE«omdat» « »"
+                    + " tarief» READING[« (» VALUE{empty=true}«onbekend» «)»]] «, » CONNECTIVE«omdat» « »"
                     + " CONDITION{holds=true}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
                     + " canonical=ingezetene, object=J1}«ingezetene» « is»]",
             10, "SUBJECT«J2» « heeft geen » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=premie,"
@@ -275,11 +276,11 @@ class ExplanationComputationServiceTest {
                     + " object=V1}«vindersloon»"
                     + " « » VALUE«15,43» « volgens de regel '» RULE«vindersloon» «'» COMPUTATION[«: » QUOTE«" + VINDERSLOON
                     + "» «, met » QUOTE{declaration=PARAMETER, owner=null, canonical=percentage vindersloon}«percentage"
-                    + " vindersloon» « (» VALUE«12,5 %» «) en » QUOTE{declaration=ATTRIBUUT, owner=Vondst,"
-                    + " canonical=waarde, object=V1}«zijn waarde» « (» VALUE«123,45» «); vóór de afronding »"
+                    + " vindersloon» READING[« (» VALUE«12,5 %» «)»] « en » QUOTE{declaration=ATTRIBUUT, owner=Vondst,"
+                    + " canonical=waarde, object=V1}«zijn waarde» READING[« (» VALUE«123,45» «)»] «; vóór de afronding »"
                     + " VALUE«15,43125»] «, »"
                     + " CONNECTIVE«omdat» « » CONDITION{holds=true}[QUOTE{declaration=ATTRIBUUT, owner=Vondst,"
-                    + " canonical=waarde, object=V1}«zijn waarde» « (» VALUE«123,45» «) is groter dan » VALUE«0»]"
+                    + " canonical=waarde, object=V1}«zijn waarde» READING[« (» VALUE«123,45» «)»] « is groter dan » VALUE«0»]"
                     + " GROUND{rule=vindersloon}[«. Grondslag: » NOTE«Jutterswet art. 10»]");
 
     private static String descriptor(String rules) {

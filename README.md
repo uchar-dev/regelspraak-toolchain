@@ -112,6 +112,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
   attribute or a characteristic carries `object`, the label of the object whose value the sentence names (the subject
   for the head of a sentence, the object a read over a role reached), or `null` where a link on the role is absent
   (`docs/ENGINE.md`, "The object of a value"). `explanation` and the text of the parts are unchanged.
+- **Omissible parts carry their glue** (card `explanation-part-groups`): the colon before the members of a fold is the
+  first `TEXT` of `MEMBERS`; every variant of a defaults group that did not decide is a group `VARIANT` (`decided:
+  false`, and `displaced: true` after the decider) with its separator; and a value the engine read stands with its
+  brackets in a new group `READING`. Without those groups a sentence stays a sentence. `explanation` and the text of the
+  leaves are unchanged.
 - **A deviation names its layers** (card `ground-deviation`): a `DEVIATION` part carries `between` (the layers of
   the pair in the order of the register, or the one layer of `deviatie binnen`) and `follows` (the layer the rule
   set follows; absent within one layer) in place of `followed`. The old forms `afwijking: ` and `afwijking, niet

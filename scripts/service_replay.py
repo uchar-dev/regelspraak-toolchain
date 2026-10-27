@@ -311,8 +311,8 @@ def first_difference(a, b, at):
 
 
 PART_KINDS = {"SUBJECT", "NAME", "QUOTE", "VALUE", "RULE", "CONNECTIVE", "TEXT", "CONDITION", "MEMBERS", "COMPUTATION",
-              "VARIANT", "GROUND", "STATUTE", "LEMMA", "DEVIATION", "NOTE"}
-PART_GROUPS = {"CONDITION", "MEMBERS", "COMPUTATION", "VARIANT", "GROUND"}
+              "VARIANT", "READING", "GROUND", "STATUTE", "LEMMA", "DEVIATION", "NOTE"}
+PART_GROUPS = {"CONDITION", "MEMBERS", "COMPUTATION", "VARIANT", "READING", "GROUND"}
 
 
 def part_text(part, place):
@@ -354,6 +354,7 @@ def explained(service, path, request, answer, name, document, scope):
             raise Deviation(f"{place}: de stukken geven {joined!r}, de zin is {sentence!r}")
         if any(r["kind"] == "GROUND" for r in roots[:-1]):
             raise Deviation(f"{place}: de grondslag is niet het laatste stuk")
+        omissible_glue(roots, place)
     if given != answer:
         raise Deviation(f"{name}: het antwoord met uitleg wijkt buiten de uitleg en haar stukken af van dat zonder, op "
                         f"{first_difference(answer, given, '')}")
@@ -435,6 +436,38 @@ def read_links(parts, request, document, scope, place):
         for r in roots:
             walk(r, i + 1)
     return links
+
+
+# Lijm die overblijft waar een weglaatbaar stuk de zijne niet droeg: lege haakjes, een haakje zonder waarde, een dubbele
+# punt zonder vervolg, twee scheidingen na elkaar, een spatie voor een komma; aan het eind van de zin ook een dubbele
+# punt of een scheiding.
+LOOSE_GLUE = re.compile(r"\(\s*\)|\(\s*$|^\s*\)|:\s*[;,.]|;\s*;|;\s*,|\s,")
+LOOSE_END = re.compile(r"[:;,]\s*$")
+
+
+def omissible_glue(roots, place):
+    """Zonder elke MEMBERS, elke VARIANT met decided false en elke READING blijft een zin over (kaart
+    explanation-part-groups): de lijm van zo'n stuk staat in het stuk, dus de lijm (TEXT) die overblijft, aaneengesloten,
+    heeft geen lege haakjes, geen haakje zonder waarde, geen dubbele punt zonder vervolg en geen dubbele scheiding."""
+    def omitted(p):
+        return p["kind"] in ("MEMBERS", "READING") or (p["kind"] == "VARIANT" and p.get("decided") is False)
+
+    leaves = []
+
+    def walk(p):
+        if p["kind"] in PART_GROUPS:
+            if not omitted(p):
+                for c in p["parts"]:
+                    walk(c)
+        elif p["kind"] == "TEXT" and leaves and leaves[-1][0] == "TEXT":
+            leaves[-1] = ("TEXT", leaves[-1][1] + p["text"])
+        else:
+            leaves.append((p["kind"], p["text"]))
+    for r in roots:
+        walk(r)
+    for i, (kind, glue) in enumerate(leaves):
+        if kind == "TEXT" and (LOOSE_GLUE.search(glue) or i == len(leaves) - 1 and LOOSE_END.search(glue)):
+            raise Deviation(f"{place}: zonder de weglaatbare stukken blijft lijm over: {glue!r}")
 
 
 def computed(roots):

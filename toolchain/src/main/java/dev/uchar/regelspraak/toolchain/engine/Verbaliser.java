@@ -129,7 +129,10 @@ import java.util.regex.Pattern;
  * <p><b>Stukken.</b> Elke zin schrijft de verbalisator op één {@link Sentence.Builder}, als een ondiepe boom van
  * {@link Part}s met een soort: het onderwerp, de namen met hun declaratie, de regeltekst, de waarden, de regelnamen, de
  * verbindingswoorden en de lijm, een voorwaarde als groep met het oordeel van de motor op haar knoop, de leden van een
- * kwantorvouw als groep met hun telling, en de grondslag als laatste stuk, ontleed ({@link Ground}). De platte zin is
+ * kwantorvouw als groep met hun telling, een variant of schrijver die niet besliste als groep, een gelezen waarde met haar
+ * haakjes als groep, en de grondslag als laatste stuk, ontleed ({@link Ground}). Een groep die een lezer mag weglaten
+ * ({@link Part.Kind#MEMBERS}, {@link Part.Kind#VARIANT}, {@link Part.Kind#READING}) draagt haar eigen lijm, zodat de zin
+ * zonder haar een zin blijft. De platte zin is
  * {@link Sentence#text()}, de tekst van de stukken achter elkaar: {@link #verbalise} geeft die, {@link #sentences} de
  * zinnen zelf. Een naam van een attribuut of kenmerk waarvan de zin de waarde op één object noemt, zegt van welk object
  * ({@link On}): de kop van een zin het onderwerp, een lezing het object waarop de motor haar las, ook over een rol; zo
@@ -577,24 +580,21 @@ public final class Verbaliser {
             List<Variant> after = new ArrayList<>();
             for (Turn t : turns) {
                 switch (t.role()) {
-                    case BEFORE -> {
-                        b.text("; ");
-                        name(b, t.variant());
-                        b.text(" ");
-                        notDecided(b, t.variant(), d.characteristic(), d.member());
-                    }
+                    case BEFORE -> notDecidedVariant(b, t.variant(), d);
                     case SIBLING -> {
-                        b.text("; ");
+                        b.open(Part.Kind.VARIANT, Part.meta("decided", false)).text("; ");
                         name(b, t.variant());
-                        b.text(" besliste niet anders");
+                        b.text(" besliste niet anders").close(Part.Kind.VARIANT);
                     }
                     case AFTER -> after.add(t.variant());
                     case DECIDER -> { }
                 }
             }
             for (int i = 0; i < after.size(); i++) {
-                b.text(i == 0 ? "; verdrongen: " : ", ");
+                b.open(Part.Kind.VARIANT, Part.meta("decided", false, "displaced", true))
+                        .text(i == 0 ? "; verdrongen: " : ", ");
                 name(b, after.get(i));
+                b.close(Part.Kind.VARIANT);
             }
             if (d.characteristic() && Boolean.FALSE.equals(d.decider().decision()) && readBoolean(bean, d.member()))
                 b.text("; de invoer kende het kenmerk toe, en dat blijft staan");
@@ -644,13 +644,17 @@ public final class Verbaliser {
             Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
             standing(b, d.member(), d.characteristic());
             b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" geen variant besliste");
-            for (Turn t : turns) {
-                b.text("; ");
-                name(b, t.variant());
-                b.text(" ");
-                notDecided(b, t.variant(), d.characteristic(), d.member());
-            }
+            for (Turn t : turns) notDecidedVariant(b, t.variant(), d);
             return b.build();
+        }
+
+        /** Een variant die aan de beurt was en niet besliste, als groep met de "; " ervoor: haar naam en de reden. */
+        private void notDecidedVariant(Sentence.Builder b, Variant v, DefaultsDecision d) {
+            b.open(Part.Kind.VARIANT, Part.meta("decided", false)).text("; ");
+            name(b, v);
+            b.text(" ");
+            notDecided(b, v, d.characteristic(), d.member());
+            b.close(Part.Kind.VARIANT);
         }
 
         // ---- volgorde: wie was vóór de beslisser aan de beurt, wie erna ----
@@ -1306,13 +1310,8 @@ public final class Verbaliser {
             else describe(b, e, ucharText, readOn(e, read));
             if (!read.reached(e)) return;
             ConditionReading.NodeReading n = read.of(e);
-            b.text(" (");
-            value(b, renderOperand(e, read), n.value() == null);
-            b.text(")");
-            if (fold != null) {
-                b.text(": ");
-                contributors(b, fold, n);
-            }
+            reading(b, renderOperand(e, read), n.value() == null);
+            if (fold != null) contributors(b, fold, n);
         }
 
         /** Of {@code e} een vouw over een verzameling is (RUNTIME-SEMANTICS ch. 3.4): een aggregatie met één argument,
@@ -1408,7 +1407,7 @@ public final class Verbaliser {
             }
             members.sort(Map.Entry.comparingByKey());
             int m = members.size();
-            b.open(Part.Kind.MEMBERS, Part.meta("members", m));
+            b.open(Part.Kind.MEMBERS, Part.meta("members", m)).text(": ");
             if (m == 0) {
                 b.text("er is geen enkel lid");
             } else {
@@ -1419,9 +1418,7 @@ public final class Verbaliser {
                     Map.Entry<String, Object> member = members.get(i);
                     b.leaf(Part.Kind.SUBJECT, member.getKey());
                     if (count) continue;
-                    b.text(" (");
-                    value(b, renderRead(f, member.getValue(), n.unit()), member.getValue() == null);
-                    b.text(")");
+                    reading(b, renderRead(f, member.getValue(), n.unit()), member.getValue() == null);
                 }
                 if (m > 5) b.text(" en nog " + (m - 5));
                 b.text(m == 1 ? ", het enige lid" : " (" + m + " leden)");
@@ -1581,6 +1578,13 @@ public final class Verbaliser {
     /** Een waarde in de opmaak van de zin; {@code empty} bij een lege. */
     private static void value(Sentence.Builder b, String text, boolean empty) {
         b.leaf(Part.Kind.VALUE, text, empty ? Part.meta("empty", true) : Map.of());
+    }
+
+    /** De waarde die de motor las voor wat er direct voor staat, tussen haakjes, als groep: " (", de waarde, ")". */
+    private static void reading(Sentence.Builder b, String text, boolean empty) {
+        b.open(Part.Kind.READING, Map.of()).text(" (");
+        value(b, text, empty);
+        b.text(")").close(Part.Kind.READING);
     }
 
     /** Wat attribuut {@code member} van {@code bean}, van objecttype {@code type} en met naam {@code label}, houdt waar
@@ -1781,10 +1785,7 @@ public final class Verbaliser {
     private void unstructured(Sentence.Builder b, Condition c, Read read, String verdict) {
         condition(b, c, read, g -> {
             g.text("aan de voorwaarde \"").leaf(Part.Kind.QUOTE, summary(c)).text("\" is " + verdict);
-            if (c instanceof Condition.QuantifierFold q) {
-                g.text(": ");
-                members(g, q, read);
-            }
+            if (c instanceof Condition.QuantifierFold q) members(g, q, read);
         });
     }
 
@@ -1828,7 +1829,7 @@ public final class Verbaliser {
             throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form() + " op "
                     + read.label() + " geldt volgens de motor " + (holds ? "wel" : "niet") + ", en haar matrix geldt"
                     + " volgens de lezing voor " + k + " van de " + m + " leden");
-        b.open(Part.Kind.MEMBERS, Part.meta("members", m, "holding", k, "unjudged", unjudged));
+        b.open(Part.Kind.MEMBERS, Part.meta("members", m, "holding", k, "unjudged", unjudged)).text(": ");
         // m = 0 en m = 1 zonder telling (voorlopig besluit van de hoofdsessie 2026-10-21): "voor 1 van de 1" telt niets
         if (m == 0) {
             b.text("er is geen enkel lid");
@@ -2063,9 +2064,7 @@ public final class Verbaliser {
             return;
         }
         describe(b, e, ucharText, readOn(e, read));
-        b.text(" (");
-        value(b, renderOperand(e, read), read.of(e).value() == null);
-        b.text(")");
+        reading(b, renderOperand(e, read), read.of(e).value() == null);
     }
 
     /** Een Java-waarde in helder Nederlands: getallen met punt-duizend/komma-decimaal en de eenheid uit het type;

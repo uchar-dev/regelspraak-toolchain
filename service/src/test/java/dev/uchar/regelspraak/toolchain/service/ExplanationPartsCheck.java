@@ -18,7 +18,7 @@ public final class ExplanationPartsCheck {
 
     private ExplanationPartsCheck() {}
 
-    private static final Set<String> GROUPS = Set.of("CONDITION", "MEMBERS", "COMPUTATION", "VARIANT", "GROUND");
+    private static final Set<String> GROUPS = Set.of("CONDITION", "MEMBERS", "COMPUTATION", "VARIANT", "READING", "GROUND");
 
     /** Per sentence of {@code explanation} one entry of {@code explanationParts}, whose leaves, their texts after each
      *  other, are the sentence character for character; a leaf has a text and no parts, a group parts and no text, and
@@ -110,6 +110,20 @@ public final class ExplanationPartsCheck {
         }
         assertTrue(found != null, "zin " + sentence + ": geen " + what + " '" + name + "' in het document");
         return found;
+    }
+
+    /** The sentence of {@code parts} without every part a consumer may leave out with its glue (card
+     *  explanation-part-groups): every {@code MEMBERS}, every {@code VARIANT} with {@code decided: false} and every
+     *  {@code READING}. */
+    public static String withoutOmissibleParts(JsonNode parts) {
+        StringBuilder b = new StringBuilder();
+        for (JsonNode p : parts) {
+            String kind = p.path("kind").asText();
+            if (kind.equals("MEMBERS") || kind.equals("READING")
+                    || kind.equals("VARIANT") && p.path("decided").isBoolean() && !p.get("decided").asBoolean()) continue;
+            b.append(GROUPS.contains(kind) ? withoutOmissibleParts(p.get("parts")) : p.get("text").asText());
+        }
+        return b.toString();
     }
 
     /** The parts as {@code KIND{meta}«text»} for a leaf, {@code «text»} for glue and {@code KIND{meta}[...]} for a group,
