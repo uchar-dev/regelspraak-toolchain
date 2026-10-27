@@ -6,8 +6,8 @@ de kaart `explanation-computed-attributes`.*
 
 ## Wacht op
 
-De werkbank: "Pas bouwen als de proef van de werkbank laat zien dat de optie iets oplevert" (de eval van de
-uitlegvarianten, werkbank-kaart `20261021-eval-uitleg-varianten`). Punt 2 bouwt op de identiteit van de beslisser uit
+Niets meer. De eigenaar haalde de wachttijd eraf (2026-10-27): de proef met de oude eval-runner komt er niet; de
+definitieve runner stelt zijn weergave samen uit de stukken. Punt 2 bouwt op de identiteit van de beslisser uit
 `explanation-ground-source`.
 
 ## Aanleiding
