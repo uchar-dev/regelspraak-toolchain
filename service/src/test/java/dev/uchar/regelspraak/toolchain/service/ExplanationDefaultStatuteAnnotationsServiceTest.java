@@ -60,7 +60,7 @@ class ExplanationDefaultStatuteAnnotationsServiceTest {
                     + " bij dienstverband' gold niet, want niet geldt: het onderwerp in dienst is. Grondslag:"
                     + " BWBR0004045&artikel=2",
             "J2 heeft geen recht op de penning volgens 'uitsluiting bij dienstverband', omdat het onderwerp ingezetene"
-                    + " is en het onderwerp in dienst is; verdrongen: de regel 'penning'. Grondslag:"
+                    + " is en het onderwerp in dienst is; verdrongen: de regel 'penning' (gold, toekennen). Grondslag:"
                     + " BWBR0004045&artikel=3&lid=1 · lemma's: uitsluiting; BWBR0004045&artikel=3&lid=2 · \"met ingang"
                     + " van de dag van de dienst; ook bij uitzending\"");
 

@@ -617,7 +617,11 @@ public final class OpenApiEmitter {
                 + " niet schreef, met de scheiding ervoor ('; ', of ', ' tussen verdrongen varianten), met decided: false,"
                 + " en displaced: true bij een variant van een defaults-groep na de beslisser en bij een initialisatie"
                 + " die niet aan de beurt was: in de zin van een defaults-groep elke variant behalve de beslisser, in die"
-                + " van een berekende waarde elke schrijver behalve die schreef; READING de waarde die de motor las voor"
+                + " van een berekende waarde elke schrijver behalve die schreef; een verdrongen variant van een"
+                + " defaults-groep zegt wat zij vond, uit de lezing van de motor: '(gold, <waarde>)', '(gold, gaf geen"
+                + " waarde)', '(gold niet)', bij een kenmerk '(gold, toekennen)' of '(gold, niet toekennen)', zonder"
+                + " voorwaarde '(onvoorwaardelijk, …)', met holds (niet zonder voorwaarde), decision bij een kenmerk, en"
+                + " unreadable: true waar de lezing een fout droeg (dan de naam alleen); READING de waarde die de motor las voor"
                 + " het operand of het lid ervoor, met haar haakjes: ' (', VALUE, ')'; GROUND de grondslag, het laatste stuk van de zin, met de punt en"
                 + " 'Grondslag: ' als TEXT ervoor, en met de beslisser waarvan het de statuteAnnotations zijn, in de"
                 + " termen van het IR: bij een regel rule, de naam van haar vorm in rules.rules; bij een default group,"
@@ -648,7 +652,7 @@ public final class OpenApiEmitter {
         between.putObject("items").put("type", "string");
         for (String key : new String[]{"owner", "group", "object"})
             props.putObject(key).put("type", "string").put("nullable", true);
-        for (String key : new String[]{"empty", "timeline", "holds", "decided", "displaced"})
+        for (String key : new String[]{"empty", "timeline", "holds", "decided", "displaced", "decision", "unreadable"})
             props.putObject(key).put("type", "boolean");
         for (String key : new String[]{"threshold", "members", "holding", "unjudged", "position"})
             props.putObject(key).put("type", "integer");

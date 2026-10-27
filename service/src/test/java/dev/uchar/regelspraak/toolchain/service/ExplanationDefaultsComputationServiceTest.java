@@ -119,15 +119,18 @@ class ExplanationDefaultsComputationServiceTest {
             "J1 heeft als premie 30,00 volgens de regel 'premie' (onvoorwaardelijk): " + PREMIE + " (3); 'premie uit"
                     + " bonus' gold niet, want niet geldt: het onderwerp ingezetene is. Grondslag: Jutterswet art. 12",
             "J2 heeft als premie 15,43 volgens 'premie uit bonus': " + UIT_BONUS + " (123,45); vóór de afronding"
-                    + " 15,43125, omdat het onderwerp ingezetene is; verdrongen: de regel 'premie'",
+                    + " 15,43125, omdat het onderwerp ingezetene is; verdrongen: de regel 'premie' (onvoorwaardelijk,"
+                    + " 30,00)",
             "V1 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (onbekend) gevuld is",
             "V1 heeft als waarde 110,00 volgens 'berekende waarde' (onvoorwaardelijk): zijn berekende waarde (110,00);"
-                    + " 'opgegeven waarde' gaf geen waarde; verdrongen: 'waarde bij onbekende taxatie'",
+                    + " 'opgegeven waarde' gaf geen waarde; verdrongen: 'waarde bij onbekende taxatie'"
+                    + " (onvoorwaardelijk, 25,00)",
             "V1 heeft als berekende waarde 110,00 volgens de regel 'waarde': zijn taxatie plus zijn bergingskosten, met"
                     + " zijn taxatie (100,00) en zijn bergingskosten (10,00), omdat zijn taxatie (100,00) gevuld is",
             "V2 heeft geen afwijkende opgave waarde, want niet geldt: zijn berekende waarde (onbekend) gevuld is",
             "V2 heeft als waarde 80,00 volgens 'opgegeven waarde' (onvoorwaardelijk): zijn opgegeven waarde (80,00);"
-                    + " verdrongen: 'berekende waarde', 'waarde bij onbekende taxatie'",
+                    + " verdrongen: 'berekende waarde' (onvoorwaardelijk, gaf geen waarde), 'waarde bij onbekende"
+                    + " taxatie' (onvoorwaardelijk, 25,00)",
             "V2 heeft geen berekende waarde, want geen regel gold; de regel 'waarde' gold niet, want niet geldt: zijn"
                     + " taxatie (onbekend) gevuld is",
             "V3 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (onbekend) gevuld is",
@@ -139,7 +142,7 @@ class ExplanationDefaultsComputationServiceTest {
                     + " grondslag maal 2, met zijn grondslag (10,00); 'betwiste uitkering' gold niet, want niet geldt:"
                     + " het onderwerp betwist is",
             "W2 heeft als uitkering 0,00 volgens 'betwiste uitkering': 0,00, omdat het onderwerp betwist is;"
-                    + " verdrongen: de regel 'uitkering van een wrakrecht'");
+                    + " verdrongen: de regel 'uitkering van een wrakrecht' (onvoorwaardelijk, 20,00)");
 
     /** The computation of the exception with its own expression (J2), of the computation default the opgave marker
      *  makes, which reads 'berekende waarde' and names it with the keys of its declaration (V1), of the initialisation
@@ -153,7 +156,8 @@ class ExplanationDefaultsComputationServiceTest {
                     + " canonical=bonus, object=J2}«zijn bonus» READING[« (» VALUE«123,45» «)»] «; vóór de afronding »"
                     + " VALUE«15,43125»] «, » CONNECTIVE«omdat» « » CONDITION{holds=true}[«het onderwerp »"
                     + " NAME{declaration=KENMERK, owner=Jutter, canonical=ingezetene, object=J2}«ingezetene» « is»]"
-                    + " VARIANT{decided=false, displaced=true}[«; verdrongen: de regel '» RULE«premie» «'»]",
+                    + " VARIANT{decided=false, displaced=true}[«; verdrongen: de regel '» RULE«premie» «'"
+                    + " (onvoorwaardelijk, » VALUE«30,00» «)»]",
             3, "SUBJECT«V1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=waarde,"
                     + " object=V1}«waarde» « » VALUE«110,00» « volgens '» NAME{declaration=ATTRIBUUT, owner=Vondst,"
                     + " canonical=berekende waarde}«berekende waarde» «' (onvoorwaardelijk)» COMPUTATION[«: »"
@@ -161,7 +165,7 @@ class ExplanationDefaultsComputationServiceTest {
                     + " object=V1}«berekende waarde» READING[« (» VALUE«110,00» «)»]] VARIANT{decided=false}[«; '»"
                     + " NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=opgegeven waarde}«opgegeven waarde» «' gaf"
                     + " geen waarde»] VARIANT{decided=false, displaced=true}[«; verdrongen: '» RULE«waarde bij"
-                    + " onbekende taxatie» «'»]",
+                    + " onbekende taxatie» «' (onvoorwaardelijk, » VALUE«25,00» «)»]",
             9, "SUBJECT«V3» « heeft als » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=waarde,"
                     + " object=V3}«waarde» « » VALUE«25,00» « volgens '» RULE«waarde bij onbekende taxatie» «'»"
                     + " COMPUTATION[«: » QUOTE«25,00»] «, » CONNECTIVE«omdat» « de » NAME{declaration=ATTRIBUUT,"

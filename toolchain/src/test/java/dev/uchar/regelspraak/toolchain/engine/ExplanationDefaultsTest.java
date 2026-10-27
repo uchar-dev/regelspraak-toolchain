@@ -130,19 +130,23 @@ class ExplanationDefaultsTest {
             "J2 heeft geen recht op de penning volgens 'uitsluiting bij dienstverband', omdat het onderwerp ingezetene"
                     + " is en het onderwerp in dienst is; 'jeugdpenning' gold niet, want niet geldt: zijn leeftijd (30)"
                     + " is kleiner dan 18; " + HERSTEL + " gold niet, want niet geldt: zijn aantal vondsten (5) is"
-                    + " groter dan 10; verdrongen: de regel 'penning'. Grondslag: Jutterswet art. 3",
+                    + " groter dan 10; verdrongen: de regel 'penning' (gold, toekennen). Grondslag: Jutterswet art. 3",
             "J2 heeft als premie 20,00 volgens 'premie uit bonus': zijn bonus (20,00), omdat zijn leeftijd (30) is"
-                    + " groter dan 17 en het onderwerp ingezetene is; verdrongen: de regel 'premie'",
-            "J3 heeft recht op de penning volgens " + HERSTEL + ", omdat het onderwerp ingezetene is en het onderwerp in"
+                    + " groter dan 17 en het onderwerp ingezetene is; verdrongen: de regel 'premie' (gold, 100,00)",
+            "J3 heeft recht op de penning volgens " + HERSTEL + ", omdat het onderwerp ingezetene is en het onderwerp"
+                    + " in"
                     + " dienst is en zijn aantal vondsten (12) is groter dan 10; 'jeugdpenning' gold niet, want niet"
-                    + " geldt: zijn leeftijd (30) is kleiner dan 18; verdrongen: 'uitsluiting bij dienstverband', de"
-                    + " regel 'penning'",
+                    + " geldt: zijn leeftijd (30) is kleiner dan 18; verdrongen: 'uitsluiting bij dienstverband'"
+                    + " (gold, niet toekennen), de"
+                    + " regel 'penning' (gold, toekennen)",
             "J3 heeft als premie 100,00 volgens de regel 'premie': 100,00, omdat zijn leeftijd (30) is groter dan"
                     + " 17; 'premie uit bonus' gaf geen waarde",
             "J4 heeft recht op de penning volgens 'jeugdpenning', omdat zijn leeftijd (16) is kleiner dan 18;"
-                    + " verdrongen: " + HERSTEL + ", 'uitsluiting bij dienstverband', de regel 'penning'",
+                    + " verdrongen: " + HERSTEL + " (gold niet), 'uitsluiting bij dienstverband' (gold niet), de regel"
+                    + " 'penning' (gold niet)",
             "J4 heeft geen premie, want geen variant besliste; 'premie uit bonus' gold niet, want niet geldt: zijn"
-                    + " leeftijd (16) is groter dan 17; de regel 'premie' gold niet, want niet geldt: zijn leeftijd (16)"
+                    + " leeftijd (16) is groter dan 17; de regel 'premie' gold niet, want niet geldt: zijn leeftijd"
+                    + " (16)"
                     + " is groter dan 17",
             "J5 heeft geen recht op de penning, want geen variant besliste; 'jeugdpenning' gold niet, want niet geldt:"
                     + " zijn leeftijd (30) is kleiner dan 18; " + HERSTEL + " gold niet, want niet geldt: het onderwerp"
@@ -151,7 +155,8 @@ class ExplanationDefaultsTest {
             "J5 heeft als premie 100,00 volgens de regel 'premie': 100,00, omdat zijn leeftijd (30) is groter dan"
                     + " 17; 'premie uit bonus' gold niet, want niet geldt: het onderwerp ingezetene is",
             "J6 heeft recht op de penning volgens 'jeugdpenning', omdat zijn leeftijd (16) is kleiner dan 18;"
-                    + " verdrongen: " + HERSTEL + ", 'uitsluiting bij dienstverband', de regel 'penning'",
+                    + " verdrongen: " + HERSTEL + " (gold niet), 'uitsluiting bij dienstverband' (gold niet), de regel"
+                    + " 'penning' (gold niet)",
             "J6 houdt als premie de invoerwaarde 7,50, want geen variant besliste; 'premie uit bonus' gold niet, want"
                     + " niet geldt: zijn leeftijd (16) is groter dan 17; de regel 'premie' gold niet, want niet geldt:"
                     + " zijn leeftijd (16) is groter dan 17");
@@ -211,8 +216,8 @@ class ExplanationDefaultsTest {
                     + " uitkering' gold niet, want niet geldt: het onderwerp betwist is",
             "W1 heeft als uitkering 200 volgens de regel 'uitkering van een wrakrecht': 200, omdat het onderwerp"
                     + " gezonken is; 'betwiste uitkering' gold niet, want niet geldt: het onderwerp erkend is",
-            "W2 heeft als uitkering 99 volgens 'betwiste uitkering': 99, omdat het onderwerp erkend is en het"
-                    + " onderwerp betwist is; verdrongen: de regel 'uitkering van een wrakrecht'",
+            "W2 heeft als uitkering 99 volgens 'betwiste uitkering': 99, omdat het onderwerp erkend is en het onderwerp"
+                    + " betwist is; verdrongen: de regel 'uitkering van een wrakrecht' (gold niet)",
             "W3 heeft geen uitkering, want geen variant besliste; 'betwiste uitkering' gold niet, want niet geldt:"
                     + " het onderwerp betwist is; de regel 'uitkering van een wrakrecht' gold niet, want niet geldt:"
                     + " het onderwerp gezonken is");

@@ -124,7 +124,8 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " en zijn berekende meldingsdatum (13-03-2026) gevuld is en zijn opgegeven meldingsdatum"
                         + " (12-03-2026) is ongelijk aan zijn berekende meldingsdatum (13-03-2026)",
                 "V1 heeft als meldingsdatum 12-03-2026 volgens 'opgegeven meldingsdatum' (onvoorwaardelijk): zijn"
-                        + " opgegeven meldingsdatum (12-03-2026); verdrongen: 'berekende meldingsdatum'",
+                        + " opgegeven meldingsdatum (12-03-2026); verdrongen: 'berekende meldingsdatum'"
+                        + " (onvoorwaardelijk, 13-03-2026)",
                 melding("V1", "meldingsdatum"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave meldingsdatum, want niet geldt: zijn opgegeven meldingsdatum"
@@ -145,7 +146,7 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " melding vondst (13-03-2026)",
                 "V1 heeft als Datum melding vondst 12-03-2026 volgens 'opgegeven Datum melding vondst'"
                         + " (onvoorwaardelijk): zijn opgegeven Datum melding vondst (12-03-2026); verdrongen:"
-                        + " 'berekende Datum melding vondst'",
+                        + " 'berekende Datum melding vondst' (onvoorwaardelijk, 13-03-2026)",
                 melding("V1", "Datum melding vondst"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
@@ -165,9 +166,9 @@ class ExplanationGeneratedRuleInVocabularyTest {
                         + " gevuld is en zijn berekende dag van de melding (13-03-2026) gevuld is en zijn opgegeven"
                         + " dag van de melding (12-03-2026) is ongelijk aan zijn berekende dag van de melding"
                         + " (13-03-2026)",
-                "V1 heeft als dag van de melding 12-03-2026 volgens 'opgegeven dag van de melding'"
-                        + " (onvoorwaardelijk): zijn opgegeven dag van de melding (12-03-2026); verdrongen:"
-                        + " 'berekende dag van de melding'",
+                "V1 heeft als dag van de melding 12-03-2026 volgens 'opgegeven dag van de melding' (onvoorwaardelijk):"
+                        + " zijn opgegeven dag van de melding (12-03-2026); verdrongen: 'berekende dag van de melding'"
+                        + " (onvoorwaardelijk, 13-03-2026)",
                 melding("V1", "dag van de melding"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave dag van de melding, want niet geldt: zijn opgegeven dag van de"

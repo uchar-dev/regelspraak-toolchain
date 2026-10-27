@@ -126,15 +126,18 @@ class ExplanationDefaultsComputationTest {
             "J1 heeft als premie 30,00 volgens de regel 'premie' (onvoorwaardelijk): " + PREMIE + " (3); 'premie uit"
                     + " bonus' gold niet, want niet geldt: het onderwerp ingezetene is. Grondslag: Jutterswet art. 12",
             "J2 heeft als premie 15,43 volgens 'premie uit bonus': " + UIT_BONUS + " (123,45); vóór de afronding"
-                    + " 15,43125, omdat het onderwerp ingezetene is; verdrongen: de regel 'premie'",
+                    + " 15,43125, omdat het onderwerp ingezetene is; verdrongen: de regel 'premie' (onvoorwaardelijk,"
+                    + " 30,00)",
             "V1 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (onbekend) gevuld is",
             "V1 heeft als waarde 110,00 volgens 'berekende waarde' (onvoorwaardelijk): zijn berekende waarde (110,00);"
-                    + " 'opgegeven waarde' gaf geen waarde; verdrongen: 'waarde bij onbekende taxatie'",
+                    + " 'opgegeven waarde' gaf geen waarde; verdrongen: 'waarde bij onbekende taxatie'"
+                    + " (onvoorwaardelijk, 25,00)",
             "V1 heeft als berekende waarde 110,00 volgens de regel 'waarde': zijn taxatie plus zijn bergingskosten, met"
                     + " zijn taxatie (100,00) en zijn bergingskosten (10,00), omdat zijn taxatie (100,00) gevuld is",
             "V2 heeft geen afwijkende opgave waarde, want niet geldt: zijn berekende waarde (onbekend) gevuld is",
             "V2 heeft als waarde 80,00 volgens 'opgegeven waarde' (onvoorwaardelijk): zijn opgegeven waarde (80,00);"
-                    + " verdrongen: 'berekende waarde', 'waarde bij onbekende taxatie'",
+                    + " verdrongen: 'berekende waarde' (onvoorwaardelijk, gaf geen waarde), 'waarde bij onbekende"
+                    + " taxatie' (onvoorwaardelijk, 25,00)",
             "V2 heeft geen berekende waarde, want geen regel gold; de regel 'waarde' gold niet, want niet geldt: zijn"
                     + " taxatie (onbekend) gevuld is",
             "V3 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (onbekend) gevuld is",
@@ -146,7 +149,7 @@ class ExplanationDefaultsComputationTest {
                     + " grondslag maal 2, met zijn grondslag (10,00); 'betwiste uitkering' gold niet, want niet geldt:"
                     + " het onderwerp betwist is",
             "W2 heeft als uitkering 0,00 volgens 'betwiste uitkering': 0,00, omdat het onderwerp betwist is;"
-                    + " verdrongen: de regel 'uitkering van een wrakrecht'");
+                    + " verdrongen: de regel 'uitkering van een wrakrecht' (onvoorwaardelijk, 20,00)");
 
     @Test
     void the_deciding_variant_gets_its_computation() {

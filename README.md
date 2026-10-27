@@ -117,6 +117,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
   false`, and `displaced: true` after the decider) with its separator; and a value the engine read stands with its
   brackets in a new group `READING`. Without those groups a sentence stays a sentence. `explanation` and the text of the
   leaves are unchanged.
+- **A displaced variant says what it found** (card `explanation-read-objects-and-displaced`, part 2): in the sentence of
+  a defaults group, every variant after the decider is followed by `(gold, <value>)`, `(gold, gaf geen waarde)`,
+  `(gold niet)`, `(gold, toekennen)`/`(gold, niet toekennen)` or `(onvoorwaardelijk, …)` (`docs/ENGINE.md`, "What a
+  displaced variant found"). This changes existing sentences: `"…; verdrongen: de regel 'premie'"` is now `"…;
+  verdrongen: de regel 'premie' (gold, 100,00)"`.
 - **A deviation names its layers** (card `ground-deviation`): a `DEVIATION` part carries `between` (the layers of
   the pair in the order of the register, or the one layer of `deviatie binnen`) and `follows` (the layer the rule
   set follows; absent within one layer) in place of `followed`. The old forms `afwijking: ` and `afwijking, niet

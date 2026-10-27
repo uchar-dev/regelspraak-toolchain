@@ -125,8 +125,8 @@ class ExplanationStatuteAnnotationServiceTest {
             "W1 heeft als uitkering 200 volgens de regel 'uitkering van een wrakrecht': 200, omdat het onderwerp"
                     + " gezonken is; 'betwiste uitkering' gold niet, want niet geldt: het onderwerp erkend is."
                     + " Grondslag: Jutterswet art. 9",
-            "W2 heeft als uitkering 99 volgens 'betwiste uitkering': 99, omdat het onderwerp erkend is en het"
-                    + " onderwerp betwist is; verdrongen: de regel 'uitkering van een wrakrecht'");
+            "W2 heeft als uitkering 99 volgens 'betwiste uitkering': 99, omdat het onderwerp erkend is en het onderwerp"
+                    + " betwist is; verdrongen: de regel 'uitkering van een wrakrecht' (gold niet)");
 
     @Test
     void from_sources_a_characteristic_assignment_names_the_statute_annotations_of_its_rule() throws Exception {

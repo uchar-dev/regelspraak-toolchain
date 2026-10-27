@@ -117,20 +117,23 @@ class ExplanationGroundSourceServiceTest {
                     + " geldigheid" + GEVESTIGD,
             "J1 is gevestigd, omdat het onderwerp ingezetene is" + GEVESTIGD,
             "J1 heeft afwijkende opgave meldingsdatum, omdat zijn opgegeven meldingsdatum (11-03-2026) gevuld is en"
-                    + " zijn berekende meldingsdatum (13-03-2026) gevuld is en zijn opgegeven meldingsdatum (11-03-2026)"
+                    + " zijn berekende meldingsdatum (13-03-2026) gevuld is en zijn opgegeven meldingsdatum"
+                    + " (11-03-2026)"
                     + " is ongelijk aan zijn berekende meldingsdatum (13-03-2026)",
             "J1 heeft als premie 100,00 volgens de regel 'premie' (onvoorwaardelijk): 100,00; " + KINDER + " gold"
                     + " niet, want niet geldt: zijn leeftijd (30) is kleiner dan 18; " + JEUGD + " gold niet, want niet"
                     + " geldt: zijn leeftijd (30) is kleiner dan 18. Grondslag: BWBR0004045&artikel=5&lid=1",
-            "J1 heeft als meldingsdatum 11-03-2026 volgens 'opgegeven meldingsdatum' (onvoorwaardelijk): zijn"
-                    + " opgegeven meldingsdatum (11-03-2026); verdrongen: 'berekende meldingsdatum'",
+            "J1 heeft als meldingsdatum 11-03-2026 volgens 'opgegeven meldingsdatum' (onvoorwaardelijk): zijn opgegeven"
+                    + " meldingsdatum (11-03-2026); verdrongen: 'berekende meldingsdatum' (onvoorwaardelijk,"
+                    + " 13-03-2026)",
             melding("J1"),
             "J2 is niet gevestigd, want de regel valt op de rekendatum buiten haar geldigheid" + GEVESTIGD,
             "J2 is niet gevestigd, want niet geldt: het onderwerp ingezetene is" + GEVESTIGD,
             notDiffering("J2"),
             "J2 heeft als premie 50,00 volgens " + JEUGD + ": 50,00, omdat zijn leeftijd (16) is kleiner dan 18; "
                     + KINDER + " gold niet, want niet geldt: zijn leeftijd (16) is kleiner dan 12; verdrongen: de regel"
-                    + " 'premie'. Grondslag: BWBR0004045&artikel=5&lid=2 · lemma's: jeugdpremie",
+                    + " 'premie' (onvoorwaardelijk, 100,00). Grondslag: BWBR0004045&artikel=5&lid=2 · lemma's:"
+                    + " jeugdpremie",
             "J2 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk): zijn"
                     + " berekende meldingsdatum (13-03-2026); 'opgegeven meldingsdatum' gaf geen waarde",
             melding("J2"),
@@ -138,7 +141,8 @@ class ExplanationGroundSourceServiceTest {
             "J3 is niet gevestigd, want niet geldt: het onderwerp ingezetene is" + GEVESTIGD,
             notDiffering("J3"),
             "J3 heeft als premie 25,00 volgens " + KINDER + ": 25,00, omdat zijn leeftijd (8) is kleiner dan 18 en"
-                    + " zijn leeftijd (8) is kleiner dan 12; verdrongen: " + JEUGD + ", de regel 'premie'. Grondslag:"
+                    + " zijn leeftijd (8) is kleiner dan 12; verdrongen: " + JEUGD + " (gold, 50,00), de regel"
+                    + " 'premie' (onvoorwaardelijk, 100,00). Grondslag:"
                     + " BWBR0004045&artikel=5&lid=3",
             "J3 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk): zijn"
                     + " berekende meldingsdatum (13-03-2026); 'opgegeven meldingsdatum' gaf geen waarde",

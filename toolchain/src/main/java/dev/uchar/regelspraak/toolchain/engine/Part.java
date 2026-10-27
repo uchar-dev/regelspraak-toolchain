@@ -55,7 +55,9 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         /** A writer that did not write the value of its sentence, with the separator before it ("; ", or ", " between
          *  displaced variants): {@code decided: false}, and {@code displaced: true} for a variant after the decider of a
          *  defaults group and for an initialisation that was not at its turn. In the sentence of a defaults group every
-         *  variant but the decider; in that of a computed value every writer but the one that wrote. */
+         *  variant but the decider; in that of a computed value every writer but the one that wrote. A displaced variant
+         *  of a defaults group says what it found: {@code holds}, its value as a {@link #VALUE}, {@code decision} for a
+         *  characteristic, {@code unreadable} where its reading carried a fault. */
         VARIANT,
         /** The value the engine read for the operand or the member right before it, with its brackets: " (", the
          *  {@link #VALUE}, ")". */

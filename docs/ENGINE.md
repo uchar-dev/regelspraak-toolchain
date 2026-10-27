@@ -406,7 +406,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
 | `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
 | `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, after its name, with its colon (below) | — |
-| `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn |
+| `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn; on a displaced variant of a defaults group `holds` (absent without a condition), `decision` for a characteristic, `unreadable: true` where its reading carried a fault (below) |
 | `READING` | group | the value the engine read for the operand or the member right before it, with its brackets: `" ("`, the `VALUE`, `")"` | — |
 | `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | the decider whose annotations they are (below): `rule`, or `group`, `pointer`, `position` and `variant` where it has a name |
 | `STATUTE` | leaf | a Juriconnect anchor, literally | `bwb`, `article`, and `paragraph` and `part` where it names them |
@@ -467,6 +467,23 @@ opgave marker makes it reads `opgegeven X` or `berekende X` (`"volgens 'berekend
 berekende maxdatum (01-01-2026)"`), so a reader goes on from there to the sentence of the computed value. The values
 come from the variant's reading, where the nodes of its value follow those of its condition. The variants that did not
 decide stay as they were, and a characteristic has no computation.
+
+**What a displaced variant found** (card `explanation-read-objects-and-displaced`). Every variant of a defaults group
+after the decider says, after its name, what it found, from uchar's reading of a displaced default (RUNTIME-SEMANTICS
+ch. 5.12, "A displaced default is read": status `DISPLACED`, with the nodes of its condition and, where that holds, of
+its value, evaluated on the fixpoint world as at its turn):
+
+- an attribute: `'<name>' (gold, <VALUE>)`, `(gold, gaf geen waarde)` where its value was empty, or `(gold niet)`;
+- a characteristic: `(gold, toekennen)` or `(gold, niet toekennen)`, after the decision of the variant
+  (`Default.decision`), or `(gold niet)`;
+- a variant without a condition: `(onvoorwaardelijk, <VALUE>)`, or `(onvoorwaardelijk, toekennen)`;
+- an initialisation whose target the input filled, which the engine does not read: `(gold niet)`;
+- a variant outside its validity: `(buiten haar geldigheid)`;
+- a reading with a fault on a node (a fault the session did not have, since the variant was not at its turn): the name
+  alone, with `unreadable: true`.
+
+The value is rendered as the head renders the decided value. The reason a variant did not hold stays out of the
+sentence; a consumer reads the nodes in the engine's reading if it needs them.
 
 **The decider of a ground.** `GROUND` names the rule or the default whose `statuteAnnotations` it carries, in the
 terms of the IR, so a reader finds that decider and its annotations in the document (and from there the `// Bron:`

@@ -81,8 +81,8 @@ class GroundDeviationServiceTest {
     private static final List<String> EXPECTED = List.of(
             "J1 is gevestigd, omdat het onderwerp ingezetene is" + GEVESTIGD_TEXT,
             "J1 heeft als premie 50,00 volgens 'jeugdpremie': 50,00, omdat zijn leeftijd (16) is kleiner dan 18;"
-                    + " verdrongen: de regel 'premie'. Grondslag: BWBR0004045&artikel=5&lid=2 · lemma's: jeugdpremie"
-                    + " · deviatie hb/brm, volgt hb: de-jeugdgrens");
+                    + " verdrongen: de regel 'premie' (onvoorwaardelijk, 100,00). Grondslag:"
+                    + " BWBR0004045&artikel=5&lid=2 · lemma's: jeugdpremie · deviatie hb/brm, volgt hb: de-jeugdgrens");
 
     private static final String GEVESTIGD_GROUND = "GROUND{rule=gevestigd}[«. Grondslag: »"
             + " STATUTE{bwb=BWBR0004045, article=2, paragraph=1}«BWBR0004045&artikel=2&lid=1» « · lemma's: »"

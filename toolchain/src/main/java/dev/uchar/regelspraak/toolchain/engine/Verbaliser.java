@@ -590,12 +590,8 @@ public final class Verbaliser {
                     case DECIDER -> { }
                 }
             }
-            for (int i = 0; i < after.size(); i++) {
-                b.open(Part.Kind.VARIANT, Part.meta("decided", false, "displaced", true))
-                        .text(i == 0 ? "; verdrongen: " : ", ");
-                name(b, after.get(i));
-                b.close(Part.Kind.VARIANT);
-            }
+            for (int i = 0; i < after.size(); i++)
+                displacedVariant(b, after.get(i), i == 0 ? "; verdrongen: " : ", ", d);
             if (d.characteristic() && Boolean.FALSE.equals(d.decider().decision()) && readBoolean(bean, d.member()))
                 b.text("; de invoer kende het kenmerk toe, en dat blijft staan");
             ground(b, groundOf(decider), deciderOf(decider));
@@ -646,6 +642,88 @@ public final class Verbaliser {
             b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" geen variant besliste");
             for (Turn t : turns) notDecidedVariant(b, t.variant(), d);
             return b.build();
+        }
+
+        /**
+         * Een verdrongen variant, als groep met haar scheiding {@code separator} ervoor: haar naam en wat zij vond, uit
+         * uchars lezing van een verdrongen default (RUNTIME-SEMANTICS ch. 5.12: status {@code DISPLACED}, met de knopen
+         * van haar voorwaarde en, waar die geldt, van haar waarde, op de fixpuntwereld). Bij een attribuut
+         * "(gold, &lt;waarde&gt;)", "(gold, gaf geen waarde)" of "(gold niet)", bij een kenmerk "(gold, toekennen)" of
+         * "(gold, niet toekennen)" naar het besluit van de variant; zonder voorwaarde "(onvoorwaardelijk, …)". De groep
+         * draagt {@code holds} (niet zonder voorwaarde) en bij een kenmerk {@code decision}. Een fout op een knoop van
+         * de lezing had de sessie niet (de variant was niet aan de beurt): dan de naam alleen, met
+         * {@code unreadable}. Een variant buiten haar geldigheid: "(buiten haar geldigheid)". Een initialisatie
+         * waarvan de invoer het doel vulde, heeft geen knopen: "(gold niet)".
+         */
+        private void displacedVariant(Sentence.Builder b, Variant v, String separator, DefaultsDecision d) {
+            ConditionReading r = reading(v.pointer(), bean, label);
+            Condition c = conditionOf(v);
+            boolean unconditional = c == null || c instanceof Condition.Compound s
+                    && s.quantifier() == Condition.Quantifier.ALLE && s.components().isEmpty();
+            boolean characteristic = d.characteristic();
+            Boolean decision = characteristic ? (v.rule() != null ? Boolean.TRUE : v.d().decision()) : null;
+            Map<String, Object> meta = Part.meta("decided", false, "displaced", true);
+            switch (r.status()) {
+                case OUTSIDE_VALIDITY -> {
+                    b.open(Part.Kind.VARIANT, meta).text(separator);
+                    name(b, v);
+                    b.text(" (buiten haar geldigheid)").close(Part.Kind.VARIANT);
+                    return;
+                }
+                case FAULTS -> throw faulted(v.pointer(), label);
+                case HOLDS, FAILS -> throw new IllegalStateException("de variant " + v.pointer() + " van '"
+                        + d.member() + "' van " + label + " heeft de lezing " + r.status() + ", en de beslissing"
+                        + " noemt haar na de beslisser, als verdrongen");
+                case DISPLACED -> { }
+            }
+            // een initialisatie waarvan de invoer het doel vulde, las de motor niet: zij gold niet, zoals vóór de
+            // beslisser ("de X had een invoerwaarde")
+            if (r.nodes().isEmpty() && isInitialisation(v)) {
+                meta.put("holds", false);
+                b.open(Part.Kind.VARIANT, meta).text(separator);
+                name(b, v);
+                b.text(" (gold niet)").close(Part.Kind.VARIANT);
+                return;
+            }
+            // een kenmerkdefault zonder rechtvaardiging heeft niets te lezen: zijn besluit staat in het document
+            if (r.nodes().isEmpty() && !(characteristic && c == null))
+                throw new IllegalStateException("de motor gaf van de verdrongen variant " + v.pointer() + " van '"
+                        + d.member() + "' van " + label + " een lezing zonder knopen, en een verdrongen default heeft"
+                        + " de knopen van zijn voorwaarde (RUNTIME-SEMANTICS ch. 5.12)");
+            if (r.nodes().stream().anyMatch(n -> n.fault() != null)) {
+                meta.put("unreadable", true);
+                b.open(Part.Kind.VARIANT, meta).text(separator);
+                name(b, v);
+                b.close(Part.Kind.VARIANT);
+                return;
+            }
+            Boolean holds = unconditional ? null : read(v.pointer(), bean, label, c).holds(c);
+            if (holds != null) meta.put("holds", holds);
+            if (decision != null && !Boolean.FALSE.equals(holds)) meta.put("decision", decision);
+            b.open(Part.Kind.VARIANT, meta).text(separator);
+            name(b, v);
+            if (Boolean.FALSE.equals(holds)) {
+                b.text(" (gold niet)").close(Part.Kind.VARIANT);
+                return;
+            }
+            b.text(unconditional ? " (onvoorwaardelijk, " : " (gold, ");
+            if (characteristic) b.text(decision ? "toekennen" : "niet toekennen");
+            else displacedValue(b, v, c, d.member());
+            b.text(")").close(Part.Kind.VARIANT);
+        }
+
+        /** De waarde die verdrongen variant {@code v} van een attribuut gaf, uit haar lezing: de knopen van haar waarde
+         *  volgen op die van haar voorwaarde {@code c}; "gaf geen waarde" waar zij leeg was. */
+        private void displacedValue(Sentence.Builder b, Variant v, Condition c, String member) {
+            if (type.granularityOf(member) != null) {
+                b.leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
+                return;
+            }
+            Expr value = v.rule() != null ? v.rule().value() : v.d().consequence();
+            int offset = c == null ? 0 : document.positions().subtree(c).size();
+            Object found = read(v.pointer(), bean, label, value, offset).of(value).value();
+            if (found == null) b.text("gaf geen waarde");
+            else value(b, render(found, type.attribute(member)), false);
         }
 
         /** Een variant die aan de beurt was en niet besliste, als groep met de "; " ervoor: haar naam en de reden. */

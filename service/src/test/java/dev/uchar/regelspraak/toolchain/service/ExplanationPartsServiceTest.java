@@ -144,8 +144,8 @@ public class ExplanationPartsServiceTest {
             "J2 is gelukkig, omdat " + FOLD + " is voldaan: er is geen enkel lid",
             "J2 heeft recht op strandgoed, omdat het onderwerp ervaren is",
             "J2 heeft als premie 50,00 volgens 'jeugdpremie': 50,00, omdat het onderwerp ervaren is en zijn leeftijd"
-                    + " (16) is kleiner dan 18; verdrongen: de regel 'premie'. Grondslag: BWBR0004045&artikel=20&lid=2"
-                    + " · lemma's: jeugdpremie · deviatie binnen hb: oude-premie",
+                    + " (16) is kleiner dan 18; verdrongen: de regel 'premie' (gold, 100,00). Grondslag:"
+                    + " BWBR0004045&artikel=20&lid=2 · lemma's: jeugdpremie · deviatie binnen hb: oude-premie",
             noMeldpremie("J2"),
             "J3 is niet ervaren, want niet geldt: zijn aantal meldingen (3) is groter dan 10 of het onderwerp"
                     + " ingezetene is" + GROUND,
@@ -215,8 +215,11 @@ public class ExplanationPartsServiceTest {
                     + " CONNECTIVE«omdat» « »"
                     + " CONDITION{holds=true, quantifier=all}[CONDITION{holds=true}[«het onderwerp » "
                     + ervaren("J2") + " « is»] « » CONNECTIVE«en» « »"
-                    + " CONDITION{holds=true}[" + leeftijd("J2") + " READING[« (» VALUE«16» «)»] « is kleiner dan » VALUE«18»]]"
-                    + " VARIANT{decided=false, displaced=true}[«; verdrongen: de regel '» RULE«premie» «'»]"
+                    + " CONDITION{holds=true}[" + leeftijd("J2") + " READING[« (» VALUE«16» «)»] « is kleiner dan »"
+                    + " VALUE«18»]]"
+                    + " VARIANT{decided=false, displaced=true, holds=true}[«; verdrongen: de regel '» RULE«premie» «'"
+                    + " (gold, »"
+                    + " VALUE«100,00» «)»]"
                     + " GROUND{group=premie, pointer=/defaults/0, position=1, variant=jeugdpremie}[«. Grondslag: »"
                     + " STATUTE{bwb=BWBR0004045, article=20, paragraph=2}«BWBR0004045&artikel=20&lid=2» « · lemma's: »"
                     + " LEMMA«jeugdpremie» « · deviatie binnen hb: » DEVIATION{between=[\"hb\"]}«oude-premie»]",
@@ -228,7 +231,8 @@ public class ExplanationPartsServiceTest {
                     + " CONDITION{holds=false}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
                     + " canonical=ingezetene, object=J3}«ingezetene» « is»]] " + GROUND_PARTS,
             15, "SUBJECT«J4» « is niet » " + ervaren("J4") + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
-                    + " CONDITION{holds=false}[" + leeftijd("J4") + " READING[« (» VALUE{empty=true}«onbekend» «)»] « is groter dan » "
+                    + " CONDITION{holds=false}[" + leeftijd("J4") + " READING[« (» VALUE{empty=true}«onbekend» «)»] «"
+                    + " is groter dan » "
                     + MINIMUMLEEFTIJD + " READING[« (» VALUE«17» «)»]] " + GROUND_PARTS,
             20, "SUBJECT«V1» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=aangemeld, object=V1}«aangemeld»"
                     + " «, » CONNECTIVE«omdat» « » CONDITION{holds=true}[«de » NAME{declaration=ROL, owner=vondst van"
