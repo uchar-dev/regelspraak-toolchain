@@ -768,7 +768,7 @@ public final class Verbaliser {
                 return;
             }
             ConditionReading.Status status = reading(v.pointer(), bean, label).status();
-            Read read = read(v.pointer(), bean, label, subjectOf(v), c);
+            Read read = read(v.pointer(), bean, label, c);
             if (status != ConditionReading.Status.HOLDS)
                 throw new IllegalStateException("de beslisser " + v.pointer() + " van " + label + " heeft de lezing "
                         + status + ", en een variant die besliste heeft een voorwaarde die geldt");
@@ -788,7 +788,7 @@ public final class Verbaliser {
             Expr value = v.rule() != null ? v.rule().value() : v.d().consequence();
             Condition c = conditionOf(v);
             int offset = c == null ? 0 : document.positions().subtree(c).size();
-            computations.computation(b, value, ucharText(v), read(v.pointer(), bean, label, subjectOf(v), value, offset));
+            computations.computation(b, value, ucharText(v), read(v.pointer(), bean, label, value, offset));
         }
 
         /** Waarom een variant die aan de beurt was niet besliste: een kenmerkvariant waarvan de voorwaarde geldt,
@@ -821,7 +821,7 @@ public final class Verbaliser {
                             + " voorwaarde geldt, beslist altijd");
                 }
                 case FAILS -> {
-                    Read read = read(v.pointer(), bean, label, subjectOf(v), c);
+                    Read read = read(v.pointer(), bean, label, c);
                     didNotHoldBecause(b).text(" ");
                     firstFailing(b, c, read, subject, ucharText(v));
                 }
@@ -1172,7 +1172,7 @@ public final class Verbaliser {
             if (!timeline) computation(b, r.value(), writtenByUchar(r), valueRead(w));
             if (c != null) {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
-                verbaliseCondition(b, c, read(w.pointer(), bean, label, w.target().objectType(), c), w.target().objectType(),
+                verbaliseCondition(b, c, read(w.pointer(), bean, label, c), w.target().objectType(),
                         writtenByUchar(r));
             } else if (initialisation) {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" de ");
@@ -1202,7 +1202,7 @@ public final class Verbaliser {
                             throw new IllegalStateException("de motor noemt de voorwaarde van '" + w.rule().name()
                                     + "' op " + label + " onwaar, en de regel heeft er geen");
                         didNotHoldBecause(b).text(" ");
-                        firstFailing(b, c, read(w.pointer(), bean, label, w.target().objectType(), c), w.target().objectType(),
+                        firstFailing(b, c, read(w.pointer(), bean, label, c), w.target().objectType(),
                                 writtenByUchar(w.rule()));
                     }
                     case OUTSIDE_VALIDITY ->
@@ -1218,7 +1218,7 @@ public final class Verbaliser {
         private Read valueRead(Writer w) {
             Condition c = w.rule().condition();
             int offset = c == null ? 0 : document.positions().subtree(c).size();
-            return read(w.pointer(), bean, label, w.target().objectType(), w.rule().value(), offset);
+            return read(w.pointer(), bean, label, w.rule().value(), offset);
         }
 
         /** Hoe een vorm waarde {@code root} berekende, met de dubbele punt ervoor; {@code read} is haar lezing op de
@@ -1481,12 +1481,12 @@ public final class Verbaliser {
                     if (!present)
                         throw new IllegalStateException("de voorwaarde van '" + r.name() + "' geldt volgens de motor op "
                                 + label + ", en het kenmerk '" + characteristic + "' staat niet");
-                    Read read = read(pointer, bean, label, subject, v);
+                    Read read = read(pointer, bean, label, v);
                     b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
                     verbaliseCondition(b, v, read, subject, ucharText);
                 }
                 case FAILS -> {
-                    Read read = read(pointer, bean, label, subject, v);
+                    Read read = read(pointer, bean, label, v);
                     but(b, present, r);
                     firstFailing(b, v, read, subject, ucharText);
                 }
@@ -1612,23 +1612,22 @@ public final class Verbaliser {
         return r;
     }
 
-    /** De lezing van vorm {@code form}, met onderwerp {@code subject}, op {@code bean} met de nummers van de knopen van
-     *  voorwaarde {@code c}. */
-    private Read read(String form, Object bean, String label, ObjectType subject, Condition c) {
-        return read(form, bean, label, subject, c, 0);
+    /** De lezing van vorm {@code form} op {@code bean} met de nummers van de knopen van voorwaarde {@code c}. */
+    private Read read(String form, Object bean, String label, Condition c) {
+        return read(form, bean, label, c, 0);
     }
 
     /** De lezing van vorm {@code form} op {@code bean} met de nummers van de knopen onder {@code root}, een voorwaarde
      *  of een waarde van het document, vanaf {@code offset}: de knopen van de waarde van een vorm volgen op die van haar
      *  voorwaarde (RUNTIME-SEMANTICS ch. 5.12). */
-    private Read read(String form, Object bean, String label, ObjectType subject, Object root, int offset) {
+    private Read read(String form, Object bean, String label, Object root, int offset) {
         ConditionReading r = reading(form, bean, label);
         Map<Object, Integer> numbers = new IdentityHashMap<>();
         List<Object> nodes = document.positions().subtree(root);
         for (int i = 0; i < nodes.size(); i++) numbers.put(nodes.get(i), offset + i);
         Map<Integer, ConditionReading.NodeReading> perNumber = new HashMap<>();
         for (ConditionReading.NodeReading n : r.nodes()) perNumber.put(n.node(), n);
-        return new Read(form, label, bean, subject, numbers, perNumber);
+        return new Read(form, label, numbers, perNumber);
     }
 
     private static IllegalStateException faulted(String form, String label) {
@@ -1636,10 +1635,9 @@ public final class Verbaliser {
                 + " uitleg volgt een sessie zonder fout");
     }
 
-    /** De lezing van één vorm op één object, op de knopen van haar voorwaarde gelegd: {@code object} is dat object,
-     *  {@code subject} het objecttype van het onderwerp van de vorm. Een knoop zonder eigen lezing staat in het filter,
-     *  de matrix of de bron van een vouw: de zin noemt hem alleen in de tekst van de vouw. */
-    private record Read(String form, String label, Object object, ObjectType subject, Map<Object, Integer> numbers,
+    /** De lezing van één vorm op één object, op de knopen van haar voorwaarde gelegd. Een knoop zonder eigen lezing
+     *  staat in het filter, de matrix of de bron van een vouw: de zin noemt hem alleen in de tekst van de vouw. */
+    private record Read(String form, String label, Map<Object, Integer> numbers,
                         Map<Integer, ConditionReading.NodeReading> perNumber) {
 
         /** De lezing van knoop {@code node}; faalt luid waar de knoop niet tot de voorwaarde hoort of de motor er
@@ -1743,7 +1741,7 @@ public final class Verbaliser {
             return b -> {
                 who(b, walk);
                 b.text(" ");
-                predicate.clause(b, checkOn(k, walk, holder, read));
+                predicate.clause(b, objectOn(k, k.characteristic(), read));
             };
         }
         if (c instanceof Condition.RoleMembership rl)
@@ -1925,17 +1923,6 @@ public final class Verbaliser {
     /** "niet geldt: ". */
     private static void notHolds(Sentence.Builder b) {
         b.leaf(Part.Kind.CONNECTIVE, "niet geldt").text(": ");
-    }
-
-    /** Het object waarop kenmerkcheck {@code k} het kenmerk las: het object van de lezing, of over {@code walk} het
-     *  object dat uchar bereikt ({@link DroolsBackend#reached}, dat een lezing van een lid neemt: hier het kenmerk op
-     *  {@code holder}, het type dat de wandeling bereikt); zonder object waar een link op de wandeling ontbreekt. */
-    private On checkOn(Condition.CharacteristicCheck k, List<RoleBindingRef> walk, ObjectType holder, Read read) {
-        if (walk.isEmpty()) return new On(read.label());
-        Expr.AttributeReference member = new Expr.AttributeReference(k.characteristic(), holder, null, null, null,
-                k.source(), false, List.of(), List.of(), null, 0);
-        Object o = DroolsBackend.reached(model, read.object(), read.subject(), member, walk);
-        return new On(o == null ? null : nameOf(o, k.characteristic(), read));
     }
 
     /** De wandeling van een kenmerkcheck over een rol, zoals de lader haar naast de check gaf; leeg voor een kenmerk
@@ -2152,16 +2139,15 @@ public final class Verbaliser {
     private On readOn(Expr e, Read read) {
         if (!(e instanceof Expr.AttributeReference ref) || declarationOf(e) == null || !read.has(e) || !read.reached(e))
             return null;
-        return objectOn(ref, read);
+        return objectOn(e, ref.attribute(), read);
     }
 
-    /** Het object waarop lezing {@code ref} haar lid las, op het object van {@code read}: over de wandeling die de lader
-     *  naast de lezing gaf, zoals uchar haar loopt ({@link DroolsBackend#reached}), zonder wandeling het object van de
-     *  lezing; zonder object waar een link op de wandeling ontbreekt. */
-    private On objectOn(Expr.AttributeReference ref, Read read) {
-        List<RoleBindingRef> walk = document.loaded().navigationBindings().get(ref);
-        Object o = DroolsBackend.reached(model, read.object(), read.subject(), ref, walk == null ? List.of() : walk);
-        return new On(o == null ? null : nameOf(o, ref.attribute(), read));
+    /** Het object waarop de motor knoop {@code node}, een lezing van lid {@code member}, las: dat van de lezing
+     *  (uchars RUNTIME-SEMANTICS ch. 5.12, "The object of a read"), bij een eigen lid het object van de lezing, over een
+     *  rol het object dat de wandeling bereikte; zonder object waar een link op de wandeling ontbreekt. */
+    private On objectOn(Object node, String member, Read read) {
+        Object o = read.of(node).object();
+        return new On(o == null ? null : nameOf(o, member, read));
     }
 
     /** De naam van object {@code o}, waarop {@code read} lid {@code member} las ({@link #labels}). */

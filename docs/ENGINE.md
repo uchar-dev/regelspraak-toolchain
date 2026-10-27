@@ -420,9 +420,10 @@ concept: no rule annotation carries one.
 **The object of a value** (card `explanation-read-objects-and-displaced`). A `NAME` or `QUOTE` with the keys of an
 attribute or a characteristic carries `object` where the sentence names the value of that member on one object: the
 label as `SUBJECT` writes it, a made object by its name. The head of a sentence names its subject; an own member in a
-condition or a computation names the object of the reading; a read over a role names the object its walk reaches, as
-uchar navigates it (`DroolsBackend.reached`, over the walk the loader gives beside the read), and `object: null` where a
-link on the walk is absent, so that the read is empty (uchar's RUNTIME-SEMANTICS ch. 5.8). With `canonical`, `object` is
+condition or a computation names the object of the reading; a read over a role names the object its walk reached, and
+`object: null` where a link on the walk is absent, so that the read is empty (uchar's RUNTIME-SEMANTICS ch. 5.8). The
+object is the engine's: the reading records it at the node of every read of a member (ch. 5.12, "The object of a
+read"). With `canonical`, `object` is
 the pair a consumer looks up: the sentence of the writer of that value begins with `SUBJECT` equal to `object` and its
 first `NAME` has the same `canonical`. An input value has no such sentence; `object` then says whose input it is. No
 `object` stands on a parameter, a role, the text and the filter of a fold over a set (read per member; the members stand
