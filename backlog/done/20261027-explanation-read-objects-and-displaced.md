@@ -224,3 +224,7 @@ voorbeeld van de kaart, s01 zin 47, nu: "…; verdrongen: 'herleving per de maan
 21 lid 1 na onderdeel c' (uitzondering op …) (gold niet), 'herleving per de maand van het einde art. 21 lid 1 na
 onderdeel c' (uitzondering op …) (gold niet), 'herleving per kalendermaand art. 21 lid 1 na onderdeel c' (gold,
 01-07-2025), de regel 'herleving na het vervallen art. 21 lid 1' (gold, 01-07-2025)".
+
+**Gates (acceptatie (d)).** `make gates` op `614eba37` groen, 7 stappen in 5m28s (`logs/gates-d1.log`): pin `81036336`
+op uchars main, reactor 173/393/53 testgevallen, replay 249 goldens en 673 cases (met de koppelingen van deel 1 en de
+lijmtoets), twins, manifest, image, kind-smoke.
