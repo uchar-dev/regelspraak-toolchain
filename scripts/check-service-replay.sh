@@ -130,7 +130,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # 2026-10-27, uchar's kaart test-beyond-thirteen-reads (pin 088659f0): 250 — de set van gate 12 groeit van 279 naar
 # 280 met jutterswet-strandvoogdkeuring (een voorwaarde die achttien waarden leest, vier over een rol; DROOLS-264
 # vervallen); zij speelt ook door de dienst.
-EXPECTED_REPLAY_PLAYED=250
+# 2026-10-27, uchar's kaart subtype-characteristic-in-fold-filter (pin 5e327c95): 251 — de set van gate 12 groeit
+# van 280 naar 281 met jutterswet-ploegblokkade (een kenmerk dat alleen een subtype declareert, gelezen op het
+# supertype: de versmallende host); zij speelt ook door de dienst.
+EXPECTED_REPLAY_PLAYED=251
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een

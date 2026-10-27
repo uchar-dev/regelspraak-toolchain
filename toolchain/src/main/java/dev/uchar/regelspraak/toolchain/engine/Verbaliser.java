@@ -1452,7 +1452,8 @@ public final class Verbaliser {
         private Designatable filterDeclaration(Condition c, ObjectType element) {
             if (c instanceof Condition.CharacteristicCheck k) {
                 List<RoleBindingRef> walk = walkOf(k);
-                return Naming.characteristicOf(walk.isEmpty() ? element : holderOf(walk), k.characteristic());
+                return Naming.characteristicOf(walk.isEmpty() ? checkedType(k, element) : holderOf(walk),
+                        k.characteristic());
             }
             List<Expr> operands = c instanceof Condition.Comparison v ? List.of(v.left(), v.right())
                     : c instanceof Condition.Predicate p ? List.of(p.operand()) : List.of();
@@ -1812,7 +1813,7 @@ public final class Verbaliser {
         }
         if (c instanceof Condition.CharacteristicCheck k) {
             List<RoleBindingRef> walk = walkOf(k);
-            ObjectType holder = walk.isEmpty() ? subject : holderOf(walk);
+            ObjectType holder = walk.isEmpty() ? checkedType(k, subject) : holderOf(walk);
             Predicate predicate = predicate(holder, k.characteristic(), !k.negation(), summary(c));
             // zonder soort geen werkwoord: dan de voorwaarde zoals de regel haar schrijft
             if (predicate == null) return null;
@@ -2001,6 +2002,14 @@ public final class Verbaliser {
     /** "niet geldt: ". */
     private static void notHolds(Sentence.Builder b) {
         b.leaf(Part.Kind.CONNECTIVE, "niet geldt").text(": ");
+    }
+
+    /** Het type waarop kenmerkcheck {@code k} zonder wandeling op {@code subject} het kenmerk leest: haar host waar die
+     *  strikt onder het onderwerp ligt (een kenmerk dat alleen een subtype declareert; RUNTIME-SEMANTICS ch. 5.8b
+     *  regel 4), anders het onderwerp. */
+    private static ObjectType checkedType(Condition.CharacteristicCheck k, ObjectType subject) {
+        ObjectType host = k.owner();
+        return host != null && host != subject && host.isA(subject) ? host : subject;
     }
 
     /** De wandeling van een kenmerkcheck over een rol, zoals de lader haar naast de check gaf; leeg voor een kenmerk
