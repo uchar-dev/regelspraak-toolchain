@@ -148,3 +148,7 @@ change"), de javadoc van `Part`.
   {canonical: "herlevingstermijn", object: "R1"}`. Zin 10: `NAME «werkzaamheden-als-politiek ambtsdrager»` over de rol
   'aanvraag uitkering' krijgt `object: "A1"`; zin 35: «de herlevingsgrens van het recht van het Inkomen
   in-een-kalendermaand» krijgt `object: "R1"`.
+
+**Gates (acceptatie (d)).** `make gates` op `7b52bb08` groen, 7 stappen in 5m05s (`logs/gates-1.log`): reactor
+173/390/53 testgevallen, replay 249 goldens en 673 cases met 4248 koppelingen, twins, manifest, image, kind-smoke.
+Deel 1 landt los; de kaart blijft in `doing/` voor deel 2.
