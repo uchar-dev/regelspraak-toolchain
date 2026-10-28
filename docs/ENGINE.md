@@ -161,7 +161,7 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   Jutter") names none. No stacktrace enters the answer. The Quarkus adapter answers the same, and the
   OpenAPI contract describes the body of the 422 (schema `EvaluationFault`, with `kind` as an enumeration of these
   kinds).
-- A request whose session reaches no fixpoint gets 422 with `{"status": "NO_FIXPOINT", "fout": <uchar's
+- A request whose session reaches no fixpoint gets 422 with `{"status": "NO_FIXPOINT", "error": <uchar's
   sentence>}`: uchar's `DroolsBackend.fire` ended the run at its fire cap or at the creation budget
   (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so
   nothing is read or written back; the service does not judge which of the two it was. With the detail flags (below)
