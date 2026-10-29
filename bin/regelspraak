@@ -18,7 +18,8 @@ usage: bin/regelspraak [--language nl|en] <command> [arguments]
   cases <dir> <source.rgs...>           the scenarios lowered to case files in <dir>, beside <dir>/ir.json
   tokens <out.json> <source.rgs...>     the semantic tokens of the sources (uchar's Resolver.tokens): per file the
                                         spans with kind and position, and the diagnostics; written also when the
-                                        model has an error or a syntax error, then exit 0
+                                        model has an error or a syntax error, then exit 0; sources with a
+                                        Situatie, Parameterset or Scenario are read as cases reads them
   scenario [--trace] [--explanation] [--vocabulary <name>] <source.rgs...>
   scenario [--trace] --manifest <manifest> [--exclusions <list>]
                                         lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario;

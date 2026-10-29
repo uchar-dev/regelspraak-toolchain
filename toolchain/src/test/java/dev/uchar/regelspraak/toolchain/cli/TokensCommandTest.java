@@ -173,6 +173,31 @@ class TokensCommandTest {
         assertTrue(r.stderr().contains("ERROR"), r.stderr());
     }
 
+    /** A test document of the scenario layer beside the declarations is read as {@code cases} reads it: no syntax
+     *  error, and its label is a name of its own kind (uchar's DIVERGENCES.md, "Semantic tokens", "A test
+     *  document"). */
+    @Test
+    void tokens_reads_a_test_document_as_cases_reads_it() throws Exception {
+        write("boten.rgs", BOATS);
+        write("toets.rgs", """
+                Scenario lange boot
+                Gegeven is de volgende situatie:
+                een Boot B1
+                - de lengte is 12,5
+                de parameter de lengtegrens is 10
+                Met als verwacht resultaat:
+                - B1 is groot
+                """);
+        Run r = run("tokens", "tokens.json", "boten.rgs", "toets.rgs");
+        assertEquals(0, r.exit(), () -> "stdout: " + r.stdout() + "\nstderr: " + r.stderr());
+        JsonNode document = new ObjectMapper().readTree(dir.resolve("tokens.json").toFile());
+        assertEquals(0, document.get("diagnostics").size(), () -> "diagnosen: " + document.get("diagnostics"));
+        List<String> labels = new ArrayList<>();
+        for (JsonNode s : document.get("files").get(1).get("spans"))
+            if (s.get("kind").asText().equals("label")) labels.add(s.get("text").asText() + (s.path("declaration").asBoolean() ? " (declaratie)" : ""));
+        assertEquals(List.of("B1 (declaratie)", "B1"), labels);
+    }
+
     @Test
     void tokens_exits_2_on_wrong_usage_and_writes_nothing() throws Exception {
         write("boten.rgs", BOATS);
