@@ -133,7 +133,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # 2026-10-27, uchar's kaart subtype-characteristic-in-fold-filter (pin 5e327c95): 251 — de set van gate 12 groeit
 # van 280 naar 281 met jutterswet-ploegblokkade (een kenmerk dat alleen een subtype declareert, gelezen op het
 # supertype: de versmallende host); zij speelt ook door de dienst.
-EXPECTED_REPLAY_PLAYED=251
+# 2026-11-01, uchar's kaarten fout-op-tussenstand, omgekeerde-eenheid en unit-factors (pin 3d4676b8): 268 — de set van
+# gate 12 groeit van 281 naar 299; zeventien spelen ook door de dienst, jutterswet-kadetarief niet (een tijdlijn als
+# invoerwaarde).
+EXPECTED_REPLAY_PLAYED=268
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
@@ -153,6 +156,7 @@ REPLAY_EXCLUDED=(
   "jutterswet-gehele-periode-leeg|tijdlijn als invoerwaarde"
   "jutterswet-gehele-periode-leeg-rgs|tijdlijn als invoerwaarde"
   "jutterswet-getijdenwacht|tijdlijn als invoerwaarde"
+  "jutterswet-kadetarief|tijdlijn als invoerwaarde"
   "jutterswet-keurlast|tijdlijn als invoerwaarde"
   "jutterswet-keurploeg|tijdlijn als invoerwaarde"
   "jutterswet-klipwacht|tijdlijn als invoerwaarde"

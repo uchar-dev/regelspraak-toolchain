@@ -1219,7 +1219,7 @@ public final class Verbaliser {
             ConditionReading.NodeReading n = valueRead(w).of(w.rule().value());
             Datatype target = type.attribute(member);
             if (!(n.value() instanceof BigDecimal d)) return render(n.value(), target);
-            String unit = n.unit() != null ? n.unit().abbreviation() : unitWord(target);
+            String unit = n.unit() != null ? n.unit().rendering() : unitWord(target);
             String number = nlNumber(d, target);
             return unit == null ? number : number + " " + unit;
         }
@@ -1372,7 +1372,7 @@ public final class Verbaliser {
         private String unrounded(Expr e, Read read) {
             ConditionReading.NodeReading n = read.of(e);
             if (!(n.value() instanceof BigDecimal d)) return renderOperand(e, read);
-            String unit = n.unit() != null ? n.unit().abbreviation()
+            String unit = n.unit() != null ? n.unit().rendering()
                     : (e.type() instanceof Datatype.Percentage || typeOf(e) instanceof Datatype.Percentage) ? "%" : null;
             String number = nlNumber(d.stripTrailingZeros(), null);
             return unit == null ? number : number + " " + unit;
@@ -2072,7 +2072,7 @@ public final class Verbaliser {
             if (b.scale() < scale) v = b.setScale(scale);
             type = null;
         }
-        String unit = u != null ? u.abbreviation()
+        String unit = u != null ? u.rendering()
                 : (e.type() instanceof Datatype.Percentage || typeOf(e) instanceof Datatype.Percentage) ? "%" : null;
         if (!(v instanceof BigDecimal b)) return renderValue(v, type);
         String number = nlNumber(b, type);
@@ -2186,7 +2186,7 @@ public final class Verbaliser {
     private static String unitWord(Datatype type) {
         if (type instanceof Datatype.Percentage) return "%";
         Unit e = type == null ? null : type.unitOf();
-        return e == null ? null : e.abbreviation();
+        return e == null ? null : e.rendering();
     }
 
     /** Een korte omschrijving van WAT een operand is, uit zijn brontekst (bv. "de maandloon nieuw van EOver"); die is
