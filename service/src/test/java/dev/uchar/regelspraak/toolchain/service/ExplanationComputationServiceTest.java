@@ -547,6 +547,109 @@ class ExplanationComputationServiceTest {
                 + " labels=[\"voorjaar\"]}«zijn vondstgewicht in voorjaar»"), computation);
     }
 
+    /** After uchar's golden jutterswet-ploegseizoen and jutterswet-seizoenvouw: a cell of the object a role reaches, in
+     *  the value and in the condition, names that object and the cell; a fold over a cell of each member is the rule
+     *  text with the keys of the attribute and the cell under {@code labels}, with its members; the first, the last and
+     *  the count of the filled cells, over the own cells or over those of the object a role reaches, are the rule text
+     *  with its value, as every fold over cells is. */
+    @Test
+    void a_cell_over_a_role_and_a_fold_over_a_cell_of_each_member() throws Exception {
+        String source = """
+                Eenheidsysteem Gewicht
+                    het kilogram (mv: kilogrammen) kg
+
+                Dimensie het seizoen, bestaande uit de seizoenen (na het attribuut met voorzetsel in):
+                    1. voorjaar
+                    2. zomer
+                    3. najaar
+
+                Objecttype de Jutter (mv: Jutters) (bezield)
+                    het vondstgewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg gedimensioneerd met seizoen;
+                    het openingsgewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg;
+                    het aantal vondstseizoenen Numeriek (niet-negatief geheel getal);
+
+                Objecttype de Ploeg (mv: Ploegen)
+                    het leidersvoorjaarsgewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg;
+                    het laatste leidersgewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg;
+                    het ploegvoorjaarsgewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg;
+
+                Feittype ploegleiding
+                    de leider Jutter
+                    de geleide ploeg Ploeg
+                Eén leider heeft één geleide ploeg
+
+                Feittype ploeglidmaatschap
+                    de ploeg Ploeg
+                    het lid (mv: leden) Jutter
+                Eén ploeg heeft meerdere leden
+
+                Regel openingsgewicht van een jutter
+                    geldig altijd
+                        Het openingsgewicht van een Jutter moet berekend worden als de eerste van zijn vondstgewicht over alle seizoenen.
+
+                Regel aantal vondstseizoenen van een jutter
+                    geldig altijd
+                        Het aantal vondstseizoenen van een Jutter moet berekend worden als het aantal voorkomens van zijn vondstgewicht over alle seizoenen.
+
+                Regel leidersvoorjaarsgewicht van een ploeg
+                    geldig altijd
+                        Het leidersvoorjaarsgewicht van een Ploeg moet berekend worden als het vondstgewicht in voorjaar van de leider van de Ploeg
+                        indien het vondstgewicht in zomer van de leider van de Ploeg groter is dan 1 kg.
+
+                Regel laatste leidersgewicht van een ploeg
+                    geldig altijd
+                        Het laatste leidersgewicht van een Ploeg moet berekend worden als de laatste van het vondstgewicht van de leider van de Ploeg over alle seizoenen.
+
+                Regel ploegvoorjaarsgewicht van een ploeg
+                    geldig altijd
+                        Het ploegvoorjaarsgewicht van een Ploeg moet berekend worden als de som van het vondstgewicht in voorjaar van alle leden van de Ploeg.
+                """;
+        String descriptor = """
+                { "service": {"name":"Ploegen","version":"1"},
+                  "entrypoints": [ { "name":"jutters","path":"jutters",
+                    "scope": {"ruleNames": ["openingsgewicht van een jutter", "aantal vondstseizoenen van een jutter",
+                      "leidersvoorjaarsgewicht van een ploeg", "laatste leidersgewicht van een ploeg",
+                      "ploegvoorjaarsgewicht van een ploeg"]},
+                    "input": ["Jutter", "Ploeg"],
+                    "output": ["Jutter.openingsgewicht", "Jutter.aantal vondstseizoenen", "Ploeg.leidersvoorjaarsgewicht",
+                      "Ploeg.laatste leidersgewicht", "Ploeg.ploegvoorjaarsgewicht"] } ],
+                  "parameters": {} }""";
+        String request = """
+                { "instances": [
+                    { "type": "Jutter", "id": "J1", "attributes": { "vondstgewicht": { "cells": [
+                        { "labels": ["voorjaar"], "value": 2.50 }, { "labels": ["zomer"], "value": 1.25 } ] } } },
+                    { "type": "Jutter", "id": "J3", "attributes": { "vondstgewicht": { "cells": [
+                        { "labels": ["voorjaar"], "value": 3.00 } ] } } },
+                    { "type": "Ploeg", "id": "P1", "roles": { "leider": "J1", "lid": ["J1", "J3"] } } ] }""";
+        ObjectNode answer = answer(fromSources(source, descriptor), request);
+        assertEquals(List.of(
+                "J1 heeft als openingsgewicht 2,50 kg volgens de regel 'openingsgewicht van een jutter' (onvoorwaardelijk):"
+                        + " de eerste van zijn vondstgewicht over alle seizoenen (2,50 kg)",
+                "J1 heeft als aantal vondstseizoenen 2 volgens de regel 'aantal vondstseizoenen van een jutter'"
+                        + " (onvoorwaardelijk): het aantal voorkomens van zijn vondstgewicht over alle seizoenen (2)",
+                "J3 heeft als openingsgewicht 3,00 kg volgens de regel 'openingsgewicht van een jutter' (onvoorwaardelijk):"
+                        + " de eerste van zijn vondstgewicht over alle seizoenen (3,00 kg)",
+                "J3 heeft als aantal vondstseizoenen 1 volgens de regel 'aantal vondstseizoenen van een jutter'"
+                        + " (onvoorwaardelijk): het aantal voorkomens van zijn vondstgewicht over alle seizoenen (1)",
+                "P1 heeft als leidersvoorjaarsgewicht 2,50 kg volgens de regel 'leidersvoorjaarsgewicht van een ploeg':"
+                        + " het vondstgewicht in voorjaar van de leider van de Ploeg (2,50 kg), omdat het vondstgewicht in"
+                        + " zomer van de leider van de Ploeg (1,25 kg) is groter dan 1 kg",
+                "P1 heeft als laatste leidersgewicht 1,25 kg volgens de regel 'laatste leidersgewicht van een ploeg'"
+                        + " (onvoorwaardelijk): de laatste van het vondstgewicht van de leider van de Ploeg over alle"
+                        + " seizoenen (1,25 kg)",
+                "P1 heeft als ploegvoorjaarsgewicht 5,50 kg volgens de regel 'ploegvoorjaarsgewicht van een ploeg'"
+                        + " (onvoorwaardelijk): de som van het vondstgewicht in voorjaar van alle leden van de Ploeg"
+                        + " (5,50 kg): over J1 (2,50 kg) en J3 (3,00 kg) (2 leden)"), sentences(answer));
+        String leader = ExplanationPartsCheck.render(answer.at("/explanationParts/4"));
+        assertTrue(leader.contains("QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=vondstgewicht, object=J1,"
+                + " labels=[\"voorjaar\"]}«het vondstgewicht in voorjaar van de leider van de Ploeg»"), leader);
+        assertTrue(leader.contains("QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=vondstgewicht, object=J1,"
+                + " labels=[\"zomer\"]}«het vondstgewicht in zomer van de leider van de Ploeg»"), leader);
+        String members = ExplanationPartsCheck.render(answer.at("/explanationParts/6"));
+        assertTrue(members.contains("QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=vondstgewicht,"
+                + " labels=[\"voorjaar\"]}«de som van het vondstgewicht in voorjaar van alle leden van de Ploeg»"), members);
+    }
+
     /** Every sentence of form A carries the computation as a group, and every writer that did not write stands in a
      *  group of its own: without them the sentence is still a sentence. */
     @Test

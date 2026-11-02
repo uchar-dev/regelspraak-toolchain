@@ -488,9 +488,11 @@ text of the value (`QUOTE`), and `", met "` with every node that reads or folds 
 dimension cell, a binder of `Daarbij geldt` by the text of its definition, a built-in function, a fold), each rule text
 once, with the value the engine read there; where the value reads one declaration or folds over a set or over the
 cells of a dimensioned attribute, that node is the rule text itself, with its value (`de som van zijn vondstgewicht over
-alle seizoenen (4,50 kg)`; the engine's reading of a fold over cells carries no member). A fold over a set has its `MEMBERS` ("over I4 (01-04-2026) en I5 (01-05-2026) (2
-leden)", a count without a value per member), and its filter, where it is one characteristic check or one read, is a
-`QUOTE` of its own with the keys of that declaration. Last come the value before each rounding (`"; vóór de afronding
+alle seizoenen (4,50 kg)`; the engine's reading of a fold over cells carries no member, also where the cells are those
+of the object a role reaches). A fold over a set has its `MEMBERS` ("over I4 (01-04-2026) en I5 (01-05-2026) (2
+leden)", a count without a value per member); its text carries the keys of the attribute it folds, and for a cell of
+each member (`de som van het vondstgewicht in voorjaar van alle leden van de Ploeg`) the cell under `labels`; and its
+filter, where it is one characteristic check or one read, is a `QUOTE` of its own with the keys of that declaration. Last come the value before each rounding (`"; vóór de afronding
 "`) and before each bound (`"; vóór de begrenzing "`). Every value is the engine's: the reading of the rule
 (`DroolsBackend.readingsOf`) carries the nodes of its value after those of its condition, and since uchar's card
 `readings-of-unconditional-forms` a rule without a condition has a reading of its value too; only the input value of

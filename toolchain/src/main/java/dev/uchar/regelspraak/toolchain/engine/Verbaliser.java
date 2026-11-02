@@ -1451,15 +1451,16 @@ public final class Verbaliser {
             return text + "\u0000" + (d == null ? "" : d.kind() + "\u0000" + d.owner() + "\u0000" + d.name());
         }
 
-        /** De regeltekst van vouw {@code f}, met de declaratie van het attribuut dat zij leest; staat haar filter erin en
-         *  is dat één kenmerkcheck of één lezing, dan is het filter een eigen stuk met de declaratie die het leest, en een
-         *  samenstelling een stuk per lid. */
+        /** De regeltekst van vouw {@code f}, met de declaratie van het attribuut dat zij leest, bij een cel van elk lid
+         *  met die cel onder {@code labels}; staat haar filter erin en is dat één kenmerkcheck of één lezing, dan is het
+         *  filter een eigen stuk met de declaratie die het leest, en een samenstelling een stuk per lid. */
         private void foldText(Sentence.Builder b, Expr.FunctionCall f) {
             String text = f.source().snippet().trim();
-            Designatable read = f.arguments().size() == 1 ? declarationOf(f.arguments().get(0)) : null;
+            // no object: the fold reads its source on every member, and the members stand in MEMBERS
+            Map<String, Object> source = f.arguments().size() == 1 ? keys(f.arguments().get(0), null) : Map.of();
             Condition filter = f.filter();
             if (filter == null) {
-                b.leaf(Part.Kind.QUOTE, text, declaration(read));
+                b.leaf(Part.Kind.QUOTE, text, source);
                 return;
             }
             String filterText = summary(filter);
@@ -1467,7 +1468,7 @@ public final class Verbaliser {
             if (at < 0)
                 throw new IllegalStateException("de tekst van het filter \"" + filterText + "\" staat niet in de tekst"
                         + " van de vouw \"" + text + "\"");
-            quote(b, text.substring(0, at), read);
+            if (at > 0) b.leaf(Part.Kind.QUOTE, text.substring(0, at), source);
             if (filter instanceof Condition.Compound s) {
                 int from = 0;
                 for (Condition d : s.components()) {
