@@ -168,7 +168,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   uchar's input fence (`CaseRunner.inputFits`) refuses the value before any session, as uchar's replay refuses it in a
   case. An attribute reaches the fence in uchar's input step, which stops at the first; the core holds every parameter
   to it, since it binds the parameters itself. No session runs, so the 422 carries no detail, also when the request
-  asks for it.
+  asks for it. A parameter default of the descriptor that does not fit is refused when the descriptor loads, with a
+  violation on `parameters.<name>` that carries uchar's sentence, so the service does not start.
 - A request whose session reaches no fixpoint gets 422 with `{"status": "NO_FIXPOINT", "error": <uchar's
   sentence>}`: uchar's `DroolsBackend.fire` ended the run at its fire cap or at the creation budget
   (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so

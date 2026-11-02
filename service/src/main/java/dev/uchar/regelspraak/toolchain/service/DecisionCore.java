@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.engine.ScenarioResult;
@@ -583,7 +584,9 @@ public final class DecisionCore {
         return "in de " + part + (text == null ? "" : " '" + text + "'") + " van default " + d.path();
     }
 
-    /** The descriptor parameter defaults, decoded per-parameter datatype to (globalName -> value). */
+    /** The descriptor parameter defaults, decoded per-parameter datatype to (globalName -> value). A number its
+     *  declaration does not hold is a violation with uchar's sentence of EF-004 ({@code CaseRunner.inputFits}), so the
+     *  descriptor does not load, as a request with that value gets the evaluation fault. */
     private static Map<String, Object> defaultGlobals(ServiceDescriptor descriptor, RegelSpraakModel model) {
         Map<String, Object> globals = new LinkedHashMap<>();
         if (descriptor.parameters() == null) return globals;
@@ -591,9 +594,20 @@ public final class DecisionCore {
         for (var e : descriptor.parameters().entrySet()) {
             RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, e.getKey());
             if (p == null) continue;   // already reported by descriptor validation
-            ValueCoder.Result r = ValueCoder.decode(e.getValue(), p.datatype(), "parameters." + e.getKey());
+            String field = "parameters." + e.getKey();
+            ValueCoder.Result r = ValueCoder.decode(e.getValue(), p.datatype(), field);
             errors.addAll(r.violations());
-            if (r.violations().isEmpty()) globals.put(RequestMapper.globalName(p.name()), r.value());
+            if (!r.violations().isEmpty()) continue;
+            if (r.value() instanceof java.math.BigDecimal b) {
+                try {
+                    CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(),
+                            "parameter " + p.name());
+                } catch (CaseRunner.InputPrecisionFault f) {
+                    errors.add(Violation.of(Violation.Kind.WRONG_TYPE, field, f.getMessage()));
+                    continue;
+                }
+            }
+            globals.put(RequestMapper.globalName(p.name()), r.value());
         }
         if (!errors.isEmpty()) throw new ServiceError("descriptor parameter-default ongeldig", errors);
         return globals;

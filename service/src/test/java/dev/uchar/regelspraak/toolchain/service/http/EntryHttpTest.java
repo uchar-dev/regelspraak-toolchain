@@ -15,6 +15,8 @@ import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 import dev.uchar.regelspraak.toolchain.service.Executor;
+import dev.uchar.regelspraak.toolchain.service.ServiceError;
+import dev.uchar.regelspraak.toolchain.service.Violation;
 import dev.uchar.regelspraak.toolchain.service.World;
 import dev.uchar.regelspraak.transpiler.tms.EvaluationFaults;
 import dev.uchar.regelspraak.transpiler.tms.WriteBoundaryFault;
@@ -441,6 +443,30 @@ class EntryHttpTest {
      *  gives the sentence of that replay. */
     @Test
     void a_parameter_value_that_does_not_fit_is_422_input_precision_fault(@TempDir Path map) throws Exception {
+        CaseRunner.InputPrecisionFault replay = parameterReplay(map);
+        JsonNode body = evaluationFault(post(precisionService, "/gewogen", """
+            {"parameters":{"vondstfactor":0.505},
+             "instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":2.00}}]}"""));
+        assertEquals(List.of("INPUT_PRECISION_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
+    }
+
+    /** The same 0,505 as the default of the descriptor: the descriptor does not load, with a violation on the
+     *  parameter that carries the sentence of uchar's replay, so no request meets the value. */
+    @Test
+    void a_parameter_default_that_does_not_fit_fails_the_descriptor(@TempDir Path map) throws Exception {
+        CaseRunner.InputPrecisionFault replay = parameterReplay(map);
+        String descriptor = PRECISION_DESCRIPTOR.replace("\"parameters\": {}",
+                "\"parameters\": {\"vondstfactor\": 0.505}");
+        ServiceError error = assertThrows(ServiceError.class, () -> DecisionCore.assemble(descriptor,
+                Map.of("precisie.rgs", PRECISION_SOURCE), CoreConfig.strict(),
+                Thread.currentThread().getContextClassLoader()));
+        assertEquals(List.of(Violation.of(Violation.Kind.WRONG_TYPE, "parameters.vondstfactor", replay.getMessage())),
+                error.violations(), error::getMessage);
+    }
+
+    /** What uchar's replay throws on a case of the precision model whose vondstfactor is 0,505. */
+    private static CaseRunner.InputPrecisionFault parameterReplay(Path map) throws Exception {
         RegelSpraakModel model = Resolver.resolve(PRECISION_SOURCE);
         assertEquals(List.of(), model.errors());
         Path ir = map.resolve("ir.json");
@@ -455,11 +481,7 @@ class EntryHttpTest {
         CaseRunner.InputPrecisionFault replay = assertThrows(CaseRunner.InputPrecisionFault.class,
                 () -> CaseRunner.runGolden(ir, List.of(testCase)));
         assertEquals(Map.of("place", "parameter vondstfactor", "value", "0.505", "decimals", "2"), replay.params());
-        JsonNode body = evaluationFault(post(precisionService, "/gewogen", """
-            {"parameters":{"vondstfactor":0.505},
-             "instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":2.00}}]}"""));
-        assertEquals(List.of("INPUT_PRECISION_FAULT"), kinds(body), body.toString());
-        assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
+        return replay;
     }
 
     // ---------------- a fault at the fixpoint of another type: OTHER ----------------
