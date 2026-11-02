@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.ir.ResolvedScenario.AttributeValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.Cell;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Instance;
 import dev.uchar.regelspraak.ir.ResolvedScenario.CharacteristicValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterValue;
@@ -13,6 +14,7 @@ import dev.uchar.regelspraak.ir.ResolvedScenario.RoleValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 /**
  * MECHANICALLY derive the request body of the service from a resolved scenario's merged
@@ -28,8 +30,9 @@ import java.math.BigDecimal;
  * {@code BigDecimal} node, never a double) with no eenheid object; a date/datetime as its ISO string; a
  * boolean/tekst/enum as its plain JSON scalar. Those are exactly the forms
  * {@link dev.uchar.regelspraak.toolchain.service.ValueCoder} accepts (a plain number is read in the declared unit),
- * so no request value is ever approximated. A timeline value, a time-dependent kenmerk and a fraction that has no
- * exact decimal form have no request form, and fail here by name ({@link NonPortable}).
+ * so no request value is ever approximated. The cells of a dimensioned attribute go as {@code cells}, each with its
+ * labels and its value in that form. A timeline value, a time-dependent kenmerk and a fraction that has no exact decimal
+ * form have no request form, and fail here by name ({@link NonPortable}).
  *
  * <p>The response shape produced matches {@link dev.uchar.regelspraak.toolchain.service.Request}:
  * {@code instanties[]{type,id,attributen,kenmerken,rollen}}, {@code parameters}, {@code rekendatum}.
@@ -79,7 +82,7 @@ final class SituationToRequest {
                     if (a.timeline() != null)
                         throw new NonPortable("attribuut '" + a.attribute() + "' van " + i.label()
                                 + " heeft een tijdlijn; het verzoek van de dienst draagt geen tijdlijnwaarde");
-                    attributes.set(a.attribute(), valueToJson(a.value()));
+                    attributes.set(a.attribute(), a.cells() != null ? cellsToJson(a.cells()) : valueToJson(a.value()));
                 }
             }
             if (!i.characteristics().isEmpty()) {
@@ -104,6 +107,21 @@ final class SituationToRequest {
             }
         }
         return root;
+    }
+
+    /** The cells of a dimensioned attribute as the request gives them, {@code {"cells": [{"labels", "value"}, ...]}}:
+     *  the labels as uchar's scenario resolver gives them, one per dimension in their declared order, each value as
+     *  {@link #valueToJson} writes it. */
+    private static ObjectNode cellsToJson(List<Cell> cells) {
+        ObjectNode n = NF.objectNode();
+        ArrayNode list = n.putArray("cells");
+        for (Cell c : cells) {
+            ObjectNode cell = list.addObject();
+            ArrayNode labels = cell.putArray("labels");
+            c.labels().forEach(labels::add);
+            cell.set("value", valueToJson(c.value()));
+        }
+        return n;
     }
 
     /** The already-normalised value → its JSON form the request mapper accepts. A number lexeme → exact number;

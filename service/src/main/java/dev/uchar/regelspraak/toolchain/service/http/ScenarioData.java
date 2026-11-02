@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.uchar.regelspraak.engine.ScenarioResult.ExpectationResult;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.ir.ResolvedScenario.AttributeValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.Cell;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Instance;
 import dev.uchar.regelspraak.ir.ResolvedScenario.CharacteristicValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterValue;
@@ -17,6 +18,7 @@ import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
+import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
@@ -36,9 +38,10 @@ import java.util.TreeMap;
  * canonical name stands beside it under the key with {@code Canoniek} appended ({@code attribuut} and
  * {@code attribuutCanoniek}). <b>A value</b> is a JSON string for a number (the exact lexeme or plain decimal, with its
  * scale), a date, a date-time, a text and an enumeration value (in the chosen vocabulary), a JSON boolean for a truth
- * value and null for leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}. A situation has no cell
- * of a dimensioned attribute, since uchar's scenario layer reads none; the fixpoint has a row per cell
- * ({@link FixpointGivens}). {@code unit} is the declared unit of a number.
+ * value and null for leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}; a dimensioned attribute
+ * is {@code cells}, a list of {@code {labels, value}}, one label per dimension in their declared spelling, as the
+ * request of the service gives it, and the fixpoint has a row per cell ({@link FixpointGivens}). {@code unit} is the
+ * declared unit of a number.
  *
  * <p><b>Order.</b> The objects of a situation stand in its order. The fixpoint is rendered by
  * {@link FixpointGivens}, which the decision service uses as well, with the objects of the situation as the input; its
@@ -70,6 +73,7 @@ final class ScenarioData {
                 name(an, "attribute", ng.attribute(ot, a.attribute()), a.attribute());
                 Datatype dt = ot.attribute(a.attribute());
                 if (a.timeline() != null) an.set("timeline", timeline(a.timeline(), dt, ng));
+                else if (a.cells() != null) an.set("cells", cells(a, ot, model, ng));
                 else value(an, a.value(), dt, ng);
                 unit(an, dt);
                 an.put("line", a.line());
@@ -148,6 +152,7 @@ final class ScenarioData {
                 Datatype dt = ot.attribute(a.attribute());
                 ObjectNode an = NF.objectNode();
                 if (a.timeline() != null) an.set("timeline", timeline(a.timeline(), dt, ng));
+                else if (a.cells() != null) an.set("cells", cells(a, ot, model, ng));
                 else value(an, a.value(), dt, ng);
                 attributes.put(a.attribute(), an);
             }
@@ -174,6 +179,25 @@ final class ScenarioData {
         else if (w.text() != null) n.put("value", w.text());
         else if (w.enumValue() != null) enumValue(n, w.enumValue(), dt, ng);
         else throw new IllegalStateException("uchars resolver gaf een waarde zonder variant");
+    }
+
+    /** The cells of dimensioned attribute {@code a} of {@code ot}, in the order of the situation, each with its
+     *  {@code labels} as uchar keys a cell ({@link FactModelGenerator#cellKey}, the key {@link FixpointGivens} reads a
+     *  cell of the input by) and its value. */
+    private static ArrayNode cells(AttributeValue a, ObjectType ot, RegelSpraakModel model, Naming ng) {
+        Datatype dt = ot.attribute(a.attribute());
+        ArrayNode sink = NF.arrayNode();
+        for (Cell c : a.cells()) {
+            List<String> key = FactModelGenerator.cellKey(model, ot.dimensionsOf(a.attribute()), c.labels());
+            if (key == null)
+                throw new IllegalStateException("uchars scenariolaag gaf het attribuut '" + a.attribute()
+                        + "' de cel " + c.labels() + ", die het niet heeft");
+            ObjectNode cn = sink.addObject();
+            ArrayNode labels = cn.putArray("labels");
+            key.forEach(labels::add);
+            value(cn, c.value(), dt, ng);
+        }
+        return sink;
     }
 
     private static ArrayNode timeline(List<Segment> segments, Datatype dt, Naming ng) {

@@ -105,6 +105,17 @@ class PlaygroundViaServiceTest {
                 "input": ["Jutter"], "output": ["Jutter.borgdagen"] } ],
               "parameters": {} }""";
 
+    /** uchar's golden jutterswet-seizoenboeking: one entry point with every form of its source. */
+    private static final String SEASON_BOOKING_DESCRIPTOR = """
+            { "service": {"name":"seizoenboeking","version":"1"},
+              "entrypoints": [ { "name":"jutters","path":"jutters",
+                "scope": {"ruleNames": ["najaarsgewicht van een jutter", "zomergewicht van een jutter",
+                  "jaargewicht van een jutter", "boek een vangst bij elke jutter", "vangsttotaal van een vangst",
+                  "geboekte gewicht van een jutter"]},
+                "input": ["Jutter"],
+                "output": ["Jutter.vondstgewicht", "Jutter.jaargewicht", "Jutter.geboekte gewicht"] } ],
+              "parameters": {} }""";
+
     /** The golden TOKA scenarios uchar's scenario resolver refuses ({@code GoldenOverHttpTest.UCHAR_REFUSES}). */
     private static final Set<String> UCHAR_REFUSES = Set.of("scenario-toka-29-passagier-met-recht.rgs",
             "scenario-toka-43-startpunt-vertrek.rgs", "scenario-toka-44-startpunt-min-reserveringstermijn.rgs");
@@ -286,6 +297,56 @@ class PlaygroundViaServiceTest {
                 d.path("diagnosis").asText());
         assertEquals("dagen", d.path("path").asText());
         assertEquals(0, d.path("expectations").size());
+    }
+
+    /** A cell of a dimensioned attribute in the situation (uchar's golden jutterswet-seizoenboeking with its test
+     *  document): the situation gives the attribute as its cells, the request carries them as {@code cells}, as the
+     *  request of the service does, and via the service every scenario has the verdict, the expectations, the situation
+     *  and the fixpoint of the ordinary route. */
+    @Test
+    void a_cell_in_the_situation_is_carried() throws Exception {
+        Path golden = TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-seizoenboeking");
+        String rgs = Files.readString(golden.resolve("source.rgs"));
+        DecisionCore core = DecisionCore.assemble(SEASON_BOOKING_DESCRIPTOR, Map.of("bron.rgs", rgs),
+                CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
+        String source = rgs + "\n" + Files.readString(golden.resolve("scenario.rgs"));
+
+        var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
+        assertTrue(bundle.isOk(), () -> bundle.model().errors().toString());
+        assertEquals("{\"cells\":[{\"labels\":[\"voorjaar\"],\"value\":1.50},{\"labels\":[\"zomer\"],\"value\":2.00}]}",
+                SituationToRequest.assemble(bundle.scenarios().get(0)).at("/instances/1/attributes/vondstgewicht")
+                        .toString());
+
+        JsonNode ordinary = Playground.analyze(source, null).path("scenario").path("results");
+        JsonNode service = Playground.analyze(source, null, core).path("scenario").path("results");
+        assertEquals(3, ordinary.size(), ordinary.toString());
+        assertEquals(3, service.size(), service.toString());
+        for (int i = 0; i < 3; i++) {
+            JsonNode g = ordinary.get(i), d = service.get(i);
+            assertEquals("PASS", g.path("status").asText(), g.toString());
+            assertEquals("PASS", d.path("status").asText(), d.toString());
+            assertEquals(g.path("expectations"), d.path("expectations"));
+            assertEquals(g.path("situation"), d.path("situation"));
+            assertEquals(g.path("fixpoint"), d.path("fixpoint"));
+            assertEquals("jutters", d.path("path").asText());
+        }
+
+        JsonNode j1 = ordinary.at("/0/situation/objects/0/attributes/0");
+        assertEquals(ServiceHttp.MAPPER.readTree("{\"attribute\":\"vondstgewicht\",\"cells\":[{\"labels\":[\"voorjaar\"],"
+                + "\"value\":\"1.50\"}],\"unit\":\"kg\",\"line\":" + lineOf(source, "- het vondstgewicht in voorjaar is 1,50 kg")
+                + "}"), j1);
+        assertEquals("[{\"labels\":[\"voorjaar\"],\"value\":\"1.50\"},{\"labels\":[\"zomer\"],\"value\":\"2.00\"}]",
+                ordinary.at("/0/situation/objects/1/attributes/0/cells").toString());
+        List<String> rows = new ArrayList<>();
+        for (JsonNode w : ordinary.at("/0/fixpoint/objects/1/values"))
+            if (w.has("labels")) rows.add(w.get("labels") + "=" + w.get("value").asText() + " " + w.get("origin").asText());
+        assertEquals(List.of("[\"voorjaar\"]=1.50 input", "[\"zomer\"]=2.00 input", "[\"najaar\"]=3.00 derived"), rows);
+    }
+
+    private static int lineOf(String source, String text) {
+        List<String> lines = List.of(source.split("\n", -1));
+        for (int i = 0; i < lines.size(); i++) if (lines.get(i).strip().equals(text)) return i + 1;
+        throw new AssertionError("geen regel '" + text + "' in de bron");
     }
 
     /** A scenario without a scope runs on every form of the model; an entry point that carries one of the two is no

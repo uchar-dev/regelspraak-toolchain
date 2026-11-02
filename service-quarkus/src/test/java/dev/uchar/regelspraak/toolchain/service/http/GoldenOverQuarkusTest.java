@@ -193,6 +193,18 @@ class GoldenOverQuarkusTest {
                 JsonNode w = attribute(answer, v.label(), v.attribute());
                 assertTrue(w == null || w.isNull(), () -> "verwacht leeg, kreeg " + w + ctx);
             }
+            case CELL_VALUE -> {
+                JsonNode w = cell(answer, v.label(), v.attribute(), v.labels());
+                assertNotNull(w, () -> "geen cel " + v.labels() + " van '" + v.attribute() + "' op '" + v.label() + "'" + ctx);
+                assertTrue(equal(v.expectedValue(), w),
+                        () -> "verwacht " + renderValue(v.expectedValue()) + ", kreeg " + w + ctx);
+            }
+            case CELL_EMPTY -> {
+                // the answer gives every cell of a dimensioned attribute, an empty one as null
+                JsonNode w = cell(answer, v.label(), v.attribute(), v.labels());
+                assertNotNull(w, () -> "geen cel " + v.labels() + " van '" + v.attribute() + "' op '" + v.label() + "'" + ctx);
+                assertTrue(w.isNull(), () -> "verwacht leeg, kreeg " + w + ctx);
+            }
             case CHARACTERISTIC_PRESENT -> assertTrue(characteristicTrue(answer, v.label(), v.characteristic()),
                     () -> "verwacht kenmerk '" + v.characteristic() + "' AANWEZIG op '" + v.label() + "'" + ctx);
             case CHARACTERISTIC_ABSENT -> assertTrue(!characteristicTrue(answer, v.label(), v.characteristic()),
@@ -252,6 +264,19 @@ class GoldenOverQuarkusTest {
     private static JsonNode attribute(JsonNode answer, String id, String name) {
         JsonNode inst = instance(answer, id);
         return inst == null ? null : inst.path("attributes").get(name);
+    }
+
+    /** The value of the cell {@code labels} of dimensioned attribute {@code name} on instance {@code id}, null where the
+     *  answer has no such cell. */
+    private static JsonNode cell(JsonNode answer, String id, String name, List<String> labels) {
+        JsonNode attribute = attribute(answer, id, name);
+        if (attribute == null) return null;
+        for (JsonNode c : attribute.path("cells")) {
+            List<String> given = new ArrayList<>();
+            c.path("labels").forEach(l -> given.add(l.asText()));
+            if (given.equals(labels)) return c.get("value");
+        }
+        return null;
     }
 
     private static boolean characteristicTrue(JsonNode answer, String id, String name) {

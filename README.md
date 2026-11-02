@@ -146,6 +146,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
   under `dimensions`; in the OpenAPI document a dimensioned attribute is a property of its cells, where it was left out
   as unsupported. The explanation gives every cell a rule writes a sentence of its own, a `NAME` or `QUOTE` of a cell
   carries `labels`, and a fold over cells is the rule text with its value (`docs/ENGINE.md`).
+- **Cells in a test document** (uchar's card `dimensions-remaining`): the playground gives a cell of the situation in
+  `situation.objects[].attributes[]` as `cells`, `[{labels, value}]`, beside `value` and `timeline`, and
+  `?via=service` sends it as the `cells` of the request; such a document was a 500. The `QUOTE` of a fold over a cell
+  of each member (`de som van het vondstgewicht in voorjaar van alle leden van de Ploeg`) carries the cell under
+  `labels` beside the keys of the attribute, where it carried the attribute's keys alone.
 
 ## The pin
 

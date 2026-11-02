@@ -288,6 +288,8 @@ function timelineHtml(tl) {
 function valueHtml(o) {
   let h;
   if (o.timeline) h = timelineHtml(o.timeline);
+  else if (o.cells) h = o.cells.map((c) => "[" + c.labels.map(esc).join(", ") + "] "
+    + (c.valueCanonical != null ? nameOf(c, "value") : scalar(c.value))).join("<br>");
   else h = o.valueCanonical != null ? nameOf(o, "value") : scalar(o.value);
   return h + (o.unit ? ' <span class="muted">' + esc(o.unit) + "</span>" : "");
 }
@@ -312,11 +314,11 @@ function objectWithType(label, types, declared) {
        + esc(o.objectType) + "</span>";
 }
 // The label an expectation is about, from uchar's short form of it (CaseRunner.source): "<kind> <LABEL> <member>" for an
-// attribute value, an empty attribute, a timeline and a characteristic present or absent, and
-// "inconsistent (<rule> @ <LABEL>)" for an inconsistency on an object. "consistent" and an inconsistency without an
+// attribute value, an empty attribute, a timeline, a cell value, an empty cell and a characteristic present or absent,
+// and "inconsistent (<rule> @ <LABEL>)" for an inconsistency on an object. "consistent" and an inconsistency without an
 // object name none. A label is one word (UPPER_ID).
-const KINDS_WITH_LABEL = ["attributeValue", "attributeEmpty", "attributeTimeline", "characteristicPresent",
-                          "characteristicAbsent"];
+const KINDS_WITH_LABEL = ["attributeValue", "attributeEmpty", "attributeTimeline", "cellValue", "cellEmpty",
+                          "characteristicPresent", "characteristicAbsent"];
 function labelOfSource(source) {
   const m = /^inconsistent \(.* @ (\S+)\)$/.exec(source);
   if (m) return m[1];

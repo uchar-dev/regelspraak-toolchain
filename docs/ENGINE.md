@@ -283,7 +283,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `TmsTranspiler.generated`, `TmsTranspiler.stacks`). Per scenario it gets uchar's report with its
   `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`rule`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
-  role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in), and the `fixpoint`
+  role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in; a dimensioned
+  attribute in `objects[].attributes[]` as `cells`, `[{labels, value}]`, as a request gives it), and the `fixpoint`
   of the case's own session as uchar reads it (`DroolsBackend.fixpointOf`): per object every value and characteristic with
   its origin, the made objects, the links, the evaluation faults as data and the inconsistencies, each list sorted, or
   `fixpointError` with the reason there is none. `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
@@ -396,7 +397,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
     it as `path`, after `rule`. Without one the result is a MARKER whose `diagnosis` says what each entry point lacks,
     with `path` null; there is no fallback to the ordinary route;
   - the situation becomes a request (`SituationToRequest`, each instance with its label as its id, the names
-    canonical, read with `inputVocabulary=canonical`), and the core answers it with `explanation`, `explanationParts`,
+    canonical, read with `inputVocabulary=canonical`, a dimensioned attribute as its `cells`), and the core answers it
+    with `explanation`, `explanationParts`,
     `trace`, `coverage` and `fixpoint`, in the vocabulary of `?vocabulary=` (canonical without it). uchar compares the `expected` of the case
     its frontend writes for the scenario with the written-back session of that request, the ids of the request as
     labels (`DecisionCore.assess`, `DroolsBackend.compare`): PASS or FAIL, the `expectations` and the `diagnosis`
