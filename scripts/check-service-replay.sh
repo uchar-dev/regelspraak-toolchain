@@ -136,7 +136,11 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # 2026-11-01, uchar's kaarten fout-op-tussenstand, omgekeerde-eenheid en unit-factors (pin 3d4676b8): 268 — de set van
 # gate 12 groeit van 281 naar 299; zeventien spelen ook door de dienst, jutterswet-kadetarief niet (een tijdlijn als
 # invoerwaarde).
-EXPECTED_REPLAY_PLAYED=268
+# 2026-11-02, uchar's kaarten drools-schrijfgrens en instance-depth-owner-hop (pin 46833a11): 269 — de set van gate 12
+# groeit van 299 naar 300 met jutterswet-vergunningketen-eigenaarsrol (de instantiegeordende keten waarvan de
+# eigenaarsrol van de satellietrelatie de naam van de zusterrol van de schakelrelatie draagt); zij speelt ook door de
+# dienst.
+EXPECTED_REPLAY_PLAYED=269
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een

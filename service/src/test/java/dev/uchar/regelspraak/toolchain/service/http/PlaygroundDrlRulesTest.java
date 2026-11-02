@@ -744,7 +744,13 @@ class PlaygroundDrlRulesTest {
                 functions++;
             }
         }
-        assertEquals(10, functions);
+        // 11 since uchar's card drools-schrijfgrens (pin 46833a11), 10 before: the value of a rule passes the test of its
+        // target's decimals (ComputeHelpers.fitTarget), so the constant 7 of 'strandpremie' computes something and is a
+        // function; the value of a default is tested at its write and stays in the rule
+        assertEquals(11, functions);
+        assertEquals(List.of(
+                "waarde_strandpremie | 7 | roept []",
+                "regel | roept [waarde_strandpremie]"), table(drl, named(rules, "strandpremie")));
         // a rule without functions is its rule alone, to its `end` and the empty line after it
         JsonNode bare = named(rules, "kenmerkstand Vondst.afwijkende opgave meldingsdatum: onwaar").get("piece");
         assertEquals(0, bare.get("functions").size());
