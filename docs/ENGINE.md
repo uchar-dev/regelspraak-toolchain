@@ -187,10 +187,9 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   violation on `parameters.<name>` that carries uchar's sentence, so the service does not start.
 - The cells of a dimensioned attribute whose labels name no cell of it (EF-034) or that give one cell twice, also in
   two spellings of a label (EF-035), get the same 422 with the kind `CELL_FAULT` and uchar's sentence; uchar's input
-  step refuses them before the values of the cells and stops at the first. uchar's type of that refusal is not
-  public, so the mapper tells it by the cells it wrote, with uchar's key of a cell (`FactModelGenerator.cellKey`),
-  and takes the sentence from uchar's refusal; an `IllegalArgumentException` of uchar's input step that the mapper
-  did not foresee stays a 500.
+  step refuses them before the values of the cells and stops at the first. The mapper tells that refusal by uchar's
+  type of it (`CaseInput.CellFault`) and takes its sentence; an `IllegalArgumentException` of uchar's input step that
+  the mapper did not foresee stays a 500.
 - A request whose session reaches no fixpoint gets 422 with `{"status": "NO_FIXPOINT", "error": <uchar's
   sentence>}`: uchar's `DroolsBackend.fire` ended the run at its fire cap or at the creation budget
   (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so

@@ -31,14 +31,13 @@ import java.util.List;
  * it stands at no fixpoint and has no session to show, and its cause is the first such value, the one uchar's replay
  * of the same input refuses. So is a cell of a dimensioned attribute whose labels name no cell (EF-034) or that the
  * request gives twice (EF-035), which uchar's input step refuses before any session as well
- * ({@link Kind#CELL_FAULT}); a value of a cell its declaration does not hold is EF-004.
+ * ({@code CaseInput.CellFault}, {@link Kind#CELL_FAULT}); a value of a cell its declaration does not hold is EF-004.
  */
 public final class EvaluationFault extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
-    /** The kind of a fault, by the type of uchar's exception; {@link #CELL_FAULT} by the cell the request wrote, since
-     *  uchar's type of it is not public. */
+    /** The kind of a fault, by the type of uchar's exception ({@link #CELL_FAULT}: {@code CaseInput.CellFault}). */
     public enum Kind {
         DIVISION_BY_ZERO, COMPUTE_FAULT, WRITERS_CONFLICT, INPUT_FORM_FAULT, WRITE_BOUNDARY_FAULT, INPUT_PRECISION_FAULT,
         CELL_FAULT, OTHER

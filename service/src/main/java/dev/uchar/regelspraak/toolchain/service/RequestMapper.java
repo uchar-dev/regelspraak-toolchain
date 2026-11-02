@@ -15,7 +15,6 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.math.BigDecimal;
@@ -99,10 +98,8 @@ public final class RequestMapper {
 
     /** What the mapper wrote into the case that uchar's input step refuses with an {@link IllegalArgumentException} of
      *  no public type: a date or date-time on {@code field} whose year the case lexeme does not carry (four digits, no
-     *  sign), a violation of that field; or ({@code cell}) the cells of the dimensioned attribute on {@code field}, whose
-     *  labels name no cell (EF-034) or one cell twice (EF-035) by uchar's key of a cell
-     *  ({@link FactModelGenerator#cellKey}), a {@link EvaluationFault.Kind#CELL_FAULT}. */
-    private record CaseRefusal(String field, boolean cell) {}
+     *  sign), a violation of that field. */
+    private record CaseRefusal(String field) {}
 
     public Result map(Request request) {
         List<Violation> s = new ArrayList<>();
@@ -112,8 +109,8 @@ public final class RequestMapper {
         // the instances of the case by id, in the order of the request, and the field of the request per link
         Map<String, ObjectNode> instances = new LinkedHashMap<>();
         Map<Link, String> paths = new LinkedHashMap<>();
-        // what uchar's input step will refuse, in the order it reads the case: the evaluation date first, then the
-        // attributes in the order of the case, the cells of an attribute before their values; it stops at the first
+        // the years uchar's input step will refuse, in the order it reads the case: the evaluation date first, then the
+        // attributes in the order of the case; it stops at the first
         List<CaseRefusal> refusals = new ArrayList<>();
 
         // 1. peildatum / rekendatum — ONE date authority (fase 5). 'peildatum' is the preferred name, 'rekendatum'
@@ -133,7 +130,7 @@ public final class RequestMapper {
             date = asOfDate != null ? asOfDate : evaluationDate;   // peildatum wins when both equal
         }
         if (date != null && !inCaseForm(date.getYear()))
-            refusals.add(new CaseRefusal(asOfDate != null ? "asOfDate" : "rekendatum", false));
+            refusals.add(new CaseRefusal(asOfDate != null ? "asOfDate" : "rekendatum"));
 
         // 2. parameters
         JsonNode params = request.parameters();
@@ -246,13 +243,13 @@ public final class RequestMapper {
             s.add(Violation.of(Violation.Kind.UNSUPPORTED, "instances", x.getMessage()));
         } catch (CaseRunner.InputPrecisionFault f) {
             inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.INPUT_PRECISION_FAULT, f));
+        } catch (CaseInput.CellFault f) {
+            inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.CELL_FAULT, f));
         } catch (IllegalArgumentException f) {
-            // after the validation above uchar's input step can refuse what the refusals list, and it stops at the first
-            // it reads; anything else is a defect of the case the mapper wrote, and fails here
+            // after the validation above uchar's input step can refuse a year the refusals list, and it stops at the
+            // first it reads; anything else is a defect of the case the mapper wrote, and fails here
             if (refusals.isEmpty()) throw f;
-            CaseRefusal first = refusals.get(0);
-            if (first.cell()) inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.CELL_FAULT, f));
-            else s.add(Violation.of(Violation.Kind.WRONG_TYPE, first.field(), f.getMessage()));
+            s.add(Violation.of(Violation.Kind.WRONG_TYPE, refusals.get(0).field(), f.getMessage()));
         }
         return new Result(input == null ? null : new World(input, globals, date), typePerLabel, s, inputFaults);
     }
@@ -303,7 +300,7 @@ public final class RequestMapper {
         // toString, not toPlainString: new BigDecimal(toString()) gives back the same unscaled value and scale
         if (w instanceof BigDecimal b) return n.put("number", b.toString());
         if (w instanceof LocalDate d) {
-            if (!inCaseForm(d.getYear())) refusals.add(new CaseRefusal(field, false));
+            if (!inCaseForm(d.getYear())) refusals.add(new CaseRefusal(field));
             return n.put("date", d.toString());
         }
         if (w instanceof Boolean b) return n.put("boolean", b);
@@ -314,7 +311,7 @@ public final class RequestMapper {
                         + " seconde fijner dan een milliseconde; de dienst draagt hele milliseconden"));
                 return null;
             }
-            if (!inCaseForm(dt2.getYear())) refusals.add(new CaseRefusal(field, false));
+            if (!inCaseForm(dt2.getYear())) refusals.add(new CaseRefusal(field));
             String lexeme = DATE_TIME.format(dt2);
             if (dt2.getNano() != 0) lexeme += String.format(".%03d", dt2.getNano() / 1_000_000);
             return n.put("dateTime", lexeme);
@@ -384,9 +381,8 @@ public final class RequestMapper {
      * The cells of the dimensioned attribute {@code attribute} of {@code ot} ({@code name} as the request writes it) as
      * the case writes them, {@code {"cells": [{"labels": [...], "value": <case value>}, ...]}}, the labels as the
      * request writes them, in the order of the request; null after adding the violations of a value that is no list of
-     * cells. Labels that name no cell of the attribute or one cell twice by uchar's key of a cell are no violation:
-     * uchar's input step refuses them (EF-034, EF-035), before the values of the cells, so the attribute's refusal goes
-     * into {@code refusals} before those of its values.
+     * cells. Labels that name no cell of the attribute or one cell twice are no violation: uchar's input step refuses
+     * them (EF-034, EF-035, {@link CaseInput.CellFault}), before the values of the cells.
      */
     private JsonNode cells(ObjectType ot, String attribute, String name, Datatype dt, JsonNode value, String field,
                            List<CaseRefusal> refusals, List<Violation> s) {
@@ -403,8 +399,6 @@ public final class RequestMapper {
             return null;
         }
         int violations = s.size();
-        boolean namesNoCell = false;
-        List<List<String>> keys = new ArrayList<>();
         List<CaseRefusal> ofValues = new ArrayList<>();
         ArrayNode out = NF.arrayNode();
         for (int k = 0; k < cells.size(); k++) {
@@ -431,10 +425,6 @@ public final class RequestMapper {
                 s.add(Violation.of(Violation.Kind.MALFORMED, cellField + ".value", "value ontbreekt"));
                 continue;
             }
-            List<String> key = FactModelGenerator.cellKey(model, dimensions,
-                    labels.valueStream().map(JsonNode::asText).toList());
-            if (key == null) namesNoCell = true;
-            else keys.add(key);
             String valueField = cellField + ".value";
             JsonNode v = value(c.get("value"), dt, valueField, s);
             if (v == null) continue;
@@ -448,7 +438,6 @@ public final class RequestMapper {
             cell.set("value", caseValue);
         }
         if (s.size() > violations) return null;
-        if (namesNoCell || keys.stream().distinct().count() < keys.size()) refusals.add(new CaseRefusal(field, true));
         refusals.addAll(ofValues);
         ObjectNode n = NF.objectNode();
         n.set("cells", out);
