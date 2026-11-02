@@ -149,7 +149,12 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # datum en boolean; eerste, laatste en aantal voorkomens over cellen) en jutterswet-ploegseizoen (een cel en een vouw
 # over de cellen van het object dat een rol bereikt, een cel van elk lid als vouwbron); alle drie spelen ook door de
 # dienst, met uitleg.
-EXPECTED_REPLAY_PLAYED=278
+# 2026-11-03, uchar's kaarten written-value-at-fixpoint, drools-exact-arithmetic en static-precision-gate (pin
+# 698a5543): 285 — de set van gate 12 groeit van 309 naar 316 met jutterswet-geschreven-waarde-aan-fixpunt,
+# jutterswet-kenmerk-aan-fixpunt en jutterswet-twee-schrijvers-aan-fixpunt, elk in beide regelvolgordes (een
+# schrijfactie staat alleen waar haar vorm aan het fixpunt beslist), en jutterswet-precisiepoort (de vormen die de
+# precisiepoort doorlaat); alle zeven spelen ook door de dienst, met uitleg.
+EXPECTED_REPLAY_PLAYED=285
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een

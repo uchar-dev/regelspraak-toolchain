@@ -83,7 +83,7 @@ class ExplanationComputationTest {
             // Bron: Jutterswet art. 11
             Regel premie
                 geldig altijd
-                    De premie van een Jutter moet berekend worden als de grondpremie maal 2, met een maximum van het premiemaximum
+                    De premie van een Jutter moet berekend worden als de grondpremie maal 2, met een maximum van het premiemaximum rekenkundig afgerond op 2 decimalen
                     indien hij ingezetene is.
                     Daarbij geldt:
                         de grondpremie is de vondstwaarde van de Jutter gedeeld door 10.
@@ -150,7 +150,8 @@ class ExplanationComputationTest {
 
     private static final String FIRST = "de eerste van de vinddag van alle vondsten van de Jutter die waardevol zijn";
     private static final String SUM = "de som van de waarde van alle vondsten van de Jutter";
-    private static final String PREMIE = "de grondpremie maal 2, met een maximum van het premiemaximum";
+    private static final String PREMIE = "de grondpremie maal 2, met een maximum van het premiemaximum rekenkundig"
+            + " afgerond op 2 decimalen";
     private static final String HAVENGELD = "volgens de regel 'havengeld' (onvoorwaardelijk): 2,00; de regel"
             + " 'havengeld' gold niet, want zij valt op de rekendatum buiten haar geldigheid";
     private static final String VINDERSLOON = "(het percentage vindersloon van zijn waarde) naar beneden afgerond op 2"
@@ -167,7 +168,7 @@ class ExplanationComputationTest {
                     + " over V1 (123,45) en V2 (150,00) (2 leden)",
             "J1 heeft als premie 50,00 volgens de regel 'premie': " + PREMIE + ", met de vondstwaarde van de Jutter"
                     + " (273,45), de grondpremie is de vondstwaarde van de Jutter gedeeld door 10 (27,345) en het"
-                    + " premiemaximum (50,00); vóór de begrenzing 54,69, omdat"
+                    + " premiemaximum (50,00); vóór de afronding 50; vóór de begrenzing 54,69, omdat"
                     + " het onderwerp ingezetene is. Grondslag: Jutterswet art. 11",
             "J1 heeft als bonus 25,00 volgens de regel 'bonus voor ingezetenen': 25,00, omdat het onderwerp ingezetene"
                     + " is; verdrongen: de regel 'bonus zonder voorwaarde'",

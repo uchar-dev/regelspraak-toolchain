@@ -37,7 +37,7 @@ class ScenarioRunnerSessionTest {
             De premie van een Berging moet berekend worden als 30% van de opbrengst van de Berging indien het helpersaantal van de Berging groter is dan 3.
             Regel helpersdeel van een berging
             geldig altijd
-            Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
+            Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging rekenkundig afgerond op 0 decimalen.
             """;
 
     private static List<ScenarioRunner.Explained> play(String source) {

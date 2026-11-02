@@ -412,7 +412,7 @@ class ScenarioOracleTest {
                 de bodem Numeriek (geheel getal);
             Regel R
                 geldig altijd
-                    De prijs van een passagier moet gesteld worden op zijn basistarief % van zijn bodem.
+                    De prijs van een passagier moet gesteld worden op (zijn basistarief % van zijn bodem) rekenkundig afgerond op 0 decimalen.
             """;
         World w = world(model);
         Object p = w.newInstance("Passagier"); w.number(p, "setBasistarief", 50); w.number(p, "setBodem", 200);
@@ -1969,7 +1969,7 @@ class ScenarioOracleTest {
                 de deelResultaat Numeriek (getal met 2 decimalen);
             Regel deel
                 geldig altijd
-                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom.
+                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom rekenkundig afgerond op 2 decimalen.
             """;
         World w = world(model);
         Object valueEmpty = w.newInstance("Rekensom"); w.number(valueEmpty, "setGrondslag", 12);   // 12 / leeg → Inconsistentie
@@ -2000,7 +2000,7 @@ class ScenarioOracleTest {
                 de deelResultaat Numeriek (getal met 2 decimalen);
             Regel deel
                 geldig altijd
-                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom.
+                    De deelResultaat van een Rekensom moet gesteld worden op de grondslag van een Rekensom gedeeld door de aftrek van een Rekensom rekenkundig afgerond op 2 decimalen.
             """;
         World w = world(model);
         Object emptyRecht = w.newInstance("Rekensom"); w.number(emptyRecht, "setAftrek", 4);   // leeg / 4 = 0, geen Inconsistentie

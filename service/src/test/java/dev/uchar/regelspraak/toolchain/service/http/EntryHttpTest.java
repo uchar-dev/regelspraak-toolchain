@@ -52,7 +52,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * material: one model of finds with an entry point per rule set, so each request meets the fault it is about and no
  * other, one of a fold over a to-many role, whose fault names the member the order of the list puts first, as in
  * uchar's replay, the model of uchar's witness of a fact creation that gives a to-one role a second filling, a fault of
- * another type, and that of a reciprocal role written on a subtype of its filler.
+ * another type, that of a reciprocal role written on a subtype of its filler, and an allocation whose share does not
+ * fit its target.
  */
 class EntryHttpTest {
 
@@ -66,7 +67,7 @@ class EntryHttpTest {
 
         Regel deelgewicht van een vondst
             geldig altijd
-                Het deelgewicht van een Vondst moet berekend worden als zijn gewicht gedeeld door zijn aantal delen.
+                Het deelgewicht van een Vondst moet berekend worden als zijn gewicht gedeeld door zijn aantal delen rekenkundig afgerond op 2 decimalen.
 
         Regel loon voor een zware vondst
             geldig altijd
@@ -311,7 +312,39 @@ class EntryHttpTest {
             "input": ["Jutter"], "output": ["Jutter.vondstgewicht", "Jutter.jaargewicht"] } ],
           "parameters": {} }""";
 
+    /** uchar's red case jutterswet-verdeling-past-niet: the veilingopbrengst of a Strandveiling in equal shares over its
+     *  veilingjutters, into a whole veilingdeel, without a rounding. uchar's precision gate bounds the share of an
+     *  allocation by its pot alone (RUNTIME-SEMANTICS ch. 2.4), so a share that does not fit is a fault of the session:
+     *  every other write whose value the typing does not guarantee to fit, the gate refuses before any session. */
+    private static final String ALLOCATION_SOURCE = """
+        Objecttype de Strandveiling (mv: Strandveilingen)
+            de veilingopbrengst Numeriek (geheel getal);
+            het veilingrestant Numeriek (geheel getal);
+
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            het veilingdeel (mv: veilingdelen) Numeriek (geheel getal);
+
+        Feittype veilingdeelname
+            de strandveiling Strandveiling
+            de veilingjutter (mv: veilingjutters) Jutter
+        Eén strandveiling heeft meerdere veilingjutters
+
+        Regel verdeel de veilingopbrengst van een strandveiling
+            geldig altijd
+                De veilingopbrengst van een strandveiling wordt verdeeld over de veilingdelen van alle veilingjutters van de strandveiling, waarbij wordt verdeeld:
+                - in gelijke delen.
+                Als onverdeelde rest blijft het veilingrestant van de strandveiling over.
+        """;
+
+    private static final String ALLOCATION_DESCRIPTOR = """
+        { "service": {"name":"veiling","version":"1"},
+          "entrypoints": [ { "name":"veiling","path":"veiling",
+            "scope": {"ruleNames": ["verdeel de veilingopbrengst van een strandveiling"]},
+            "input": ["Strandveiling", "Jutter"], "output": ["Jutter.veilingdeel", "Strandveiling.veilingrestant"] } ],
+          "parameters": {} }""";
+
     private static ServiceHttp service;
+    private static ServiceHttp allocationService;
     private static ServiceHttp foldService;
     private static ServiceHttp fillingService;
     private static ServiceHttp precisionService;
@@ -323,6 +356,9 @@ class EntryHttpTest {
         DecisionCore core = DecisionCore.assemble(DESCRIPTOR, Map.of("vondsten.rgs", SOURCE), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader());
         service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
+        DecisionCore allocation = DecisionCore.assemble(ALLOCATION_DESCRIPTOR, Map.of("veiling.rgs", ALLOCATION_SOURCE),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        allocationService = ServiceHttp.bind(allocation, "127.0.0.1", 0).start();
         DecisionCore fold = DecisionCore.assemble(FOLD_DESCRIPTOR, Map.of("vouw.rgs", FOLD_SOURCE), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader());
         foldService = ServiceHttp.bind(fold, "127.0.0.1", 0).start();
@@ -340,6 +376,7 @@ class EntryHttpTest {
     @AfterAll
     static void stop() {
         if (service != null) service.stop(0);
+        if (allocationService != null) allocationService.stop(0);
         if (foldService != null) foldService.stop(0);
         if (fillingService != null) fillingService.stop(0);
         if (precisionService != null) precisionService.stop(0);
@@ -394,19 +431,19 @@ class EntryHttpTest {
                 + " vondst\" schrijft 10") && sentence.contains("in het attribuut vindersloon van V1, een Vondst"), sentence);
     }
 
-    /** 1,00 over three parts is 1/3, which the deelgewicht of two decimals does not hold: uchar puts a
-     *  {@code WriteBoundaryFault} (EF-006, RUNTIME-SEMANTICS ch. 2.4) at the fixpoint, and the 422 gives it as
-     *  WRITE_BOUNDARY_FAULT with the sentence uchar's replay gives on the same input. The replay runs the whole document,
-     *  so beside it stands the read of the rekenjaar without an evaluation date. */
+    /** 1001 in equal shares over two veilingjutters is 1001/2 each, which the whole veilingdeel does not hold: uchar
+     *  puts a {@code WriteBoundaryFault} (EF-006, RUNTIME-SEMANTICS ch. 2.4) at the fixpoint, and the 422 gives it as
+     *  WRITE_BOUNDARY_FAULT with the sentence uchar's replay gives on the same input. */
     @Test
     void a_value_that_does_not_fit_its_target_is_422_write_boundary_fault(@TempDir Path map) throws Exception {
         String request = """
-            {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":1.00,"aantal delen":3}}]}""";
-        EvaluationFaults replay = assertInstanceOf(EvaluationFaults.class, replay(map, SOURCE, request));
-        WriteBoundaryFault fault = assertInstanceOf(WriteBoundaryFault.class, replay.faults().get(0), replay::toString);
+            {"instances":[{"type":"Strandveiling","id":"V1","attributes":{"veilingopbrengst":1001},
+              "roles":{"veilingjutters":["J1","J2"]}},{"type":"Jutter","id":"J1"},{"type":"Jutter","id":"J2"}]}""";
+        RuntimeException replay = replay(map, ALLOCATION_SOURCE, request);
+        WriteBoundaryFault fault = assertInstanceOf(WriteBoundaryFault.class, replay, replay::toString);
         assertEquals("EF-006", fault.code());
-        assertEquals(Map.of("place", "V1.deelgewicht", "value", "1/3", "decimals", "2"), fault.params());
-        JsonNode body = evaluationFault(post("/deelgewicht", request));
+        assertEquals(Map.of("place", "J1.veilingdeel", "value", "1001/2", "decimals", "0"), fault.params());
+        JsonNode body = evaluationFault(post(allocationService, "/veiling", request));
         assertEquals(List.of("WRITE_BOUNDARY_FAULT"), kinds(body), body.toString());
         assertEquals(List.of(fault.getMessage()), sentences(body), body.toString());
     }

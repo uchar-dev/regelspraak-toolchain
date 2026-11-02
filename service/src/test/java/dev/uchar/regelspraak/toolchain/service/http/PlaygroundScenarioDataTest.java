@@ -40,7 +40,7 @@ class PlaygroundScenarioDataTest {
             De premie van een Berging moet berekend worden als het premiepercentage van de opbrengst van de Berging.
             Regel helpersdeel van een berging
             geldig altijd
-            Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
+            Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging rekenkundig afgerond op 0 decimalen.
             Regel helpersdeel bij veel helpers
             geldig altijd
             Het helpersdeel van een Berging moet gesteld worden op 7 € indien het helpersaantal van de Berging groter is dan 4.

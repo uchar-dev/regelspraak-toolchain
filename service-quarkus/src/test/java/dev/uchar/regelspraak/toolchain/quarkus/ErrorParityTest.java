@@ -97,7 +97,7 @@ class ErrorParityTest {
 
         Regel deelgewicht van een vondst
             geldig altijd
-                Het deelgewicht van een Vondst moet berekend worden als zijn gewicht gedeeld door zijn aantal delen.
+                Het deelgewicht van een Vondst moet berekend worden als zijn gewicht gedeeld door zijn aantal delen rekenkundig afgerond op 2 decimalen.
 
         Regel loon voor een zware vondst
             geldig altijd
