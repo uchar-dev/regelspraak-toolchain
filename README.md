@@ -151,6 +151,13 @@ model declares) and the sentences of the messages, which keep their text. The ol
   `?via=service` sends it as the `cells` of the request; such a document was a 500. The `QUOTE` of a fold over a cell
   of each member (`de som van het vondstgewicht in voorjaar van alle leden van de Ploeg`) carries the cell under
   `labels` beside the keys of the attribute, where it carried the attribute's keys alone.
+- **Exact values in the explanation** (uchar's card `drools-exact-arithmetic`): uchar's reading of a node gives a
+  value that does not terminate as the exact fraction (RUNTIME-SEMANTICS ch. 5.12), where it gave a decimal of sixteen
+  digits. The explanation writes it as that fraction with its unit: `"…; vóór de afronding 100/3 EUR"`, where it wrote
+  `"…; vóór de afronding 33,33333333333333 EUR"`. A value of the unbounded form (`Numeriek (getal)`) keeps its decimals
+  in the explanation: `"B2 heeft als ruwe deel 2,5 EUR"`, where the explanation rounded it to a whole number (`3 EUR`),
+  and one that does not terminate is its fraction: `"B1 heeft als ruwe deel 100/3 EUR"`, where it stood as `33 EUR`.
+  The answer is unchanged: a value of the unbounded form is the decimal uchar puts on the bean.
 
 ## The pin
 
@@ -277,7 +284,9 @@ explanation of its outcome: uchar's replay plays it on the build with readings a
 session (`DroolsBackend.readingsOf`: per form and object how the condition came out, per node what the engine reached
 and the value and unit it read), here and in the service's `?explanation=true`; it computes nothing itself. An empty
 value stands as "(onbekend)", a member the engine did not reach is not named, and a condition that did not hold names
-the member where the engine stopped. uchar's scenario resolver refuses three of the 29 golden TOKA
+the member where the engine stopped. The engine reads a number exactly: a value that does not terminate stands as its
+fraction, as uchar's reading writes it (`vóór de afronding 100/3 EUR`), and a value of the unbounded form (`Numeriek
+(getal)`) with every decimal it has. uchar's scenario resolver refuses three of the 29 golden TOKA
 scenarios (listed with their reasons in `scripts/toka-manifest-exclusions.txt`).
 
 The decision service serves a descriptor over `.rgs` sources or over one `uchar-ir-v1` document; `docs/ENGINE.md`

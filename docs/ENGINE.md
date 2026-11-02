@@ -432,7 +432,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
 | `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below); `labels` where it names a cell of a dimensioned attribute, one label per dimension in their declared spelling |
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
-| `VALUE` | leaf | a value as the engine read it, with its unit; a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for "een tijdlijn", the value of a timeline target |
+| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12); a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for "een tijdlijn", the value of a timeline target |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |

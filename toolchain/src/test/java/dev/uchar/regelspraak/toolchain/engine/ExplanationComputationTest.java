@@ -262,6 +262,57 @@ class ExplanationComputationTest {
                 explanation(document));
     }
 
+    /** The engine reads a number exactly (RUNTIME-SEMANTICS ch. 2.1): a value that does not terminate is its fraction,
+     *  as uchar's reading writes it (ch. 5.12), here before a rounding and as the value of the unbounded form, with the
+     *  unit of its node. A value of the unbounded form keeps every decimal it has: the form declares none. */
+    @Test
+    void a_value_that_does_not_terminate_is_its_fraction_with_its_unit() {
+        String document = """
+                Eenheidsysteem Munt
+                    de euro (mv: euros) EUR €
+
+                Objecttype de Berging (mv: Bergingen)
+                    de opbrengst Numeriek (geheel getal) met eenheid €;
+                    het helpersaantal Numeriek (geheel getal);
+                    het ruwe deel Numeriek (getal) met eenheid €;
+                    het helpersdeel Numeriek (geheel getal) met eenheid €;
+
+                Regel ruwe deel
+                    geldig altijd
+                        Het ruwe deel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging.
+
+                Regel helpersdeel
+                    geldig altijd
+                        Het helpersdeel van een Berging moet berekend worden als de opbrengst van de Berging gedeeld door het helpersaantal van de Berging rekenkundig afgerond op 0 decimalen.
+
+                Scenario twee bergingen
+                Gegeven is de volgende situatie:
+                een Berging B1
+                - de opbrengst is 100 €
+                - het helpersaantal is 3
+                een Berging B2
+                - de opbrengst is 5 €
+                - het helpersaantal is 2
+                Met als verwacht resultaat:
+                - het helpersdeel van B1 is 33 €
+                - het ruwe deel van B2 is 2,5 €
+                - het helpersdeel van B2 is 3 €
+                """;
+        String quotient = "de opbrengst van de Berging gedeeld door het helpersaantal van de Berging";
+        assertEquals(List.of(
+                "B1 heeft als ruwe deel 100/3 EUR volgens de regel 'ruwe deel' (onvoorwaardelijk): " + quotient
+                        + ", met de opbrengst van de Berging (100 EUR) en het helpersaantal van de Berging (3)",
+                "B1 heeft als helpersdeel 33 EUR volgens de regel 'helpersdeel' (onvoorwaardelijk): " + quotient
+                        + " rekenkundig afgerond op 0 decimalen, met de opbrengst van de Berging (100 EUR) en het"
+                        + " helpersaantal van de Berging (3); vóór de afronding 100/3 EUR",
+                "B2 heeft als ruwe deel 2,5 EUR volgens de regel 'ruwe deel' (onvoorwaardelijk): " + quotient
+                        + ", met de opbrengst van de Berging (5 EUR) en het helpersaantal van de Berging (2)",
+                "B2 heeft als helpersdeel 3 EUR volgens de regel 'helpersdeel' (onvoorwaardelijk): " + quotient
+                        + " rekenkundig afgerond op 0 decimalen, met de opbrengst van de Berging (5 EUR) en het"
+                        + " helpersaantal van de Berging (2); vóór de afronding 2,5 EUR"),
+                explanation(document));
+    }
+
     private static List<String> explanation(String document) {
         List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(document));
         assertEquals(1, u.size());

@@ -16,6 +16,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.OriginForm;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.RoleBindingRef;
+import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.loader.NodePositions;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.core.Namen;
@@ -1233,9 +1234,9 @@ public final class Verbaliser {
         private String written(Writer w, String member) {
             ConditionReading.NodeReading n = valueRead(w).of(w.rule().value());
             Datatype target = type.attribute(member);
-            if (!(n.value() instanceof BigDecimal d)) return render(n.value(), target);
+            String number = nlExact(n.value(), target);
+            if (number == null) return render(n.value(), target);
             String unit = n.unit() != null ? n.unit().rendering() : unitWord(target);
-            String number = nlNumber(d, target);
             return unit == null ? number : number + " " + unit;
         }
 
@@ -1408,10 +1409,10 @@ public final class Verbaliser {
          *  van de knoop zouden haar al afronden. */
         private String unrounded(Expr e, Read read) {
             ConditionReading.NodeReading n = read.of(e);
-            if (!(n.value() instanceof BigDecimal d)) return renderOperand(e, read);
+            String number = nlExact(n.value() instanceof BigDecimal d ? d.stripTrailingZeros() : n.value(), null);
+            if (number == null) return renderOperand(e, read);
             String unit = n.unit() != null ? n.unit().rendering()
                     : (e.type() instanceof Datatype.Percentage || typeOf(e) instanceof Datatype.Percentage) ? "%" : null;
-            String number = nlNumber(d.stripTrailingZeros(), null);
             return unit == null ? number : number + " " + unit;
         }
 
@@ -2152,8 +2153,8 @@ public final class Verbaliser {
         }
         String unit = u != null ? u.rendering()
                 : (e.type() instanceof Datatype.Percentage || typeOf(e) instanceof Datatype.Percentage) ? "%" : null;
-        if (!(v instanceof BigDecimal b)) return renderValue(v, type);
-        String number = nlNumber(b, type);
+        String number = nlExact(v, type);
+        if (number == null) return renderValue(v, type);
         return unit == null ? number : number + " " + unit;
     }
 
@@ -2225,8 +2226,8 @@ public final class Verbaliser {
      *  datums als dd-mm-jjjj; booleans als ja/nee. */
     static String renderValue(Object v, Datatype type) {
         if (v == null) return "leeg";
-        if (v instanceof BigDecimal b) {
-            String number = nlNumber(b, type);
+        String number = nlExact(v, type);
+        if (number != null) {
             String unit = unitWord(type);
             return unit == null ? number : number + " " + unit;
         }
@@ -2239,12 +2240,25 @@ public final class Verbaliser {
         return v.toString();
     }
 
+    /** Een getal zoals de motor het las, in NL-notatie: een decimaal zoals {@link #nlNumber} het schrijft, of een
+     *  waarde die niet eindigt als haar breuk, teller en noemer elk in NL-notatie, zoals uchars lezing haar schrijft
+     *  ({@code t/n}, RUNTIME-SEMANTICS ch. 5.12): de motor rekent exact (ch. 2.1), en elke decimaal ervan zou een
+     *  afronding zijn die geen regel schrijft. Null voor een waarde die geen getal is. */
+    private static String nlExact(Object v, Datatype type) {
+        if (v instanceof BigDecimal b) return nlNumber(b, type);
+        if (v instanceof Breuk q)
+            return nlNumber(new BigDecimal(q.teller()), null) + "/" + nlNumber(new BigDecimal(q.noemer()), null);
+        return null;
+    }
+
     /** Getal in NL-notatie: punt als duizendtal-scheider, komma als decimaalteken. Percentages en getallen met
-     *  vaste decimalen behouden hun schaal; anders wordt de natuurlijke schaal van de waarde getoond. */
+     *  vaste decimalen behouden hun schaal; anders, ook in de onbegrensde vorm ({@code getal}, die geen decimalen
+     *  declareert), wordt de natuurlijke schaal van de waarde getoond. */
     private static String nlNumber(BigDecimal b, Datatype type) {
         BigDecimal w = b;
         int decimals = -1;
-        if (type instanceof Datatype.Numeric n && !n.wholeNumber()) decimals = n.decimals();
+        if (type != null && type.unbounded()) decimals = -1;
+        else if (type instanceof Datatype.Numeric n && !n.wholeNumber()) decimals = n.decimals();
         else if (type instanceof Datatype.Percentage p && !p.wholeNumber()) decimals = p.decimals();
         else if (type instanceof Datatype.Numeric n && n.wholeNumber()) decimals = 0;
         if (decimals >= 0) w = w.setScale(decimals, java.math.RoundingMode.HALF_UP);
