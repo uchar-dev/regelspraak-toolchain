@@ -776,7 +776,8 @@ public final class OpenApiEmitter {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer"
-                + " evaluatiefouten, elk met haar kind en uchars zin.");
+                + " evaluatiefouten, of een getal van het verzoek past niet in zijn declaratie; elke fout met haar kind"
+                + " en uchars zin.");
         ArrayNode req = s.putArray("required");
         req.add("status"); req.add("error"); req.add("faults");
         ObjectNode props = s.putObject("properties");
@@ -802,7 +803,9 @@ public final class OpenApiEmitter {
                 + " berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die"
                 + " verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt,"
                 + " want de dienst weigert een tijdlijn (400); WRITE_BOUNDARY_FAULT: een waarde die niet in de"
-                + " gedeclareerde decimalen van haar doel past; OTHER: een fout van een ander type die aan het fixpunt"
+                + " gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet"
+                + " in de gedeclareerde decimalen van zijn attribuut of parameter past, geweigerd vóór de sessie, dus"
+                + " zonder trace, coverage en fixpoint; OTHER: een fout van een ander type die aan het fixpunt"
                 + " staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft.");
         ObjectNode sentence = itemProps.putObject("error");
         sentence.put("type", "string");

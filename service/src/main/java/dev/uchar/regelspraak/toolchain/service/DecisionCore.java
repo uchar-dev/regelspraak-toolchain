@@ -681,6 +681,9 @@ public final class DecisionCore {
         List<Violation> missing = missingInput(ep, mr.typePerLabel(), model);
         if (!missing.isEmpty())
             throw new ServiceError("verzoek valideert niet", missing);
+        // a request that validates may still hold a number its declaration does not: uchar's evaluation fault EF-004,
+        // a 422 like every evaluation fault, and no session runs
+        if (!mr.inputFaults().isEmpty()) throw EvaluationFault.ofInput(mr.inputFaults());
         // fase 5, decision D: resolve the parameterset vintage against the one date authority (the request
         // peildatum, which IS World.evaluationDate). The resolved values sit BETWEEN the descriptor defaults and the
         // request parameter overrides (descriptor default first, set-value next — the conflict rule guarantees

@@ -2,6 +2,7 @@ package dev.uchar.regelspraak.toolchain.service;
 
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.InputFormFault;
@@ -24,13 +25,21 @@ import java.util.List;
  * ({@link RequestOptions#detailFlags()}), the fields the 422 gives beside the faults ({@link #detail()}). Its cause
  * is the exception uchar's write-back throws for these faults: the fault's own for one, uchar's
  * {@code EvaluationFaults} for two or more, the one uchar's scenario report names in its diagnose.
+ *
+ * <p>A value of the request that its declaration does not hold is an evaluation fault too, EF-004, which uchar's input
+ * fence raises before any session ({@code CaseRunner.inputFits}, {@link Kind#INPUT_PRECISION_FAULT}, {@link #ofInput}):
+ * it stands at no fixpoint and has no session to show, and its cause is the first such value, the one uchar's replay
+ * of the same input refuses.
  */
 public final class EvaluationFault extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
     /** The kind of a fault, by the type of uchar's exception. */
-    public enum Kind { DIVISION_BY_ZERO, COMPUTE_FAULT, WRITERS_CONFLICT, INPUT_FORM_FAULT, WRITE_BOUNDARY_FAULT, OTHER }
+    public enum Kind {
+        DIVISION_BY_ZERO, COMPUTE_FAULT, WRITERS_CONFLICT, INPUT_FORM_FAULT, WRITE_BOUNDARY_FAULT, INPUT_PRECISION_FAULT,
+        OTHER
+    }
 
     /** One fault: its kind and uchar's sentence. */
     public record Fault(Kind kind, String sentence) {}
@@ -56,6 +65,15 @@ public final class EvaluationFault extends RuntimeException {
         return new EvaluationFault(sink, cause, fixpoint, null);
     }
 
+    /** The values of a request that uchar's input fence refuses ({@link CaseRunner.InputPrecisionFault}, EF-004), one
+     *  element per value in the order the service reads them: the parameters, then the first attribute uchar's input
+     *  step refuses, where it stops. No session ran, so there is no {@link #fixpoint} and no detail. */
+    static EvaluationFault ofInput(List<CaseRunner.InputPrecisionFault> faults) {
+        List<Fault> sink = new ArrayList<>();
+        for (CaseRunner.InputPrecisionFault f : faults) sink.add(new Fault(kind(f), f.getMessage()));
+        return new EvaluationFault(sink, faults.get(0), null, null);
+    }
+
     /** The same faults with {@code detail}, the fields the request asked to see of its session. */
     EvaluationFault withDetail(ObjectNode detail) {
         return new EvaluationFault(errors, (RuntimeException) getCause(), fixpoint, detail);
@@ -69,6 +87,7 @@ public final class EvaluationFault extends RuntimeException {
             case WritersConflict s -> Kind.WRITERS_CONFLICT;
             case InputFormFault i -> Kind.INPUT_FORM_FAULT;
             case WriteBoundaryFault w -> Kind.WRITE_BOUNDARY_FAULT;
+            case CaseRunner.InputPrecisionFault p -> Kind.INPUT_PRECISION_FAULT;
             default -> Kind.OTHER;
         };
     }
@@ -78,7 +97,8 @@ public final class EvaluationFault extends RuntimeException {
         return errors;
     }
 
-    /** What stands at the fixpoint the faults stand at, as uchar's entry reads it. */
+    /** What stands at the fixpoint the faults stand at, as uchar's entry reads it; null for the faults of the input
+     *  ({@link #ofInput}). */
     public Fixpoint fixpoint() {
         return fixpoint;
     }

@@ -258,9 +258,30 @@ class EntryHttpTest {
               { "kind": "attributeValue", "label": "V", "attribute": "maatwaarde", "value": { "number": "5" } },
               { "kind": "attributeValue", "label": "W", "attribute": "maatwaarde", "value": { "number": "2" } } ] }""";
 
+    /** A gewicht and a vondstfactor of two decimals each, for the input fence (EF-004). */
+    private static final String PRECISION_SOURCE = """
+        Parameter de vondstfactor : Numeriek (getal met 2 decimalen)
+
+        Objecttype de Vondst (mv: Vondsten)
+            het gewicht Numeriek (getal met 2 decimalen);
+            het gewogen gewicht Numeriek (getal met 4 decimalen);
+
+        Regel gewogen gewicht van een vondst
+            geldig altijd
+                Het gewogen gewicht van een Vondst moet berekend worden als zijn gewicht maal de vondstfactor.
+        """;
+
+    private static final String PRECISION_DESCRIPTOR = """
+        { "service": {"name":"precisie","version":"1"},
+          "entrypoints": [ { "name":"gewogen","path":"gewogen",
+            "scope": {"ruleNames": ["gewogen gewicht van een vondst"]},
+            "input": ["Vondst"], "output": ["Vondst.gewogen gewicht"] } ],
+          "parameters": {} }""";
+
     private static ServiceHttp service;
     private static ServiceHttp foldService;
     private static ServiceHttp fillingService;
+    private static ServiceHttp precisionService;
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
     @BeforeAll
@@ -274,6 +295,9 @@ class EntryHttpTest {
         DecisionCore filling = DecisionCore.assemble(FILLING_DESCRIPTOR, Map.of("vulling.rgs", FILLING_SOURCE),
                 CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
         fillingService = ServiceHttp.bind(filling, "127.0.0.1", 0).start();
+        DecisionCore precision = DecisionCore.assemble(PRECISION_DESCRIPTOR, Map.of("precisie.rgs", PRECISION_SOURCE),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        precisionService = ServiceHttp.bind(precision, "127.0.0.1", 0).start();
     }
 
     @AfterAll
@@ -281,6 +305,7 @@ class EntryHttpTest {
         if (service != null) service.stop(0);
         if (foldService != null) foldService.stop(0);
         if (fillingService != null) fillingService.stop(0);
+        if (precisionService != null) precisionService.stop(0);
     }
 
     // ---------------- (c) an answer with a derived value ----------------
@@ -391,6 +416,50 @@ class EntryHttpTest {
         String sentence = body.at("/faults/0/error").asText();
         assertTrue(sentence.startsWith("fout in de regel \"bewaargeld van een jutter\"") && sentence.contains("\"J1\"")
                 && sentence.contains("supplies a full timeline"), sentence);
+    }
+
+    // ---------------- a value the declaration does not hold: INPUT_PRECISION_FAULT ----------------
+
+    /** 1,005 for a gewicht of two decimals: uchar's input step ({@code CaseInput.of}) refuses it as EF-004
+     *  (RUNTIME-SEMANTICS ch. 2.4, 5.7 step 3) before any session, as uchar's replay of the same input does, and the
+     *  422 gives it as INPUT_PRECISION_FAULT with the sentence of that replay. */
+    @Test
+    void an_attribute_value_that_does_not_fit_is_422_input_precision_fault(@TempDir Path map) throws Exception {
+        String request = """
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":1.005}}]}""";
+        CaseRunner.InputPrecisionFault replay = assertInstanceOf(CaseRunner.InputPrecisionFault.class,
+                replay(map, PRECISION_SOURCE, request));
+        assertEquals("EF-004", replay.code());
+        assertEquals(Map.of("place", "V1.gewicht", "value", "1.005", "decimals", "2"), replay.params());
+        JsonNode body = evaluationFault(post(precisionService, "/gewogen", request));
+        assertEquals(List.of("INPUT_PRECISION_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
+    }
+
+    /** 0,505 for a vondstfactor of two decimals: the service binds a parameter of the request itself and holds it to
+     *  uchar's input fence ({@code CaseRunner.inputFits}), as uchar's replay holds a parameter of a case, and the 422
+     *  gives the sentence of that replay. */
+    @Test
+    void a_parameter_value_that_does_not_fit_is_422_input_precision_fault(@TempDir Path map) throws Exception {
+        RegelSpraakModel model = Resolver.resolve(PRECISION_SOURCE);
+        assertEquals(List.of(), model.errors());
+        Path ir = map.resolve("ir.json");
+        Files.writeString(ir, IrEmitter.emit(model), StandardCharsets.UTF_8);
+        Path testCase = map.resolve("case.json");
+        Files.writeString(testCase, """
+            { "format": "uchar-case-v0", "asOfDate": null,
+              "input": { "instances": [ { "label": "V1", "objectType": "Vondst",
+                  "attributes": { "gewicht": { "number": "2.00" } }, "roles": {}, "characteristics": [] } ],
+                "parameters": { "vondstfactor": { "number": "0.505" } } },
+              "expected": [ { "kind": "consistent" } ] }""", StandardCharsets.UTF_8);
+        CaseRunner.InputPrecisionFault replay = assertThrows(CaseRunner.InputPrecisionFault.class,
+                () -> CaseRunner.runGolden(ir, List.of(testCase)));
+        assertEquals(Map.of("place", "parameter vondstfactor", "value", "0.505", "decimals", "2"), replay.params());
+        JsonNode body = evaluationFault(post(precisionService, "/gewogen", """
+            {"parameters":{"vondstfactor":0.505},
+             "instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":2.00}}]}"""));
+        assertEquals(List.of("INPUT_PRECISION_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
     }
 
     // ---------------- a fault at the fixpoint of another type: OTHER ----------------

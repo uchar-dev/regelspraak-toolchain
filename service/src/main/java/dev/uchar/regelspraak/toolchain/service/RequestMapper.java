@@ -41,6 +41,11 @@ import java.util.Map;
  * violation it does not throw: it returns the violations, beside the world uchar read from the fields that validated
  * (none when uchar refused a link), so a caller (fase 3) can turn the full set into one 400 naming every bad field.
  *
+ * <p>A number its declaration does not hold is no violation but uchar's evaluation fault EF-004 on the input, which
+ * uchar's input fence raises ({@link CaseRunner#inputFits}): for an attribute uchar's input step raises it and stops at
+ * the first, for a parameter, which the service binds itself, the mapper asks the fence. The result returns those
+ * faults, in that order, for the caller to answer as an evaluation fault.
+ *
  * <p>Unsupported by the service core (a clear violation, never a silent accept): a dimensie- or
  * tijdlijn-valued attribute (no golden situatie uses one). An unknown objecttype/attribuut/kenmerk/parameter/
  * rol, an ill-typed value, an eenheid mismatch, and an unknown enumeratie-waarde are all violations.
@@ -75,9 +80,11 @@ public final class RequestMapper {
         this.reader = reader;
     }
 
-    /** The mapped world, the id→objecttype map (for the response builder), and the violations produced while
-     *  mapping (empty on success). The world is null when uchar refused the input. */
-    public record Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations) {}
+    /** The mapped world, the id→objecttype map (for the response builder), the violations produced while
+     *  mapping (empty on success), and the values uchar's input fence refused (EF-004; empty on success). The world is
+     *  null when uchar refused the input. */
+    public record Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations,
+                         List<CaseRunner.InputPrecisionFault> inputFaults) {}
 
     /** A role link the mapper writes into the case: under the {@code roles} of instance {@code id}, the key
      *  {@code role}, naming {@code doel}; uchar's {@link CaseInput.RoleError} names a refused link the same way. */
@@ -85,6 +92,7 @@ public final class RequestMapper {
 
     public Result map(Request request) {
         List<Violation> s = new ArrayList<>();
+        List<CaseRunner.InputPrecisionFault> inputFaults = new ArrayList<>();
         Map<String, Object> globals = new LinkedHashMap<>();
         Map<String, ObjectType> typePerLabel = new LinkedHashMap<>();
         // the instances of the case by id, in the order of the request, and the field of the request per link
@@ -134,8 +142,17 @@ public final class RequestMapper {
                     if (value == null) return;
                     ValueCoder.Result r = ValueCoder.decode(value, p.datatype(), field);
                     s.addAll(r.violations());
-                    if (r.violations().isEmpty())
-                        globals.put(globalName(p.name()), r.value());
+                    if (!r.violations().isEmpty()) return;
+                    if (r.value() instanceof BigDecimal b) {
+                        try {
+                            CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(),
+                                    "parameter " + p.name());
+                        } catch (CaseRunner.InputPrecisionFault f) {
+                            inputFaults.add(f);
+                            return;
+                        }
+                    }
+                    globals.put(globalName(p.name()), r.value());
                 });
             }
         }
@@ -212,13 +229,15 @@ public final class RequestMapper {
         } catch (CaseRunner.Excluded x) {
             // a form uchar's input step does not carry that the validation above let through: no link names it
             s.add(Violation.of(Violation.Kind.UNSUPPORTED, "instances", x.getMessage()));
+        } catch (CaseRunner.InputPrecisionFault f) {
+            inputFaults.add(f);
         } catch (IllegalArgumentException f) {
             // after the validation above the one defect of the case uchar's input step can find is a date or date-time
             // lexeme outside its form, a year beyond 0000-9999; it stops at the first it reads
             if (yearOutsideCaseForm.isEmpty()) throw f;
             s.add(Violation.of(Violation.Kind.WRONG_TYPE, yearOutsideCaseForm.get(0), f.getMessage()));
         }
-        return new Result(input == null ? null : new World(input, globals, date), typePerLabel, s);
+        return new Result(input == null ? null : new World(input, globals, date), typePerLabel, s, inputFaults);
     }
 
     /** The field of the request that wrote the link uchar refused. A link the mapper did not write is a broken promise

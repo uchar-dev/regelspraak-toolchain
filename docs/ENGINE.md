@@ -156,12 +156,19 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `COMPUTE_FAULT` (a fault of a computation or of the
   evaluation date), `WRITERS_CONFLICT` (two writers of one attribute that disagree), `INPUT_FORM_FAULT` (a timeline
   input in the other convention, which no request reaches, since a request carries no timeline),
-  `WRITE_BOUNDARY_FAULT` (a value that does not fit the declared decimals of its target, EF-006) or `OTHER` (a fault
+  `WRITE_BOUNDARY_FAULT` (a value that does not fit the declared decimals of its target, EF-006),
+  `INPUT_PRECISION_FAULT` (below) or `OTHER` (a fault
   of another type, such as a fact creation that gives a to-one role a second filling). Where uchar's sentence names
   an object, it names an object of the request by its id; a sentence about a kind of object (the second filling: "a
   Jutter") names none. No stacktrace enters the answer. The Quarkus adapter answers the same, and the
   OpenAPI contract describes the body of the 422 (schema `EvaluationFault`, with `kind` as an enumeration of these
   kinds).
+- A request that validates but holds a number its declaration does not hold, an attribute or a parameter with more
+  decimals than declared, gets the same 422 with the kind `INPUT_PRECISION_FAULT` and uchar's sentence of EF-004:
+  uchar's input fence (`CaseRunner.inputFits`) refuses the value before any session, as uchar's replay refuses it in a
+  case. An attribute reaches the fence in uchar's input step, which stops at the first; the core holds every parameter
+  to it, since it binds the parameters itself. No session runs, so the 422 carries no detail, also when the request
+  asks for it.
 - A request whose session reaches no fixpoint gets 422 with `{"status": "NO_FIXPOINT", "error": <uchar's
   sentence>}`: uchar's `DroolsBackend.fire` ended the run at its fire cap or at the creation budget
   (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so
