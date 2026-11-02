@@ -9,11 +9,13 @@ import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
+import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -36,10 +38,15 @@ import java.util.Map;
  * declaration without a designation by its canonical name. The canonical choice writes the names as the descriptor's
  * selectors and the facts spell them, as the answer always did.
  *
+ * <p>A dimensioned attribute is answered as its cells ({@link #cells}), every cell with its labels and its value.
+ *
  * <p>Response shape:
  * <pre>{@code
  * { "instances": [ { "id": "<label>", "type": "<objecttype>",
- *                     "attributes": { "<attribuut>": <waarde|null>, ... },
+ *                     "attributes": { "<attribuut>": <waarde|null>,
+ *                                     "<gedimensioneerd attribuut>": { "cells": [ { "labels": [...],
+ *                                                                                   "value": <waarde|null> }, ... ] },
+ *                                     ... },
  *                     "characteristics":  { "<kenmerk>": true|false, ... } }, ... ],
  *   "inconsistencies": [ "<regelnaam>", ... ],
  *   "inconsistencyDetails": [ { "rule": "<regelnaam>", "subject": "<id>"|null }, ... ] }
@@ -87,6 +94,8 @@ public final class AnswerBuilder {
                 if (!DescriptorLoader.objectMatch(model, ot, u.objectType())) continue;
                 Object value = RegelSpraakRuntime.get(bean, RequestMapper.prop(u.member()));
                 if (u.characteristic()) characteristics.set(naming.characteristic(ot, u.member()), renderCharacteristic(value));
+                else if (!ot.dimensionsOf(u.member()).isEmpty())
+                    attributes.set(naming.attribute(ot, u.member()), cells(value, ot, u.member()));
                 else attributes.set(naming.attribute(ot, u.member()), rend(value, ot.attribute(u.member())));
             }
             if (attributes.isEmpty() && characteristics.isEmpty()) continue;
@@ -161,6 +170,50 @@ public final class AnswerBuilder {
         if (v instanceof LocalDateTime d) return NF.textNode(d.toString());
         if (v instanceof String s) return NF.textNode(dt instanceof Datatype.Enumeration e ? naming.value(e, s) : s);
         return NF.textNode(v.toString());
+    }
+
+    /** The value of the dimensioned attribute {@code attribute} of {@code ot} as its cells, {@code {"cells":
+     *  [{"labels": [...], "value": <waarde|null>}, ...]}}: every cell of the attribute, its labels in their declared
+     *  spelling, the first dimension outermost and each in the declared order of its labels, null for an empty cell.
+     *  {@code map} is the bean member, uchar's map of the filled cells by their key ({@link FactModelGenerator#cellKey}),
+     *  or null where the bean has none. */
+    private JsonNode cells(Object map, ObjectType ot, String attribute) {
+        if (map != null && !(map instanceof Map<?, ?>))
+            throw new IllegalStateException("het gedimensioneerde attribuut '" + attribute + "' staat op de bean als "
+                    + map.getClass().getName() + ", niet als uchars kaart van cellen");
+        Map<?, ?> filled = map == null ? Map.of() : (Map<?, ?>) map;
+        Datatype dt = ot.attribute(attribute);
+        ArrayNode cells = NF.arrayNode();
+        for (List<String> labels : cellsOf(model, ot.dimensionsOf(attribute))) {
+            ObjectNode cell = cells.addObject();
+            ArrayNode ln = cell.putArray("labels");
+            labels.forEach(ln::add);
+            cell.set("value", rend(filled.get(labels), dt));
+        }
+        ObjectNode n = NF.objectNode();
+        n.set("cells", cells);
+        return n;
+    }
+
+    /** Every cell of an attribute with {@code dimensions}, as uchar keys a cell ({@link FactModelGenerator#cellKey}):
+     *  one label per dimension, in its declared spelling; the first dimension outermost, each in its declared order. */
+    static List<List<String>> cellsOf(RegelSpraakModel model, List<String> dimensions) {
+        List<List<String>> cells = List.of(List.of());
+        for (String d : dimensions) {
+            RegelSpraakModel.Dimension dimension = model.dimensionByName(d);
+            if (dimension == null)
+                throw new IllegalStateException("de dimensie '" + d + "' van een gedimensioneerd attribuut is niet"
+                        + " gedeclareerd");
+            List<List<String>> longer = new ArrayList<>();
+            for (List<String> cell : cells)
+                for (String label : dimension.values()) {
+                    List<String> next = new ArrayList<>(cell);
+                    next.add(label);
+                    longer.add(List.copyOf(next));
+                }
+            cells = longer;
+        }
+        return cells;
     }
 
     private JsonNode renderCharacteristic(Object v) {

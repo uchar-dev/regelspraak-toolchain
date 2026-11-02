@@ -140,7 +140,11 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # groeit van 299 naar 300 met jutterswet-vergunningketen-eigenaarsrol (de instantiegeordende keten waarvan de
 # eigenaarsrol van de satellietrelatie de naam van de zusterrol van de schakelrelatie draagt); zij speelt ook door de
 # dienst.
-EXPECTED_REPLAY_PLAYED=269
+# 2026-11-02, uchar's kaart dimensions-executed (pin 1810216d): 275 — de set van gate 12 groeit van 300 naar 306 met de
+# zes goldens van een gedimensioneerd attribuut (jutterswet-seizoenvondst, -seizoenvouw, -vormenkabinet,
+# -seizoenboeking, -seizoenkopie en -strandseizoen: een cel lezen, schrijven en vouwen); alle zes spelen ook door de
+# dienst, die een gedimensioneerd attribuut sindsdien als cellen neemt en teruggeeft.
+EXPECTED_REPLAY_PLAYED=275
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
 # tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een

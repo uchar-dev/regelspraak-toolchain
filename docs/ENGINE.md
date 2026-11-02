@@ -95,8 +95,11 @@ name (`opgave boven berekening X` for the opgave marker, `X voor S` for the own 
 element and its writers. For a group it also names each default that reads the element, from uchar's walk per default
 (`ProducerConsumer.readings`): the part that reads with its source text and the default's path in the group, as in
 "in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van default [0]" ([0] the highest default, [i, g, j] the
-j-th default of exception group g of default i). An element no form writes is request input. Two opt-outs per entry point: `inputElements`
-declares an element the caller supplies, and `scopeCheckOptOut: true` waives the check (the replay gate sets it). The
+j-th default of exception group g of default i). An element no form writes is request input. A cell of a dimensioned
+attribute is an element of its own, as uchar's rule graph keys it (`vondstgewicht[najaar]`, `ProducerConsumer.cellOf`).
+Two opt-outs per entry point: `inputElements`
+declares an element the caller supplies, a dimensioned attribute each of its cells, and `scopeCheckOptOut: true`
+waives the check (the replay gate sets it). The
 other forms a scope can carry (object creations, allocations, consistencies, uniquenesses, fact creations) are not
 checked.
 
@@ -145,8 +148,20 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   instance the selected attributes and characteristics, `inconsistencies` (the rule names of the failed consistency
   checks) and `inconsistencyDetails` (the same, each with its `subject`: the request id of the instance the check
   is about). A 400 names per violation its `field`, its `kind` and its message; `kind` `UNSUPPORTED` marks a
-  request form the service does not carry (a timeline value, a characteristic with periods, a dimensioned
-  attribute), and a detail flag of a service started without `DETAIL` (below).
+  request form the service does not carry (a timeline value, a characteristic with periods), and a detail flag of a
+  service started without `DETAIL` (below).
+- A dimensioned attribute (uchar's RUNTIME-SEMANTICS ch. 5.8c) has a value per cell and none of its own, so a request
+  gives it as its cells, in the form of uchar's case: `"vondstgewicht": {"cells": [{"labels": ["voorjaar"], "value":
+  1.50}, …]}`, one label per dimension in their declared order, each value as the attribute's datatype takes it, null
+  for an empty cell. A label compares as a name (case and spacing aside). The mapper writes the cells into the case as
+  they are, and uchar's input step reads them. The answer gives a dimensioned attribute of `output` as its cells too,
+  every cell of the attribute, the first dimension outermost and each in the declared order of its labels, each label
+  in its declared spelling, null for an empty cell: `"vondstgewicht": {"cells": [{"labels": ["voorjaar"], "value":
+  1.50}, {"labels": ["zomer"], "value": null}, {"labels": ["najaar"], "value": 3.00}]}`. A scalar on a dimensioned
+  attribute and `cells` on an attribute without dimensions are a 400 `WRONG_TYPE`, a cell without `labels` or `value`
+  a 400 `MALFORMED`. Labels that name no cell of the attribute (EF-034) and a cell given twice (EF-035) uchar's input
+  step refuses before any session: the 422 below, kind `CELL_FAULT`; a value its declaration does not hold is EF-004,
+  `INPUT_PRECISION_FAULT`, with the cell as its place (`J1.vondstgewicht[voorjaar]`).
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
   `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"kind": …, "error": <uchar's sentence>}, …]}`, one element per
   fault in uchar's order. Every fault at the fixpoint is such an element, whatever its type: the core reads them from
@@ -157,7 +172,7 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   evaluation date), `WRITERS_CONFLICT` (two writers of one attribute that disagree), `INPUT_FORM_FAULT` (a timeline
   input in the other convention, which no request reaches, since a request carries no timeline),
   `WRITE_BOUNDARY_FAULT` (a value that does not fit the declared decimals of its target, EF-006),
-  `INPUT_PRECISION_FAULT` (below) or `OTHER` (a fault
+  `INPUT_PRECISION_FAULT` (below), `CELL_FAULT` (below) or `OTHER` (a fault
   of another type, such as a fact creation that gives a to-one role a second filling). Where uchar's sentence names
   an object, it names an object of the request by its id; a sentence about a kind of object (the second filling: "a
   Jutter") names none. No stacktrace enters the answer. The Quarkus adapter answers the same, and the
@@ -170,6 +185,12 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   to it, since it binds the parameters itself. No session runs, so the 422 carries no detail, also when the request
   asks for it. A parameter default of the descriptor that does not fit is refused when the descriptor loads, with a
   violation on `parameters.<name>` that carries uchar's sentence, so the service does not start.
+- The cells of a dimensioned attribute whose labels name no cell of it (EF-034) or that give one cell twice, also in
+  two spellings of a label (EF-035), get the same 422 with the kind `CELL_FAULT` and uchar's sentence; uchar's input
+  step refuses them before the values of the cells and stops at the first. uchar's type of that refusal is not
+  public, so the mapper tells it by the cells it wrote, with uchar's key of a cell (`FactModelGenerator.cellKey`),
+  and takes the sentence from uchar's refusal; an `IllegalArgumentException` of uchar's input step that the mapper
+  did not foresee stays a 500.
 - A request whose session reaches no fixpoint gets 422 with `{"status": "NO_FIXPOINT", "error": <uchar's
   sentence>}`: uchar's `DroolsBackend.fire` ended the run at its fire cap or at the creation budget
   (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so
@@ -186,7 +207,9 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   forms the observer saw); `?fixpoint=true` gives `fixpoint: {objects, madeObjects, links, faults,
   inconsistencies}` in the form of the playground's (below), with the instances of the request as its input: an
   instance by its id, its input values read off its bean before the fire, a made object `#<n>`, a type by its name;
-  or `fixpointError` with the reason a value of it cannot be shown.
+  or `fixpointError` with the reason a value of it cannot be shown. A dimensioned attribute has a row per cell, with
+  the cell's `labels` after `attribute`, in their declared spelling, as uchar's `Fixpoint.DerivedValue.labels` names a
+  derived cell, the cells in the declared order of their labels.
   A form and a declaration are named in the vocabulary of the answer; in `fixpoint` the canonical name stands beside a
   name that differs (`objectTypeCanonical`), as in the playground, whose trace and coverage name a form without it. A
   422 gets the asked fields beside its faults, so the faults stand as data in `fixpoint.faults` next to the values. The
@@ -406,8 +429,8 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | kind | leaf or group | what | meta |
 |---|---|---|---|
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
-| `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below) |
-| `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute or parameter, and `object` as on `NAME` |
+| `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below); `labels` where it names a cell of a dimensioned attribute, one label per dimension in their declared spelling |
+| `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
 | `VALUE` | leaf | a value as the engine read it, with its unit; a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for "een tijdlijn", the value of a timeline target |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
@@ -429,19 +452,26 @@ concept: no rule annotation carries one.
 **The object of a value** (card `explanation-read-objects-and-displaced`). A `NAME` or `QUOTE` with the keys of an
 attribute or a characteristic carries `object` where the sentence names the value of that member on one object: the
 label as `SUBJECT` writes it, a made object by its name. The head of a sentence names its subject; an own member in a
-condition or a computation names the object of the reading; a read over a role names the object its walk reached, and
+condition or a computation names the object of the reading, a read cell too, with the cell under `labels`; a read over
+a role names the object its walk reached, and
 `object: null` where a link on the walk is absent, so that the read is empty (uchar's RUNTIME-SEMANTICS ch. 5.8). The
 object is the engine's: the reading records it at the node of every read of a member (ch. 5.12, "The object of a
 read"). With `canonical`, `object` is
 the pair a consumer looks up: the sentence of the writer of that value begins with `SUBJECT` equal to `object` and its
-first `NAME` has the same `canonical`. An input value has no such sentence; `object` then says whose input it is. No
+first `NAME` has the same `canonical`, and for a cell the same `labels`. An input value has no such sentence; `object`
+then says whose input it is. No
 `object` stands on a parameter, a role, the text and the filter of a fold over a set (read per member; the members stand
 in `MEMBERS`), a read the engine did not reach, and the name of a default the opgave marker made, which names a variant.
 
 **The sentence of a computed value** (card `explanation-computed-attributes`). Every attribute an ordinary rule of the
 document writes on an object of the session (an equation, a calculation, an initialisation; not a rule that uchar's
 RUNTIME-SEMANTICS ch. 7.10 took into a stack, which stands in the sentence of its stack) gets one sentence per object,
-over all its writers, after the sentences of the defaults groups, in one of four forms:
+over all its writers, after the sentences of the defaults groups. A dimensioned attribute is written per cell (uchar's
+WF-125), so every cell a rule writes gets a sentence of its own, over the writers of that cell, with the cell as
+RegelSpraak writes it in place of the attribute: the labels of a dimension without a preposition before the name, the
+others after it, each after the preposition of its dimension (`J1 heeft als vondstgewicht in najaar 3,00 kg volgens de
+regel 'najaarsgewicht van een jutter' (onvoorwaardelijk): …`, `aanvoer op zuid uit zee`); the labels and their
+prepositions are `TEXT`, the `NAME` carries the cell under `labels`. The four forms:
 
 - a rule held and wrote a value: `<SUBJECT> heeft als <NAME> <VALUE> volgens de regel '<RULE>'<COMPUTATION>, omdat
   <CONDITION>`, or ` (onvoorwaardelijk)<COMPUTATION>` without a condition, or `<COMPUTATION>, omdat de <NAME> in de
@@ -457,8 +487,9 @@ stopped>`, `; de regel '…' gold niet, want zij valt op de rekendatum buiten ha
 waarde`, or `; verdrongen: de regel '…'`; then the ground of the rule that held. The `COMPUTATION` is `": "`, the rule
 text of the value (`QUOTE`), and `", met "` with every node that reads or folds something (an attribute, a parameter, a
 dimension cell, a binder of `Daarbij geldt` by the text of its definition, a built-in function, a fold), each rule text
-once, with the value the engine read there; where the value reads one declaration or folds over a set, that node is the
-rule text itself, with its value. A fold over a set has its `MEMBERS` ("over I4 (01-04-2026) en I5 (01-05-2026) (2
+once, with the value the engine read there; where the value reads one declaration or folds over a set or over the
+cells of a dimensioned attribute, that node is the rule text itself, with its value (`de som van zijn vondstgewicht over
+alle seizoenen (4,50 kg)`; the engine's reading of a fold over cells carries no member). A fold over a set has its `MEMBERS` ("over I4 (01-04-2026) en I5 (01-05-2026) (2
 leden)", a count without a value per member), and its filter, where it is one characteristic check or one read, is a
 `QUOTE` of its own with the keys of that declaration. Last come the value before each rounding (`"; vóór de afronding
 "`) and before each bound (`"; vóór de begrenzing "`). Every value is the engine's: the reading of the rule

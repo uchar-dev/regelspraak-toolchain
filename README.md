@@ -138,6 +138,14 @@ model declares) and the sentences of the messages, which keep their text. The ol
   key, uchar's piece of `drl` for that rule: `{start, ruleStart, end, functions}`, with per function `{name, start,
   declaration, end}` (`TmsTranspiler.drlPieces`). The places are indices in the `drl` of the same answer, in UTF-16 code
   units as JavaScript counts a string (`docs/ENGINE.md`). `drl` is unchanged, and with `drlError` the list is empty.
+- **Dimensioned attributes are cells** (uchar's card `dimensions-executed`): a request gives a dimensioned attribute
+  as `{"cells": [{"labels": [...], "value": ...}]}`, where it was a 400 `UNSUPPORTED` ("dimensie-gewaardeerd attribuut
+  … wordt niet ondersteund door de dienst-kern"); the answer gives it as every cell with its labels and value, where it
+  gave the text of uchar's map as one value; labels that name no cell (EF-034) and a cell given twice (EF-035) are a
+  422 of the new kind `CELL_FAULT`; the `fixpoint` has a row per cell with `labels`, where a dimensioned value stood
+  under `dimensions`; in the OpenAPI document a dimensioned attribute is a property of its cells, where it was left out
+  as unsupported. The explanation gives every cell a rule writes a sentence of its own, a `NAME` or `QUOTE` of a cell
+  carries `labels`, and a fold over cells is the rule text with its value (`docs/ENGINE.md`).
 
 ## The pin
 
@@ -204,10 +212,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (279). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (306). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 249); every golden that does not play is listed by name with
-  its reason (30, each a timeline form the request cannot express); a deviation always fails, and the list fails when
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 275); every golden that does not play is listed by name with
+  its reason (31, each a timeline form the request cannot express); a deviation always fails, and the list fails when
   it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,

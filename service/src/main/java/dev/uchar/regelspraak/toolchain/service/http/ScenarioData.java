@@ -36,8 +36,9 @@ import java.util.TreeMap;
  * canonical name stands beside it under the key with {@code Canoniek} appended ({@code attribuut} and
  * {@code attribuutCanoniek}). <b>A value</b> is a JSON string for a number (the exact lexeme or plain decimal, with its
  * scale), a date, a date-time, a text and an enumeration value (in the chosen vocabulary), a JSON boolean for a truth
- * value and null for leeg; a timeline is {@code timeline}, a list of {@code {van, tot, waarde}}, and a dimensioned
- * value {@code dimensies}, its values by coordinate. {@code unit} is the declared unit of a number.
+ * value and null for leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}. A situation has no cell
+ * of a dimensioned attribute, since uchar's scenario layer reads none; the fixpoint has a row per cell
+ * ({@link FixpointGivens}). {@code unit} is the declared unit of a number.
  *
  * <p><b>Order.</b> The objects of a situation stand in its order. The fixpoint is rendered by
  * {@link FixpointGivens}, which the decision service uses as well, with the objects of the situation as the input; its

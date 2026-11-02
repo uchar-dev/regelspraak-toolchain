@@ -85,4 +85,39 @@ class ScopeCompletenessTest {
                 CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
         assertTrue(core.entrypoint("bepaal-korting") != null);
     }
+
+    /** A cell is an element of its own: the sum over the seasons reads the cell najaar, which only the rule outside
+     *  the scope writes, and the start is refused naming that cell; declaring the dimensioned attribute as an
+     *  {@code inputElements} caller-input declares each of its cells. */
+    @Test
+    void a_cell_written_outside_the_scope_is_named_and_the_attribute_declares_its_cells() {
+        String source = """
+            Dimensie het seizoen, bestaande uit de seizoenen (na het attribuut met voorzetsel in):
+                1. voorjaar
+                2. najaar
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                het vondstgewicht Numeriek (getal met 2 decimalen) gedimensioneerd met seizoen;
+                het jaargewicht Numeriek (getal met 2 decimalen);
+            Regel najaarsgewicht van een jutter
+            geldig altijd
+            Het vondstgewicht in najaar van een Jutter moet berekend worden als zijn vondstgewicht in voorjaar maal 2.
+            Regel jaargewicht van een jutter
+            geldig altijd
+            Het jaargewicht van een Jutter moet berekend worden als de som van zijn vondstgewicht over alle seizoenen.
+            """;
+        String descriptor = """
+            { "service": {"name":"cel","version":"1"},
+              "entrypoints": [ { "name":"jaargewicht","path":"jaargewicht",
+                "scope": {"ruleNames": ["jaargewicht van een jutter"]},
+                "input": ["Jutter"], "output": ["Jutter.jaargewicht"]%s } ],
+              "parameters": {} }""";
+        ServiceError f = assertThrows(ServiceError.class, () -> DecisionCore.assemble(descriptor.formatted(""),
+                Map.of("cel.rgs", source), CoreConfig.strict(), Thread.currentThread().getContextClassLoader()));
+        assertTrue(f.violations().size() == 1 && f.violations().get(0).kind() == Violation.Kind.INCOMPLETE_SCOPE
+                && f.violations().get(0).message().contains("attribuut 'vondstgewicht[najaar]'")
+                && f.violations().get(0).message().contains("najaarsgewicht van een jutter"), f.violations().toString());
+        DecisionCore core = DecisionCore.assemble(descriptor.formatted(", \"inputElements\": [\"Jutter.vondstgewicht\"]"),
+                Map.of("cel.rgs", source), CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        assertTrue(core.entrypoint("jaargewicht") != null);
+    }
 }

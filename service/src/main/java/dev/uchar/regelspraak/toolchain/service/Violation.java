@@ -33,7 +33,7 @@ public record Violation(Kind kind, String field, String message) {
         AMBIGUOUS_NAME,
         /** A request or a descriptor entry point names a vocabulary the model does not declare. */
         UNKNOWN_VOCABULARY,
-        /** A construct the service core deliberately does not support (dimensie/tijdlijn-valued input), or a detail of
+        /** A construct the service core deliberately does not support (tijdlijn-valued input), or a detail of
          *  the session a core started without detail does not give ({@link CoreConfig#detail()}). */
         UNSUPPORTED,
         /** The entrypoint declares an invoer objecttype but the request supplies no instance of it. The invoer

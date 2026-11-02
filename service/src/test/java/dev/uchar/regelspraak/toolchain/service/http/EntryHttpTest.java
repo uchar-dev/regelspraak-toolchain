@@ -280,10 +280,42 @@ class EntryHttpTest {
             "input": ["Vondst"], "output": ["Vondst.gewogen gewicht"] } ],
           "parameters": {} }""";
 
+    /** The vondstgewicht of a Jutter per season (uchar's golden jutterswet-seizoenboeking): a rule writes the cell najaar
+     *  from the cell voorjaar, and the jaargewicht is the sum over every season. */
+    private static final String CELL_SOURCE = """
+        Eenheidsysteem Gewicht
+            het kilogram (mv: kilogrammen) kg
+
+        Dimensie het seizoen, bestaande uit de seizoenen (na het attribuut met voorzetsel in):
+            1. voorjaar
+            2. zomer
+            3. najaar
+
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            het vondstgewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg gedimensioneerd met seizoen;
+            het jaargewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg;
+
+        Regel najaarsgewicht van een jutter
+            geldig altijd
+                Het vondstgewicht in najaar van een Jutter moet berekend worden als zijn vondstgewicht in voorjaar maal 2.
+
+        Regel jaargewicht van een jutter
+            geldig altijd
+                Het jaargewicht van een Jutter moet berekend worden als de som van zijn vondstgewicht over alle seizoenen.
+        """;
+
+    private static final String CELL_DESCRIPTOR = """
+        { "service": {"name":"seizoen","version":"1"},
+          "entrypoints": [ { "name":"seizoen","path":"seizoen",
+            "scope": {"ruleNames": ["najaarsgewicht van een jutter", "jaargewicht van een jutter"]},
+            "input": ["Jutter"], "output": ["Jutter.vondstgewicht", "Jutter.jaargewicht"] } ],
+          "parameters": {} }""";
+
     private static ServiceHttp service;
     private static ServiceHttp foldService;
     private static ServiceHttp fillingService;
     private static ServiceHttp precisionService;
+    private static ServiceHttp cellService;
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
     @BeforeAll
@@ -300,6 +332,9 @@ class EntryHttpTest {
         DecisionCore precision = DecisionCore.assemble(PRECISION_DESCRIPTOR, Map.of("precisie.rgs", PRECISION_SOURCE),
                 CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
         precisionService = ServiceHttp.bind(precision, "127.0.0.1", 0).start();
+        DecisionCore cell = DecisionCore.assemble(CELL_DESCRIPTOR, Map.of("seizoen.rgs", CELL_SOURCE),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        cellService = ServiceHttp.bind(cell, "127.0.0.1", 0).start();
     }
 
     @AfterAll
@@ -308,6 +343,7 @@ class EntryHttpTest {
         if (foldService != null) foldService.stop(0);
         if (fillingService != null) fillingService.stop(0);
         if (precisionService != null) precisionService.stop(0);
+        if (cellService != null) cellService.stop(0);
     }
 
     // ---------------- (c) an answer with a derived value ----------------
@@ -482,6 +518,99 @@ class EntryHttpTest {
                 () -> CaseRunner.runGolden(ir, List.of(testCase)));
         assertEquals(Map.of("place", "parameter vondstfactor", "value", "0.505", "decimals", "2"), replay.params());
         return replay;
+    }
+
+    // ---------------- a dimensioned attribute: its values are its cells ----------------
+
+    /** The request gives the cells voorjaar and zomer of the vondstgewicht in the form of uchar's case
+     *  ({@code cells}, a list of {@code {labels, value}}); the rules read them: the jaargewicht is 1,50 + 2,00 and the
+     *  najaar the rule writes, 3,00. A label compares as a name, so {@code Zomer} names the cell zomer. */
+    @Test
+    void the_cells_of_the_request_are_the_input_of_the_rules() throws Exception {
+        HttpResponse<String> resp = post(cellService, "/seizoen", """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
+              {"labels":["voorjaar"],"value":1.50},{"labels":["Zomer"],"value":2.00}]}}}]}""");
+        assertEquals(200, resp.statusCode(), resp.body());
+        JsonNode jaargewicht = find(tree(resp.body()), "J1", "jaargewicht");
+        assertNotNull(jaargewicht, resp.body());
+        assertEquals(0, new BigDecimal("6.50").compareTo(jaargewicht.decimalValue()), resp.body());
+    }
+
+    /** The answer gives a dimensioned attribute as its cells, not as one value: every cell of the attribute in the
+     *  declared order of its labels, each label in its declared spelling, the empty zomer as null and the najaar the rule
+     *  derived from the voorjaar of the request. */
+    @Test
+    void a_derived_cell_is_answered_among_the_cells_of_its_attribute() throws Exception {
+        HttpResponse<String> resp = post(cellService, "/seizoen", """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
+              {"labels":["Voorjaar"],"value":1.50}]}}}]}""");
+        assertEquals(200, resp.statusCode(), resp.body());
+        assertEquals(tree("""
+            {"cells":[{"labels":["voorjaar"],"value":1.50},{"labels":["zomer"],"value":null},
+                      {"labels":["najaar"],"value":3.00}]}"""), find(tree(resp.body()), "J1", "vondstgewicht"),
+                resp.body());
+    }
+
+    /** Labels that name no cell of the attribute: uchar's input step refuses them as EF-034 before any session, as
+     *  uchar's replay of the same input does, and the 422 gives them as CELL_FAULT with the sentence of that replay. */
+    @Test
+    void labels_that_name_no_cell_are_422_cell_fault(@TempDir Path map) throws Exception {
+        assertCellFault(map, """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
+              {"labels":["voorjaar"],"value":1.50},{"labels":["winter"],"value":2.00}]}}}]}""",
+                "J1.vondstgewicht: de labels [winter] noemen geen cel");
+    }
+
+    /** One cell given twice, here in two spellings of its label: uchar's input step refuses it as EF-035, and the 422
+     *  gives it as CELL_FAULT with the sentence of uchar's replay. */
+    @Test
+    void a_cell_given_twice_is_422_cell_fault(@TempDir Path map) throws Exception {
+        assertCellFault(map, """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
+              {"labels":["voorjaar"],"value":1.50},{"labels":["Voorjaar"],"value":2.00}]}}}]}""",
+                "J1.vondstgewicht: de cel [Voorjaar] staat twee keer in de invoer");
+    }
+
+    /** 1,005 in a cell of two decimals: uchar's input fence refuses it as EF-004 with the cell as its place, and the
+     *  422 gives it as INPUT_PRECISION_FAULT with the sentence of uchar's replay. */
+    @Test
+    void a_cell_value_that_does_not_fit_is_422_input_precision_fault(@TempDir Path map) throws Exception {
+        String request = """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
+              {"labels":["voorjaar"],"value":1.005}]}}}]}""";
+        CaseRunner.InputPrecisionFault replay = assertInstanceOf(CaseRunner.InputPrecisionFault.class,
+                replay(map, CELL_SOURCE, request));
+        assertEquals(Map.of("place", "J1.vondstgewicht[voorjaar]", "value", "1.005", "decimals", "2"), replay.params());
+        JsonNode body = evaluationFault(post(cellService, "/seizoen", request));
+        assertEquals(List.of("INPUT_PRECISION_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
+    }
+
+    /** A request that does not give a dimensioned attribute as cells, or gives cells to an attribute without
+     *  dimensions, or a cell without labels, does not validate: a 400 naming each field. */
+    @Test
+    void a_dimensioned_attribute_takes_cells_and_nothing_else() throws Exception {
+        HttpResponse<String> resp = post(cellService, "/seizoen", """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":1.50}},
+              {"type":"Jutter","id":"J2","attributes":{"jaargewicht":{"cells":[{"labels":["voorjaar"],"value":1.50}]}}},
+              {"type":"Jutter","id":"J3","attributes":{"vondstgewicht":{"cells":[{"value":1.50}]}}}]}""");
+        assertEquals(400, resp.statusCode(), resp.body());
+        JsonNode violations = tree(resp.body()).get("violations");
+        assertEquals(List.of("WRONG_TYPE instances[0].attributes.vondstgewicht",
+                        "WRONG_TYPE instances[1].attributes.jaargewicht",
+                        "MALFORMED instances[2].attributes.vondstgewicht.cells[0].labels"),
+                violations.valueStream().map(v -> v.get("kind").asText() + " " + v.get("field").asText()).toList(),
+                resp.body());
+    }
+
+    /** The 422 of {@code request} on the cell model gives one CELL_FAULT with the sentence uchar's replay throws on the
+     *  same input, which begins with {@code begin}. */
+    private static void assertCellFault(Path map, String request, String begin) throws Exception {
+        RuntimeException replay = assertInstanceOf(IllegalArgumentException.class, replay(map, CELL_SOURCE, request));
+        assertTrue(replay.getMessage().startsWith(begin), replay::toString);
+        JsonNode body = evaluationFault(post(cellService, "/seizoen", request));
+        assertEquals(List.of("CELL_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
     }
 
     // ---------------- a fault at the fixpoint of another type: OTHER ----------------
@@ -663,6 +792,14 @@ class EntryHttpTest {
             ObjectNode attributes = instance.putObject("attributes");
             for (Map.Entry<String, JsonNode> a : i.path("attributes").properties())
                 if (a.getValue().isTextual()) attributes.putObject(a.getKey()).put("dateTime", a.getValue().asText());
+                else if (a.getValue().has("cells")) {
+                    ArrayNode cells = attributes.putObject(a.getKey()).putArray("cells");
+                    for (JsonNode c : a.getValue().get("cells")) {
+                        ObjectNode cell = cells.addObject();
+                        cell.set("labels", c.get("labels"));
+                        cell.putObject("value").put("number", c.get("value").asText());
+                    }
+                }
                 else attributes.putObject(a.getKey()).put("number", a.getValue().asText());
             ObjectNode roles = instance.putObject("roles");
             for (Map.Entry<String, JsonNode> r : i.path("roles").properties()) {

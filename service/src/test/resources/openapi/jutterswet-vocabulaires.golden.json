@@ -698,7 +698,7 @@
       },
       "EvaluationFault": {
         "type": "object",
-        "description": "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer evaluatiefouten, of een getal van het verzoek past niet in zijn declaratie; elke fout met haar kind en uchars zin.",
+        "description": "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer evaluatiefouten, of een getal van het verzoek past niet in zijn declaratie, of een cel van het verzoek bestaat niet of staat er twee keer in; elke fout met haar kind en uchars zin.",
         "required": [
           "status",
           "error",
@@ -734,9 +734,10 @@
                     "INPUT_FORM_FAULT",
                     "WRITE_BOUNDARY_FAULT",
                     "INPUT_PRECISION_FAULT",
+                    "CELL_FAULT",
                     "OTHER"
                   ],
-                  "description": "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400); WRITE_BOUNDARY_FAULT: een waarde die niet in de gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet in de gedeclareerde decimalen van zijn attribuut of parameter past, geweigerd vóór de sessie, dus zonder trace, coverage en fixpoint; OTHER: een fout van een ander type die aan het fixpunt staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft."
+                  "description": "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400); WRITE_BOUNDARY_FAULT: een waarde die niet in de gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd; OTHER: een fout van een ander type die aan het fixpunt staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft."
                 },
                 "error": {
                   "type": "string",
@@ -966,7 +967,7 @@
       },
       "Fixpoint": {
         "type": "object",
-        "description": "met de vlag fixpoint: wat aan het fixpunt van de sessie staat. Een instantie van het verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het antwoord; waar de canonieke naam verschilt, staat die ernaast onder <key>Canonical. Een waarde is een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg); een tijdlijn staat onder timeline, een gedimensioneerde waarde onder dimensions.",
+        "description": "met de vlag fixpoint: wat aan het fixpunt van de sessie staat. Een instantie van het verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het antwoord; waar de canonieke naam verschilt, staat die ernaast onder <key>Canonical. Een waarde is een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg); een tijdlijn staat onder timeline. Een gedimensioneerd attribuut heeft een rij per cel, met haar labels onder labels.",
         "properties": {
           "objects": {
             "type": "array",
@@ -982,7 +983,7 @@
                 },
                 "values": {
                   "type": "array",
-                  "description": "attribute, value (of timeline of dimensions), origin (input, derived of creation), input (bij een afgeleide waarde de invoerwaarde die zij verving) en unit.",
+                  "description": "attribute, labels (bij een cel, één label per dimensie), value (of timeline), origin (input, derived of creation), input (bij een afgeleide waarde de invoerwaarde die zij verving) en unit.",
                   "items": {
                     "type": "object",
                     "additionalProperties": true
@@ -1065,6 +1066,7 @@
                     "INPUT_FORM_FAULT",
                     "WRITE_BOUNDARY_FAULT",
                     "INPUT_PRECISION_FAULT",
+                    "CELL_FAULT",
                     "OTHER"
                   ]
                 },

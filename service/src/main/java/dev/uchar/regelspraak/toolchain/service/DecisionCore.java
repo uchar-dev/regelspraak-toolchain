@@ -288,8 +288,8 @@ public final class DecisionCore {
     }
 
     /** The rules of {@code model} that {@code scoped} does not carry and that attribute a characteristic or write an
-     *  attribute, by form name, each with the object type of its target, in the order of the model: the explanation
-     *  names them as outside the computation. */
+     *  attribute or a cell of one, by form name, each with the object type of its target, in the order of the model:
+     *  the explanation names them as outside the computation. */
     private static Map<String, String> outsideScope(RegelSpraakModel model, RegelSpraakModel scoped) {
         java.util.Set<String> carried = new java.util.HashSet<>();
         for (ResolvedRule r : scoped.resolvedRules) carried.add(RegelSpraakModel.formName(r.name()));
@@ -297,8 +297,10 @@ public final class DecisionCore {
         for (ResolvedRule r : model.resolvedRules) {
             String form = RegelSpraakModel.formName(r.name());
             if (carried.contains(form)) continue;
-            if (r.target() instanceof dev.uchar.regelspraak.ir.Expr.AttributeReference ref && ref.objectType() != null)
-                outside.putIfAbsent(form, ref.objectType().name);
+            dev.uchar.regelspraak.ir.Expr.AttributeReference ref =
+                    r.target() instanceof dev.uchar.regelspraak.ir.Expr.AttributeReference a ? a
+                    : r.target() instanceof dev.uchar.regelspraak.ir.Expr.DimensionCellRead c ? c.attribute() : null;
+            if (ref != null && ref.objectType() != null) outside.putIfAbsent(form, ref.objectType().name);
         }
         return outside;
     }
@@ -512,6 +514,11 @@ public final class DecisionCore {
             RegelSpraakModel.ObjectType holder = DescriptorLoader.objectType(model, u.objectType());
             inputElements.add(holder == null ? ElementKey.of(u.objectType(), u.member(), u.characteristic())
                     : ProducerConsumer.elementOf(holder, u.member(), u.characteristic()));
+            // a dimensioned attribute is read and written per cell (ProducerConsumer.cellOf), so the caller who supplies
+            // the attribute supplies each of its cells
+            if (holder != null && !u.characteristic() && !holder.dimensionsOf(u.member()).isEmpty())
+                for (List<String> cell : AnswerBuilder.cellsOf(model, holder.dimensionsOf(u.member())))
+                    inputElements.add(ProducerConsumer.cellOf(holder, u.member(), cell));
         }
         // A tree of exceptions is lowered to one group named after its base rule, an unordered block without a
         // carrier to one group per member; the opgave marker and a subtype's own exceptions get a group whose name
@@ -711,7 +718,7 @@ public final class DecisionCore {
         DroolsBackend.Observer observer = options.trace() || options.coverage()
                 ? new DroolsBackend.Observer(label::get) : null;
         List<FixpointGivens.InputObject> input = options.fixpoint()
-                ? FixpointGivens.input(mr.world().beans(), mr.typePerLabel(), output) : null;
+                ? FixpointGivens.input(mr.world().beans(), mr.typePerLabel(), model, output) : null;
         Executor executor = new Executor(fired, ep.defaultGlobals());
         Executor.Outcome outcome;
         try {

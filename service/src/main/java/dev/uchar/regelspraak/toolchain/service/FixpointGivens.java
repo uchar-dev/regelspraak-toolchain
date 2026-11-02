@@ -44,12 +44,14 @@ import java.util.TreeSet;
  * canonical name stands beside it under the key with {@code Canoniek} appended ({@code attribuut} and
  * {@code attribuutCanoniek}). <b>A value</b> is a JSON string for a number (plain decimal, with its scale), a date, a
  * date-time, a text and an enumeration value (in the chosen vocabulary), a JSON boolean for a truth value and null for
- * leeg; a timeline is {@code tijdlijn}, a list of {@code {van, tot, waarde}}, and a dimensioned value
- * {@code dimensies}, its values by coordinate. {@code unit} is the declared unit of a number.
+ * leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}. A dimensioned attribute has a row per cell,
+ * with the cell's {@code labels} after the attribute, one per dimension in their declared spelling, as uchar's
+ * {@link DerivedValue#labels} names a derived cell. {@code unit} is the declared unit of a number.
  *
  * <p><b>Order.</b> uchar's {@link Fixpoint} lists have no order, so every list here is sorted: the objects of the input in
  * the order of the input, the made objects after them; the members of an object in the declaration order of its type,
- * the nearest type of its chain first; the made objects by type, creation, subject and values; links, faults and
+ * the nearest type of its chain first, the cells of an attribute with the first dimension outermost, each in the declared
+ * order of its labels; the made objects by type, creation, subject and values; links, faults and
  * inconsistencies by their names and the objects they name. An object of the input goes by its label, a made object by
  * {@code #<n>}, its place in that order. Two made objects alike in type, creation, subject and every value change places
  * without changing anything that is shown of them, apart from the links they take part in.
@@ -72,9 +74,10 @@ public final class FixpointGivens {
 
     /**
      * An object of the input of a session: its label, its object type, its bean in the session, and what the input gave
-     * it. {@code attributes} holds per attribute the input value as a node with {@code waarde} (and
-     * {@code waardeCanoniek} for an enumeration value named otherwise) or {@code tijdlijn}, keyed case-insensitively;
-     * {@code characteristics} the characteristics the input set, case-insensitively.
+     * it. {@code attributes} holds per attribute the input value as a node with {@code value} (and
+     * {@code valueCanonical} for an enumeration value named otherwise), {@code timeline}, or for a dimensioned attribute
+     * {@code cells}, a list of nodes with {@code labels} (as uchar keys a cell) and {@code value}, keyed
+     * case-insensitively; {@code characteristics} the characteristics the input set, case-insensitively.
      */
     public record InputObject(String label, ObjectType type, Object bean, Map<String, ObjectNode> attributes,
                                Set<String> characteristics) {}
@@ -83,10 +86,11 @@ public final class FixpointGivens {
      * The input objects of a request, read off its beans before the session fires: per instance in the order of
      * {@code beans}, the attributes that hold a value and the characteristics that hold. The beans then hold the input
      * alone; the write-back after the fire puts the derived values on the same beans. A to-many or dimensioned member
-     * the request did not fill (an empty list or map) is no input value.
+     * the request did not fill (an empty list or map) is no input value; of a dimensioned member the filled cells are,
+     * in the order of {@code model}'s labels.
      */
     public static List<InputObject> input(Map<String, Object> beans, Map<String, ObjectType> typePerLabel,
-                                            Naming ng) {
+                                            RegelSpraakModel model, Naming ng) {
         List<InputObject> sink = new ArrayList<>();
         for (var e : beans.entrySet()) {
             ObjectType ot = typePerLabel.get(e.getKey());
@@ -100,7 +104,18 @@ public final class FixpointGivens {
                     if (v == null || v instanceof List<?> l && l.isEmpty() || v instanceof Map<?, ?> m && m.isEmpty())
                         continue;
                     ObjectNode n = NF.objectNode();
-                    java(n, v, ot.attribute(a), ng);
+                    if (!ot.dimensionsOf(a).isEmpty()) {
+                        ArrayNode cells = n.putArray("cells");
+                        for (List<String> labels : AnswerBuilder.cellsOf(model, ot.dimensionsOf(a))) {
+                            Object w = cellsOf(v, a).get(labels);
+                            if (w == null) continue;
+                            ObjectNode cell = cells.addObject();
+                            labels(cell, labels);
+                            java(cell, w, ot.attribute(a), ng);
+                        }
+                    } else {
+                        java(n, v, ot.attribute(a), ng);
+                    }
                     attributes.put(a, n);
                 }
             Set<String> characteristics = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -148,11 +163,15 @@ public final class FixpointGivens {
             made.put(g.object(), g);
         }
 
-        Map<Object, Map<String, DerivedValue>> values = new IdentityHashMap<>();
+        // per object and attribute the derived values by the labels of their cell, an attribute without dimensions under
+        // no labels
+        Map<Object, Map<String, Map<List<String>, DerivedValue>>> values = new IdentityHashMap<>();
         for (DerivedValue w : f.values())
             if (values.computeIfAbsent(known(w.object(), type), o -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
-                    .put(w.attribute(), w) != null)
-                throw new IllegalStateException("het fixpunt geeft het attribuut '" + w.attribute() + "' twee keer");
+                    .computeIfAbsent(w.attribute(), a -> new HashMap<>())
+                    .put(w.labels() == null ? List.of() : w.labels(), w) != null)
+                throw new IllegalStateException("het fixpunt geeft het attribuut '" + w.attribute() + "'"
+                        + (w.labels() == null ? "" : " in de cel " + w.labels()) + " twee keer");
         Map<Object, Set<String>> characteristics = new IdentityHashMap<>();
         for (DerivedCharacteristic k : f.characteristics())
             characteristics.computeIfAbsent(known(k.object(), type),
@@ -164,7 +183,7 @@ public final class FixpointGivens {
             InputObject in = entered.get(o);
             members.put(o, new ArrayNode[]{
                     valuesOf(o, type.get(o), in == null ? Map.of() : in.attributes(),
-                            values.getOrDefault(o, Map.of()), made.containsKey(o), ng),
+                            values.getOrDefault(o, Map.of()), made.containsKey(o), model, ng),
                     characteristicsOf(type.get(o), in == null ? Set.of() : in.characteristics(),
                             characteristics.getOrDefault(o, Set.of()), ng)});
         }
@@ -239,9 +258,11 @@ public final class FixpointGivens {
 
     /** The attribute values of object {@code o} of type {@code ot} at the fixpoint, in declaration order: a derived
      *  value from the fixpoint, else an input value, else, on a made object, the value its creation initialised on the
-     *  bean. A member with none of these is no row; a timeline counts as none when empty. */
+     *  bean. A member with none of these is no row; a timeline counts as none when empty. A dimensioned attribute has a
+     *  row per cell, by the same rule, in the order of {@code model}'s labels ({@link #cellRows}). */
     private static ArrayNode valuesOf(Object o, ObjectType ot, Map<String, ObjectNode> entered,
-                                        Map<String, DerivedValue> derived, boolean made, Naming ng) {
+                                        Map<String, Map<List<String>, DerivedValue>> derived, boolean made,
+                                        RegelSpraakModel model, Naming ng) {
         List<String> declared = new ArrayList<>();
         for (ObjectType t : ot.chain()) declared.addAll(t.attributes.keySet());
         for (String a : derived.keySet())
@@ -251,7 +272,15 @@ public final class FixpointGivens {
         ArrayNode sink = NF.arrayNode();
         for (String a : declared) {
             Datatype dt = ot.attribute(a);
-            DerivedValue w = derived.get(a);
+            Map<List<String>, DerivedValue> cells = derived.getOrDefault(a, Map.of());
+            if (!ot.dimensionsOf(a).isEmpty()) {
+                cellRows(sink, o, ot, a, entered.get(a), cells, made, model, ng);
+                continue;
+            }
+            if (cells.keySet().stream().anyMatch(labels -> !labels.isEmpty()))
+                throw new IllegalStateException("het fixpunt geeft een cel van het attribuut '" + a + "', dat geen"
+                        + " dimensies heeft");
+            DerivedValue w = cells.get(List.of());
             ObjectNode in = entered.get(a);
             Object opBean = made && w == null ? CaseSession.read(o, Namen.getter(a)) : null;
             if (opBean instanceof List<?> l && l.isEmpty()) opBean = null;
@@ -272,6 +301,66 @@ public final class FixpointGivens {
             unit(rn, dt);
         }
         return sink;
+    }
+
+    /** The rows of the dimensioned attribute {@code a} of object {@code o}: per cell of the attribute, the first
+     *  dimension outermost, its derived value ({@code derived}, by its labels), else its input value ({@code in}, the
+     *  input node with its {@code cells}), else, on a made object, the value its creation put in the cell; a cell with
+     *  none of these is no row. A derived value of a cell the attribute does not have is a broken promise of uchar's. */
+    private static void cellRows(ArrayNode sink, Object o, ObjectType ot, String a, ObjectNode in,
+                                  Map<List<String>, DerivedValue> derived, boolean made, RegelSpraakModel model,
+                                  Naming ng) {
+        Datatype dt = ot.attribute(a);
+        List<List<String>> all = AnswerBuilder.cellsOf(model, ot.dimensionsOf(a));
+        for (List<String> labels : derived.keySet())
+            if (!all.contains(labels))
+                throw new IllegalStateException("het fixpunt geeft het attribuut '" + a + "' in de cel " + labels
+                        + ", die het attribuut niet heeft");
+        Map<List<String>, ObjectNode> entered = new HashMap<>();
+        if (in != null)
+            for (JsonNode cell : in.get("cells")) {
+                List<String> labels = new ArrayList<>();
+                cell.get("labels").forEach(l -> labels.add(l.asText()));
+                entered.put(List.copyOf(labels), (ObjectNode) cell);
+            }
+        Map<?, ?> onBean = made ? cellsOf(CaseSession.read(o, Namen.getter(a)), a) : Map.of();
+        for (List<String> labels : all) {
+            DerivedValue w = derived.get(labels);
+            ObjectNode cellIn = entered.get(labels);
+            Object opBean = w == null ? onBean.get(labels) : null;
+            if (w == null && cellIn == null && opBean == null) continue;
+            ObjectNode rn = sink.addObject();
+            name(rn, "attribute", ng.attribute(ot, a), a);
+            labels(rn, labels);
+            if (w != null) {
+                java(rn, w.value(), dt, ng);
+                rn.put("origin", "derived");
+                if (cellIn != null) rn.set("input", cellIn.get("value"));
+            } else if (cellIn != null) {
+                cellIn.properties().forEach(e -> { if (!e.getKey().equals("labels")) rn.set(e.getKey(), e.getValue()); });
+                rn.put("origin", "input");
+            } else {
+                java(rn, opBean, dt, ng);
+                rn.put("origin", "creation");
+            }
+            unit(rn, dt);
+        }
+    }
+
+    /** The map of cells a bean holds for the dimensioned attribute {@code a}: uchar's map of the filled cells by their
+     *  key, empty where the bean has none. */
+    private static Map<?, ?> cellsOf(Object member, String a) {
+        if (member == null) return Map.of();
+        if (!(member instanceof Map<?, ?> m))
+            throw new IllegalStateException("het gedimensioneerde attribuut '" + a + "' staat op de bean als "
+                    + member.getClass().getName() + ", niet als uchars kaart van cellen");
+        return m;
+    }
+
+    /** The labels of a cell under {@code labels}. */
+    private static void labels(ObjectNode n, List<String> labels) {
+        ArrayNode ln = n.putArray("labels");
+        labels.forEach(ln::add);
     }
 
     /** The characteristics of an object of type {@code ot} that hold at the fixpoint, in declaration order: derived
@@ -341,8 +430,8 @@ public final class FixpointGivens {
         if (!chosen.equals(canonical)) n.put(key + "Canonical", canonical);
     }
 
-    /** A value in the form its bean field takes it: under {@code waarde}, a timeline under {@code tijdlijn} and a
-     *  dimensioned value under {@code dimensies}. */
+    /** A value in the form its bean field takes it: under {@code value}, a timeline under {@code timeline}. The value
+     *  of a cell is one of these; a dimensioned attribute has a row per cell ({@link #cellRows}). */
     private static void java(ObjectNode n, Object v, Datatype dt, Naming ng) {
         if (v instanceof List<?> segments) {
             ArrayNode tl = n.putArray("timeline");
@@ -352,9 +441,6 @@ public final class FixpointGivens {
                 sn.set("to", scalar(CaseSession.read(seg, "getTot"), null));
                 sn.set("value", scalar(CaseSession.read(seg, "getWaarde"), dt));
             }
-        } else if (v instanceof Map<?, ?> perCoordinate) {
-            ObjectNode d = n.putObject("dimensions");
-            new TreeMap<>(perCoordinate).forEach((c, w) -> d.set(String.valueOf(c), scalar(w, dt)));
         } else if (v instanceof String s && dt instanceof Datatype.Enumeration) {
             enumValue(n, s, dt, ng);
         } else {

@@ -90,6 +90,13 @@ def value_of(node, place):
     raise NotExpressible(f"waardevorm {sorted(node)} ({place})")
 
 
+def cells_of(node, place):
+    """De cellen van een gedimensioneerd attribuut zoals de dienst ze neemt: de vorm van de case, elke waarde als
+    verzoekwaarde."""
+    return {"cells": [{"labels": c["labels"], "value": value_of(c["value"], f"{place}{c['labels']}")}
+                      for c in node["cells"]]}
+
+
 def request_body(case):
     """Het verzoek van een casebestand."""
     v = {}
@@ -106,7 +113,8 @@ def request_body(case):
     instances = []
     for i in inp["instances"]:
         inst = {"type": i["objectType"], "id": i["label"]}
-        attr = {a: value_of(w, i["label"] + "." + a) for a, w in (i.get("attributes") or {}).items()}
+        attr = {a: cells_of(w, i["label"] + "." + a) if w is not None and "cells" in w
+                else value_of(w, i["label"] + "." + a) for a, w in (i.get("attributes") or {}).items()}
         if attr:
             inst["attributes"] = attr
         if i.get("characteristics"):
@@ -126,7 +134,7 @@ def selectors(case):
     out = []
     for e in case["expected"]:
         kind = e["kind"]
-        if kind in ("attributeValue", "attributeEmpty"):
+        if kind in ("attributeValue", "attributeEmpty", "cellValue", "cellEmpty"):
             out.append(types[e["label"]] + "." + e["attribute"])
         elif kind in ("characteristicPresent", "characteristicAbsent"):
             out.append(types[e["label"]] + ":" + e["characteristic"])
@@ -191,8 +199,24 @@ def compare(case, answer):
     details = answer.get("inconsistencyDetails")
     for n, e in enumerate(case["expected"], 1):
         kind = e["kind"]
-        place = f"verwachting {n} ({kind} {e.get('label', '')} {e.get('attribute', e.get('characteristic', ''))})"
-        if kind in ("attributeValue", "attributeEmpty"):
+        place = f"verwachting {n} ({kind} {e.get('label', '')} {e.get('attribute', e.get('characteristic', ''))}" \
+                + (f" {e['labels']}" if "labels" in e else "") + ")"
+        if kind in ("cellValue", "cellEmpty"):
+            attrs = inst.get(e["label"], {}).get("attributes", {})
+            cells = attrs.get(e["attribute"])
+            if not isinstance(cells, dict) or not isinstance(cells.get("cells"), list):
+                raise Deviation(f"{place}: het antwoord geeft het attribuut niet als cellen: {cells}")
+            # een label vergelijkt als naam; het antwoord spelt het zoals gedeclareerd
+            found = [c for c in cells["cells"] if [norm(x) for x in c["labels"]] == [norm(x) for x in e["labels"]]]
+            if len(found) != 1:
+                raise Deviation(f"{place}: het antwoord noemt de cel niet precies één keer: {cells['cells']}")
+            given = found[0]["value"]
+            if kind == "cellEmpty" or e["value"] is None:
+                if given is not None:
+                    raise Deviation(f"{place}: verwacht leeg, kreeg {given}")
+            elif not equal(e["value"], given, place):
+                raise Deviation(f"{place}: verwacht {json.dumps(e['value'])}, kreeg {given}")
+        elif kind in ("attributeValue", "attributeEmpty"):
             attrs = inst.get(e["label"], {}).get("attributes", {})
             if e["attribute"] not in attrs:
                 raise Deviation(f"{place}: het antwoord noemt het attribuut niet")
@@ -372,11 +396,17 @@ def read_links(parts, request, document, scope, place):
     defaults-groep. De zin van die schrijver is de zin waarvan het eerste stuk het object als SUBJECT is en de eerste
     NAME erna dezelfde `canonical` heeft; ontbreekt die, dan faalt de golden. Een invoerwaarde zonder schrijver heeft
     geen zin en telt niet. Het type van een object staat in `request`, of is het `createdType` van de creatie die het
-    maakte."""
+    maakte. Een cel van een gedimensioneerd attribuut is een lid van haar eigen: een gelezen cel (een stuk met
+    `labels`) heeft een schrijver als een regel van `scope` die cel schrijft, en haar zin noemt dezelfde `labels`
+    (labels vergeleken als naam)."""
     supertype = {t["name"]: t.get("supertype") for t in document["model"].get("objectTypes", [])}
     created = {c["name"]: [v["createdType"] for v in c["versions"]]
                for c in document["rules"].get("objectCreations", [])}
     types = {i["id"]: i["type"] for i in request.get("instances", [])}
+
+    def cell(labels):
+        return None if labels is None else tuple(norm(l) for l in labels)
+
     writers = set()
     for r in document["rules"].get("rules", []):
         if r.get("name") not in scope:
@@ -384,15 +414,17 @@ def read_links(parts, request, document, scope, place):
         for v in r["versions"]:
             t = v.get("target", {})
             if t.get("node") == "AttributeReference" and t.get("subjectType"):
-                writers.add((t["subjectType"], t["attribute"]))
+                writers.add((t["subjectType"], t["attribute"], None))
+            elif t.get("node") == "DimensionCellRead" and t["attribute"].get("subjectType"):
+                writers.add((t["attribute"]["subjectType"], t["attribute"]["attribute"], cell(t["labels"])))
     for g in document["rules"].get("prioritizedDefaults", []):
         if g.get("name") in scope:
-            writers.add((g["subject"], g.get("attribute") or g.get("characteristic")))
+            writers.add((g["subject"], g.get("attribute") or g.get("characteristic"), None))
     heads = set()
     for roots in parts:
         name = next((p for p in roots if p["kind"] == "NAME"), None)
         if roots and roots[0]["kind"] == "SUBJECT" and name is not None and "canonical" in name:
-            heads.add((roots[0]["text"], name["canonical"]))
+            heads.add((roots[0]["text"], name["canonical"], cell(name.get("labels"))))
 
     def type_of(label):
         if label in types:
@@ -409,10 +441,10 @@ def read_links(parts, request, document, scope, place):
         raise Deviation(f"{place}: een gelezen waarde staat op {label!r}, en dat is geen object van het verzoek en"
                         f" geen gemaakt object van een creatie van het document")
 
-    def has_writer(label, member):
+    def has_writer(label, member, labels):
         t = type_of(label)
         while t is not None:
-            if (t, member) in writers:
+            if (t, member, labels) in writers:
                 return True
             t = supertype.get(t)
         return False
@@ -425,11 +457,13 @@ def read_links(parts, request, document, scope, place):
             walk(c, sentence)
         if part["kind"] not in ("NAME", "QUOTE") or part.get("declaration") not in ("ATTRIBUUT", "KENMERK"):
             return
-        if part.get("object") is None or not has_writer(part["object"], part["canonical"]):
+        labels = cell(part.get("labels"))
+        if part.get("object") is None or not has_writer(part["object"], part["canonical"], labels):
             return
-        if (part["object"], part["canonical"]) not in heads:
-            raise Deviation(f"{place}: zin {sentence}: de waarde van '{part['canonical']}' op {part['object']} heeft"
-                            f" een schrijver, en de uitleg heeft geen zin over die waarde")
+        if (part["object"], part["canonical"], labels) not in heads:
+            raise Deviation(f"{place}: zin {sentence}: de waarde van '{part['canonical']}'"
+                            + ("" if labels is None else f" in de cel {list(labels)}")
+                            + f" op {part['object']} heeft een schrijver, en de uitleg heeft geen zin over die waarde")
         links += 1
 
     for i, roots in enumerate(parts):

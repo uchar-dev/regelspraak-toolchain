@@ -250,6 +250,56 @@ class DetailHttpTest {
         assertEquals(playground.get("trace"), service.get("trace"));
     }
 
+    // ---------------- the cells of a dimensioned attribute ----------------
+
+    /** uchar's golden {@code jutterswet-seizoenboeking}: a cell of the input, cells a rule and an initialisation write,
+     *  and a cell an object creation puts on the object it makes. The fixpoint has a row per cell, with its labels in
+     *  their declared spelling, in the order of the labels, as uchar's {@code Fixpoint.DerivedValue} names a cell; the
+     *  input wrote {@code Voorjaar}. */
+    @Test
+    void a_row_per_cell_in_the_fixpoint() throws Exception {
+        String source = Files.readString(
+                TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-seizoenboeking/source.rgs"));
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        ServiceHttp seizoen = ServiceHttp.bind(DecisionCore.assemble("""
+                { "service": {"name":"seizoenboeking","version":"1"},
+                  "entrypoints": [ { "name":"seizoen","path":"seizoen",
+                    "scope": {"ruleNames": ["najaarsgewicht van een jutter", "zomergewicht van een jutter",
+                      "jaargewicht van een jutter", "boek een vangst bij elke jutter", "vangsttotaal van een vangst",
+                      "geboekte gewicht van een jutter"]},
+                    "input": ["Jutter"], "output": ["Jutter.vondstgewicht", "Jutter.geboekte gewicht"] } ],
+                  "parameters": {} }""", Map.of("bron.rgs", source), CoreConfig.strict().withDetail(), cl),
+                "127.0.0.1", 0).start();
+        try {
+            HttpResponse<String> r = post(seizoen, "seizoen", "fixpoint=true", """
+                    {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
+                      {"labels":["Voorjaar"],"value":2}]}}}]}""");
+            assertEquals(200, r.statusCode(), r.body());
+            JsonNode objects = ServiceHttp.MAPPER.readTree(r.body()).at("/fixpoint/objects");
+            assertEquals(List.of("J1", "#1"), text(objects, "object"));
+            assertEquals(List.of("vondstgewicht [voorjaar] 2 input", "vondstgewicht [zomer] 0 derived",
+                    "vondstgewicht [najaar] 4 derived", "jaargewicht 6 derived", "geboekte gewicht 4 derived"),
+                    rows(objects.get(0)));
+            assertEquals(List.of("vangstgewicht [najaar] 4 creation", "vangsttotaal 4 derived"), rows(objects.get(1)));
+            assertEquals("kg", objects.at("/0/values/0/unit").asText(), objects.toString());
+        } finally {
+            seizoen.stop(0);
+        }
+    }
+
+    /** The values of an object of the fixpoint, one line per row: the attribute, the labels of a cell, the value and
+     *  the origin. */
+    private static List<String> rows(JsonNode object) {
+        List<String> rows = new ArrayList<>();
+        for (JsonNode w : object.get("values")) {
+            List<String> labels = new ArrayList<>();
+            w.path("labels").forEach(l -> labels.add(l.asText()));
+            rows.add(w.get("attribute").asText() + (labels.isEmpty() ? "" : " [" + String.join(", ", labels) + "]")
+                    + " " + w.get("value").asText() + " " + w.get("origin").asText());
+        }
+        return rows;
+    }
+
     // ---------------- without DETAIL, and without a flag ----------------
 
     /** Without detail every flag asked is a 400 naming it, and the body is not read; a flag set to another value than

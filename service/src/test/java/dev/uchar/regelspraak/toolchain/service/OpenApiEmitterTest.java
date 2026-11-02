@@ -173,7 +173,7 @@ class OpenApiEmitterTest {
             JsonNode props = schemas.get(component(ot)).get("properties");
             for (var e : ot.attributes.entrySet()) {
                 if (!(e.getValue() instanceof Datatype.Enumeration enm)) continue;
-                if (!ot.dimensionsOf(e.getKey()).isEmpty()) continue;   // dimensie: not emitted (rejected)
+                if (!ot.dimensionsOf(e.getKey()).isEmpty()) continue;   // dimensie: the enum is on the value of a cell
                 JsonNode prop = property(props, e.getKey());
                 assertNotNull(prop, "geen eigenschap voor enumeratie-attribuut '" + e.getKey() + "'");
                 JsonNode enumN = prop.get("enum");
@@ -239,6 +239,37 @@ class OpenApiEmitterTest {
         assertEquals("2.3.0", DOC.get("info").get("version").asText());
         // no double leaks into the document (nothing numeric is a schema value, but assert the invariant anyway)
         assertFalse(containsDouble(DOC), "geen enkele waarde mag een double zijn");
+    }
+
+    /** A dimensioned attribute is a property of its cells, as the service reads it in a request and gives it in an
+     *  answer: {@code cells}, each with one label per dimension and a value of the attribute's datatype; uchar's golden
+     *  {@code jutterswet-strandseizoen} has one dimension and one of two. */
+    @Test
+    void a_dimensioned_attribute_is_a_property_of_its_cells() throws IOException {
+        RegelSpraakModel model = dev.uchar.regelspraak.resolver.Resolver.resolve(Files.readString(
+                TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-strandseizoen/source.rgs")));
+        assertEquals(java.util.List.of(), model.errors());
+        ServiceDescriptor descriptor = DescriptorLoader.MAPPER.readValue("""
+                { "service": {"name":"strandseizoen","version":"1"},
+                  "entrypoints": [ { "name":"seizoen","path":"seizoen",
+                    "scope": {"ruleNames": ["jaargewicht van een jutter"]},
+                    "input": ["Jutter"], "output": ["Jutter.vondstgewicht"] } ],
+                  "parameters": {} }""", ServiceDescriptor.class);
+        JsonNode props = OpenApiEmitter.emit(descriptor, model).at("/components/schemas/Jutter/properties");
+        for (String[] attribute : new String[][]{{"vondstgewicht", "2"}, {"aanvoer", "2"}}) {
+            JsonNode property = property(props, attribute[0]);
+            assertNotNull(property, props::toString);
+            assertEquals("[\"cells\"]", property.get("required").toString(), property::toString);
+            JsonNode cell = property.at("/properties/cells/items");
+            assertEquals("[\"labels\",\"value\"]", cell.get("required").toString(), cell::toString);
+            assertEquals(Integer.parseInt(attribute[1]), cell.at("/properties/labels/minItems").asInt(), cell::toString);
+            assertEquals(Integer.parseInt(attribute[1]), cell.at("/properties/labels/maxItems").asInt(), cell::toString);
+            assertEquals("number", cell.at("/properties/value/type").asText(), cell::toString);
+            assertEquals("kg", cell.at("/properties/value/x-unit").asText(), cell::toString);
+            assertTrue(cell.at("/properties/value/nullable").asBoolean(), cell::toString);
+        }
+        assertTrue(property(props, "vondstgewicht").get("description").asText()
+                .startsWith("gedimensioneerd met seizoen (voorjaar, zomer, najaar), strand (noord, zuid): "), props::toString);
     }
 
     // ------------------------------------------------------------------ helpers

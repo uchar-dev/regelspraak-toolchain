@@ -479,6 +479,74 @@ class ExplanationComputationServiceTest {
                 sentences(answer(core, request)));
     }
 
+    /** uchar's golden jutterswet-seizoenboeking without its creation: a dimensioned attribute is written per cell, so
+     *  every cell a rule writes gets a sentence of its own, with the cell as RegelSpraak writes it ("vondstgewicht in
+     *  najaar"); its name and every read cell carry the cell under {@code labels} beside the keys of the attribute and
+     *  the object. A fold over the cells is the rule text with its value, as a fold over a set is. */
+    @Test
+    void a_cell_a_rule_writes_gets_a_sentence_of_its_own() throws Exception {
+        String source = """
+                Eenheidsysteem Gewicht
+                    het kilogram (mv: kilogrammen) kg
+
+                Dimensie het seizoen, bestaande uit de seizoenen (na het attribuut met voorzetsel in):
+                    1. voorjaar
+                    2. zomer
+                    3. najaar
+
+                Objecttype de Jutter (mv: Jutters) (bezield)
+                    het vondstgewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg gedimensioneerd met seizoen;
+                    het jaargewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg;
+
+                Regel najaarsgewicht van een jutter
+                    geldig altijd
+                        Het vondstgewicht in najaar van een Jutter moet berekend worden als zijn vondstgewicht in voorjaar maal 2.
+
+                Regel zomergewicht van een jutter
+                    geldig altijd
+                        Het vondstgewicht in zomer van een Jutter moet geïnitialiseerd worden op 0 kg.
+
+                Regel jaargewicht van een jutter
+                    geldig altijd
+                        Het jaargewicht van een Jutter moet berekend worden als de som van zijn vondstgewicht over alle seizoenen.
+                """;
+        String descriptor = """
+                { "service": {"name":"Cellen","version":"1"},
+                  "entrypoints": [ { "name":"jutters","path":"jutters",
+                    "scope": {"ruleNames": ["najaarsgewicht van een jutter", "zomergewicht van een jutter",
+                      "jaargewicht van een jutter"]},
+                    "input": ["Jutter"], "output": ["Jutter.vondstgewicht", "Jutter.jaargewicht"] } ],
+                  "parameters": {} }""";
+        String request = """
+                { "instances": [
+                    { "type": "Jutter", "id": "J1", "attributes": { "vondstgewicht": { "cells": [
+                        { "labels": ["voorjaar"], "value": 1.50 } ] } } },
+                    { "type": "Jutter", "id": "J2", "attributes": { "vondstgewicht": { "cells": [
+                        { "labels": ["voorjaar"], "value": 1.50 }, { "labels": ["zomer"], "value": 2.00 } ] } } } ] }""";
+        String najaar = " heeft als vondstgewicht in najaar 3,00 kg volgens de regel 'najaarsgewicht van een jutter'"
+                + " (onvoorwaardelijk): zijn vondstgewicht in voorjaar maal 2, met zijn vondstgewicht in voorjaar (1,50 kg)";
+        ObjectNode answer = answer(fromSources(source, descriptor), request);
+        assertEquals(List.of(
+                "J1" + najaar,
+                "J1 heeft als vondstgewicht in zomer 0,00 kg volgens de regel 'zomergewicht van een jutter': 0 kg, omdat"
+                        + " de vondstgewicht in zomer in de invoer leeg was",
+                "J1 heeft als jaargewicht 4,50 kg volgens de regel 'jaargewicht van een jutter' (onvoorwaardelijk): de som"
+                        + " van zijn vondstgewicht over alle seizoenen (4,50 kg)",
+                "J2" + najaar,
+                "J2 houdt als vondstgewicht in zomer de invoerwaarde 2,00 kg, want geen regel gold; verdrongen: de regel"
+                        + " 'zomergewicht van een jutter'",
+                "J2 heeft als jaargewicht 6,50 kg volgens de regel 'jaargewicht van een jutter' (onvoorwaardelijk): de som"
+                        + " van zijn vondstgewicht over alle seizoenen (6,50 kg)"), sentences(answer));
+        JsonNode first = answer.at("/explanationParts/0");
+        JsonNode name = first.valueStream().filter(p -> "NAME".equals(p.path("kind").asText())).findFirst().orElseThrow();
+        assertEquals(DescriptorLoader.MAPPER.readTree("""
+                {"kind":"NAME","text":"vondstgewicht","declaration":"ATTRIBUUT","owner":"Jutter",
+                 "canonical":"vondstgewicht","object":"J1","labels":["najaar"]}"""), name);
+        String computation = ExplanationPartsCheck.render(first);
+        assertTrue(computation.contains("QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=vondstgewicht, object=J1,"
+                + " labels=[\"voorjaar\"]}«zijn vondstgewicht in voorjaar»"), computation);
+    }
+
     /** Every sentence of form A carries the computation as a group, and every writer that did not write stands in a
      *  group of its own: without them the sentence is still a sentence. */
     @Test

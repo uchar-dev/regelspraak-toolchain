@@ -46,9 +46,16 @@ import java.util.Map;
  * the first, for a parameter, which the service binds itself, the mapper asks the fence. The result returns those
  * faults, in that order, for the caller to answer as an evaluation fault.
  *
- * <p>Unsupported by the service core (a clear violation, never a silent accept): a dimensie- or
- * tijdlijn-valued attribute (no golden situatie uses one). An unknown objecttype/attribuut/kenmerk/parameter/
- * rol, an ill-typed value, an eenheid mismatch, and an unknown enumeratie-waarde are all violations.
+ * <p>A dimensioned attribute takes its input per cell, in the form of uchar's case: {@code {"cells": [{"labels":
+ * [...], "value": ...}, ...]}}, one label per dimension in their declared order, each value as the attribute's datatype
+ * takes it; a null value is an empty cell. uchar's input step reads the cells (RUNTIME-SEMANTICS ch. 5.8c): labels that
+ * name no cell (EF-034) and a cell given twice (EF-035) it refuses before any session, as it refuses EF-004 per cell,
+ * and the result returns them as faults of the kind {@link EvaluationFault.Kind#CELL_FAULT}.
+ *
+ * <p>Unsupported by the service core (a clear violation, never a silent accept): a tijdlijn-valued attribute (no
+ * golden situatie uses one). An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid
+ * mismatch, an unknown enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without
+ * dimensions are all violations.
  *
  * <p>Every name is read by a {@link NameReader}: canonical or a designation in any vocabulary of the model, unless
  * the request pins its input vocabulary. A name that reads as two declarations is a
@@ -81,26 +88,33 @@ public final class RequestMapper {
     }
 
     /** The mapped world, the id→objecttype map (for the response builder), the violations produced while
-     *  mapping (empty on success), and the values uchar's input fence refused (EF-004; empty on success). The world is
-     *  null when uchar refused the input. */
+     *  mapping (empty on success), and the values uchar's input refused before any session (EF-004, EF-034, EF-035;
+     *  empty on success). The world is null when uchar refused the input. */
     public record Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations,
-                         List<CaseRunner.InputPrecisionFault> inputFaults) {}
+                         List<EvaluationFault.InputFault> inputFaults) {}
 
     /** A role link the mapper writes into the case: under the {@code roles} of instance {@code id}, the key
      *  {@code role}, naming {@code doel}; uchar's {@link CaseInput.RoleError} names a refused link the same way. */
     private record Link(String id, String role, String target) {}
 
+    /** What the mapper wrote into the case that uchar's input step refuses with an {@link IllegalArgumentException} of
+     *  no public type: a date or date-time on {@code field} whose year the case lexeme does not carry (four digits, no
+     *  sign), a violation of that field; or ({@code cell}) the cells of the dimensioned attribute on {@code field}, whose
+     *  labels name no cell (EF-034) or one cell twice (EF-035) by uchar's key of a cell
+     *  ({@link FactModelGenerator#cellKey}), a {@link EvaluationFault.Kind#CELL_FAULT}. */
+    private record CaseRefusal(String field, boolean cell) {}
+
     public Result map(Request request) {
         List<Violation> s = new ArrayList<>();
-        List<CaseRunner.InputPrecisionFault> inputFaults = new ArrayList<>();
+        List<EvaluationFault.InputFault> inputFaults = new ArrayList<>();
         Map<String, Object> globals = new LinkedHashMap<>();
         Map<String, ObjectType> typePerLabel = new LinkedHashMap<>();
         // the instances of the case by id, in the order of the request, and the field of the request per link
         Map<String, ObjectNode> instances = new LinkedHashMap<>();
         Map<Link, String> paths = new LinkedHashMap<>();
-        // the fields whose date or date-time has a year the case lexeme does not carry (four digits, no sign), in the
-        // order uchar's input step reads them: the evaluation date first, then the attributes in the order of the case
-        List<String> yearOutsideCaseForm = new ArrayList<>();
+        // what uchar's input step will refuse, in the order it reads the case: the evaluation date first, then the
+        // attributes in the order of the case, the cells of an attribute before their values; it stops at the first
+        List<CaseRefusal> refusals = new ArrayList<>();
 
         // 1. peildatum / rekendatum — ONE date authority (fase 5). 'peildatum' is the preferred name, 'rekendatum'
         //    the existing alias: the two are the SAME notion. Both present and UNEQUAL is a violation naming BOTH
@@ -118,7 +132,8 @@ public final class RequestMapper {
         } else {
             date = asOfDate != null ? asOfDate : evaluationDate;   // peildatum wins when both equal
         }
-        if (date != null && !inCaseForm(date.getYear())) yearOutsideCaseForm.add(asOfDate != null ? "asOfDate" : "rekendatum");
+        if (date != null && !inCaseForm(date.getYear()))
+            refusals.add(new CaseRefusal(asOfDate != null ? "asOfDate" : "rekendatum", false));
 
         // 2. parameters
         JsonNode params = request.parameters();
@@ -148,7 +163,7 @@ public final class RequestMapper {
                             CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(),
                                     "parameter " + p.name());
                         } catch (CaseRunner.InputPrecisionFault f) {
-                            inputFaults.add(f);
+                            inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.INPUT_PRECISION_FAULT, f));
                             return;
                         }
                     }
@@ -196,7 +211,7 @@ public final class RequestMapper {
                 instance.put("objectType", ot.name);
                 instances.put(id, instance);
                 typePerLabel.put(id, ot);
-                setAttributes(ot, instance, in.get("attributes"), path + ".attributes", yearOutsideCaseForm, s);
+                setAttributes(ot, instance, in.get("attributes"), path + ".attributes", refusals, s);
                 setCharacteristics(ot, instance, in.get("characteristics"), path + ".characteristics", s);
             }
         }
@@ -230,12 +245,14 @@ public final class RequestMapper {
             // a form uchar's input step does not carry that the validation above let through: no link names it
             s.add(Violation.of(Violation.Kind.UNSUPPORTED, "instances", x.getMessage()));
         } catch (CaseRunner.InputPrecisionFault f) {
-            inputFaults.add(f);
+            inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.INPUT_PRECISION_FAULT, f));
         } catch (IllegalArgumentException f) {
-            // after the validation above the one defect of the case uchar's input step can find is a date or date-time
-            // lexeme outside its form, a year beyond 0000-9999; it stops at the first it reads
-            if (yearOutsideCaseForm.isEmpty()) throw f;
-            s.add(Violation.of(Violation.Kind.WRONG_TYPE, yearOutsideCaseForm.get(0), f.getMessage()));
+            // after the validation above uchar's input step can refuse what the refusals list, and it stops at the first
+            // it reads; anything else is a defect of the case the mapper wrote, and fails here
+            if (refusals.isEmpty()) throw f;
+            CaseRefusal first = refusals.get(0);
+            if (first.cell()) inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.CELL_FAULT, f));
+            else s.add(Violation.of(Violation.Kind.WRONG_TYPE, first.field(), f.getMessage()));
         }
         return new Result(input == null ? null : new World(input, globals, date), typePerLabel, s, inputFaults);
     }
@@ -278,15 +295,15 @@ public final class RequestMapper {
      *  case reader reads back as that same Java value. Null after adding the violation of a value the case form cannot
      *  carry: a date-time with a fraction finer than a millisecond. A date or date-time whose year the lexeme does not
      *  carry is written as {@link LocalDate#toString} writes it, for uchar's reader to refuse, and {@code field} is added
-     *  to {@code yearOutsideCaseForm}. */
-    private static JsonNode caseValue(Object w, Datatype dt, String field, List<String> yearOutsideCaseForm,
+     *  to {@code refusals}. */
+    private static JsonNode caseValue(Object w, Datatype dt, String field, List<CaseRefusal> refusals,
                                        List<Violation> s) {
         if (w == null) return NF.nullNode();
         ObjectNode n = NF.objectNode();
         // toString, not toPlainString: new BigDecimal(toString()) gives back the same unscaled value and scale
         if (w instanceof BigDecimal b) return n.put("number", b.toString());
         if (w instanceof LocalDate d) {
-            if (!inCaseForm(d.getYear())) yearOutsideCaseForm.add(field);
+            if (!inCaseForm(d.getYear())) refusals.add(new CaseRefusal(field, false));
             return n.put("date", d.toString());
         }
         if (w instanceof Boolean b) return n.put("boolean", b);
@@ -297,7 +314,7 @@ public final class RequestMapper {
                         + " seconde fijner dan een milliseconde; de dienst draagt hele milliseconden"));
                 return null;
             }
-            if (!inCaseForm(dt2.getYear())) yearOutsideCaseForm.add(field);
+            if (!inCaseForm(dt2.getYear())) refusals.add(new CaseRefusal(field, false));
             String lexeme = DATE_TIME.format(dt2);
             if (dt2.getNano() != 0) lexeme += String.format(".%03d", dt2.getNano() / 1_000_000);
             return n.put("dateTime", lexeme);
@@ -317,7 +334,7 @@ public final class RequestMapper {
     }
 
     private void setAttributes(ObjectType ot, ObjectNode instance, JsonNode attrs, String path,
-                               List<String> yearOutsideCaseForm, List<Violation> s) {
+                               List<CaseRefusal> refusals, List<Violation> s) {
         if (attrs == null || attrs.isNull()) return;
         if (!attrs.isObject()) { s.add(Violation.of(Violation.Kind.MALFORMED, path, "attributes moet een object zijn")); return; }
         Duplicate duplicate = new Duplicate("deze instantie");
@@ -334,8 +351,13 @@ public final class RequestMapper {
                 return;
             }
             if (!ot.dimensionsOf(canonical).isEmpty()) {
-                s.add(Violation.of(Violation.Kind.UNSUPPORTED, field,
-                        "dimensie-gewaardeerd attribuut '" + name + "' wordt niet ondersteund door de dienst-kern"));
+                JsonNode cells = cells(ot, canonical, name, dt, e.getValue(), field, refusals, s);
+                if (cells != null) objectIn(instance, "attributes").set(canonical, cells);
+                return;
+            }
+            if (isCells(e.getValue())) {
+                s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "attribuut '" + name + "' heeft geen dimensies;"
+                        + " cells is de invoer van een gedimensioneerd attribuut"));
                 return;
             }
             if (isTemporal(ot, canonical)) {
@@ -348,9 +370,89 @@ public final class RequestMapper {
             ValueCoder.Result r = ValueCoder.decode(value, dt, field);
             s.addAll(r.violations());
             if (!r.violations().isEmpty()) return;
-            JsonNode caseValue = caseValue(r.value(), dt, field, yearOutsideCaseForm, s);
+            JsonNode caseValue = caseValue(r.value(), dt, field, refusals, s);
             if (caseValue != null) objectIn(instance, "attributes").set(canonical, caseValue);
         });
+    }
+
+    /** Whether {@code value} is the input of a dimensioned attribute: an object with {@code cells} and nothing else. */
+    private static boolean isCells(JsonNode value) {
+        return value != null && value.isObject() && value.size() == 1 && value.has("cells");
+    }
+
+    /**
+     * The cells of the dimensioned attribute {@code attribute} of {@code ot} ({@code name} as the request writes it) as
+     * the case writes them, {@code {"cells": [{"labels": [...], "value": <case value>}, ...]}}, the labels as the
+     * request writes them, in the order of the request; null after adding the violations of a value that is no list of
+     * cells. Labels that name no cell of the attribute or one cell twice by uchar's key of a cell are no violation:
+     * uchar's input step refuses them (EF-034, EF-035), before the values of the cells, so the attribute's refusal goes
+     * into {@code refusals} before those of its values.
+     */
+    private JsonNode cells(ObjectType ot, String attribute, String name, Datatype dt, JsonNode value, String field,
+                           List<CaseRefusal> refusals, List<Violation> s) {
+        List<String> dimensions = ot.dimensionsOf(attribute);
+        if (!isCells(value)) {
+            s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "attribuut '" + name + "' is gedimensioneerd met "
+                    + String.join(", ", dimensions) + ": zijn invoer is {\"cells\": [{\"labels\": [...], \"value\": ...}]},"
+                    + " één label per dimensie, in die volgorde"));
+            return null;
+        }
+        JsonNode cells = value.get("cells");
+        if (!cells.isArray()) {
+            s.add(Violation.of(Violation.Kind.MALFORMED, field + ".cells", "cells moet een array zijn"));
+            return null;
+        }
+        int violations = s.size();
+        boolean namesNoCell = false;
+        List<List<String>> keys = new ArrayList<>();
+        List<CaseRefusal> ofValues = new ArrayList<>();
+        ArrayNode out = NF.arrayNode();
+        for (int k = 0; k < cells.size(); k++) {
+            JsonNode c = cells.get(k);
+            String cellField = field + ".cells[" + k + "]";
+            if (!c.isObject()) {
+                s.add(Violation.of(Violation.Kind.MALFORMED, cellField, "een cel is een object {labels, value}"));
+                continue;
+            }
+            List<String> other = new ArrayList<>();
+            c.fieldNames().forEachRemaining(f -> { if (!f.equals("labels") && !f.equals("value")) other.add(f); });
+            if (!other.isEmpty()) {
+                s.add(Violation.of(Violation.Kind.MALFORMED, cellField, "een cel heeft alleen labels en value, niet "
+                        + String.join(", ", other)));
+                continue;
+            }
+            JsonNode labels = c.get("labels");
+            if (labels == null || !labels.isArray() || labels.valueStream().anyMatch(l -> !l.isTextual())) {
+                s.add(Violation.of(Violation.Kind.MALFORMED, cellField + ".labels", "labels ontbreekt of is geen array"
+                        + " van teksten"));
+                continue;
+            }
+            if (!c.has("value")) {
+                s.add(Violation.of(Violation.Kind.MALFORMED, cellField + ".value", "value ontbreekt"));
+                continue;
+            }
+            List<String> key = FactModelGenerator.cellKey(model, dimensions,
+                    labels.valueStream().map(JsonNode::asText).toList());
+            if (key == null) namesNoCell = true;
+            else keys.add(key);
+            String valueField = cellField + ".value";
+            JsonNode v = value(c.get("value"), dt, valueField, s);
+            if (v == null) continue;
+            ValueCoder.Result r = ValueCoder.decode(v, dt, valueField);
+            s.addAll(r.violations());
+            if (!r.violations().isEmpty()) continue;
+            JsonNode caseValue = caseValue(r.value(), dt, valueField, ofValues, s);
+            if (caseValue == null) continue;
+            ObjectNode cell = out.addObject();
+            cell.set("labels", labels);
+            cell.set("value", caseValue);
+        }
+        if (s.size() > violations) return null;
+        if (namesNoCell || keys.stream().distinct().count() < keys.size()) refusals.add(new CaseRefusal(field, true));
+        refusals.addAll(ofValues);
+        ObjectNode n = NF.objectNode();
+        n.set("cells", out);
+        return n;
     }
 
     private void setCharacteristics(ObjectType ot, ObjectNode instance, JsonNode characteristics, String path, List<Violation> s) {

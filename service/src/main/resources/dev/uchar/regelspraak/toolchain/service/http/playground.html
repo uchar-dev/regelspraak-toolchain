@@ -288,7 +288,6 @@ function timelineHtml(tl) {
 function valueHtml(o) {
   let h;
   if (o.timeline) h = timelineHtml(o.timeline);
-  else if (o.dimensions) h = Object.entries(o.dimensions).map(([c, w]) => esc(c) + ": " + scalar(w)).join("<br>");
   else h = o.valueCanonical != null ? nameOf(o, "value") : scalar(o.value);
   return h + (o.unit ? ' <span class="muted">' + esc(o.unit) + "</span>" : "");
 }
@@ -441,7 +440,8 @@ function fixpointHtml(r) {
     const rows = [];
     for (const w of o.values)
       if (visible(w.origin) && (whole || matches(w.attribute, w.attributeCanonical)))
-        rows.push("<tr><td>" + nameOf(w, "attribute") + "</td><td>" + valueHtml(w)
+        rows.push("<tr><td>" + nameOf(w, "attribute") + (w.labels ? " [" + w.labels.map(esc).join(", ") + "]" : "")
+          + "</td><td>" + valueHtml(w)
           + ("input" in w ? ' <span class="small">(invoer ' + (Array.isArray(w.input) ? timelineHtml(w.input) : scalar(w.input)) + ")</span>" : "")
           + '</td><td><span class="origin ' + esc(w.origin) + '">' + esc(w.origin) + "</span></td></tr>");
     for (const k of o.characteristics)

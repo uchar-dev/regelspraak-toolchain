@@ -46,8 +46,8 @@ import java.util.List;
  * DatumInDagen → {string, date}, DatumTijd → {string, date-time}, Enumeratie → {string, enum:[all waarden]}.
  * An eenheid-bearing attribuut documents its unit as {@code x-eenheid} PLUS a mention in the property
  * description. Kenmerken are boolean properties on the same schema (the description says which are kenmerken).
- * Dimensie- and tijdlijn-valued members are REJECTED by the service ({@link RequestMapper} UNSUPPORTED),
- * so no property is emitted for them — the schema description says so.
+ * Tijdlijn-valued members are REJECTED by the service ({@link RequestMapper} UNSUPPORTED), so no property is emitted
+ * for them — the schema description says so. A dimensioned attribuut is a property of its cells.
  *
  * <p><b>Per vocabulary.</b> {@link #emit(ServiceDescriptor, RegelSpraakModel, String)} writes the document of one
  * vocabulary the model declares, or of the canonical names: the object types, properties, enumeration values and
@@ -106,7 +106,7 @@ public final class OpenApiEmitter {
         ObjectNode components = doc.putObject("components");
         ObjectNode schemas = components.putObject("schemas");
         for (ObjectType ot : model.objectTypes.values())
-            schemas.set(componentName(ot, sp.in), objectTypeSchema(ot, sp));
+            schemas.set(componentName(ot, sp.in), objectTypeSchema(ot, model, sp));
         schemas.set("Request", requestSchema());
         schemas.set("Answer", answerSchema());
         schemas.set("Error", errorSchema());
@@ -335,10 +335,10 @@ public final class OpenApiEmitter {
 
     // ------------------------------------------------------------------ objecttype schema
 
-    /** The component schema for one objecttype: an object with a property per SCALAR attribuut (dimensie/
-     *  tijdlijn attributen and tijdlijn-kenmerken are rejected by the service, so none is emitted) and a boolean
-     *  property per (non-temporal) kenmerk. The description records the eenheid-bearing attributen, the
-     *  kenmerken, and any rejected (dimensie/tijdlijn) member.
+    /** The component schema for one objecttype: an object with a property per attribuut that is no tijdlijn (tijdlijn
+     *  attributen and tijdlijn-kenmerken are rejected by the service, so none is emitted), a dimensioned one as its
+     *  cells ({@link #cellsSchema}), and a boolean property per (non-temporal) kenmerk. The description records the
+     *  eenheid-bearing attributen, the kenmerken, and any rejected (tijdlijn) member.
      *
      *  <p><b>IR-SPEC ch. 2.2: the member set is CHAIN-CLOSED</b> ({@link Objecttype#attributeMembers} /
      *  {@link DescriptorLoader#characteristicMembers}), nearest declaration first. A request instance of a subtype
@@ -350,7 +350,7 @@ public final class OpenApiEmitter {
      *  choice from {@link dev.uchar.regelspraak.schema.FactModelGenerator}, which stays per
      *  declaring type BECAUSE the generated bean {@code extends} its supertype's and would hide the
      *  parent's field by redeclaring it; a JSON schema property set has no such mechanism. */
-    private static ObjectNode objectTypeSchema(ObjectType ot, Spellings sp) {
+    private static ObjectNode objectTypeSchema(ObjectType ot, RegelSpraakModel model, Spellings sp) {
         ObjectNode schema = NF.objectNode();
         schema.put("type", "object");
 
@@ -361,9 +361,9 @@ public final class OpenApiEmitter {
         // attributen (own first, then inherited — declared order within each)
         for (var e : ot.attributeMembers().entrySet()) {
             String name = sp.in.attribute(ot, e.getKey());
-            if (!ot.dimensionsOf(e.getKey()).isEmpty()) { rejected.add(name + " (dimensie)"); continue; }
             if (temporalAttribute(ot, e.getKey()))      { rejected.add(name + " (tijdlijn)"); continue; }
-            ObjectNode attribute = attributeSchema(e.getValue(), sp);
+            ObjectNode attribute = ot.dimensionsOf(e.getKey()).isEmpty() ? attributeSchema(e.getValue(), sp)
+                    : cellsSchema(e.getValue(), ot.dimensionsOf(e.getKey()), model, sp);
             if (sp.enabled()) spellings(attribute, sp.of(Naming.attributeOf(ot, e.getKey())));
             props.set(name, attribute);
         }
@@ -400,9 +400,48 @@ public final class OpenApiEmitter {
         if (!characteristics.isEmpty())
             b.append(" Kenmerken (boolean-eigenschappen): ").append(String.join(", ", characteristics)).append(".");
         if (!rejected.isEmpty())
-            b.append(" Dimensie-/tijdlijn-gewaardeerde leden worden door de dienst-kern niet ondersteund en"
+            b.append(" Tijdlijn-gewaardeerde leden worden door de dienst-kern niet ondersteund en"
                     + " zijn hier niet als eigenschap opgenomen: ").append(String.join(", ", rejected)).append(".");
         return b.toString();
+    }
+
+    /** A dimensioned attribuut of datatype {@code dt} as {@link RequestMapper} takes it and {@link AnswerBuilder} gives
+     *  it: {@code {"cells": [{"labels": [...], "value": ...}, ...]}}, one label per dimension of {@code dimensions} in
+     *  their order, the value as {@link #attributeSchema} describes a scalar of {@code dt}, null for an empty cell. The
+     *  description names the dimensions with their labels in declared order. */
+    private static ObjectNode cellsSchema(Datatype dt, List<String> dimensions, RegelSpraakModel model, Spellings sp) {
+        List<String> named = new ArrayList<>();
+        for (String d : dimensions) {
+            RegelSpraakModel.Dimension dimension = model.dimensionByName(d);
+            if (dimension == null)
+                throw new IllegalStateException("de dimensie '" + d + "' van een gedimensioneerd attribuut is niet"
+                        + " gedeclareerd");
+            named.add(dimension.name() + " (" + String.join(", ", dimension.values()) + ")");
+        }
+        ObjectNode s = NF.objectNode();
+        s.put("type", "object");
+        s.put("description", "gedimensioneerd met " + String.join(", ", named) + ": de waarden zijn de cellen, elk met"
+                + " één label per dimensie, in deze volgorde. Een verzoek geeft de cellen die het vult, elk één keer;"
+                + " een antwoord geeft elke cel, de eerste dimensie buitenste, met null voor een lege cel.");
+        s.putArray("required").add("cells");
+        s.put("additionalProperties", false);
+        ObjectNode cells = s.putObject("properties").putObject("cells");
+        cells.put("type", "array");
+        ObjectNode cell = cells.putObject("items");
+        cell.put("type", "object");
+        ArrayNode required = cell.putArray("required");
+        required.add("labels"); required.add("value");
+        cell.put("additionalProperties", false);
+        ObjectNode cellProps = cell.putObject("properties");
+        ObjectNode labels = cellProps.putObject("labels");
+        labels.put("type", "array");
+        labels.putObject("items").put("type", "string");
+        labels.put("minItems", dimensions.size());
+        labels.put("maxItems", dimensions.size());
+        ObjectNode value = attributeSchema(dt, sp);
+        value.put("nullable", true);
+        cellProps.set("value", value);
+        return s;
     }
 
     /** Map a scalar attribuut's datatype onto its JSON-schema fragment, documenting an eenheid via
@@ -702,7 +741,8 @@ public final class OpenApiEmitter {
                 + " verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het"
                 + " antwoord; waar de canonieke naam verschilt, staat die ernaast onder <key>Canonical. Een waarde is"
                 + " een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg);"
-                + " een tijdlijn staat onder timeline, een gedimensioneerde waarde onder dimensions.");
+                + " een tijdlijn staat onder timeline. Een gedimensioneerd attribuut heeft een rij per cel, met haar"
+                + " labels onder labels.");
         ObjectNode props = s.putObject("properties");
         ObjectNode objects = list(props, "objects", "elke instantie van het verzoek, in de volgorde van het"
                 + " verzoek, dan elk gemaakt object, met zijn waarden en kenmerken in de declaratievolgorde van zijn"
@@ -710,9 +750,9 @@ public final class OpenApiEmitter {
         ObjectNode objectProps = objects.putObject("properties");
         objectProps.putObject("object").put("type", "string");
         objectProps.putObject("objectType").put("type", "string");
-        ObjectNode values = list(objectProps, "values", "attribute, value (of timeline of dimensions), origin"
-                + " (input, derived of creation), input (bij een afgeleide waarde de invoerwaarde die zij verving) en"
-                + " unit.");
+        ObjectNode values = list(objectProps, "values", "attribute, labels (bij een cel, één label per dimensie),"
+                + " value (of timeline), origin (input, derived of creation), input (bij een afgeleide waarde de"
+                + " invoerwaarde die zij verving) en unit.");
         values.put("additionalProperties", true);
         ObjectNode characteristics = list(objectProps, "characteristics", "elk kenmerk dat geldt: characteristic, origin (input of"
                 + " derived), en input: true als ook de invoer het zette.");
@@ -776,8 +816,8 @@ public final class OpenApiEmitter {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer"
-                + " evaluatiefouten, of een getal van het verzoek past niet in zijn declaratie; elke fout met haar kind"
-                + " en uchars zin.");
+                + " evaluatiefouten, of een getal van het verzoek past niet in zijn declaratie, of een cel van het"
+                + " verzoek bestaat niet of staat er twee keer in; elke fout met haar kind en uchars zin.");
         ArrayNode req = s.putArray("required");
         req.add("status"); req.add("error"); req.add("faults");
         ObjectNode props = s.putObject("properties");
@@ -804,8 +844,10 @@ public final class OpenApiEmitter {
                 + " verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt,"
                 + " want de dienst weigert een tijdlijn (400); WRITE_BOUNDARY_FAULT: een waarde die niet in de"
                 + " gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet"
-                + " in de gedeclareerde decimalen van zijn attribuut of parameter past, geweigerd vóór de sessie, dus"
-                + " zonder trace, coverage en fixpoint; OTHER: een fout van een ander type die aan het fixpunt"
+                + " in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus"
+                + " zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel"
+                + " van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd; OTHER:"
+                + " een fout van een ander type die aan het fixpunt"
                 + " staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft.");
         ObjectNode sentence = itemProps.putObject("error");
         sentence.put("type", "string");

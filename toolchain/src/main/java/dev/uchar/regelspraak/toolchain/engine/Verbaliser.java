@@ -1083,9 +1083,11 @@ public final class Verbaliser {
     private static final Set<String> READ_KINDS = Set.of("AttributeReference", "ParameterReference",
             "DimensionCellRead", "BinderRef", "Fold");
 
-    /** Een schrijver van een attribuut op één object: een versie van een gewone regel, haar doel, haar pointer in het
-     *  document en haar lezing op het object. */
-    private record Writer(ResolvedRule rule, Expr.AttributeReference target, String pointer, ConditionReading reading) {}
+    /** Een schrijver van een attribuut op één object: een versie van een gewone regel, haar doel, de cel van het doel
+     *  ({@code labels}, zoals uchar een cel sleutelt, {@link FactModelGenerator#cellKey}; null voor een attribuut zonder
+     *  dimensies), haar pointer in het document en haar lezing op het object. */
+    private record Writer(ResolvedRule rule, Expr.AttributeReference target, List<String> labels, String pointer,
+                          ConditionReading reading) {}
 
     /**
      * De zinnen over de attributen die de gewone regels van het document op één object schrijven: een gelijkstelling,
@@ -1122,6 +1124,9 @@ public final class Verbaliser {
      *
      * <p>Een regel op een tijdlijn-doel schreef "een tijdlijn" ({@code timeline: true} op de waarde), zonder berekening:
      * de zin noemt de perioden niet.
+     *
+     * <p>Een gedimensioneerd attribuut wordt per cel geschreven (uchars WF-125), dus elke cel die een regel schrijft
+     * krijgt haar eigen zin, over de schrijvers van die cel, met de cel als naam ({@link #cellName}).
      */
     private final class ComputationExplanation {
         private final String label;
@@ -1147,7 +1152,14 @@ public final class Verbaliser {
             Map<String, List<Writer>> perTarget = new LinkedHashMap<>();
             for (ResolvedRule r : document.rules()) {
                 if (r.kind() == ResolvedRule.Kind.KENMERKTOEKENNING) continue;
-                if (!(r.target() instanceof Expr.AttributeReference ref) || ref.objectType() == null) continue;
+                Expr.AttributeReference ref;
+                List<String> labels = null;
+                if (r.target() instanceof Expr.AttributeReference a) ref = a;
+                else if (r.target() instanceof Expr.DimensionCellRead c) {
+                    ref = c.attribute();
+                    labels = cellKey(ref, c.labels());
+                } else continue;
+                if (ref.objectType() == null) continue;
                 if (!type.isA(ref.objectType())) continue;
                 String pointer = document.positions().versionOf(r);
                 if (pointer == null)
@@ -1157,14 +1169,15 @@ public final class Verbaliser {
                 String target = ref.attribute().toLowerCase(Locale.ROOT);
                 if (stackTargets.contains(target) && !readings.getOrDefault(pointer, Map.of()).containsKey(bean))
                     continue;
-                perTarget.computeIfAbsent(target, k -> new ArrayList<>())
-                        .add(new Writer(r, ref, pointer, reading(pointer, bean, label)));
+                perTarget.computeIfAbsent(labels == null ? target : target + labels, k -> new ArrayList<>())
+                        .add(new Writer(r, ref, labels, pointer, reading(pointer, bean, label)));
             }
             for (List<Writer> writers : perTarget.values()) sink.add(sentence(writers));
         }
 
         private Sentence sentence(List<Writer> writers) {
             String member = writers.get(0).target().attribute();
+            List<String> cell = writers.get(0).labels();
             boolean timeline = type.granularityOf(member) != null;
             List<Writer> wrote = new ArrayList<>(), empty = new ArrayList<>();
             Object written = null;
@@ -1179,8 +1192,9 @@ public final class Verbaliser {
                 }
                 if (!wrote.isEmpty() && !same(written, v))
                     throw new IllegalStateException("de regels '" + formName(wrote.get(0)) + "' en '" + formName(w)
-                            + "' gelden op " + label + " met verschillende waarden voor '" + member + "' (" + written
-                            + " en " + v + "), en de uitleg volgt een sessie zonder fout");
+                            + "' gelden op " + label + " met verschillende waarden voor '" + member + "'"
+                            + (cell == null ? "" : " in de cel " + cell) + " (" + written + " en " + v + "), en de"
+                            + " uitleg volgt een sessie zonder fout");
                 if (wrote.isEmpty()) written = v;
                 wrote.add(w);
             }
@@ -1188,7 +1202,7 @@ public final class Verbaliser {
             List<Writer> deciders = wrote.isEmpty() ? empty : wrote;
             if (!wrote.isEmpty()) {
                 b.text("heeft als ");
-                attributeName(b, type, member, new On(label));
+                targetName(b, member, cell);
                 b.text(" ");
                 Writer first = wrote.get(0);
                 if (timeline) b.leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
@@ -1198,7 +1212,8 @@ public final class Verbaliser {
                     decider(b, wrote.get(i), member, timeline, false);
                 }
             } else {
-                standing(b, member, timeline);
+                if (cell == null) standing(b, member, timeline);
+                else cellStanding(b, member, cell);
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" ");
                 if (empty.isEmpty()) b.text("geen regel gold");
                 for (int i = 0; i < empty.size(); i++) {
@@ -1237,6 +1252,28 @@ public final class Verbaliser {
             b.text(" de invoerwaarde ").leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
         }
 
+        /** Wat cel {@code cell} van {@code member} houdt waar geen regel een waarde schreef: leeg of de invoerwaarde,
+         *  uit uchars kaart van cellen op de bean. */
+        private void cellStanding(Sentence.Builder b, String member, List<String> cell) {
+            Object map = readRaw(bean, Namen.getter(member));
+            if (map != null && !(map instanceof Map<?, ?>))
+                throw new IllegalStateException("het gedimensioneerde attribuut '" + member + "' van " + label
+                        + " staat op de bean als " + map.getClass().getName() + ", niet als uchars kaart van cellen");
+            Object v = map == null ? null : ((Map<?, ?>) map).get(cell);
+            b.text(v == null ? "heeft geen " : "houdt als ");
+            cellName(b, type, member, cell, new On(label));
+            if (v != null) {
+                b.text(" de invoerwaarde ");
+                value(b, render(v, type.attribute(member)), false);
+            }
+        }
+
+        /** Het doel van de zin: attribuut {@code member}, of zijn cel {@code cell}, op het object van de zin. */
+        private void targetName(Sentence.Builder b, String member, List<String> cell) {
+            if (cell == null) attributeName(b, type, member, new On(label));
+            else cellName(b, type, member, cell, new On(label));
+        }
+
         /** Een regel die gold: haar naam, haar berekening en waarom zij gold; met {@code gaveNothing} dat zij geen waarde
          *  gaf. Een initialisatie zonder voorwaarde gold omdat het doel in de invoer leeg was, zoals de zin van een
          *  initialisatie in een stapel het zegt. */
@@ -1254,7 +1291,7 @@ public final class Verbaliser {
                         writtenByUchar(r));
             } else if (initialisation) {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" de ");
-                attributeName(b, type, member, new On(label));
+                targetName(b, member, w.labels());
                 b.text(" in de invoer leeg was");
             }
         }
@@ -1306,9 +1343,9 @@ public final class Verbaliser {
             b.open(Part.Kind.COMPUTATION, Map.of()).text(": ");
             Map<Object, String> definitions = definitions(nodes);
             String rootKind = kindOf(root);
-            // een lezing, parameter of vouw over een verzameling is de regeltekst zelf, met haar waarde; een ingebouwde
-            // functie of een aggregatie over haar argumenten noemt wat zij las
-            boolean single = READ_KINDS.contains(rootKind) || overASet(root, read);
+            // een lezing, parameter of vouw over een verzameling of over cellen is de regeltekst zelf, met haar waarde;
+            // een ingebouwde functie of een aggregatie over haar argumenten noemt wat zij las
+            boolean single = READ_KINDS.contains(rootKind) || overASet(root, read) || overCells(root);
             if (single) {
                 operand(b, root, read, ucharText, definitions);
             } else {
@@ -1396,8 +1433,15 @@ public final class Verbaliser {
          *  de verzameling, zonder dimensieselectie; haar knoop draagt haar bijdragers. Een aggregatie over haar
          *  argumenten ("de laatste van A en B") is er geen. */
         private boolean overASet(Expr e, Read read) {
-            return e instanceof Expr.FunctionCall f && "Aggregation".equals(kindOf(e)) && f.dimensionSelection() == null
+            return e instanceof Expr.FunctionCall f && "Aggregation".equals(kindOf(e)) && f.dimensionSelections() == null
                     && (f.arguments().size() == 1 || read.has(e) && !read.of(e).contributors().isEmpty());
+        }
+
+        /** Of {@code e} een vouw over de cellen van een gedimensioneerd attribuut is (RUNTIME-SEMANTICS ch. 5.8c): een
+         *  aggregatie met een dimensieselectie. Haar knoop draagt haar waarde en geen bijdragers; de verwijzing eronder
+         *  heeft geen eigen lezing. */
+        private static boolean overCells(Expr e) {
+            return e instanceof Expr.FunctionCall f && f.dimensionSelections() != null;
         }
 
         /** Wat een operand de zin noemt, één keer: zijn brontekst en de declaratie die het leest. */
@@ -1641,6 +1685,39 @@ public final class Verbaliser {
         Map<String, Object> meta = Part.meta("declaration", d.kind().name(), "owner", d.owner(), "canonical", d.name());
         if (on != null) meta.put("object", on.label());
         return meta;
+    }
+
+    /** Cel {@code cell} van attribuut {@code member} van {@code holder}, zoals RegelSpraak een cel schrijft (§3.6): de
+     *  labels van een dimensie zonder voorzetsel vóór de naam, de andere erachter, elk na het voorzetsel van zijn
+     *  dimensie, in de gedeclareerde volgorde van de dimensies ("vondstgewicht in najaar", "aanvoer op zuid uit zee").
+     *  De naam draagt de sleutels van het attribuut, het object ({@link On}) en de cel onder {@code labels}, zoals uchar
+     *  haar sleutelt ({@link FactModelGenerator#cellKey}); de labels en hun voorzetsels zijn lijm. */
+    private void cellName(Sentence.Builder b, ObjectType holder, String member, List<String> cell, On on) {
+        List<String> dimensions = holder.dimensionsOf(member);
+        StringBuilder before = new StringBuilder(), after = new StringBuilder();
+        for (int i = 0; i < dimensions.size(); i++) {
+            RegelSpraakModel.Dimension d = model.dimensionByName(dimensions.get(i));
+            if (d == null)
+                throw new IllegalStateException("de dimensie '" + dimensions.get(i) + "' van '" + member + "' is niet"
+                        + " gedeclareerd");
+            if (d.preposition() == null) before.append(cell.get(i)).append(' ');
+            else after.append(' ').append(d.preposition()).append(' ').append(cell.get(i));
+        }
+        if (!before.isEmpty()) b.text(before.toString());
+        Map<String, Object> meta = declaration(Naming.attributeOf(holder, member), on);
+        meta.put("labels", cell);
+        b.leaf(Part.Kind.NAME, naming.attribute(holder, member), meta);
+        if (!after.isEmpty()) b.text(after.toString());
+    }
+
+    /** Cel {@code labels} van attribuut {@code ref} zoals uchar haar sleutelt ({@link FactModelGenerator#cellKey}): één
+     *  label per dimensie, in de gedeclareerde spelling. Labels die geen cel noemen weigert uchars WF-040. */
+    private List<String> cellKey(Expr.AttributeReference ref, List<String> labels) {
+        List<String> key = FactModelGenerator.cellKey(model, ref.objectType().dimensionsOf(ref.attribute()), labels);
+        if (key == null)
+            throw new IllegalStateException("de labels " + labels + " noemen geen cel van '" + ref.attribute() + "' van "
+                    + ref.objectType().name + ", wat uchars WF-040 weigert");
+        return key;
     }
 
     /** Attribuut {@code member} van {@code holder} in het vocabulaire, als naam van een variant: geen waarde. */
@@ -2079,10 +2156,11 @@ public final class Verbaliser {
         return unit == null ? number : number + " " + unit;
     }
 
-    /** Het type van een operand: dat van de expressie, of voor een attribuut- of parameterlezing dat van de declaratie
-     *  (een lezing uit uchars lader draagt zelf geen type); null voor elk ander operand. */
+    /** Het type van een operand: dat van de expressie, of voor een attribuut-, cel- of parameterlezing dat van de
+     *  declaratie (een lezing uit uchars lader draagt zelf geen type); null voor elk ander operand. */
     private static Datatype typeOf(Expr e) {
         if (e.type() != null) return e.type();
+        if (e instanceof Expr.DimensionCellRead c) return typeOf(c.attribute());
         if (e instanceof Expr.AttributeReference ref && ref.objectType() != null)
             return ref.objectType().attribute(ref.attribute());
         if (e instanceof Expr.ParameterRef pr) return pr.parameter().datatype();
@@ -2118,6 +2196,7 @@ public final class Verbaliser {
      *  declaratie (een read uit uchars lader draagt zelf geen type); null voor elk ander operand. */
     private static Datatype.Enumeration enumerationOf(Expr e) {
         if (e.type() instanceof Datatype.Enumeration enumArray) return enumArray;
+        if (e instanceof Expr.DimensionCellRead c) return enumerationOf(c.attribute());
         if (e instanceof Expr.AttributeReference ref && ref.objectType() != null
                 && ref.objectType().attribute(ref.attribute()) instanceof Datatype.Enumeration enumArray) return enumArray;
         if (e instanceof Expr.ParameterRef pr && pr.parameter().datatype() instanceof Datatype.Enumeration enumArray) return enumArray;
@@ -2206,7 +2285,7 @@ public final class Verbaliser {
         String source = e.source().snippet();
         if (source != null && !source.isBlank()) {
             if (ucharText && e instanceof Expr.AttributeReference ref) inVocabulary(b, source.trim(), ref, on);
-            else b.leaf(Part.Kind.QUOTE, source.trim(), declaration(declarationOf(e), on));
+            else b.leaf(Part.Kind.QUOTE, source.trim(), keys(e, on));
             return;
         }
         if (e instanceof Expr.AttributeReference ref) {
@@ -2224,9 +2303,18 @@ public final class Verbaliser {
      *  waarop de motor haar las ({@link #objectOn}); null waar de zin geen gelezen waarde van een attribuut noemt: een
      *  ander operand, of een dat de motor niet bereikte. */
     private On readOn(Expr e, Read read) {
-        if (!(e instanceof Expr.AttributeReference ref) || declarationOf(e) == null || !read.has(e) || !read.reached(e))
-            return null;
+        Expr.AttributeReference ref = e instanceof Expr.AttributeReference a ? a
+                : e instanceof Expr.DimensionCellRead c ? c.attribute() : null;
+        if (ref == null || declarationOf(e) == null || !read.has(e) || !read.reached(e)) return null;
         return objectOn(e, ref.attribute(), read);
+    }
+
+    /** De sleutels van wat operand {@code e} leest ({@link #declaration(Designatable, On)}), bij een cel met de cel
+     *  onder {@code labels}, zoals uchar haar sleutelt. */
+    private Map<String, Object> keys(Expr e, On on) {
+        Map<String, Object> meta = declaration(declarationOf(e), on);
+        if (e instanceof Expr.DimensionCellRead c && !meta.isEmpty()) meta.put("labels", cellKey(c.attribute(), c.labels()));
+        return meta;
     }
 
     /** Het object waarop de motor knoop {@code node}, een lezing van lid {@code member}, las: dat van de lezing
@@ -2247,9 +2335,12 @@ public final class Verbaliser {
         return name;
     }
 
-    /** De declaratie die operand {@code e} leest, waar het één leest: een attribuut of een parameter; anders null. */
+    /** De declaratie die operand {@code e} leest, waar het één leest: een attribuut, ook in een cel, of een parameter;
+     *  anders null. */
     private static Designatable declarationOf(Expr e) {
         if (e instanceof Expr.AttributeReference ref) return Naming.attributeOf(ref.objectType(), ref.attribute());
+        if (e instanceof Expr.DimensionCellRead c)
+            return Naming.attributeOf(c.attribute().objectType(), c.attribute().attribute());
         if (e instanceof Expr.ParameterRef pr) return Designatable.parameter(pr.parameter().name());
         return null;
     }
