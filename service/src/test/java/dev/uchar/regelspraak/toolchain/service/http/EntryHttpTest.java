@@ -17,6 +17,7 @@ import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 import dev.uchar.regelspraak.toolchain.service.Executor;
 import dev.uchar.regelspraak.toolchain.service.World;
 import dev.uchar.regelspraak.transpiler.tms.EvaluationFaults;
+import dev.uchar.regelspraak.transpiler.tms.WriteBoundaryFault;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -330,6 +331,23 @@ class EntryHttpTest {
                 + " vondst\" schrijft 10") && sentence.contains("in het attribuut vindersloon van V1, een Vondst"), sentence);
     }
 
+    /** 1,00 over three parts is 1/3, which the deelgewicht of two decimals does not hold: uchar puts a
+     *  {@code WriteBoundaryFault} (EF-006, RUNTIME-SEMANTICS ch. 2.4) at the fixpoint, and the 422 gives it as
+     *  WRITE_BOUNDARY_FAULT with the sentence uchar's replay gives on the same input. The replay runs the whole document,
+     *  so beside it stands the read of the rekenjaar without an evaluation date. */
+    @Test
+    void a_value_that_does_not_fit_its_target_is_422_write_boundary_fault(@TempDir Path map) throws Exception {
+        String request = """
+            {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":1.00,"aantal delen":3}}]}""";
+        EvaluationFaults replay = assertInstanceOf(EvaluationFaults.class, replay(map, SOURCE, request));
+        WriteBoundaryFault fault = assertInstanceOf(WriteBoundaryFault.class, replay.faults().get(0), replay::toString);
+        assertEquals("EF-006", fault.code());
+        assertEquals(Map.of("place", "V1.deelgewicht", "value", "1/3", "decimals", "2"), fault.params());
+        JsonNode body = evaluationFault(post("/deelgewicht", request));
+        assertEquals(List.of("WRITE_BOUNDARY_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of(fault.getMessage()), sentences(body), body.toString());
+    }
+
     @Test
     void two_errors_at_once_are_a_422_with_one_element_per_error() throws Exception {
         JsonNode body = evaluationFault(post("/alles", """
@@ -379,7 +397,7 @@ class EntryHttpTest {
 
     /** uchar's case D2 ({@code TmsCreationWitnessTest.a_second_filling_of_a_to_one_role_is_a_fault}): the fact
      *  creation gives J1 two havens, and uchar puts that fault at the fixpoint with a plain
-     *  {@code IllegalStateException}, outside the four types its README names. It is an evaluation fault by its place
+     *  {@code IllegalStateException}, outside the five types its README names. It is an evaluation fault by its place
      *  there, so the 422 gives it as OTHER, with the sentence uchar's replay gives on the same input. */
     @Test
     void a_second_filling_from_a_to_a_role_is_422_other(@TempDir Path map) throws Exception {

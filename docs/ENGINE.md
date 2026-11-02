@@ -43,11 +43,11 @@ or a characteristic set without one, so the next `fire()` fires nothing, and `re
 fixpoint (uchar's `backends/drools/README.md`, "What a consumer can forget"). `fire()` returns the number of firings
 and throws with uchar's sentence when a run reaches no fixpoint;
 `restore()` throws every evaluation fault that stands at the fixpoint as uchar's own exception, two or more as
-`EvaluationFaults`: one of the four types uchar's README names (`Breuk.DelingDoorNul`, `ComputeFault`,
-`WritersConflict`, `InputFormFault`) or another, such as the `IllegalStateException` of a fact creation that gives
-a to-one role a second filling. A fault is an evaluation fault by its place at the fixpoint, not by its type:
-`read().faults()` gives each as data, which tells it from an exception of the entry itself. `facts(…)` reads the
-working memory, the `Inconsistentie` facts among them.
+`EvaluationFaults`: one of the five types uchar's README names (`Breuk.DelingDoorNul`, `ComputeFault`,
+`WritersConflict`, `InputFormFault`, `WriteBoundaryFault`) or another, such as the `IllegalStateException` of a fact
+creation that gives a to-one role a second filling. A fault is an evaluation fault by its place at the fixpoint, not
+by its type: `read().faults()` gives each as data, which tells it from an exception of the entry itself. `facts(…)`
+reads the working memory, the `Inconsistentie` facts among them.
 
 The facts are instances of the generated beans (`nieuw`, `beanLoader()`), in uchar's package
 `dev.uchar.regelspraak.facts`: the KieBase is built against those classes, so an object of a same-named class from
@@ -155,7 +155,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   the rules gives an empty value and a §9.5 fact EF-005, so a 200 with the rule among the `inconsistencies`),
   `COMPUTE_FAULT` (a fault of a computation or of the
   evaluation date), `WRITERS_CONFLICT` (two writers of one attribute that disagree), `INPUT_FORM_FAULT` (a timeline
-  input in the other convention, which no request reaches, since a request carries no timeline) or `OTHER` (a fault
+  input in the other convention, which no request reaches, since a request carries no timeline),
+  `WRITE_BOUNDARY_FAULT` (a value that does not fit the declared decimals of its target, EF-006) or `OTHER` (a fault
   of another type, such as a fact creation that gives a to-one role a second filling). Where uchar's sentence names
   an object, it names an object of the request by its id; a sentence about a kind of object (the second filling: "a
   Jutter") names none. No stacktrace enters the answer. The Quarkus adapter answers the same, and the

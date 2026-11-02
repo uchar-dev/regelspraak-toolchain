@@ -6,6 +6,7 @@ import dev.uchar.regelspraak.runtime.Breuk;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.InputFormFault;
 import dev.uchar.regelspraak.transpiler.tms.ComputeFault;
+import dev.uchar.regelspraak.transpiler.tms.WriteBoundaryFault;
 import dev.uchar.regelspraak.transpiler.tms.WritersConflict;
 
 import java.util.ArrayList;
@@ -15,7 +16,7 @@ import java.util.List;
  * The evaluation faults that stand at the fixpoint of a request's session, as uchar's entry reads them
  * ({@code DroolsBackend.fixpointOf(…).fouten()}): the rules give no answer on this input. A fault there is an evaluation
  * fault by its place at the fixpoint, whatever the type of its exception, so each one is an element: it keeps uchar's
- * sentence and gets the kind of its exception, one of the four types uchar's README names ("Faults") or
+ * sentence and gets the kind of its exception, one of the five types uchar's README names ("Faults") or
  * {@link Kind#OTHER} for any other, such as the {@code IllegalStateException} of a fact creation that gives a to-one
  * role a second filling. Both adapters answer it with a 422 ({@link AnswerBuilder#evaluationFault}).
  *
@@ -29,7 +30,7 @@ public final class EvaluationFault extends RuntimeException {
     private static final long serialVersionUID = 1L;
 
     /** The kind of a fault, by the type of uchar's exception. */
-    public enum Kind { DIVISION_BY_ZERO, COMPUTE_FAULT, WRITERS_CONFLICT, INPUT_FORM_FAULT, OTHER }
+    public enum Kind { DIVISION_BY_ZERO, COMPUTE_FAULT, WRITERS_CONFLICT, INPUT_FORM_FAULT, WRITE_BOUNDARY_FAULT, OTHER }
 
     /** One fault: its kind and uchar's sentence. */
     public record Fault(Kind kind, String sentence) {}
@@ -67,6 +68,7 @@ public final class EvaluationFault extends RuntimeException {
             case ComputeFault r -> Kind.COMPUTE_FAULT;
             case WritersConflict s -> Kind.WRITERS_CONFLICT;
             case InputFormFault i -> Kind.INPUT_FORM_FAULT;
+            case WriteBoundaryFault w -> Kind.WRITE_BOUNDARY_FAULT;
             default -> Kind.OTHER;
         };
     }

@@ -801,7 +801,8 @@ public final class OpenApiEmitter {
         kind.put("description", "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een"
                 + " berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die"
                 + " verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt,"
-                + " want de dienst weigert een tijdlijn (400); OTHER: een fout van een ander type die aan het fixpunt"
+                + " want de dienst weigert een tijdlijn (400); WRITE_BOUNDARY_FAULT: een waarde die niet in de"
+                + " gedeclareerde decimalen van haar doel past; OTHER: een fout van een ander type die aan het fixpunt"
                 + " staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft.");
         ObjectNode sentence = itemProps.putObject("error");
         sentence.put("type", "string");
