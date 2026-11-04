@@ -203,6 +203,23 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   6.00}]}`), an open bound left out, and null where no rule wrote one and the input gave none. A time-dependent
   characteristic in `output` refuses the start (`UNSUPPORTED`): the answer gives a characteristic as a boolean, and
   the bean holds its true periods.
+- An attribute with absence markers (`(of onbekend)`, `(of niet van toepassing)` or `(of onbekend of niet van
+  toepassing)`, uchar's RUNTIME-SEMANTICS ch. 9.5) holds uchar's sum type: the constructor `waarde` with the declared
+  datatype as its payload, and a constructor without payload per marker; uchar's branch puts a `ConstructorValue` on the
+  bean (`Markers` reads the markers off the model of a source, where they stand beside the attribute, and off the model
+  of an IR document, where the attribute is that sum type). A request gives such an attribute a value of its datatype,
+  which is the value `waarde(…)`, or a marker, `"taxatie": {"marker": "onbekend"}`, also as the `value` of a segment
+  of its timeline, and `RequestMapper` writes them into the case as uchar's case gives them, `{"constructor": "waarde",
+  "payload": {"number": "40.00"}}` and `{"constructor": "onbekend"}`; a marker name compares as a name (case and spacing
+  aside) and goes in its declared spelling. A marker the attribute does not declare is a 400 `UNKNOWN_MARKER` that
+  names the declared ones, a marker on an attribute without markers a 400 `WRONG_TYPE`, and a marker object with another
+  key a 400 `MALFORMED`. The answer gives the attribute in the same form, the value as its payload and a marker as
+  `{"marker": "onbekend"}`, also per segment (`"opslagkosten": {"timeline": [{"from": "2025-01-01", "to": "2025-03-01",
+  "value": {"marker": "onbekend"}}, {"from": "2025-03-01", "to": "2025-06-01", "value": 10}, …]}`), and so does the
+  `fixpoint` of the detail. A marker decides as a value does (uchar's ch. 9.5): it displaces an input, and a writer
+  that writes a marker and one that writes a value on the same day are a `WRITERS_CONFLICT`. An attribute of another
+  sum type, which only an IR document of another producer declares, has no form in the service: a value on it is a 400
+  `UNSUPPORTED`, and in `output` it refuses the start (`UNSUPPORTED`).
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
   `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"kind": …, "error": <uchar's sentence>}, …]}`, one element per
   fault in uchar's order. Every fault at the fixpoint is such an element, whatever its type: the core reads them from
@@ -279,7 +296,10 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   a model with vocabularies every object type, property and entry point lists its other spellings in `x-spellings`,
   every enumeration its values' in `x-valueSpellings`, the descriptions say the service accepts them, the
   operations document `vocabulary` and `inputVocabulary`, and `info.x-vocabulary` names the document's
-  vocabulary. A model without vocabularies gets none of it. Every operation documents the flags `explanation`,
+  vocabulary. A model without vocabularies gets none of it. The value of an attribute with absence markers, also of a
+  segment or a cell, is `oneOf` the schema of its datatype and the marker object, `{"type": "object", "required":
+  ["marker"], "additionalProperties": false, "properties": {"marker": {"type": "string", "enum": ["onbekend", "niet van
+  toepassing"]}}}`, the `enum` the markers the attribute declares. Every operation documents the flags `explanation`,
   `explanationParts`, `trace`, `coverage` and `fixpoint`; `Answer` has the fields they add, `EvaluationFault` those of
   the detail, with the components `ExplanationPart` (recursive through `parts`), `Trace`, `Coverage` and `Fixpoint`. The 422 is one of `EvaluationFault` and `NoFixpoint`. The documents are written by the emitter's API
   (`write`, file `<service>.<vocabulary>.json`); the service serves no route for them.
@@ -486,7 +506,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
 | `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below); `labels` where it names a cell of a dimensioned attribute, one label per dimension in their declared spelling |
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
-| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`); a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic |
+| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`), a value of an attribute with absence markers as its payload or the name of its marker; a literal | `empty: true` for an empty one ("onbekend", and "leeg" on an attribute with absence markers); `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
@@ -603,6 +623,18 @@ sentence per period, in the order of the days:
 A period without a decider and without input has no sentence; where no variant decided on any day and no input
 stands, one sentence says so: `"J2 heeft geen toelage, want geen variant besliste"`. The variants that did not decide a
 period are not named in its sentence.
+
+**Absence markers** (card `absence-markers-in-service`). The engine reads the value of an attribute with absence
+markers as uchar's `ConstructorValue` (RUNTIME-SEMANTICS ch. 9.5). The explanation writes the value `waarde(…)` as
+its payload, with the decimals and the unit of the declared datatype, and a marker by its declared name, as the head of
+a sentence (`"V1 heeft als taxatie onbekend volgens de regel 'taxatie onbekend': onbekend, omdat …"`), as a value a
+condition or a computation read, and per period (`"V1 heeft als opslagkosten onbekend van 01-01-2025 tot 01-03-2025
+volgens de regel 'opslag onbekend in de winter', …, en niet van toepassing van 01-06-2025 tot 01-01-2026 volgens …;
+de invoerwaarde 10 van 01-03-2025 tot 01-06-2025 bleef staan"`). A read of the value under a test of it (uchar's
+`PayloadAccess`) is empty where the attribute holds a marker, so the sentence names the attribute with what it holds:
+`"zijn taxatie (niet van toepassing) een waarde heeft"`, the test of a value in the words of the dialect; a marker in a
+comparison stands once, as a literal does (`"zijn taxatie (onbekend) is gelijk aan onbekend"`). An empty value of such
+an attribute stands as `leeg`, since `onbekend` is a marker there.
 
 **What a displaced variant found** (card `explanation-read-objects-and-displaced`). Every variant of a defaults group
 after the decider says, after its name, what it found, from uchar's reading of a displaced default (RUNTIME-SEMANTICS

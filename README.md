@@ -218,6 +218,22 @@ model declares) and the sentences of the messages, which keep their text. The ol
   borgdeel een tijdlijn volgens de regel 'borgdeel van een jutter' (onvoorwaardelijk)"`; an input on which no rule
   decided a day is its periods, where it was `de invoerwaarde een tijdlijn`. Such a `VALUE` carries `timeline: true`,
   as `een tijdlijn` did.
+- **Absence markers** (card `absence-markers-in-service`, on uchar's card `absence-markers`): an attribute declared
+  `(of onbekend)`, `(of niet van toepassing)` or `(of onbekend of niet van toepassing)` holds uchar's sum type
+  (RUNTIME-SEMANTICS ch. 9.5). A request gives it a value of its datatype, which is the value `waarde(…)`, or a marker,
+  `{"marker": "onbekend"}` or `{"marker": "niet van toepassing"}`, also as the `value` of a segment of its timeline;
+  where a marker was a 400 `WRONG_TYPE` ("eenheid-object mist 'value'") and a plain value a 500. A marker the attribute
+  does not declare is a 400 of the new kind `UNKNOWN_MARKER`, and a marker on an attribute without markers a 400
+  `WRONG_TYPE` whose sentence names the attribute ("heeft geen markers"). The answer, and the `fixpoint` of the detail,
+  give the attribute in the same form, where they gave the text of uchar's value (`"waarde(300)"`, `"onbekend"`). The
+  explanation writes the value as its payload (`"V1 heeft als taxatie 300,00 volgens …"`, where it wrote
+  `waarde(300)`) and a marker by its name, also per period; the test whether such an attribute holds a value reads
+  `"zijn taxatie (niet van toepassing) een waarde heeft"`, where it read `"zijn taxatie (onbekend) gevuld is"`; a
+  marker in a comparison stands once (`"is gelijk aan onbekend"`, where it was `"is gelijk aan onbekend (onbekend)"`);
+  and an empty value of such an attribute stands as `leeg`, where it stood as `onbekend`, which is a marker there. In
+  the OpenAPI document such an attribute is `oneOf` the schema of its datatype and the marker object, with an `enum`
+  of the markers it declares. An attribute of another sum type, which only an IR document of another producer declares,
+  refuses the start in `output` (`UNSUPPORTED`).
 
 ## The pin
 
@@ -284,9 +300,9 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (338). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (339). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 330); every golden that does not play is listed by name with
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 331); every golden that does not play is listed by name with
   its reason (8, each with a scalar on a time-dependent attribute, which the request does not carry); a deviation always
   fails, and the list fails when it goes stale in either direction. Every golden that plays is asked with
   `?explanation=true` as well, and an explanation the service does not give fails it. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
@@ -344,8 +360,9 @@ explanation of its outcome: uchar's replay plays it on the build with readings a
 (`CaseRunner.report` with a handoff), and the verbaliser renders each condition from the engine's readings of that
 session (`DroolsBackend.readingsOf`: per form and object how the condition came out, per node what the engine reached
 and the value and unit it read), here and in the service's `?explanation=true`; it computes nothing itself. An empty
-value stands as "(onbekend)", a member the engine did not reach is not named, and a condition that did not hold names
-the member where the engine stopped. The engine reads a number exactly: a value that does not terminate stands as its
+value stands as "(onbekend)", and as "(leeg)" on an attribute with absence markers, where `onbekend` is a marker; a
+member the engine did not reach is not named, and a condition that did not hold names the member where the engine
+stopped. The engine reads a number exactly: a value that does not terminate stands as its
 fraction, as uchar's reading writes it (`vóór de afronding 100/3 EUR`), and a value of the unbounded form (`Numeriek
 (getal)`) with every decimal it has. A timeline the engine read stands as its periods, as RegelSpraak writes them
 (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`). uchar's scenario resolver refuses three of the 29
@@ -442,6 +459,11 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   names the variant that decided, the conflict or the input that stood (`DroolsBackend.periodDecisionsOf`), and not the
   variants before or after it in that period: uchar reads each default once per object, not per period.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
+- **A sum type other than that of absence markers.** The request, the answer and the OpenAPI document carry the sum
+  type uchar's frontend writes for an attribute with absence markers. Another sum type, which only an IR document of
+  another producer declares (whose `Match` uchar's Drools branch refuses), has no form there: a value on it is a 400
+  `UNSUPPORTED`, it refuses the start in `output`, and the OpenAPI emitter fails on it. A scenario of a test document
+  gives no marker either: uchar's scenario layer has no form for one in a situation.
 - **The explanation** explains characteristic-attribution rules, defaults groups and the values ordinary rules
   compute, not consistencies or creations, whose readings uchar has as well. A rule outside the scope of an entry point
   has no rule in its build and gets the one sentence "de regel '…' staat buiten deze berekening".
