@@ -217,3 +217,91 @@ gates: 6 image      GROEN     43s  decision-service:dev
 gates: 7 kind-smoke GROEN   1m21s  H2 PASS, H3 PASS, H4 PASS
 gates: GROEN — 7 stappen in 5m31s; de uitvoer staat in out/gates/
 ```
+
+### Vervolg: de uitleg per periode (2026-11-04)
+
+*Bouwer, 2026-11-04. Branch `card/explanation-per-period`, niet gemerged, niet gepusht. Logs onder
+`werk/pin-explanation-per-period/` (buiten de repo): `gates-0-pin.log` en `replay-0-pin.log` (de pin),
+`logs/01-red.log` (rood), `logs/02-green-try.log`, `replay-1.log`, `gates-1.log` (het eind, `make gates`).*
+uchar landde de voorgestelde kaart als `decisions-per-period`; daarmee is acceptatie (c) gedaan.
+
+| hash | inhoud |
+|---|---|
+| `a09eb61ab` | Pin uchar 53605e86: beslissers per periode, de stapel van een doel (de pins van de replay, README) |
+| `ccbb4c613` | Uitleg per periode: `Verbaliser`, `ScenarioRunner`, `CaseSession`, `Executor`, `DecisionCore` lezen `periodDecisionsOf`; `unexplained` en `EXPLANATION_REFUSED` weg; README, `docs/ENGINE.md` |
+| (deze) | Result, kaart naar `done/` |
+
+**De pin (uchar `474732d3c` → `53605e865`).** Nieuw voor de dienst: `decisions-per-period` (`DroolsBackend.periodDecisionsOf`,
+`PeriodDecisions`; `decisionsOf` weigert een build met een stapel per dag niet meer en heeft geen record van zo'n stapel),
+`writers-as-one-defaults-stack` (alle schrijvers van een doel in één stapel; een initialisatie, verdeling of lidwaarde van een
+creatie op een tijdlijndoel geweigerd bij naam) en `early-faults-and-sum-reading` (clingo en de som-lezing in Drools). Op de pin
+zelf veranderde de dienst niet: `Verbaliser.unexplained` las `DefaultsGroup.perDay` nog. Gate 12 van uchar speelt 338 goldens
+(was 330); zeven nieuwe spelen door de dienst, met uitleg, `jutterswet-gevolg-buiten-de-beurt-som` niet (een scalaire waarde op
+een tijdsafhankelijk attribuut). Op de pin: reactor 180/437/54, replay 330 goldens en 933 cases.
+
+**Wat er in de uitleg veranderde (oud → nieuw).**
+- Een defaults-groep op een tijdsafhankelijk attribuut: `?explanation=true` was een 400 `UNSUPPORTED` op `explanation` ("de
+  defaults-stapels … beslissen per dag …"), de scenarioroute en de playground gaven het scenario geen uitleg en die reden als
+  `explanationError`. Nu een zin per periode met een beslisser (waarde in die periode, berekening, voorwaarde, ook per periode
+  met haar perioden, en grondslag), een per periode met een conflict, een per periode waarin de invoer bleef staan, en één zin
+  waar op geen dag iets besliste en geen invoer staat. Case4: `"J4 heeft als strandloon 10 van 01-01-2025 tot 01-03-2025
+  volgens 'opgegeven strandloon' (onvoorwaardelijk): zijn opgegeven strandloon (10 van 01-01-2025 tot 01-03-2025)"`, idem 20
+  van maart tot juni volgens 'berekende strandloon', `"J4 houdt als strandloon de invoerwaarde 99 van 01-06-2025 tot
+  01-01-2026, want geen variant besliste"`, `"J4 heeft als stormtoelage altijd 0 volgens 'geen stormtoelage': 0, omdat de
+  stormtoelage in de invoer leeg was"`. De andere varianten noemt de zin per periode niet (README, Known losses).
+- Een tijdlijndoel van gewone regels: `"J1 heeft als borgdeel een tijdlijn volgens de regel 'borgdeel van een jutter'
+  (onvoorwaardelijk)"` → `"J1 heeft als borgdeel 12,00 van 01-01-2024 tot 01-03-2024 volgens de regel 'borgdeel van een jutter'
+  (onvoorwaardelijk); de invoerwaarde 99,00 van 01-03-2024 tot 01-04-2024 bleef staan"`; een invoer waarop geen regel een dag
+  besliste: `de invoerwaarde een tijdlijn` → haar perioden. De `VALUE` houdt `timeline: true`; de OpenAPI-beschrijving van
+  `VALUE` zegt het (vier goldens, één regel).
+- `DecisionCore.withoutExplanation` weigert alleen nog op `"explanation": false`; de playground vraagt zo'n entrypoint via de
+  dienst zonder uitleg (nieuwe test, was ongetest).
+
+**Rood eerst (letterlijk, `logs/01-red.log`, tegen de code van `a09eb61ab`).** toolchain 182 tests, 6 failures, o.a.
+`ExplanationPerPeriodTest.a_period_names_its_decider_its_conflict_or_the_input_that_stood:61->explained:133 de defaults-stapel
+'defaults A:Jutter.toelage' beslist per dag, … ==> expected: <null>` en `ExplanationComputationTest.a_timeline_target_gets_its_periods_and_no_computation:264
+… but was: <[J1 heeft als borgdagen een tijdlijn volgens de regel 'borgdagen' (onvoorwaardelijk), …]>`; service 439 tests, 3
+failures: `TimelineHttpTest.the_explanation_of_a_defaults_group_that_decides_per_day_names_each_period:385 … expected: <200> but
+was: <400>`, `…the_explanation_of_an_ordinary_writer_beside_the_input_names_its_days_and_the_input:419 … but was: <J1 heeft als
+borgdeel een tijdlijn …>`, `PlaygroundViaServiceTest.a_defaults_group_per_day_is_explained_per_period_via_the_service:383
+…"explanationError":"de defaults-stapel 'defaults A:Jutter.strandloon' beslist per dag …" ==> expected: <false> but was:
+<true>`. Twee verwachtingen van mij bleken na de bouw verkeerd geraden, niet het gedrag: de decimalen van `borgdeel` (12,00) en
+de bestaande zin van een regel die gold en op geen dag een waarde las (`gaf geen waarde, omdat hij stormwacht is (altijd
+leeg)`).
+
+**Tests die veranderden (oud → nieuw).**
+- `ScenarioRunnerTest.a_defaults_group_that_decides_per_day_has_a_named_explanation_error` → `…_is_explained_per_period` (drie
+  zinnen, geen `explanationError`).
+- `TimelineHttpTest.the_explanation_of_a_defaults_group_that_decides_per_day_is_400_naming_the_stacks` →
+  `…_names_each_period` (zes zinnen van case4, het antwoord ernaast gelijk aan dat zonder uitleg).
+- `PlaygroundViaServiceTest.a_defaults_group_per_day_is_computed_via_the_service_with_a_named_explanation_error` →
+  `…_is_explained_per_period_via_the_service` (uitleg en stukken gelijk aan de gewone route).
+- `ExplanationComputationTest`: de drie tijdlijnzinnen (`borgdagen`, `bootheffing`, `rentedagen`) noemen hun perioden; de eerste
+  test heet `a_timeline_target_gets_its_periods_and_no_computation`.
+- Nieuw: `ExplanationPerPeriodTest` (twee: beslisser, conflict, invoer en niemand per periode; één default over twee perioden
+  met een voorwaarde per periode), `TimelineHttpTest.the_explanation_of_an_ordinary_writer_beside_the_input_names_its_days_and_the_input`,
+  `PlaygroundViaServiceTest.an_entry_point_without_explanation_is_computed_via_the_service_with_a_named_explanation_error`.
+  Testgevallen per module 180/437/54 → 182/439/54; de vloeren van `tools/check-skips.sh` onaangeroerd.
+
+**De pins van de toolchain-gates (oud → nieuw).**
+- uchar-submodule: `474732d3c` → `53605e865`.
+- `EXPECTED_REPLAY_PLAYED`: 323 → 330 (pin: zeven nieuwe goldens spelen; de set van gate 12 330 → 338).
+- `REPLAY_EXCLUDED`: 7 → 8 (pin: `jutterswet-gevolg-buiten-de-beurt-som`, scalaire waarde op een tijdsafhankelijk attribuut).
+- `EXPLANATION_REFUSED`: 1 → weg, met het zesde veld van `scripts/service_replay.py`; een uitleg die de dienst niet geeft, is
+  weer een afwijking.
+- Vloeren van de replay onaangeroerd; gemeten 4877 zinnen, 3235 voorwaarden (vloer 1241), 2785 berekende waarden (1852), 5696
+  gelezen waarden met hun zin (4248); op de pin 4848, 3212, 2768, 5654.
+
+**make gates** (één run op `ccbb4c613`, `werk/pin-explanation-per-period/gates-1.log`; de commit daarna raakt alleen deze
+kaart):
+
+```
+gates: 1 pin        GROEN      0s  PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit, die op uchars main staat; de versies zijn gelijk
+gates: 2 reactor    GROEN   2m03s  testgevallen per module 182/439/54
+gates: 3 twins      GROEN      3s  3 tweelingen, 18 cases via HTTP met de gepinde verwachtingen; vocabulairetweeling jutterswet-vocabulaires: 2 cases in 34 verzoeken; getuige: 4 getuigenissen
+gates: 4 replay     GROEN   1m23s  330 goldens, 933 cases (pin 330)
+gates: 5 manifest   GROEN      2s  32 regels, 29 ok, 3 uitgesloten, 0 mismatch
+gates: 6 image      GROEN     37s  decision-service:dev
+gates: 7 kind-smoke GROEN   1m19s  H2 PASS, H3 PASS, H4 PASS
+gates: GROEN — 7 stappen in 5m22s; de uitvoer staat in out/gates/
+```
