@@ -171,8 +171,8 @@ model declares) and the sentences of the messages, which keep their text. The ol
   open bound (EF-023) `CHARACTERISTIC_PERIODS_FAULT`, both where they were `OTHER`; a value uchar's branch cannot
   hold, a segment of the unbounded form that does not terminate (DROOLS-312), is a 422 `{"status": "LIMIT", "error",
   "code", "reason"}` (`docs/ENGINE.md`). The day count decides every day: a month without a true day counts 0, open
-  at both ends, so a jutter that is never borgplichtig has the timeline 0 on all time (`"J2 heeft als borgdagen een
-  tijdlijn volgens de regel 'borgdagen' (onvoorwaardelijk)"`, where it was `"J2 heeft geen borgdagen, want de regel
+  at both ends, so a jutter that is never borgplichtig has the timeline 0 on all time (`"J2 heeft als borgdagen altijd
+  0 volgens de regel 'borgdagen' (onvoorwaardelijk)"`, where it was `"J2 heeft geen borgdagen, want de regel
   'borgdagen' gaf geen waarde (onvoorwaardelijk)"`). In the explanation a timeline the engine read stands as its
   periods (`zijn maandrente (0,000 EUR/mnd tot 01-11-2025, 16,667 EUR/mnd van 01-11-2025 tot 01-12-2025, … en 0,000
   EUR/mnd vanaf 01-04-2026)`), where it was the text of the engine's list, the total of the subject's own timeline
@@ -202,10 +202,22 @@ model declares) and the sentences of the messages, which keep their text. The ol
   `UNSUPPORTED`, with a sentence that names the timeline form. A full timeline where a rule reads the value in the
   period of the evaluation date (the subject's own total) now reaches the service: a 422 of the kind
   `INPUT_FORM_FAULT`. On a defaults group on a time-dependent attribute, which decides per day (the opgave marker on
-  such an attribute among them), the answer gives what uchar decided per day; `?explanation=true` on such an entry
-  point is a 400 `UNSUPPORTED` on `explanation` naming the stacks, since uchar names no decider per period, and the
-  playground and `bin/regelspraak scenario --explanation` give such a scenario its verdict and the reason as
-  `explanationError` (`geen uitleg: …`), where each failed with uchar's `IllegalStateException` of `decisionsOf`.
+  such an attribute among them), the answer gives what uchar decided per day.
+- **The explanation per period** (card `explanation-per-period`, on uchar's card `decisions-per-period`): a defaults
+  group on a time-dependent attribute, which decides per day, gets a sentence per period in which a variant decided,
+  with its value in that period, how it computed it and why it held (`"J4 heeft als strandloon 10 van 01-01-2025 tot
+  01-03-2025 volgens 'opgegeven strandloon' (onvoorwaardelijk): zijn opgegeven strandloon (10 van 01-01-2025 tot
+  01-03-2025)"`), a sentence per period with a conflict, and one per period in which no variant decided and the input
+  stood (`"J4 houdt als strandloon de invoerwaarde 99 van 01-06-2025 tot 01-01-2026, want geen variant besliste"`).
+  `?explanation=true` on such an entry point gives that explanation, where it was a 400 `UNSUPPORTED` on
+  `explanation` naming the stacks, and the playground and `bin/regelspraak scenario --explanation` give it, where
+  they gave the scenario no explanation and the reason as `explanationError`. A time-dependent attribute that
+  ordinary rules write names per rule the periods it decided with their values, and the periods in which the input
+  stood: `"J1 heeft als borgdeel 12,00 van 01-01-2024 tot 01-03-2024 volgens de regel 'borgdeel van een jutter'
+  (onvoorwaardelijk); de invoerwaarde 99,00 van 01-03-2024 tot 01-04-2024 bleef staan"`, where it was `"J1 heeft als
+  borgdeel een tijdlijn volgens de regel 'borgdeel van een jutter' (onvoorwaardelijk)"`; an input on which no rule
+  decided a day is its periods, where it was `de invoerwaarde een tijdlijn`. Such a `VALUE` carries `timeline: true`,
+  as `een tijdlijn` did.
 
 ## The pin
 
@@ -276,8 +288,8 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 330); every golden that does not play is listed by name with
   its reason (8, each with a scalar on a time-dependent attribute, which the request does not carry); a deviation always
-  fails, and the list fails when it goes stale in either direction. A golden whose explanation the service refuses
-  (a defaults group that decides per day) stands by name in `EXPLANATION_REFUSED` (1), stale in both directions. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
+  fails, and the list fails when it goes stale in either direction. Every golden that plays is asked with
+  `?explanation=true` as well, and an explanation the service does not give fails it. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
   and a listed scenario uchar accepts fails the run.
@@ -426,11 +438,9 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   no scalar on a time-dependent attribute (uchar's replay places one in the period of the evaluation date, the
   asOfDate-bucket convention); the service refuses it as `UNSUPPORTED`. The answer gives no time-dependent
   characteristic. 8 of the goldens gate 12 plays need a scalar there; the replay gate lists them.
-- **The explanation of a defaults group per day.** A defaults group on a time-dependent attribute decides per day
-  (uchar's RUNTIME-SEMANTICS ch. 7.11), and uchar names one decider per object and stack (`DroolsBackend.decisionsOf`),
-  none per period; the service gives such an entry point no explanation (a 400 `UNSUPPORTED` on `explanation`), and the
-  scenario route gives the scenario no explanation, with the reason. The sentence of an ordinary writer of a timeline
-  target names the writers and not the days on which the input stands, for the same reason.
+- **The other variants of a period.** The sentence of a period of a defaults group on a time-dependent attribute
+  names the variant that decided, the conflict or the input that stood (`DroolsBackend.periodDecisionsOf`), and not the
+  variants before or after it in that period: uchar reads each default once per object, not per period.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
 - **The explanation** explains characteristic-attribution rules, defaults groups and the values ordinary rules
   compute, not consistencies or creations, whose readings uchar has as well. A rule outside the scope of an entry point

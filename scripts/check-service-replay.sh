@@ -204,12 +204,6 @@ REPLAY_EXCLUDED=(
 # terugkomt, staat hieronder met de reden ("<golden>|<reden>"); de lijst faalt in beide richtingen op veroudering.
 EXPLANATION_UNDETERMINED=(
 )
-# Kaart timeline-attribute-input: de goldens waarvan de dienst de uitleg weigert (een 400 UNSUPPORTED op explanation),
-# "<golden>|<reden>"; het antwoord zonder uitleg speelt en telt mee. Een golden die een uitleg geweigerd krijgt en hier
-# niet staat, faalt de poort, en de lijst faalt in beide richtingen op veroudering.
-EXPLANATION_REFUSED=(
-  "jutterswet-opgave-per-periode|een defaults-groep op een tijdlijndoel beslist per dag, en uchar noemt per object en stapel één beslisser (decisionsOf), geen beslisser per periode"
-)
 # Het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want " in de uitleg) over de gespeelde goldens: een
 # ondergrens, gemeten 2026-10-21 bij de kaart explanation-from-readings (1092 zinnen, 1241 voorwaarden over 231 goldens
 # en 610 cases); een leg die stilletjes minder uitlegt, faalt. Het antwoord met uitleg moet dat zonder zijn, ook in de
@@ -228,13 +222,6 @@ EXPECTED_MIN_EXPLAINED_COMPUTATIONS=1852
 # zin ontbreekt. Een ondergrens, gemeten 2026-10-27 bij die kaart (4248 over 249 goldens en 673 cases); een leg die
 # stilletjes minder waarden aan hun zin koppelt, faalt.
 EXPECTED_MIN_READ_LINKS=4248
-
-is_refused_listed() {
-  local e; for e in "${EXPLANATION_REFUSED[@]+"${EXPLANATION_REFUSED[@]}"}"; do
-    [ "${e%%|*}" = "$1" ] && return 0
-  done
-  return 1
-}
 
 is_undetermined_listed() {
   local e; for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
@@ -284,20 +271,14 @@ output=$(python3 scripts/service_replay.py --corpus uchar/corpus/golden --explan
 duration=$(( $(date +%s) - begin ))
 
 played=0; excl=0; cases=0; sentences=0; conditions=0; computations=0; links=0
-deviations=(); unnamed=(); outdated=(); undetermined=(); refused=(); explained_goldens=()
-while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined g_computations g_links g_refused \
-    g_refusal; do
+deviations=(); unnamed=(); outdated=(); undetermined=(); explained_goldens=()
+while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined g_computations g_links; do
   [ -n "$g" ] || continue
   case "$status" in
     PLAYED)
       is_excluded "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_EXCLUDED")
-      [ -n "$g_undetermined" ] && [ -n "$g_computations" ] && [ -n "$g_links" ] && [ -n "$g_refused" ] \
+      [ -n "$g_undetermined" ] && [ -n "$g_computations" ] && [ -n "$g_links" ] \
         || fail "$g: de replay-driver gaf geen telling van de uitleg"
-      if [ "$g_refused" -gt 0 ]; then
-        is_refused_listed "$g" || refused+=("$g: de dienst weigert de uitleg van $g_refused case(s): $g_refusal")
-      elif is_refused_listed "$g"; then
-        outdated+=("$g staat in EXPLANATION_REFUSED maar de dienst geeft zijn uitleg")
-      fi
       sentences=$((sentences + g_sentences)); conditions=$((conditions + g_conditions))
       computations=$((computations + g_computations)); links=$((links + g_links))
       explained_goldens+=("$g")
@@ -324,11 +305,6 @@ for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
   printf '%s\n' "${explained_goldens[@]}" | grep -qxF "$g" \
     || outdated+=("$g staat in EXPLANATION_UNDETERMINED maar speelt niet door de dienst")
 done
-for e in "${EXPLANATION_REFUSED[@]+"${EXPLANATION_REFUSED[@]}"}"; do
-  g="${e%%|*}"
-  printf '%s\n' "${explained_goldens[@]}" | grep -qxF "$g" \
-    || outdated+=("$g staat in EXPLANATION_REFUSED maar speelt niet door de dienst")
-done
 
 if [ ${#deviations[@]} -gt 0 ]; then
   echo "check-service-replay: FAIL — ${#deviations[@]} golden(s) wijken af of spelen niet:" >&2
@@ -341,10 +317,6 @@ fi
 if [ ${#outdated[@]} -gt 0 ]; then
   echo "check-service-replay: FAIL — REPLAY_EXCLUDED is verouderd:" >&2
   printf '    %s\n' "${outdated[@]}" >&2; exit 1
-fi
-if [ ${#refused[@]} -gt 0 ]; then
-  echo "check-service-replay: FAIL — ${#refused[@]} golden(s) krijgen geen uitleg en staan niet in EXPLANATION_REFUSED:" >&2
-  printf '    %s\n' "${refused[@]}" >&2; exit 1
 fi
 if [ ${#undetermined[@]} -gt 0 ]; then
   echo "check-service-replay: FAIL — ${#undetermined[@]} golden(s) leggen een voorwaarde uit als niet vast te stellen:" >&2
@@ -365,5 +337,5 @@ echo "check-service-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
 echo "  uitgesloten: $excl, bij naam met reden"
-echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), $computations berekende waarden (vloer $EXPECTED_MIN_EXPLAINED_COMPUTATIONS), $links gelezen waarden aan hun zin gekoppeld (vloer $EXPECTED_MIN_READ_LINKS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst, geweigerde uitleg bij ${#EXPLANATION_REFUSED[@]} golden(s) op de lijst"
+echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), $computations berekende waarden (vloer $EXPECTED_MIN_EXPLAINED_COMPUTATIONS), $links gelezen waarden aan hun zin gekoppeld (vloer $EXPECTED_MIN_READ_LINKS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
 echo "  duur: ${duration}s met ${REPLAY_WORKERS:-4} diensten tegelijk"

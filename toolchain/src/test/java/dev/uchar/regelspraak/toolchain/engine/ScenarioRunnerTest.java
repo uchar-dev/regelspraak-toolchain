@@ -122,19 +122,25 @@ class ScenarioRunnerTest {
     }
 
     /** The opgave marker on a time-dependent attribute: its defaults group decides per day (uchar's RUNTIME-SEMANTICS
-     *  ch. 7.11), and uchar names one decider per object and stack ({@code DroolsBackend.decisionsOf}), none per period.
-     *  The scenario plays as uchar's replay plays it (the opgave 10 in January and February, the rule 20 from March to
-     *  May), its session is given, and the explanation error names the stack, where reading the decisions threw. */
-    @Test void a_defaults_group_that_decides_per_day_has_a_named_explanation_error() {
+     *  ch. 7.11), and uchar names who decided per period ({@code DroolsBackend.periodDecisionsOf}). The scenario plays as
+     *  uchar's replay plays it (the opgave 10 in January and February, the rule 20 from March to May), and the
+     *  explanation names per period the default that decided, with its value and its computation, and the days the
+     *  rule wrote on the attribute the marker moved it to. */
+    @Test void a_defaults_group_that_decides_per_day_is_explained_per_period() {
         List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(
                 OPGAVE_PER_DAY));
         assertEquals(1, u.size());
         assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic()
                 + " " + u.get(0).result().expectations());
-        assertEquals("de defaults-stapel 'defaults A:Jutter.strandloon' beslist per dag, op een tijdsafhankelijk"
-                + " attribuut (uchars RUNTIME-SEMANTICS ch. 7.11), en uchar noemt per object en stapel één beslisser"
-                + " (decisionsOf), geen beslisser per periode", u.get(0).explanationError());
-        assertTrue(u.get(0).explanation().isEmpty(), u.get(0).explanation()::toString);
+        assertNull(u.get(0).explanationError(), u.get(0).explanationError());
+        assertEquals(List.of(
+                "J1 heeft als strandloon 10 van 01-01-2025 tot 01-03-2025 volgens 'opgegeven strandloon'"
+                        + " (onvoorwaardelijk): zijn opgegeven strandloon (10 van 01-01-2025 tot 01-03-2025)",
+                "J1 heeft als strandloon 20 van 01-03-2025 tot 01-06-2025 volgens 'berekende strandloon'"
+                        + " (onvoorwaardelijk): zijn berekende strandloon (20 van 01-03-2025 tot 01-06-2025)",
+                "J1 heeft als berekende strandloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'strandloon in"
+                        + " het voorjaar', omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025)"),
+                u.get(0).explanation());
         assertNotNull(u.get(0).session(), u.get(0).sessionError());
     }
 

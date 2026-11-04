@@ -431,9 +431,9 @@ public final class Playground {
      *       gives such a case, the name of the case file and uchar's sentence, and the trace and coverage of the 422;</li>
      *   <li>any other 400 of the service: FAIL naming its violations.</li>
      * </ul>
-     * An entry point that gives no explanation ({@link DecisionCore#withoutExplanation}: a defaults group that decides
-     * per day) is asked without one; the scenario has its verdict, and {@code explanationError} says why there is no
-     * explanation.
+     * An entry point that gives no explanation ({@link DecisionCore#withoutExplanation}: its descriptor sets
+     * {@code explanation} to false) is asked without one; the scenario has its verdict, and {@code explanationError}
+     * says why there is no explanation.
      */
     private static void renderViaService(ObjectNode n, int i, ResolvedScenario s, DecisionCore service,
                                       List<String> sourceLines, RegelSpraakModel model, Naming naming,

@@ -689,8 +689,7 @@ public final class DecisionCore {
 
     /**
      * Why the entry point at {@code path} gives no explanation, the sentence of the 400 a request for one gets, or null
-     * where it gives one: the descriptor sets {@code explanation} to false, or its build has a defaults stack that
-     * decides per day, of which uchar names no decider per period ({@link Verbaliser#unexplained}).
+     * where it gives one: the descriptor sets {@code explanation} to false.
      *
      * @throws UnknownPath    a path no entry point has
      * @throws NonExecutable  an entry point uchar does not carry
@@ -703,12 +702,9 @@ public final class DecisionCore {
     }
 
     private static String withoutExplanation(Entrypoint ep) {
-        if (ep.explanationBuild() == null)
-            return "het entrypoint '" + ep.descriptor().name() + "' geeft geen uitleg: de descriptor zet explanation op"
-                    + " false";
-        String unexplained = Verbaliser.unexplained(ep.explanationBuild());
-        return unexplained == null ? null
-                : "het entrypoint '" + ep.descriptor().name() + "' geeft geen uitleg: " + unexplained;
+        return ep.explanationBuild() != null ? null
+                : "het entrypoint '" + ep.descriptor().name() + "' geeft geen uitleg: de descriptor zet explanation op"
+                + " false";
     }
 
     private Assessment process(String path, JsonNode requestTree, RequestOptions options, JsonNode expectations) {
@@ -837,8 +833,9 @@ public final class DecisionCore {
     /**
      * Attach the {@link Verbaliser} verhaal to {@code answer} as an {@code "explanation"} array: the beans of the
      * request with their derived values and the objects its creations made, on the document of the entry point's build
-     * with readings, with the decisions, readings and fixpoint of the session that gave the answer. A pure read of the
-     * already-fired session — nothing re-fires, nothing is recomputed. The types of the request's labels and the names lie on the model of that document. With
+     * with readings, with the decisions, the decisions per period, readings and fixpoint of the session that gave the
+     * answer. A pure read of the already-fired session — nothing re-fires, nothing is recomputed. The types of the
+     * request's labels and the names lie on the model of that document. With
      * {@code parts}, {@code "explanationParts"} beside it: the same sentences as their parts ({@link ExplanationParts}).
      */
     private void addExplanation(ObjectNode answer, Executor.Outcome outcome, RequestMapper.Result mr, Entrypoint ep,
@@ -853,7 +850,7 @@ public final class DecisionCore {
             types.put(label, named);
         });
         List<Sentence> sentences = new Verbaliser(ep.document(), Naming.of(explained, naming.choice()), outcome.readings(),
-                outcome.fixpoint()).sentences(outcome.beans(), types, outcome.decisions());
+                outcome.fixpoint()).sentences(outcome.beans(), types, outcome.decisions(), outcome.periodDecisions());
         var arr = answer.putArray("explanation");
         for (Sentence sentence : sentences) arr.add(sentence.text());
         if (parts) answer.set("explanationParts", ExplanationParts.json(sentences));

@@ -117,14 +117,11 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   readings of the same document, made at startup; a request with `?explanation=true` is mapped, fired and answered there,
   once, and the verbaliser renders the engine's readings of that session (`DroolsBackend.readingsOf`); uchar's witnesses
   hold that the facts at its fixpoint are those of the build without. With `"explanation": false` the entry point builds
-  the one build and refuses a request for an explanation (400, `UNSUPPORTED` on `explanation`). An entry point whose
-  build has a defaults stack on a time-dependent attribute refuses one as well, with the same 400 naming those stacks
-  (`DecisionCore.withoutExplanation`, `Verbaliser.unexplained`): such a stack decides per day (uchar's
-  RUNTIME-SEMANTICS ch. 7.11), so that another default can decide on another day, and the sentence of a defaults group
-  names the default that decided from uchar's `DroolsBackend.decisionsOf`, one per object and stack, which refuses a
-  build with such a stack; uchar's public API names no decider per period (`TmsTranspiler.defaultsGroups` says which
-  stacks decide per day), and the toolchain does not work it out from the readings itself. The answer without the
-  explanation is given.
+  the one build and refuses a request for an explanation (400, `UNSUPPORTED` on `explanation`,
+  `DecisionCore.withoutExplanation`). The sentence of a defaults group names the default that decided from uchar's
+  `DroolsBackend.decisionsOf`, one per object and stack; a stack on a time-dependent attribute decides per day (uchar's
+  RUNTIME-SEMANTICS ch. 7.11), and its sentences name per period who decided from uchar's
+  `DroolsBackend.periodDecisionsOf` ("A defaults group per day", below), read off the same session.
   `?explanationParts=true` asks the explanation as well and adds `explanationParts` right after `explanation`: per
   sentence, in the same order, the array of its parts ("The parts of an explanation", below); the texts of the leaves
   after each other are the sentence, and without the flag the answer is byte for byte what it was. The service makes no
@@ -468,9 +465,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
     a MARKER with the sentence; any other 400 of the service is a FAIL naming its violations. The timeline of a
     time-dependent parameter or attribute goes as the request's `timeline`, a time-dependent characteristic as its
     `periods`;
-  - an entry point that gives no explanation (a defaults stack that decides per day, above) is asked without one: the
-    scenario has its verdict, and `explanationError` gives the sentence of the 400, as the ordinary route gives the
-    reason (`ScenarioRunner`, which reads no decisions of such a build).
+  - an entry point that gives no explanation (its descriptor sets `explanation` to false, above) is asked without one:
+    the scenario has its verdict, and `explanationError` gives the sentence of the 400.
   The entry point fires only the forms of its scope and uses the parameters of the descriptor beside those the
   situation sets, so a verdict can differ from the ordinary route's, which fires the forms of the scenario's own scope.
 
@@ -490,7 +486,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
 | `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below); `labels` where it names a cell of a dimensioned attribute, one label per dimension in their declared spelling |
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
-| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`); a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for "een tijdlijn", the value of a timeline target, and for the periods of a time-dependent characteristic |
+| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`); a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
@@ -559,12 +555,17 @@ filter, where it is one characteristic check or one read, is a `QUOTE` of its ow
 "`) and before each bound (`"; vóór de begrenzing "`). Every value is the engine's: the reading of the rule
 (`DroolsBackend.readingsOf`) carries the nodes of its value after those of its condition, and since uchar's card
 `readings-of-unconditional-forms` a rule without a condition has a reading of its value too; only the input value of
-the fourth form is read on the bean. A rule on a timeline target wrote "een tijdlijn" and has no computation; its
-condition, where it holds per period (a clip, ch. 3.10), is its text with the periods the engine read it to hold in
-(`omdat hij gedurende de gehele maand rentedragend is (van 01-12-2025 tot 01-03-2026)`), and two such writers each
-wrote on their own days. A writer of a timeline target, also its only one, decides the days on which its timeline
-reads a value, and on the other days the target keeps its input (uchar's RUNTIME-SEMANTICS ch. 3.11); the sentence
-names the writers and not the days of the input, since uchar names no decider per period. A timeline the engine read inside a computation stands as its periods, and the total of the
+the fourth form is read on the bean. A writer of a timeline target, also its only one, decides the days on which its
+timeline reads a value, and on the other days the target keeps its input (uchar's RUNTIME-SEMANTICS ch. 3.11); who
+decided which days comes from uchar's `DroolsBackend.periodDecisionsOf`. The sentence of a timeline target gives each
+rule that decided the periods it decided with their values, and has no computation; the condition of a rule, where it
+holds per period (a clip, ch. 3.10), is its text with the periods the engine read it to hold in; the periods in which
+the input stood follow: `"A1 heeft als rentedagen 30 dg/mnd van 01-12-2025 tot 01-03-2026 volgens de regel
+'rentedagen in een gehele maand', omdat hij gedurende de gehele maand rentedragend is (van 01-12-2025 tot
+01-03-2026), en 0 dg/mnd tot 01-11-2025, … volgens de regel 'rentedagen in een gedeeltelijke maand', omdat …"`,
+`"J1 heeft als borgdeel 12,00 van 01-01-2024 tot 01-03-2024 volgens de regel 'borgdeel van een jutter'
+(onvoorwaardelijk); de invoerwaarde 99,00 van 01-03-2024 tot 01-04-2024 bleef staan"`. Where no rule decided a day,
+the target keeps its input as its periods, or is empty. A timeline the engine read inside a computation stands as its periods, and the total of the
 subject's own timeline (ch. 3.6) has no `MEMBERS`: it is no fold over a set. A time-dependent characteristic a rule
 writes in a window has its own sentence, with the periods the bean holds: `"A1 is rentedragend van 16-11-2025 tot
 13-03-2026 volgens de regel 'rentedragend'"`, without its condition, or `"… is niet rentedragend volgens de regel
@@ -580,6 +581,28 @@ opgave marker makes it reads `opgegeven X` or `berekende X` (`"volgens 'berekend
 berekende maxdatum (01-01-2026)"`), so a reader goes on from there to the sentence of the computed value. The values
 come from the variant's reading, where the nodes of its value follow those of its condition. The variants that did not
 decide stay as they were, and a characteristic has no computation.
+
+**A defaults group per day** (card `explanation-per-period`). A stack on a time-dependent attribute decides per day
+(uchar's RUNTIME-SEMANTICS ch. 7.11): on every day the highest default that decides that day, a conflict of the
+members it reconciles, or no default, and then the input of that day stands. uchar names that per object in maximal
+periods with one outcome (`DroolsBackend.periodDecisionsOf`, `PeriodDecisions`), and the explanation gives the group a
+sentence per period, in the order of the days:
+
+- a variant decided: `<SUBJECT> heeft als <NAME> <VALUE> volgens <variant>`, the `VALUE` its value in that period
+  with the period (`timeline: true`), then what the sentence of a defaults group gives the variant that decided: its
+  `COMPUTATION` and why it held, a condition per period with the periods it holds in, and its `GROUND`: `"J4 heeft als
+  strandloon 10 van 01-01-2025 tot 01-03-2025 volgens 'opgegeven strandloon' (onvoorwaardelijk): zijn opgegeven
+  strandloon (10 van 01-01-2025 tot 01-03-2025)"`; a variant that decides two periods has a sentence for each;
+- a conflict: what the target holds in that period, `de invoerwaarde <VALUE>` or `heeft geen <NAME> <period>`, then the
+  conflict as the sentence of a defaults group names it (`"…, want er is een conflict: de regel 'toelage voor
+  kustwacht' besliste 'heeft als toelage 10' en de regel 'toelage voor stormwacht' besliste 'heeft als toelage 20', dus
+  de groep schrijft niets"`);
+- no variant decided and the input stood: `"J4 houdt als strandloon de invoerwaarde 99 van 01-06-2025 tot 01-01-2026,
+  want geen variant besliste"`.
+
+A period without a decider and without input has no sentence; where no variant decided on any day and no input
+stands, one sentence says so: `"J2 heeft geen toelage, want geen variant besliste"`. The variants that did not decide a
+period are not named in its sentence.
 
 **What a displaced variant found** (card `explanation-read-objects-and-displaced`). Every variant of a defaults group
 after the decider says, after its name, what it found, from uchar's reading of a displaced default (RUNTIME-SEMANTICS

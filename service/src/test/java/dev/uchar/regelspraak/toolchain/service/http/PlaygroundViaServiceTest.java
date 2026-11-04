@@ -347,12 +347,11 @@ class PlaygroundViaServiceTest {
         }
     }
 
-    /** A defaults group that decides per day, the opgave marker on an attribute for every month: uchar names no decider
-     *  per period, so the entry point gives no explanation. Via the service the scenario is asked without one and has
-     *  the verdict and the expectations of the ordinary route, and {@code explanationError} says why, as on the
-     *  ordinary route. */
+    /** A defaults group that decides per day, the opgave marker on an attribute for every month: uchar names who decided
+     *  per period, and the explanation names each period. Via the service the scenario has the verdict, the expectations
+     *  and the explanation of the ordinary route. */
     @Test
-    void a_defaults_group_per_day_is_computed_via_the_service_with_a_named_explanation_error() {
+    void a_defaults_group_per_day_is_explained_per_period_via_the_service() {
         String model = """
                 Objecttype de Jutter (mv: Jutters) (bezield)
                     het strandloon Numeriek (geheel getal) voor elke maand (mag opgegeven worden);
@@ -381,12 +380,33 @@ class PlaygroundViaServiceTest {
         assertEquals("PASS", g.path("status").asText(), g.toString());
         assertEquals("PASS", d.path("status").asText(), d.toString());
         assertEquals(g.path("expectations"), d.path("expectations"), d.toString());
-        assertEquals(0, d.path("explanation").size(), d.toString());
-        assertTrue(g.path("explanationError").asText().contains("'defaults A:Jutter.strandloon' beslist per dag"),
-                g.toString());
-        assertEquals("het entrypoint 'strandloon' geeft geen uitleg: " + g.path("explanationError").asText(),
-                d.path("explanationError").asText(), d.toString());
+        assertFalse(g.has("explanationError"), g.toString());
+        assertFalse(d.has("explanationError"), d.toString());
+        assertEquals("J1 heeft als strandloon 10 van 01-01-2025 tot 01-03-2025 volgens 'opgegeven strandloon'"
+                + " (onvoorwaardelijk): zijn opgegeven strandloon (10 van 01-01-2025 tot 01-03-2025)",
+                d.path("explanation").path(0).asText(), d.toString());
+        assertEquals(g.path("explanation"), d.path("explanation"), d.toString());
+        assertEquals(g.path("explanationParts"), d.path("explanationParts"), d.toString());
         assertTrue(d.path("fixpoint").isObject(), d.toString());
+    }
+
+    /** An entry point whose descriptor sets {@code explanation} to false gives no explanation: via the service the
+     *  scenario is asked without one, has the verdict and the expectations of the ordinary route, and
+     *  {@code explanationError} says why. */
+    @Test
+    void an_entry_point_without_explanation_is_computed_via_the_service_with_a_named_explanation_error() {
+        String rgs = BERGING + "\n" + SCENARIO.formatted("2", "20,00");
+        DecisionCore core = DecisionCore.assemble(BERGING_DESCRIPTOR.replace("\"path\":\"berging\",",
+                        "\"path\":\"berging\", \"explanation\": false,"), Map.of("berging.rgs", BERGING),
+                CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
+        JsonNode g = Playground.analyze(rgs, null).path("scenario").path("results").get(0);
+        JsonNode d = Playground.analyze(rgs, null, core).path("scenario").path("results").get(0);
+        assertEquals("PASS", g.path("status").asText(), g.toString());
+        assertEquals("PASS", d.path("status").asText(), d.toString());
+        assertEquals(g.path("expectations"), d.path("expectations"), d.toString());
+        assertEquals(0, d.path("explanation").size(), d.toString());
+        assertEquals("het entrypoint 'berging' geeft geen uitleg: de descriptor zet explanation op false",
+                d.path("explanationError").asText(), d.toString());
     }
 
     /** The timeline of a time-dependent parameter in the situation goes as the timeline of the request, and the answer

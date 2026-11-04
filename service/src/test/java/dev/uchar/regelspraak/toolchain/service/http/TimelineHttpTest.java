@@ -370,21 +370,55 @@ class TimelineHttpTest {
         assertEquals("instances[0].characteristics.stormwacht.periods[1]", v.get("field").asText(), v.toString());
     }
 
-    /** uchar names per object and effective defaults stack one decider ({@code DroolsBackend.decisionsOf}), and refuses
-     *  a build with a stack on a timeline target, which decides per day: the explanation of such an entry point is a
-     *  400 naming those stacks, never a 500, and the answer without it is given. */
+    /** case4 of uchar's golden with the explanation: a defaults group on a timeline target decides per day, and uchar
+     *  names who decided per period ({@code DroolsBackend.periodDecisionsOf}). The explanation gives the strandloon a
+     *  sentence per period: the opgave in January and February, the computed value from March to May, the input 99
+     *  from June, where no default decided; the stormtoelage, without input, the initialisation on all days; and the
+     *  days the rule wrote the computed strandloon. The answer beside the explanation is the answer without it. */
     @Test
-    void the_explanation_of_a_defaults_group_that_decides_per_day_is_400_naming_the_stacks() throws Exception {
+    void the_explanation_of_a_defaults_group_that_decides_per_day_names_each_period() throws Exception {
         String request = """
             {"instances":[{"type":"Jutter","id":"J4","attributes":{
-              "strandloon":{"timeline":[{"from":"2025-01-01","to":"2026-01-01","value":99}]}}}]}""";
-        JsonNode v = violation(post(opgave, "opgave", "explanation=true", request));
-        assertEquals("UNSUPPORTED", v.get("kind").asText(), v.toString());
-        assertEquals("explanation", v.get("field").asText(), v.toString());
-        String sentence = v.get("error").asText();
-        assertTrue(sentence.contains("'defaults A:Jutter.strandloon'") && sentence.contains("'defaults A:Jutter.stormtoelage'")
-                && sentence.contains("per dag"), sentence);
-        assertEquals(200, post(opgave, "opgave", "", request).statusCode());
+              "strandloon":{"timeline":[{"from":"2025-01-01","to":"2026-01-01","value":99}]},
+              "opgegeven strandloon":{"timeline":[{"from":"2025-01-01","to":"2025-03-01","value":10}]}}}]}""";
+        HttpResponse<String> r = post(opgave, "opgave", "explanation=true", request);
+        assertEquals(200, r.statusCode(), r.body());
+        JsonNode explanation = tree(r.body()).get("explanation");
+        List<String> sentences = new java.util.ArrayList<>();
+        explanation.forEach(s -> sentences.add(s.asText()));
+        assertEquals(List.of(
+                "J4 heeft als strandloon 10 van 01-01-2025 tot 01-03-2025 volgens 'opgegeven strandloon'"
+                        + " (onvoorwaardelijk): zijn opgegeven strandloon (10 van 01-01-2025 tot 01-03-2025)",
+                "J4 heeft als strandloon 20 van 01-03-2025 tot 01-06-2025 volgens 'berekende strandloon'"
+                        + " (onvoorwaardelijk): zijn berekende strandloon (20 van 01-03-2025 tot 01-06-2025)",
+                "J4 houdt als strandloon de invoerwaarde 99 van 01-06-2025 tot 01-01-2026, want geen variant besliste",
+                "J4 heeft als stormtoelage altijd 0 volgens 'geen stormtoelage': 0, omdat de stormtoelage in de invoer"
+                        + " leeg was",
+                "J4 heeft als berekende strandloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'strandloon in"
+                        + " het voorjaar', omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025)",
+                "J4 heeft geen berekende stormtoelage, want de regel 'stormtoelage' gaf geen waarde, omdat hij"
+                        + " stormwacht is (altijd leeg)"),
+                sentences, r.body());
+        JsonNode with = tree(r.body());
+        ((com.fasterxml.jackson.databind.node.ObjectNode) with).remove("explanation");
+        assertEquals(tree(post(opgave, "opgave", "", request).body()), with, r.body());
+    }
+
+    /** case6 of uchar's anchor/jutterswet-borgdeel with the explanation: the rule decides January and February, and
+     *  the sentence names those days with their value and the days on which the input 99 stood. */
+    @Test
+    void the_explanation_of_an_ordinary_writer_beside_the_input_names_its_days_and_the_input() throws Exception {
+        HttpResponse<String> r = post(borgdeel, "borgdeel", "explanation=true", """
+            {"instances":[{"type":"Jutter","id":"J1",
+              "attributes":{
+                "borgtarief":{"timeline":[{"from":"2024-01-01","to":"2025-01-01","value":12}]},
+                "borgdeel":{"timeline":[{"from":"2024-03-01","to":"2024-04-01","value":99}]}},
+              "characteristics":{"borgplichtig":{"periods":[{"from":"2024-01-01","to":"2024-03-01"}]}}}]}""");
+        assertEquals(200, r.statusCode(), r.body());
+        String sentence = tree(r.body()).at("/explanation/0").asText();
+        assertEquals("J1 heeft als borgdeel 12,00 van 01-01-2024 tot 01-03-2024 volgens de regel 'borgdeel van een"
+                + " jutter' (onvoorwaardelijk); de invoerwaarde 99,00 van 01-03-2024 tot 01-04-2024 bleef staan",
+                sentence, r.body());
     }
 
     // ---------------- the faults of a timeline: each with its kind and status ----------------

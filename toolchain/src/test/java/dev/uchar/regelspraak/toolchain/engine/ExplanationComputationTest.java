@@ -234,11 +234,12 @@ class ExplanationComputationTest {
         assertEquals(EXPECTED, explanation(MODEL + SCENARIO));
     }
 
-    /** A rule on a timeline target writes a timeline: the sentence says so, and gives no computation. The day count
+    /** A rule on a timeline target writes a timeline: the sentence names the periods it decided with their values, as
+     *  uchar names them per period ({@code DroolsBackend.periodDecisionsOf}), and gives no computation. The day count
      *  decides every day (uchar's RUNTIME-SEMANTICS ch. 3.1, 3.9): a month without a true day counts 0, open at both
      *  ends, so a jutter that is never borgplichtig has the timeline 0 on all time, not an empty one. */
     @Test
-    void a_timeline_target_gets_a_timeline_and_no_computation() {
+    void a_timeline_target_gets_its_periods_and_no_computation() {
         String document = """
                 Objecttype de Jutter (mv: Jutters) (bezield)
                     is borgplichtig kenmerk (bijvoeglijk) voor elke maand;
@@ -261,8 +262,9 @@ class ExplanationComputationTest {
                 - de borgdagen van J2 is altijd 0
                 """;
         assertEquals(List.of(
-                "J1 heeft als borgdagen een tijdlijn volgens de regel 'borgdagen' (onvoorwaardelijk)",
-                "J2 heeft als borgdagen een tijdlijn volgens de regel 'borgdagen' (onvoorwaardelijk)"),
+                "J1 heeft als borgdagen 0 tot 01-01-2024, 22 van 01-01-2024 tot 01-02-2024, 13 van 01-02-2024 tot"
+                        + " 01-03-2024 en 0 vanaf 01-03-2024 volgens de regel 'borgdagen' (onvoorwaardelijk)",
+                "J2 heeft als borgdagen altijd 0 volgens de regel 'borgdagen' (onvoorwaardelijk)"),
                 explanation(document));
     }
 
@@ -302,7 +304,8 @@ class ExplanationComputationTest {
                 - de totale bootheffing van J1 is 17,00
                 """;
         assertEquals(List.of(
-                "J1 heeft als bootheffing een tijdlijn volgens de regel 'bootheffing' (onvoorwaardelijk)",
+                "J1 heeft als bootheffing 0,00 tot 01-12-2023, 5,00 van 01-12-2023 tot 01-01-2024, 6,00 van 01-01-2024"
+                        + " tot 01-03-2024 en 0,00 vanaf 01-03-2024 volgens de regel 'bootheffing' (onvoorwaardelijk)",
                 "J1 heeft als totale bootheffing 17,00 volgens de regel 'totale bootheffing' (onvoorwaardelijk): (het"
                         + " totaal van zijn bootheffing) rekenkundig afgerond op 2 decimalen, met het totaal van zijn"
                         + " bootheffing (17,00) en zijn bootheffing (0,00 tot 01-12-2023, 5,00 van 01-12-2023 tot"
@@ -313,8 +316,9 @@ class ExplanationComputationTest {
 
     /** A time-dependent characteristic a rule writes within a window holds in periods (RUNTIME-SEMANTICS ch. 3.10,
      *  3.11), and the sentence names them. Two rules write one timeline on their own days, each where its condition per
-     *  period holds, in the periods the engine read; the one whose value is a binder of {@code Daarbij geldt} wrote as
-     *  well (ch. 10.6: uchar sees such a Let through and reads the value at its definition). This explanation was an
+     *  period holds, in the periods the engine read, and the sentence gives each rule the periods it decided with their
+     *  values (uchar's {@code DroolsBackend.periodDecisionsOf}); the one whose value is a binder of
+     *  {@code Daarbij geldt} wrote as well (ch. 10.6: uchar sees such a Let through and reads the value at its definition). This explanation was an
      *  {@code IllegalStateException} on the pin of uchar that carried these forms first. */
     @Test
     void a_characteristic_in_periods_and_two_writers_per_period_name_their_periods() {
@@ -357,10 +361,12 @@ class ExplanationComputationTest {
                 """;
         assertEquals(List.of(
                 "A1 is rentedragend van 16-11-2025 tot 13-03-2026 volgens de regel 'rentedragend'",
-                "A1 heeft als rentedagen een tijdlijn volgens de regel 'rentedagen in een gehele maand', omdat hij"
-                        + " gedurende de gehele maand rentedragend is (van 01-12-2025 tot 01-03-2026), en volgens de"
-                        + " regel 'rentedagen in een gedeeltelijke maand', omdat hij niet gedurende de gehele maand"
-                        + " rentedragend is (tot 01-12-2025 en vanaf 01-03-2026)"),
+                "A1 heeft als rentedagen 30 dg/mnd van 01-12-2025 tot 01-03-2026 volgens de regel 'rentedagen in een"
+                        + " gehele maand', omdat hij gedurende de gehele maand rentedragend is (van 01-12-2025 tot"
+                        + " 01-03-2026), en 0 dg/mnd tot 01-11-2025, 15 dg/mnd van 01-11-2025 tot 01-12-2025, 12 dg/mnd"
+                        + " van 01-03-2026 tot 01-04-2026 en 0 dg/mnd vanaf 01-04-2026 volgens de regel 'rentedagen in"
+                        + " een gedeeltelijke maand', omdat hij niet gedurende de gehele maand rentedragend is (tot"
+                        + " 01-12-2025 en vanaf 01-03-2026)"),
                 explanation(document));
     }
 

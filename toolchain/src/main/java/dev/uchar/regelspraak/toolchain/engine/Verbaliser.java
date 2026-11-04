@@ -25,6 +25,7 @@ import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.Period;
 import dev.uchar.regelspraak.transpiler.tms.PeriodArithmetic;
+import dev.uchar.regelspraak.transpiler.tms.PeriodDecisions;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -105,6 +106,13 @@ import java.util.regex.Pattern;
  * draad legt {@code Uitzondering op} en {@code Afwijking van} daar gelijk vast, en een geneste variant met de keten
  * van haar lagen.
  *
+ * <p><b>Per periode.</b> Een stapel op een tijdsafhankelijk attribuut beslist per dag (ch. 7.11), en de motor noemt per
+ * object de perioden met één uitkomst ({@link DroolsBackend#periodDecisionsOf}). Zo'n groep krijgt een zin per periode
+ * waarin een variant besliste, met haar waarde in die periode, hoe zij die berekende en waarom zij gold, en de
+ * grondslag van die variant; een zin per periode met een conflict; en een zin per periode waarin geen variant besliste
+ * en de invoer bleef staan. Een periode zonder beslisser en zonder invoer heeft geen zin; besliste niemand op enige dag
+ * en staat er geen invoer, dan zegt één zin dat. De andere varianten noemt de zin per periode niet.
+ *
  * <p><b>Berekende waarden.</b> Een attribuut dat de gewone regels van het document op een object schrijven
  * (gelijkstelling, berekening, initialisatie; niet een regel die ch. 7.10 in een stapel opnam, die staat in de zin van
  * haar stapel) krijgt per object één zin over al zijn schrijvers samen ({@link ComputationExplanation}): de regel die
@@ -112,7 +120,9 @@ import java.util.regex.Pattern;
  * vouwde, de leden van een vouw met wat elk bijdroeg, en de waarde vóór een afronding en vóór een begrenzing) en
  * waarom zij gold; daarna elke andere schrijver met de reden dat zij niet schreef. Alle waarden komen uit de lezing van
  * de regel ({@link DroolsBackend#readingsOf}), die sinds uchars kaart readings-of-unconditional-forms ook een regel
- * zonder voorwaarde heeft; alleen een invoerwaarde, waar geen regel schreef, staat op de bean.
+ * zonder voorwaarde heeft; alleen een invoerwaarde, waar geen regel schreef, staat op de bean. Een tijdsafhankelijk
+ * attribuut noemt per regel de perioden die zij besliste, met hun waarde, en de perioden waarin de invoer bleef staan,
+ * uit {@link DroolsBackend#periodDecisionsOf}.
  *
  * <p><b>Bronverwijzing.</b> Een regel draagt de {@code // Bron:}-annotaties die direct boven haar kop staan
  * ({@link ResolvedRule#statuteAnnotations}; op de draad {@code statuteAnnotations}, uchars IR-SPEC ch. 3.1, WF-082),
@@ -175,7 +185,7 @@ public final class Verbaliser {
                 throw new IllegalStateException("de motor gaf twee lezingen van " + r.form() + " op één object");
     }
 
-    /** {@link #verbalise(Map, Map, List)} zonder de defaults-groepen en zonder de vormen buiten de scope: de
+    /** {@link #verbalise(Map, Map, List, List)} zonder de defaults-groepen en zonder de vormen buiten de scope: de
      *  kenmerktoekenningen alleen. */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
         return texts(sentences(instances, typePerLabel));
@@ -197,12 +207,14 @@ public final class Verbaliser {
      * Bouw de uitleg voor een gedraaide wereld. {@code instances} mapt een LABEL (het scenario-label of het
      * dienst-verzoek-id) op de bijbehorende, gevuurde en teruggeschreven bean; {@code typePerLabel} het objecttype per
      * label, op het model van het document. Per label eerst één zin per kenmerktoekenning van zijn type, in de volgorde
-     * van het document, dan één zin per defaults-groep van zijn type: wat de motor besliste ({@code decisions}, uit
-     * {@link DroolsBackend#decisionsOf} van dezelfde sessie), dan één zin per attribuut dat de gewone regels van het
-     * document op zijn type schrijven ({@link ComputationExplanation}). Na de labels volgen zo de objecten die een
-     * creatie van de sessie maakte, bij hun naam ({@link #madeName}), in de volgorde van het fixpunt, elk met het
-     * objecttype waarvan het de bean is. Daarna één zin per regel buiten de scope ({@link Document#outside}) op het
-     * type van een label of een gemaakt object.
+     * van het document, dan de zinnen per defaults-groep van zijn type: wat de motor besliste ({@code decisions}, uit
+     * {@link DroolsBackend#decisionsOf} van dezelfde sessie, één zin), of op een tijdsafhankelijk attribuut wat zij per
+     * periode besliste ({@code periodDecisions}, uit {@link DroolsBackend#periodDecisionsOf}, een zin per periode), dan
+     * één zin per attribuut dat de gewone regels van het document op zijn type schrijven
+     * ({@link ComputationExplanation}). Na de labels volgen zo de objecten die een creatie van de sessie maakte, bij
+     * hun naam ({@link #madeName}), in de volgorde van het fixpunt, elk met het objecttype waarvan het de bean is.
+     * Daarna één zin per regel buiten de scope ({@link Document#outside}) op het type van een label of een gemaakt
+     * object.
      *
      * @throws IllegalStateException een pointer die niet op het document terug te leggen is, een beslissing over
      *                               een lid waarvoor het type van het object geen groep heeft, een groep op de
@@ -211,32 +223,15 @@ public final class Verbaliser {
      *                               niet kan noemen ({@link #madeName})
      */
     public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
-                                  List<DefaultsDecision> decisions) {
-        return texts(sentences(instances, typePerLabel, decisions));
+                                  List<DefaultsDecision> decisions, List<PeriodDecisions> periodDecisions) {
+        return texts(sentences(instances, typePerLabel, decisions, periodDecisions));
     }
 
-    /**
-     * Waarom de uitleg van een sessie van {@code build} niet te geven is, of null waar zij te geven is. De zin van een
-     * defaults-groep noemt de default die besliste, uit {@link DroolsBackend#decisionsOf}: één beslisser per object en
-     * effectieve stapel. Een stapel op een tijdsafhankelijk attribuut beslist per dag (uchars RUNTIME-SEMANTICS
-     * ch. 7.11), zodat op elke dag een andere default kan beslissen; uchar geeft daar geen beslisser per periode, en
-     * {@code decisionsOf} weigert een build met zo'n stapel. Welke default welke dag besliste, rekent de toolchain niet
-     * zelf uit, dus de zin noemt elke stapel die per dag beslist ({@code TmsTranspiler.defaultsGroups}).
-     */
-    public static String unexplained(DroolsBackend.Build build) {
-        List<String> perDay = new ArrayList<>();
-        for (var g : build.execModelTranspiler().defaultsGroups()) if (g.perDay()) perDay.add("'" + g.name() + "'");
-        if (perDay.isEmpty()) return null;
-        return (perDay.size() == 1 ? "de defaults-stapel " + perDay.get(0) + " beslist"
-                : "de defaults-stapels " + String.join(", ", perDay) + " beslissen")
-                + " per dag, op een tijdsafhankelijk attribuut (uchars RUNTIME-SEMANTICS ch. 7.11), en uchar noemt per"
-                + " object en stapel één beslisser (decisionsOf), geen beslisser per periode";
-    }
-
-    /** {@link #verbalise(Map, Map, List)} als zinnen met hun stukken. */
+    /** {@link #verbalise(Map, Map, List, List)} als zinnen met hun stukken. */
     public List<Sentence> sentences(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
-                                    List<DefaultsDecision> decisions) {
+                                    List<DefaultsDecision> decisions, List<PeriodDecisions> periodDecisions) {
         Objects.requireNonNull(decisions, "decisions");
+        Objects.requireNonNull(periodDecisions, "periodDecisions");
         Subjects subjects = subjects(instances, typePerLabel);
         List<Sentence> sink = new ArrayList<>();
         Set<String> outside = new LinkedHashSet<>();
@@ -246,8 +241,9 @@ public final class Verbaliser {
             ObjectType ot = subjects.types().get(label);
             if (ot == null || bean == null) continue;
             assignments(label, bean, ot, sink);
-            ComputationExplanation computations = new ComputationExplanation(label, bean, ot, decisions);
-            new DefaultsExplanation(document, label, bean, ot, decisions, computations).sentences(sink);
+            ComputationExplanation computations = new ComputationExplanation(label, bean, ot, decisions,
+                    periodDecisions);
+            new DefaultsExplanation(document, label, bean, ot, decisions, periodDecisions, computations).sentences(sink);
             computations.sentences(sink);
             document.outside().forEach((rule, type) -> {
                 for (ObjectType t : ot.chain()) if (t.name.equalsIgnoreCase(type)) outside.add(rule);
@@ -534,24 +530,30 @@ public final class Verbaliser {
         private final Object bean;
         private final ObjectType type;
         private final List<DefaultsDecision> decisions;
+        /** Wat de stapels op een tijdsafhankelijk attribuut per periode besloten; een record met wortelketens is dat
+         *  van een stapel, een zonder dat van gewone regels. */
+        private final List<PeriodDecisions> periodDecisions;
         /** De berekeningen van hetzelfde object: de beslisser van een attribuut krijgt de berekening van een gewone
          *  regel. */
         private final ComputationExplanation computations;
 
         DefaultsExplanation(Document document, String label, Object bean, ObjectType type,
-                            List<DefaultsDecision> decisions, ComputationExplanation computations) {
+                            List<DefaultsDecision> decisions, List<PeriodDecisions> periodDecisions,
+                            ComputationExplanation computations) {
             this.document = document;
             this.label = label;
             this.bean = bean;
             this.type = type;
             this.decisions = decisions;
+            this.periodDecisions = periodDecisions;
             this.computations = computations;
         }
 
         void sentences(List<Sentence> sink) {
-            // Elke stapel komt uit decisionsOf: elk object van de sessie heeft per stapel van zijn type één record,
-            // ook waar niemand besliste (ch. 7.10: per concreet type en doel één stapel). Het document geeft alleen
-            // de volgorde, die van de eerste groep die het doel op de typeketen van het object schrijft.
+            // Elke stapel komt uit de motor: elk object van de sessie heeft per stapel van zijn type één record, ook
+            // waar niemand besliste (ch. 7.10: per concreet type en doel één stapel), uit decisionsOf, of uit
+            // periodDecisionsOf voor een stapel per dag (ch. 7.11). Het document geeft alleen de volgorde, die van de
+            // eerste groep die het doel op de typeketen van het object schrijft.
             List<String> members = new ArrayList<>();
             for (PrioritizedDefaults g : document.groups())
                 if (type.isA(subjectOf(g)) && !members.contains(g.target())) members.add(g.target());
@@ -565,16 +567,109 @@ public final class Verbaliser {
                     throw new IllegalStateException("de motor gaf twee beslissingen over '" + d.member() + "' van "
                             + label + ", waar één stapel er één geeft");
             }
+            Map<String, PeriodDecisions> perDay = new LinkedHashMap<>();
+            for (PeriodDecisions p : periodDecisions) {
+                if (p.object() != bean || p.rootChains().isEmpty()) continue;
+                if (!members.contains(p.member()))
+                    throw new IllegalStateException("de motor gaf beslissingen per periode van een stapel over '"
+                            + p.member() + "' van " + label + ", en het document heeft voor " + type.name
+                            + " geen defaults-groep op dat lid");
+                if (perDay.put(p.member(), p) != null || perMember.containsKey(p.member()))
+                    throw new IllegalStateException("de motor gaf over '" + p.member() + "' van " + label + " twee"
+                            + " records van zijn stapel, waar één stapel er één geeft");
+            }
             for (String member : members) {
+                PeriodDecisions p = perDay.get(member);
+                if (p != null) {
+                    perPeriod(p, sink);
+                    continue;
+                }
                 DefaultsDecision d = perMember.get(member);
                 if (d == null)
                     throw new IllegalStateException("de motor gaf geen beslissing over '" + member + "' van " + label
-                            + ", en het document heeft voor " + type.name + " een defaults-groep op dat lid: elk"
-                            + " object van de sessie heeft er één per stapel van zijn type");
+                            + ", ook niet per periode, en het document heeft voor " + type.name + " een defaults-groep"
+                            + " op dat lid: elk object van de sessie heeft er één per stapel van zijn type");
                 if (d.conflict() != null) sink.add(conflicted(d));
                 else if (d.decider() != null) sink.add(decided(d));
                 else sink.add(undecided(d));
             }
+        }
+
+        // ---- een stapel per dag (ch. 7.11): een zin per periode ----
+
+        /** De zinnen van stapel-record {@code p}: één per periode met een beslisser, een conflict of een invoer die
+         *  bleef staan, in de volgorde van hun dagen; een periode zonder beslisser en zonder invoer heeft geen zin.
+         *  Heeft geen periode een zin, dan zegt één zin dat geen variant besliste. */
+        private void perPeriod(PeriodDecisions p, List<Sentence> sink) {
+            int before = sink.size();
+            for (PeriodDecisions.Span s : p.spans()) {
+                if (s.decider() != null) sink.add(decidedIn(p, s));
+                else if (s.conflict() != null) sink.add(conflictedIn(p, s));
+                else if (s.input() != null) {
+                    Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+                    standingIn(b, p.member(), s);
+                    sink.add(b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" geen variant besliste").build());
+                }
+            }
+            if (sink.size() > before) return;
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" heeft geen ");
+            attributeName(b, type, p.member(), new On(label));
+            sink.add(b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" geen variant besliste").build());
+        }
+
+        /** Periode {@code s}, waarin een variant de stapel besliste: haar waarde in die periode, haar naam, hoe zij de
+         *  waarde berekende en waarom zij gold ({@link #reason}), en haar grondslag. */
+        private Sentence decidedIn(PeriodDecisions p, PeriodDecisions.Span s) {
+            String pointer = s.decider().pointer();
+            if (p.rootChains().stream().flatMap(List::stream)
+                    .noneMatch(root -> pointer.equals(root) || pointer.startsWith(root + "/")))
+                throw new IllegalStateException("de beslisser " + pointer + " van '" + p.member() + "' van " + label
+                        + " staat in geen keten aan de wortel van zijn stapel: " + p.rootChains());
+            Variant decider = variant(pointer);
+            if (!decider.hasOwnContent())
+                throw new IllegalStateException("de beslisser " + pointer + " van '" + p.member() + "' van " + label
+                        + " is een groep-default zonder eigen besluit of waarde");
+            requireTarget(decider, p.member());
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" heeft als ");
+            attributeName(b, type, p.member(), new On(label));
+            b.text(" ");
+            periodValue(b, s.decider().decision(), s, p.member());
+            b.text(" volgens ");
+            name(b, decider);
+            reason(b, decider, false);
+            ground(b, groundOf(decider), deciderOf(decider));
+            return b.build();
+        }
+
+        /** Periode {@code s}, waarin de leden die de stapel verzoent verschillend besloten (ch. 7.2, 7.9): wat het doel
+         *  in die periode houdt, en het conflict zoals {@link #conflicted} het noemt. */
+        private Sentence conflictedIn(PeriodDecisions p, PeriodDecisions.Span s) {
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+            standingIn(b, p.member(), s);
+            conflict(b, s.conflict(), p.member(), false);
+            return b.build();
+        }
+
+        /** Wat {@code member} houdt in periode {@code s}, waarin geen variant schreef: de invoerwaarde met de periode,
+         *  of geen waarde. */
+        private void standingIn(Sentence.Builder b, String member, PeriodDecisions.Span s) {
+            if (s.input() == null) {
+                b.text("heeft geen ");
+                attributeName(b, type, member, new On(label));
+                b.text(" " + periodText(s.from(), s.to()));
+                return;
+            }
+            b.text("houdt als ");
+            attributeName(b, type, member, new On(label));
+            b.text(" de invoerwaarde ");
+            periodValue(b, s.input(), s, member);
+        }
+
+        /** Waarde {@code v} van {@code member} in periode {@code s}, zoals RegelSpraak een periode schrijft: de waarde
+         *  van een tijdlijndoel. */
+        private void periodValue(Sentence.Builder b, Object v, PeriodDecisions.Span s, String member) {
+            b.leaf(Part.Kind.VALUE, inPeriod(render(v, type.attribute(member)), s.from(), s.to()),
+                    Part.meta("timeline", true));
         }
 
         // ---- de drie zinnen ----
@@ -620,9 +715,14 @@ public final class Verbaliser {
         }
 
         private Sentence conflicted(DefaultsDecision d) {
-            DefaultsDecision.Conflict c = d.conflict();
             Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
             standing(b, d.member(), d.characteristic());
+            conflict(b, d.conflict(), d.member(), d.characteristic());
+            return b.build();
+        }
+
+        /** Conflict {@code c} na wat het doel houdt: waar het stond en wat elk lid besliste. */
+        private void conflict(Sentence.Builder b, DefaultsDecision.Conflict c, String member, boolean characteristic) {
             b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" er is een conflict");
             if (c.pointer() != null) {
                 b.text(" in de uitzonderingen op ");
@@ -632,16 +732,15 @@ public final class Verbaliser {
             boolean first = true;
             for (DefaultsDecision.Decider x : c.deciders()) {
                 Variant v = variant(x.pointer());
-                requireTarget(v, d.member());
+                requireTarget(v, member);
                 if (!first) b.text(" ").leaf(Part.Kind.CONNECTIVE, "en").text(" ");
                 first = false;
                 name(b, v);
                 b.text(" besliste '");
-                outcome(b, d.member(), d.characteristic(), x.decision());
+                outcome(b, member, characteristic, x.decision());
                 b.text("'");
             }
             b.text(", dus de groep schrijft niets");
-            return b.build();
         }
 
         /** Niemand besliste: wat het doel houdt, en per variant van de stapel waarom ze niet besliste. De varianten en
@@ -736,10 +835,6 @@ public final class Verbaliser {
         /** De waarde die verdrongen variant {@code v} van een attribuut gaf, uit haar lezing: de knopen van haar waarde
          *  volgen op die van haar voorwaarde {@code c}; "gaf geen waarde" waar zij leeg was. */
         private void displacedValue(Sentence.Builder b, Variant v, Condition c, String member) {
-            if (type.granularityOf(member) != null) {
-                b.leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
-                return;
-            }
             Expr value = v.rule() != null ? v.rule().value() : v.d().consequence();
             int offset = c == null ? 0 : document.positions().subtree(c).size();
             Object found = read(v.pointer(), bean, label, value, offset).of(value).value();
@@ -844,9 +939,10 @@ public final class Verbaliser {
             return p;
         }
 
-        /** Waarom de beslisser besliste: haar voorwaarde met de waarden van de operanden. Bij een attribuut staat
-         *  daarvoor hoe zij haar waarde berekende ({@link #computation}), na " (onvoorwaardelijk)" waar zij geen
-         *  voorwaarde heeft, zoals in de zin van een gewone regel. */
+        /** Waarom de beslisser besliste: haar voorwaarde met de waarden van de operanden, of een voorwaarde per periode
+         *  met de perioden waarin zij geldt ({@link #heldInPeriods}). Bij een attribuut staat daarvoor hoe zij haar
+         *  waarde berekende ({@link #computation}), na " (onvoorwaardelijk)" waar zij geen voorwaarde heeft, zoals in de
+         *  zin van een gewone regel. */
         private void reason(Sentence.Builder b, Variant v, boolean characteristic) {
             Condition c = conditionOf(v);
             if (c == null && isInitialisation(v)) {
@@ -873,7 +969,7 @@ public final class Verbaliser {
                         + status + ", en een variant die besliste heeft een voorwaarde die geldt");
             computation(b, v, characteristic);
             b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
-            verbaliseCondition(b, c, read, subjectOf(v), ucharText(v));
+            if (!heldInPeriods(b, c, read)) verbaliseCondition(b, c, read, subjectOf(v), ucharText(v));
         }
 
         /** Hoe de beslisser van een attribuut haar waarde berekende, zoals de zin van een gewone regel het zegt
@@ -1145,8 +1241,9 @@ public final class Verbaliser {
      * de knopen van haar waarde volgen in de nummering op die van haar voorwaarde (ch. 5.12), en een regel zonder
      * voorwaarde heeft alleen die van haar waarde. Alleen de invoerwaarde, waar geen regel schreef, staat op de bean.
      *
-     * <p>Een regel op een tijdlijn-doel schreef "een tijdlijn" ({@code timeline: true} op de waarde), zonder berekening:
-     * de zin noemt de perioden niet.
+     * <p>Een regel op een tijdlijn-doel schreef de perioden die zij besliste, met hun waarde ({@code timeline: true} op
+     * de waarde), zonder berekening; de zin noemt ook de perioden waarin de invoer bleef staan
+     * ({@link #timelineSentence}).
      *
      * <p>Een gedimensioneerd attribuut wordt per cel geschreven (uchars WF-125), dus elke cel die een regel schrijft
      * krijgt haar eigen zin, over de schrijvers van die cel, met de cel als naam ({@link #cellName}).
@@ -1159,8 +1256,11 @@ public final class Verbaliser {
         private final Set<String> inStacks = new HashSet<>();
         /** De doelen van de stapels van dit object, in kleine letters. */
         private final Set<String> stackTargets = new HashSet<>();
+        /** Per tijdsafhankelijk attribuut dat gewone regels op dit object schrijven, wie per periode besliste. */
+        private final Map<String, PeriodDecisions> byRules = new HashMap<>();
 
-        ComputationExplanation(String label, Object bean, ObjectType type, List<DefaultsDecision> decisions) {
+        ComputationExplanation(String label, Object bean, ObjectType type, List<DefaultsDecision> decisions,
+                               List<PeriodDecisions> periodDecisions) {
             this.label = label;
             this.bean = bean;
             this.type = type;
@@ -1168,6 +1268,17 @@ public final class Verbaliser {
                 if (d.object() != bean) continue;
                 for (List<String> chain : d.rootChains()) inStacks.addAll(chain);
                 stackTargets.add(d.member().toLowerCase(Locale.ROOT));
+            }
+            for (PeriodDecisions p : periodDecisions) {
+                if (p.object() != bean) continue;
+                if (p.rootChains().isEmpty()) {
+                    if (byRules.put(p.member(), p) != null)
+                        throw new IllegalStateException("de motor gaf over '" + p.member() + "' van " + label
+                                + " twee records van zijn regels per periode, waar één doel er één heeft");
+                    continue;
+                }
+                for (List<String> chain : p.rootChains()) inStacks.addAll(chain);
+                stackTargets.add(p.member().toLowerCase(Locale.ROOT));
             }
         }
 
@@ -1195,26 +1306,28 @@ public final class Verbaliser {
                 perTarget.computeIfAbsent(labels == null ? target : target + labels, k -> new ArrayList<>())
                         .add(new Writer(r, ref, labels, pointer, reading(pointer, bean, label)));
             }
-            for (List<Writer> writers : perTarget.values()) sink.add(sentence(writers));
+            for (List<Writer> writers : perTarget.values())
+                sink.add(type.granularityOf(writers.get(0).target().attribute()) != null ? timelineSentence(writers)
+                        : sentence(writers));
         }
 
+        /** De zin over een attribuut zonder tijdlijn, of een cel ervan (IR-SPEC §3.2.1: een gedimensioneerd attribuut
+         *  heeft geen tijdlijn). */
         private Sentence sentence(List<Writer> writers) {
             String member = writers.get(0).target().attribute();
             List<String> cell = writers.get(0).labels();
-            boolean timeline = type.granularityOf(member) != null;
             List<Writer> wrote = new ArrayList<>(), empty = new ArrayList<>();
             Object written = null;
             for (Writer w : writers) {
                 ConditionReading.Status status = w.reading().status();
                 if (status == ConditionReading.Status.FAULTS) throw faulted(w.pointer(), label);
                 if (status != ConditionReading.Status.HOLDS) continue;
-                Object v = valueRead(w).of(timeline ? seenThrough(w.rule().value()) : w.rule().value()).value();
+                Object v = valueRead(w).of(w.rule().value()).value();
                 if (v == null || v instanceof List<?> periods && periods.isEmpty()) {
                     empty.add(w);
                     continue;
                 }
-                // writers of a timeline write per day, each its own periods; a disagreement on a day faults (EF-016)
-                if (!timeline && !wrote.isEmpty() && !same(written, v))
+                if (!wrote.isEmpty() && !same(written, v))
                     throw new IllegalStateException("de regels '" + formName(wrote.get(0)) + "' en '" + formName(w)
                             + "' gelden op " + label + " met verschillende waarden voor '" + member + "'"
                             + (cell == null ? "" : " in de cel " + cell) + " (" + written + " en " + v + "), en de"
@@ -1228,20 +1341,89 @@ public final class Verbaliser {
                 b.text("heeft als ");
                 targetName(b, member, cell);
                 b.text(" ");
-                Writer first = wrote.get(0);
-                if (timeline) b.leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
-                else value(b, written(first, member), false);
+                value(b, written(wrote.get(0), member), false);
                 for (int i = 0; i < wrote.size(); i++) {
                     b.text(i == 0 ? " volgens " : ", en volgens ");
-                    decider(b, wrote.get(i), member, timeline, false, false);
+                    decider(b, wrote.get(i), member, false, false, false);
                 }
             } else {
-                boolean stands = cell == null ? standing(b, member, timeline) : cellStanding(b, member, cell);
+                boolean stands = cell == null ? attributeStanding(b, bean, label, type, member)
+                        : cellStanding(b, member, cell);
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" ");
                 if (empty.isEmpty()) b.text("geen regel gold");
                 for (int i = 0; i < empty.size(); i++) {
                     if (i > 0) b.text(", en ");
-                    decider(b, empty.get(i), member, timeline, true, stands);
+                    decider(b, empty.get(i), member, false, true, stands);
+                }
+            }
+            for (Writer w : writers) if (!deciders.contains(w)) variant(b, w);
+            if (!deciders.isEmpty())
+                ground(b, sourceAnnotations(deciders.get(0).rule()), ruleDecider(deciders.get(0).rule()));
+            return b.build();
+        }
+
+        /**
+         * De zin over een tijdsafhankelijk attribuut dat de gewone regels schrijven (RUNTIME-SEMANTICS ch. 3.11): elke
+         * schrijver beslist de dagen waarop zijn tijdlijn een waarde leest, en op de andere dagen blijft de invoer
+         * staan. Wie welke dagen besliste, komt van de motor ({@link DroolsBackend#periodDecisionsOf}): per regel die
+         * besliste de perioden met hun waarde, "volgens de regel '…'" en waarom zij gold, daarna de perioden waarin de
+         * invoer bleef staan. Besliste geen regel een dag, dan wat het doel houdt, zoals bij een attribuut zonder
+         * tijdlijn. Een regel die gold en op geen dag een waarde las, gaf geen waarde. Twee regels die een dag
+         * verschillend beslissen geven EF-016 (ch. 5.7), een sessie zonder antwoord.
+         */
+        private Sentence timelineSentence(List<Writer> writers) {
+            String member = writers.get(0).target().attribute();
+            PeriodDecisions p = byRules.get(member);
+            if (p == null)
+                throw new IllegalStateException("de motor gaf geen beslissingen per periode over '" + member + "' van "
+                        + label + ", een tijdsafhankelijk attribuut dat de regels van het document schrijven");
+            Datatype datatype = type.attribute(member);
+            Map<String, List<String>> periods = new LinkedHashMap<>();
+            List<String> input = new ArrayList<>();
+            for (PeriodDecisions.Span s : p.spans()) {
+                for (DefaultsDecision.Decider r : s.rules())
+                    periods.computeIfAbsent(r.pointer(), k -> new ArrayList<>())
+                            .add(inPeriod(render(r.decision(), datatype), s.from(), s.to()));
+                if (s.input() != null) input.add(inPeriod(render(s.input(), datatype), s.from(), s.to()));
+            }
+            List<Writer> wrote = new ArrayList<>(), empty = new ArrayList<>();
+            for (Writer w : writers) {
+                ConditionReading.Status status = w.reading().status();
+                if (status == ConditionReading.Status.FAULTS) throw faulted(w.pointer(), label);
+                if (periods.containsKey(w.pointer())) {
+                    if (status != ConditionReading.Status.HOLDS)
+                        throw new IllegalStateException("de motor noemt de regel '" + formName(w) + "' beslisser van '"
+                                + member + "' van " + label + " op " + periods.get(w.pointer()) + ", en haar lezing is "
+                                + status);
+                    wrote.add(w);
+                } else if (status == ConditionReading.Status.HOLDS) empty.add(w);
+            }
+            if (wrote.size() != periods.size())
+                throw new IllegalStateException("de motor noemt als beslissers van '" + member + "' van " + label + " "
+                        + periods.keySet() + ", en het document schrijft het doel met "
+                        + writers.stream().map(Writer::pointer).toList());
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+            List<Writer> deciders = wrote.isEmpty() ? empty : wrote;
+            if (!wrote.isEmpty()) {
+                b.text("heeft als ");
+                targetName(b, member, null);
+                b.text(" ");
+                for (int i = 0; i < wrote.size(); i++) {
+                    if (i > 0) b.text(", en ");
+                    b.leaf(Part.Kind.VALUE, joined(periods.get(wrote.get(i).pointer())), Part.meta("timeline", true));
+                    b.text(" volgens ");
+                    decider(b, wrote.get(i), member, true, false, false);
+                }
+                if (!input.isEmpty())
+                    b.text("; de invoerwaarde ").leaf(Part.Kind.VALUE, joined(input), Part.meta("timeline", true))
+                            .text(" bleef staan");
+            } else {
+                boolean stands = timelineStanding(b, member);
+                b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" ");
+                if (empty.isEmpty()) b.text("geen regel gold");
+                for (int i = 0; i < empty.size(); i++) {
+                    if (i > 0) b.text(", en ");
+                    decider(b, empty.get(i), member, true, true, stands);
                 }
             }
             for (Writer w : writers) if (!deciders.contains(w)) variant(b, w);
@@ -1262,14 +1444,19 @@ public final class Verbaliser {
             return unit == null ? number : number + " " + unit;
         }
 
-        /** Wat het doel houdt waar geen regel een waarde schreef: leeg of de invoerwaarde; van een tijdlijn-doel "een
-         *  tijdlijn". Geeft of er een invoerwaarde staat. */
-        private boolean standing(Sentence.Builder b, String member, boolean timeline) {
+        /** Wat tijdsafhankelijk attribuut {@code member} houdt waar geen regel een dag besliste: leeg, of de invoer,
+         *  van de bean gelezen als haar perioden. Geeft of er een invoerwaarde staat. */
+        private boolean timelineStanding(Sentence.Builder b, String member) {
             Object v = readRaw(bean, Namen.getter(member));
-            if (!timeline || v == null) return attributeStanding(b, bean, label, type, member);
+            if (v == null) return attributeStanding(b, bean, label, type, member);
+            if (!(v instanceof List<?> segments))
+                throw new IllegalStateException("het tijdsafhankelijke attribuut '" + member + "' staat op " + label
+                        + " als " + v.getClass().getName() + ", niet als lijst segmenten");
+            Datatype datatype = type.attribute(member);
             b.text("houdt als ");
             attributeName(b, type, member, new On(label));
-            b.text(" de invoerwaarde ").leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
+            b.text(" de invoerwaarde ").leaf(Part.Kind.VALUE,
+                    renderPeriods(Period.list(segments), null, x -> render(x, datatype)), Part.meta("timeline", true));
             return true;
         }
 
@@ -1313,14 +1500,8 @@ public final class Verbaliser {
             if (c != null) {
                 Read conditionRead = read(w.pointer(), bean, label, c);
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
-                // a condition per period on a timeline target holds in periods, which the engine read (ch. 3.10, 5.12)
-                if (timeline && conditionRead.has(c) && conditionRead.reached(c)
-                        && conditionRead.of(c).value() instanceof List<?> periods) {
-                    b.leaf(Part.Kind.QUOTE, summary(c));
-                    reading(b, renderPeriods(periods, null, null), false);
-                } else {
+                if (!(timeline && heldInPeriods(b, c, conditionRead)))
                     verbaliseCondition(b, c, conditionRead, w.target().objectType(), writtenByUchar(r));
-                }
             } else if (initialisation) {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" de ");
                 targetName(b, member, w.labels());
@@ -1701,15 +1882,6 @@ public final class Verbaliser {
         b.text(" volgens de regel '").leaf(Part.Kind.RULE, RegelSpraakModel.formName(r.name())).text("'");
         ground(b, sourceAnnotations(r), ruleDecider(r));
         return b.build();
-    }
-
-    /** De knoop die de waarde van {@code e} draagt: een Let waarvan het lichaam haar eigen binder leest, is haar
-     *  definitie. uchar ziet zo'n Let door voor een tijdlijndoel (RUNTIME-SEMANTICS ch. 10.6) en noteert de waarde in
-     *  zijn lezing bij de definitie; de Let zelf staat er onbereikt. */
-    private static Expr seenThrough(Expr e) {
-        while (e instanceof Expr.Let l && l.body() instanceof Expr.BinderRef b && b.name().equals(l.binder()))
-            e = l.value();
-        return e;
     }
 
     /** Een regel als beslisser van een grondslag: de naam van haar vorm, {@code rules.rules[].name} op de draad, die
@@ -2266,15 +2438,40 @@ public final class Verbaliser {
             else if (s instanceof PeriodArithmetic.Exact x) { from = x.from(); to = x.to(); v = x.value(); }
             else throw new IllegalStateException("de motor las" + (e == null ? "" : " op \"" + snippet(e) + "\"")
                     + " een tijdlijn met een segment van de vorm " + s.getClass().getName() + ", dat de uitleg niet kent");
-            boolean openFrom = from.equals(Period.OPEN_FROM), openTo = to.equals(Period.OPEN_TO);
-            String period = openFrom && openTo ? "altijd" : openFrom ? "tot " + renderValue(to, null)
-                    : openTo ? "vanaf " + renderValue(from, null)
-                    : "van " + renderValue(from, null) + " tot " + renderValue(to, null);
-            if (v == null || value == null) segments.add(period);
-            else segments.add(openFrom && openTo ? period + " " + value.apply(v) : value.apply(v) + " " + period);
+            segments.add(v == null || value == null ? periodText(from, to) : inPeriod(value.apply(v), from, to));
         }
+        return joined(segments);
+    }
+
+    /** De periode {@code [from, to)} zoals RegelSpraak haar schrijft: {@code van <datum> tot <datum>}, {@code tot
+     *  <datum>} waar zij open begint, {@code vanaf <datum>} waar zij open eindigt, {@code altijd} over alle tijd. */
+    private static String periodText(LocalDate from, LocalDate to) {
+        boolean openFrom = from.equals(Period.OPEN_FROM), openTo = to.equals(Period.OPEN_TO);
+        return openFrom && openTo ? "altijd" : openFrom ? "tot " + renderValue(to, null)
+                : openTo ? "vanaf " + renderValue(from, null)
+                : "van " + renderValue(from, null) + " tot " + renderValue(to, null);
+    }
+
+    /** Waarde {@code value} in de periode {@code [from, to)}: de waarde vóór de periode, over alle tijd erna
+     *  ("altijd 0"). */
+    private static String inPeriod(String value, LocalDate from, LocalDate to) {
+        boolean always = from.equals(Period.OPEN_FROM) && to.equals(Period.OPEN_TO);
+        return always ? periodText(from, to) + " " + value : value + " " + periodText(from, to);
+    }
+
+    /** Segmenten achter elkaar, met "en" voor het laatste. */
+    private static String joined(List<String> segments) {
         return segments.size() == 1 ? segments.get(0)
                 : String.join(", ", segments.subList(0, segments.size() - 1)) + " en " + segments.get(segments.size() - 1);
+    }
+
+    /** Een voorwaarde per periode (RUNTIME-SEMANTICS ch. 3.10, 5.12) geldt in perioden, die de motor las: haar tekst met
+     *  die perioden. Geeft of {@code c} er zo een is, en schrijft anders niets. */
+    private static boolean heldInPeriods(Sentence.Builder b, Condition c, Read read) {
+        if (!(read.has(c) && read.reached(c) && read.of(c).value() instanceof List<?> periods)) return false;
+        b.leaf(Part.Kind.QUOTE, summary(c));
+        reading(b, renderPeriods(periods, null, null), false);
+        return true;
     }
 
     private static String snippet(Expr e) {

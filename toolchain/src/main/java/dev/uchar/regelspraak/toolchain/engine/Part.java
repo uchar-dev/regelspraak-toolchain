@@ -29,8 +29,8 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
          *  {@code object} as on {@link #NAME}. */
         QUOTE,
         /** A value as the engine read it, with its unit; {@code empty: true} for an empty one, and
-         *  {@code timeline: true} for "een tijdlijn", the value of a timeline target, which the sentence does not
-         *  spell out. */
+         *  {@code timeline: true} for the value of a timeline target, its periods with their values as RegelSpraak
+         *  writes a period, and for the periods of a time-dependent characteristic. */
         VALUE,
         /** The name of a rule or of a variant of a defaults group, without its quotes. */
         RULE,

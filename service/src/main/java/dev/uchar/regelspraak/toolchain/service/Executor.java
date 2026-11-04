@@ -7,6 +7,7 @@ import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
+import dev.uchar.regelspraak.transpiler.tms.PeriodDecisions;
 
 import org.kie.api.runtime.KieSession;
 
@@ -67,11 +68,12 @@ public final class Executor {
      *  fixpoint before the write-back, as uchar's entry reads it with the ids of the request, its §9.5 deposits
      *  included ({@link Fixpoint#inconsistencies}), uchar's verdict on the expectations the caller gave
      *  ({@link DroolsBackend#vergelijk}), null when it gave none, which default of each defaults stack decided
-     *  ({@link DroolsBackend#decisionsOf}) and how each condition came out ({@link DroolsBackend#readingsOf}), both
-     *  empty when the caller did not ask for the explanation. */
+     *  ({@link DroolsBackend#decisionsOf}), who decided each timeline target per period
+     *  ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out ({@link DroolsBackend#readingsOf}),
+     *  all three empty when the caller did not ask for the explanation. */
     public record Outcome(Map<String, Object> beans, int fired, Fixpoint fixpoint,
                            DroolsBackend.Comparison comparison, List<DefaultsDecision> decisions,
-                           List<ConditionReading> readings) {}
+                           List<PeriodDecisions> periodDecisions, List<ConditionReading> readings) {}
 
     /** Fire the entry point's rules over {@code world} and return the beans with their derived values and what
      *  stood at the fixpoint. */
@@ -126,8 +128,9 @@ public final class Executor {
     /**
      * As {@link #fire(World, Map, DroolsBackend.Observer, JsonNode)}, and with {@code withExplanation} what the
      * explanation reads off the session after the write-back: which default of each defaults stack decided
-     * ({@link DroolsBackend#decisionsOf}) and how each condition came out ({@link DroolsBackend#readingsOf}), the
-     * latter of a build with readings only. Only asked for an explanation: a pointer uchar cannot give fails the read,
+     * ({@link DroolsBackend#decisionsOf}), who decided each timeline target per period
+     * ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out ({@link DroolsBackend#readingsOf}), the
+     * last of a build with readings only. Only asked for an explanation: a pointer uchar cannot give fails the read,
      * and a request without an explanation has no use for it.
      */
     public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer,
@@ -167,8 +170,11 @@ public final class Executor {
             DroolsBackend.Comparison comparison = expectations == null ? null
                     : DroolsBackend.compare(build, session, label::get, expectations);
             List<DefaultsDecision> decisions = withExplanation ? DroolsBackend.decisionsOf(build, session) : List.of();
+            List<PeriodDecisions> periodDecisions = withExplanation ? DroolsBackend.periodDecisionsOf(build, session)
+                    : List.of();
             List<ConditionReading> readings = withExplanation ? DroolsBackend.readingsOf(build, session) : List.of();
-            return new Outcome(world.beans(), firing.firings(), fixpoint, comparison, decisions, readings);
+            return new Outcome(world.beans(), firing.firings(), fixpoint, comparison, decisions, periodDecisions,
+                    readings);
         } finally {
             session.dispose();
             Thread.currentThread().setContextClassLoader(previous);

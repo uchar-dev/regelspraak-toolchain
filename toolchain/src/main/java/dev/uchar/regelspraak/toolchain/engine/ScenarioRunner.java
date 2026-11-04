@@ -17,6 +17,7 @@ import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
+import dev.uchar.regelspraak.transpiler.tms.PeriodDecisions;
 
 import java.io.IOException;
 import java.io.UncheckedIOException;
@@ -42,12 +43,11 @@ import java.util.stream.Stream;
  * <p>{@link #runWithExplanation} adds to each report the explanation of its outcome in words. uchar's report carries the
  * verdicts and the firings but not the fired facts (an explanation is presentation, its record says), so the replay
  * plays on a build with readings and hands each session it fired to this class ({@link CaseRunner.Handoff}), right
- * after the fire and before the write-back: the fixpoint, the decisions of the defaults stacks and the readings of the
- * conditions are read off the very session the report judged ({@link CaseSession}), and the {@link Verbaliser} explains
- * it once the report wrote its beans back. A case uchar's replay did not play out has no explanation; its session is
- * given when evaluation faults stand at its fixpoint, the faults the write-back of the replay throws, so that they are
- * there as data. A build with a defaults stack that decides per day has no explanation either ({@link
- * Verbaliser#unexplained}): its report and its session are given, and the reason stands as the explanation error.
+ * after the fire and before the write-back: the fixpoint, the decisions of the defaults stacks, who decided each
+ * timeline target per period and the readings of the conditions are read off the very session the report judged
+ * ({@link CaseSession}), and the {@link Verbaliser} explains it once the report wrote its beans back. A case uchar's
+ * replay did not play out has no explanation; its session is given when evaluation faults stand at its fixpoint, the
+ * faults the write-back of the replay throws, so that they are there as data.
  */
 public final class ScenarioRunner {
     private ScenarioRunner() {}
@@ -130,18 +130,18 @@ public final class ScenarioRunner {
             Map<String, Handed> handed = new LinkedHashMap<>();
             CaseRunner.Handoff handoff = (caseFile, build, session, labels, firing) -> {
                 if (firing.noFixpoint() != null) {
-                    handed.put(caseFile, new Handed(labels, null, List.of(), List.of(), firing.noFixpoint(), null));
+                    handed.put(caseFile, new Handed(labels, null, List.of(), List.of(), List.of(),
+                            firing.noFixpoint()));
                     return;
                 }
                 Map<Object, String> labelOf = new IdentityHashMap<>();
                 labels.forEach((label, bean) -> labelOf.put(bean, label));
                 Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, labelOf::get);
                 boolean answered = fixpoint.faults().isEmpty();
-                // uchar's decisionsOf refuses a build with a stack that decides per day, of which it names no decider
-                String unexplained = Verbaliser.unexplained(build);
                 handed.put(caseFile, new Handed(labels, fixpoint,
-                        answered && unexplained == null ? DroolsBackend.decisionsOf(build, session) : List.of(),
-                        answered ? DroolsBackend.readingsOf(build, session) : List.of(), null, unexplained));
+                        answered ? DroolsBackend.decisionsOf(build, session) : List.of(),
+                        answered ? DroolsBackend.periodDecisionsOf(build, session) : List.of(),
+                        answered ? DroolsBackend.readingsOf(build, session) : List.of(), null));
             };
             List<ScenarioResult> report;
             try {
@@ -188,10 +188,10 @@ public final class ScenarioRunner {
     }
 
     /** What the replay handed over of the session of one case: the case labels of its input beans, its fixpoint, and
-     *  the decisions and readings of a session without a standing fault; or, without a fixpoint, uchar's sentence; and
-     *  why the build gives no explanation ({@link Verbaliser#unexplained}), null where it gives one. */
+     *  the decisions, the decisions per period and the readings of a session without a standing fault; or, without a
+     *  fixpoint, uchar's sentence. */
     private record Handed(Map<String, Object> labels, Fixpoint fixpoint, List<DefaultsDecision> decisions,
-                          List<ConditionReading> readings, String noFixpoint, String unexplained) {}
+                          List<PeriodDecisions> periodDecisions, List<ConditionReading> readings, String noFixpoint) {}
 
     /** The explanation of report {@code r}, whose case is {@code c} and whose session the replay handed over as
      *  {@code h} (null where its input or fire raised): verbalised in {@code vocabulary} on {@code explained}, what
@@ -221,7 +221,7 @@ public final class ScenarioRunner {
             types.put(label, named);
         }
         CaseSession.Outcome session = new CaseSession.Outcome(new LinkedHashMap<>(h.labels()), types,
-                r.trace().firings(), h.fixpoint(), h.decisions(), h.readings());
+                r.trace().firings(), h.fixpoint(), h.decisions(), h.periodDecisions(), h.readings());
         if (!playedOut) {
             // the write-back of the replay throws a fault that stands at the fixpoint: that is a case not played out
             if (h.fixpoint().faults().isEmpty())
@@ -229,9 +229,8 @@ public final class ScenarioRunner {
                         + " het fixpunt, en speelde de case toch niet uit");
             return new Explained(r, List.of(), noExplanation, session, null);
         }
-        if (h.unexplained() != null) return new Explained(r, List.of(), h.unexplained(), session, null);
         return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings(), h.fixpoint())
-                .sentences(session.beans(), types, h.decisions()), null, session, null);
+                .sentences(session.beans(), types, h.decisions(), h.periodDecisions()), null, session, null);
     }
 
     private static void remove(Path map) {
