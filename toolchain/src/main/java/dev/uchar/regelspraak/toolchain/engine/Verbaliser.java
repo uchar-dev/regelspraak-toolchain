@@ -215,6 +215,24 @@ public final class Verbaliser {
         return texts(sentences(instances, typePerLabel, decisions));
     }
 
+    /**
+     * Waarom de uitleg van een sessie van {@code build} niet te geven is, of null waar zij te geven is. De zin van een
+     * defaults-groep noemt de default die besliste, uit {@link DroolsBackend#decisionsOf}: één beslisser per object en
+     * effectieve stapel. Een stapel op een tijdsafhankelijk attribuut beslist per dag (uchars RUNTIME-SEMANTICS
+     * ch. 7.11), zodat op elke dag een andere default kan beslissen; uchar geeft daar geen beslisser per periode, en
+     * {@code decisionsOf} weigert een build met zo'n stapel. Welke default welke dag besliste, rekent de toolchain niet
+     * zelf uit, dus de zin noemt elke stapel die per dag beslist ({@code TmsTranspiler.defaultsGroups}).
+     */
+    public static String unexplained(DroolsBackend.Build build) {
+        List<String> perDay = new ArrayList<>();
+        for (var g : build.execModelTranspiler().defaultsGroups()) if (g.perDay()) perDay.add("'" + g.name() + "'");
+        if (perDay.isEmpty()) return null;
+        return (perDay.size() == 1 ? "de defaults-stapel " + perDay.get(0) + " beslist"
+                : "de defaults-stapels " + String.join(", ", perDay) + " beslissen")
+                + " per dag, op een tijdsafhankelijk attribuut (uchars RUNTIME-SEMANTICS ch. 7.11), en uchar noemt per"
+                + " object en stapel één beslisser (decisionsOf), geen beslisser per periode";
+    }
+
     /** {@link #verbalise(Map, Map, List)} als zinnen met hun stukken. */
     public List<Sentence> sentences(Map<String, Object> instances, Map<String, ObjectType> typePerLabel,
                                     List<DefaultsDecision> decisions) {

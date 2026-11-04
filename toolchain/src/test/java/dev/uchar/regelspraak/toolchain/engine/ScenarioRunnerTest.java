@@ -121,6 +121,40 @@ class ScenarioRunnerTest {
                 u.get(0).explanation()::toString);
     }
 
+    /** The opgave marker on a time-dependent attribute: its defaults group decides per day (uchar's RUNTIME-SEMANTICS
+     *  ch. 7.11), and uchar names one decider per object and stack ({@code DroolsBackend.decisionsOf}), none per period.
+     *  The scenario plays as uchar's replay plays it (the opgave 10 in January and February, the rule 20 from March to
+     *  May), its session is given, and the explanation error names the stack, where reading the decisions threw. */
+    @Test void a_defaults_group_that_decides_per_day_has_a_named_explanation_error() {
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(
+                OPGAVE_PER_DAY));
+        assertEquals(1, u.size());
+        assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic()
+                + " " + u.get(0).result().expectations());
+        assertEquals("de defaults-stapel 'defaults A:Jutter.strandloon' beslist per dag, op een tijdsafhankelijk"
+                + " attribuut (uchars RUNTIME-SEMANTICS ch. 7.11), en uchar noemt per object en stapel één beslisser"
+                + " (decisionsOf), geen beslisser per periode", u.get(0).explanationError());
+        assertTrue(u.get(0).explanation().isEmpty(), u.get(0).explanation()::toString);
+        assertNotNull(u.get(0).session(), u.get(0).sessionError());
+    }
+
+    /** A test document with the opgave marker on an attribute for every month (own text after uchar's golden
+     *  jutterswet-opgave-per-periode, case2). */
+    static final String OPGAVE_PER_DAY = """
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                het strandloon Numeriek (geheel getal) voor elke maand (mag opgegeven worden);
+            Regel strandloon in het voorjaar
+            geldig altijd
+            Het strandloon van een Jutter moet gesteld worden op 20 van dd. 01-03-2025 tot dd. 01-06-2025.
+            Scenario opgave in de winter
+            Gegeven is de volgende situatie:
+            een Jutter J1
+            - het opgegeven strandloon is 10 van 01-01-2025 tot 01-03-2025
+            Met als verwacht resultaat:
+            - het strandloon van J1 is 10 van 01-01-2025 tot 01-03-2025
+            - het strandloon van J1 is 20 van 01-03-2025 tot 01-06-2025
+            """;
+
     /** The explanation of a characteristic whose condition reads a derived value. The session of the explanation fills,
      *  fires and writes back through uchar's entry, so it fires what uchar's replay reported, row for row under the
      *  name of the form, and the verbaliser reads the derived retourafstand on the bean. */

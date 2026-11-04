@@ -313,24 +313,80 @@ class PlaygroundViaServiceTest {
         assertTrue(d.has("explanationError"), d.toString());
     }
 
-    /** A characteristic with periods has no request form: MARKER with the sentence of {@code SituationToRequest}, where
-     *  the ordinary route plays the timeline. */
+    /** uchar's golden jutterswet-dagentelling-rgs with its test document: a characteristic with periods (scenarios
+     *  1 and 2), none (3), and a timeline of an attribute that a rule writes on every day (4). The request carries the
+     *  periods as {@code periods} and the timeline as {@code timeline}, and via the service every scenario has the
+     *  verdict and the expectations of the ordinary route. */
     @Test
-    void a_timeline_in_the_situation_is_a_marker() throws IOException {
+    void a_timeline_and_periods_in_the_situation_are_carried() throws IOException {
         Path golden = TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-dagentelling-rgs");
         String rgs = Files.readString(golden.resolve("source.rgs"));
         DecisionCore core = DecisionCore.assemble(DAY_COUNT_DESCRIPTOR, Map.of("bron.rgs", rgs),
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
         String source = rgs + "\n" + Files.readString(golden.resolve("scenario.rgs"));
-        JsonNode g = Playground.analyze(source, null).path("scenario").path("results").get(0);
-        JsonNode d = Playground.analyze(source, null, core).path("scenario").path("results").get(0);
-        assertEquals("voorbeeld", d.path("name").asText());
-        assertEquals("PASS", g.path("status").asText());
-        assertEquals("MARKER", d.path("status").asText());
-        assertEquals("kenmerk 'borgplichtig' van J1 is tijdsafhankelijk; het verzoek van de dienst draagt geen perioden",
-                d.path("diagnosis").asText());
-        assertEquals("dagen", d.path("path").asText());
-        assertEquals(0, d.path("expectations").size());
+
+        var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
+        assertTrue(bundle.isOk(), () -> bundle.model().errors().toString());
+        assertEquals("{\"periods\":[{\"from\":\"2024-01-01\",\"to\":\"2024-01-02\"},{\"from\":\"2024-01-10\",\"to\":"
+                        + "\"2024-02-14\"}]}",
+                SituationToRequest.assemble(bundle.scenarios().get(0)).at("/instances/0/characteristics/borgplichtig")
+                        .toString());
+        assertEquals("{\"timeline\":[{\"from\":\"2024-03-01\",\"to\":\"2024-04-01\",\"value\":99}]}",
+                SituationToRequest.assemble(bundle.scenarios().get(3)).at("/instances/0/attributes/borgdagen")
+                        .toString());
+
+        JsonNode ordinary = Playground.analyze(source, null).path("scenario").path("results");
+        JsonNode service = Playground.analyze(source, null, core).path("scenario").path("results");
+        assertEquals(4, service.size(), service.toString());
+        for (int i = 0; i < 4; i++) {
+            JsonNode g = ordinary.get(i), d = service.get(i);
+            assertEquals("PASS", g.path("status").asText(), g.toString());
+            assertEquals("PASS", d.path("status").asText(), d.toString());
+            assertEquals("dagen", d.path("path").asText(), d.toString());
+            assertEquals(g.path("expectations"), d.path("expectations"), d.toString());
+        }
+    }
+
+    /** A defaults group that decides per day, the opgave marker on an attribute for every month: uchar names no decider
+     *  per period, so the entry point gives no explanation. Via the service the scenario is asked without one and has
+     *  the verdict and the expectations of the ordinary route, and {@code explanationError} says why, as on the
+     *  ordinary route. */
+    @Test
+    void a_defaults_group_per_day_is_computed_via_the_service_with_a_named_explanation_error() {
+        String model = """
+                Objecttype de Jutter (mv: Jutters) (bezield)
+                    het strandloon Numeriek (geheel getal) voor elke maand (mag opgegeven worden);
+                Regel strandloon in het voorjaar
+                geldig altijd
+                Het strandloon van een Jutter moet gesteld worden op 20 van dd. 01-03-2025 tot dd. 01-06-2025.
+                """;
+        String rgs = model + """
+                Scenario opgave in de winter
+                Gegeven is de volgende situatie:
+                een Jutter J1
+                - het opgegeven strandloon is 10 van 01-01-2025 tot 01-03-2025
+                Met als verwacht resultaat:
+                - het strandloon van J1 is 10 van 01-01-2025 tot 01-03-2025
+                - het strandloon van J1 is 20 van 01-03-2025 tot 01-06-2025
+                """;
+        DecisionCore core = DecisionCore.assemble("""
+                { "service": {"name":"opgave","version":"1"},
+                  "entrypoints": [ { "name":"strandloon","path":"strandloon",
+                    "scope": {"ruleNames": ["strandloon in het voorjaar", "opgave boven berekening strandloon"]},
+                    "input": ["Jutter"], "output": ["Jutter.strandloon"] } ],
+                  "parameters": {} }""", Map.of("opgave.rgs", model), CoreConfig.strict().withDetail(),
+                Thread.currentThread().getContextClassLoader());
+        JsonNode g = Playground.analyze(rgs, null).path("scenario").path("results").get(0);
+        JsonNode d = Playground.analyze(rgs, null, core).path("scenario").path("results").get(0);
+        assertEquals("PASS", g.path("status").asText(), g.toString());
+        assertEquals("PASS", d.path("status").asText(), d.toString());
+        assertEquals(g.path("expectations"), d.path("expectations"), d.toString());
+        assertEquals(0, d.path("explanation").size(), d.toString());
+        assertTrue(g.path("explanationError").asText().contains("'defaults A:Jutter.strandloon' beslist per dag"),
+                g.toString());
+        assertEquals("het entrypoint 'strandloon' geeft geen uitleg: " + g.path("explanationError").asText(),
+                d.path("explanationError").asText(), d.toString());
+        assertTrue(d.path("fixpoint").isObject(), d.toString());
     }
 
     /** The timeline of a time-dependent parameter in the situation goes as the timeline of the request, and the answer

@@ -592,7 +592,7 @@ public final class DecisionCore {
     }
 
     /** The descriptor parameter defaults, decoded per-parameter datatype to (globalName -> value), a time-dependent
-     *  parameter as its timeline ({@link ParameterTimeline}), as a request gives it. A number its declaration does not
+     *  parameter as its timeline ({@link TimelineInput}), as a request gives it. A number its declaration does not
      *  hold is a violation with uchar's sentence of EF-004 ({@code CaseRunner.inputFits}), so the descriptor does not
      *  load, as a request with that value gets the evaluation fault. */
     private static Map<String, Object> defaultGlobals(ServiceDescriptor descriptor, RegelSpraakModel model) {
@@ -603,15 +603,15 @@ public final class DecisionCore {
             RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, e.getKey());
             if (p == null) continue;   // already reported by descriptor validation
             String field = "parameters." + e.getKey();
-            Violation form = ParameterTimeline.formViolation(p, e.getValue(), field);
+            Violation form = TimelineInput.formViolation(p, e.getValue(), field);
             if (form != null) {
                 errors.add(form);
                 continue;
             }
             Object value;
             try {
-                value = ParameterTimeline.timeDependent(p)
-                        ? ParameterTimeline.decode(p, e.getValue(), field, (v, f, sink) -> defaultScalar(p, v, f, sink),
+                value = TimelineInput.timeDependent(p)
+                        ? TimelineInput.decode(p, e.getValue(), field, (v, f, sink) -> defaultScalar(p, v, f, sink),
                                 errors)
                         : defaultScalar(p, e.getValue(), field, errors);
             } catch (CaseRunner.InputPrecisionFault f) {
@@ -687,6 +687,30 @@ public final class DecisionCore {
         return process(path, requestTree, options, expectations);
     }
 
+    /**
+     * Why the entry point at {@code path} gives no explanation, the sentence of the 400 a request for one gets, or null
+     * where it gives one: the descriptor sets {@code explanation} to false, or its build has a defaults stack that
+     * decides per day, of which uchar names no decider per period ({@link Verbaliser#unexplained}).
+     *
+     * @throws UnknownPath    a path no entry point has
+     * @throws NonExecutable  an entry point uchar does not carry
+     */
+    public String withoutExplanation(String path) {
+        Entrypoint ep = perPath.get(path);
+        if (ep == null) throw new UnknownPath(path);
+        if (!ep.executable()) throw new NonExecutable(ep);
+        return withoutExplanation(ep);
+    }
+
+    private static String withoutExplanation(Entrypoint ep) {
+        if (ep.explanationBuild() == null)
+            return "het entrypoint '" + ep.descriptor().name() + "' geeft geen uitleg: de descriptor zet explanation op"
+                    + " false";
+        String unexplained = Verbaliser.unexplained(ep.explanationBuild());
+        return unexplained == null ? null
+                : "het entrypoint '" + ep.descriptor().name() + "' geeft geen uitleg: " + unexplained;
+    }
+
     private Assessment process(String path, JsonNode requestTree, RequestOptions options, JsonNode expectations) {
         Entrypoint ep = perPath.get(path);
         if (ep == null) throw new UnknownPath(path);
@@ -699,9 +723,9 @@ public final class DecisionCore {
             for (String flag : options.detailFlags())
                 choices.add(Violation.of(Violation.Kind.UNSUPPORTED, flag, "de dienst is zonder DETAIL gestart"
                         + " en geeft geen " + flag + "; start hem met DETAIL=true of --detail"));
-        if (options.explanation() && ep.explanationBuild() == null)
-            choices.add(Violation.of(Violation.Kind.UNSUPPORTED, "explanation", "het entrypoint '" + ep.descriptor().name()
-                    + "' geeft geen uitleg: de descriptor zet explanation op false"));
+        String withoutExplanation = options.explanation() ? withoutExplanation(ep) : null;
+        if (withoutExplanation != null)
+            choices.add(Violation.of(Violation.Kind.UNSUPPORTED, "explanation", withoutExplanation));
         if (!choices.isEmpty()) throw new ServiceError("verzoek valideert niet", choices);
         // an explanation is given from the build with readings, which answers the request as well: one fire
         DroolsBackend.Build fired = options.explanation() ? ep.explanationBuild() : ep.build();

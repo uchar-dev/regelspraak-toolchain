@@ -459,13 +459,15 @@ class EntryHttpTest {
                 body.toString());
     }
 
-    /** No request reaches an {@code InputFormFault}: the HTTP route answers a request with a timeline with 400
-     *  UNSUPPORTED, which this test asserts first. The translation of that fault into a 422 is therefore tested at
-     *  the level of the core: the service's executor ({@link Executor}) gets a world whose bean holds a full timeline
-     *  where the rule takes the asOfDate-bucket scalar, and {@link AnswerBuilder#evaluationFault} builds from the fault
-     *  the body both adapters send with the 422. This is the strongest witness of this kind that exists. */
+    /** The subject's own total of a timeline takes the asOfDate-bucket scalar (uchar's RUNTIME-SEMANTICS ch. 8.4), which
+     *  the request does not carry: a scalar on the timeline attribute is a 400 UNSUPPORTED, which this test asserts
+     *  first. A full timeline there is the other convention, an {@code InputFormFault} at the fixpoint, and the service
+     *  answers it with the 422 of the kind INPUT_FORM_FAULT and uchar's sentence. The translation is also tested at the
+     *  level of the core: the service's executor ({@link Executor}) gets a world whose bean holds that full timeline,
+     *  and {@link AnswerBuilder#evaluationFault} builds from the fault the body both adapters send with the 422. */
     @Test
-    void a_timeline_gives_over_http_400_and_the_core_translates_an_input_form_error_to_the_422() throws Exception {
+    void a_scalar_gives_over_http_400_and_a_full_timeline_where_the_rule_takes_the_bucket_scalar_the_422()
+            throws Exception {
         DecisionCore core = DecisionCore.assemble(BEWARING_DESCRIPTOR, Map.of("bewaring.rgs", RETENTION_SOURCE),
                 CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
         ServiceHttp bewaring = ServiceHttp.bind(core, "127.0.0.1", 0).start();
@@ -475,6 +477,16 @@ class EntryHttpTest {
                  "instances":[{"type":"Jutter","id":"J1","attributes":{"bewaarvergoeding per maand":10}}]}""");
             assertEquals(400, resp.statusCode(), resp.body());
             assertEquals("UNSUPPORTED", tree(resp.body()).at("/violations/0/kind").asText(), resp.body());
+            HttpResponse<String> full = post(bewaring, "/bewaargeld", """
+                {"asOfDate":"2026-03-15",
+                 "instances":[{"type":"Jutter","id":"J1","attributes":{"bewaarvergoeding per maand":
+                   {"timeline":[{"from":"2026-01-01","to":"2027-01-01","value":10}]}}}]}""");
+            assertEquals(422, full.statusCode(), full.body());
+            JsonNode answer = tree(full.body());
+            assertEquals(List.of("INPUT_FORM_FAULT"), kinds(answer), full.body());
+            String said = answer.at("/faults/0/error").asText();
+            assertTrue(said.startsWith("fout in de regel \"bewaargeld van een jutter\"") && said.contains("\"J1\"")
+                    && said.contains("supplies a full timeline"), said);
         } finally {
             bewaring.stop(0);
         }

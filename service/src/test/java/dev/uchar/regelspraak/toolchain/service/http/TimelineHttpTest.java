@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceError;
+import dev.uchar.regelspraak.toolchain.service.TokaSource;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 
 import org.junit.jupiter.api.AfterAll;
@@ -16,6 +17,8 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -28,10 +31,13 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * Timelines over all time through the service (uchar's RUNTIME-SEMANTICS ch. 3.1, 3.4, 3.6): a time-dependent parameter
  * comes in as its timeline, which uchar's Drools branch reads as a {@code List<Period>} global; a segment may leave out
  * {@code from} or {@code to}, an open bound, in the request and in the answer, as uchar's case format writes it; a
- * timeline attribute of {@code output} is answered as its segments. The faults of a timeline each have their kind and
- * their HTTP status: a total over an open segment that is not 0 (EF-036), periods of a characteristic with an open
- * bound (EF-023), and a segment of the unbounded form whose value does not terminate, a limit of uchar's branch
- * (DROOLS-312). Own material: a harbour levy per month times a number of boats.
+ * timeline attribute of {@code output} is answered as its segments. A time-dependent attribute comes in as its timeline
+ * and a time-dependent characteristic as its periods, which uchar's input step reads from the case the mapper writes:
+ * uchar's goldens jutterswet-opgave-per-periode (a defaults group that decides per day) and anchor/jutterswet-borgdeel
+ * (an ordinary writer beside the input) give their pinned timelines through the service. The faults of a timeline each
+ * have their kind and their HTTP status: a total over an open segment that is not 0 (EF-036), periods of a
+ * characteristic with an open bound (EF-023), and a segment of the unbounded form whose value does not terminate, a
+ * limit of uchar's branch (DROOLS-312). Own material: a harbour levy per month times a number of boats.
  */
 class TimelineHttpTest {
 
@@ -95,8 +101,33 @@ class TimelineHttpTest {
         {"timeline":[{"from":"2023-12-01","to":"2024-01-01","value":2.50},
                      {"from":"2024-01-01","to":"2024-03-01","value":3.00}]}""";
 
+    /** uchar's golden jutterswet-opgave-per-periode: the opgave marker on two attributes for every month, so a defaults
+     *  group on each that decides per day (uchar's RUNTIME-SEMANTICS ch. 7.11), and a characteristic for every month. */
+    private static final Path OPGAVE = TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-opgave-per-periode");
+
+    private static final String OPGAVE_DESCRIPTOR = """
+        { "service": {"name":"opgave","version":"1"},
+          "entrypoints": [ { "name":"opgave","path":"opgave",
+            "scope": {"ruleNames": ["strandloon in het voorjaar", "stormtoelage", "opgave boven berekening strandloon",
+                                    "opgave boven berekening stormtoelage"]},
+            "input": ["Jutter"], "output": ["Jutter.strandloon", "Jutter.stormtoelage"] } ],
+          "parameters": {} }""";
+
+    /** uchar's golden anchor/jutterswet-borgdeel, served from its document: an ordinary rule writes the borgdeel per
+     *  month in which the jutter is borgplichtig, beside an input on the same attribute. */
+    private static final Path BORGDEEL = TokaSource.REPO.resolve("uchar/corpus/golden/anchor/jutterswet-borgdeel");
+
+    private static final String BORGDEEL_DESCRIPTOR = """
+        { "service": {"name":"borgdeel","version":"1"},
+          "entrypoints": [ { "name":"borgdeel","path":"borgdeel",
+            "scope": {"ruleNames": ["borgdeel van een jutter", "jaardeel van een jutter"]},
+            "input": ["Jutter"], "output": ["Jutter.borgdeel"] } ],
+          "parameters": {} }""";
+
     private static ServiceHttp service;
     private static ServiceHttp detail;
+    private static ServiceHttp opgave;
+    private static ServiceHttp borgdeel;
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
     @BeforeAll
@@ -106,12 +137,19 @@ class TimelineHttpTest {
                 "127.0.0.1", 0).start();
         detail = ServiceHttp.bind(DecisionCore.assemble(DESCRIPTOR, Map.of("haven.rgs", SOURCE),
                 CoreConfig.strict().withDetail(), cl), "127.0.0.1", 0).start();
+        opgave = ServiceHttp.bind(DecisionCore.assemble(OPGAVE_DESCRIPTOR,
+                Map.of("source.rgs", Files.readString(OPGAVE.resolve("source.rgs"))), CoreConfig.strict(), cl),
+                "127.0.0.1", 0).start();
+        borgdeel = ServiceHttp.bind(DecisionCore.buildFromDocument(BORGDEEL_DESCRIPTOR,
+                Files.readString(BORGDEEL.resolve("ir.json")), CoreConfig.strict(), cl, null), "127.0.0.1", 0).start();
     }
 
     @AfterAll
     static void stop() {
         if (service != null) service.stop(0);
         if (detail != null) detail.stop(0);
+        if (opgave != null) opgave.stop(0);
+        if (borgdeel != null) borgdeel.stop(0);
     }
 
     // ---------------- the parameter as its timeline, open bounds in the request and the answer ----------------
@@ -217,6 +255,136 @@ class TimelineHttpTest {
         assertEquals(422, r.statusCode(), r.body());
         JsonNode body = tree(r.body());
         assertEquals("INPUT_PRECISION_FAULT", body.at("/faults/0/kind").asText(), r.body());
+    }
+
+    // ---------------- an attribute as its timeline, a characteristic as its periods ----------------
+
+    /** case4 of uchar's golden: an input on the target over 2025 and an opgave in January and February. The opgave
+     *  decides January and February, the rule March to May, and on the other days of 2025 the input stands, since the
+     *  group decides nothing there (uchar's pin: 10, 20, 99). */
+    @Test
+    void an_attribute_takes_its_timeline_and_the_opgave_decides_per_day() throws Exception {
+        HttpResponse<String> r = post(opgave, "opgave", "", """
+            {"instances":[{"type":"Jutter","id":"J4","attributes":{
+              "strandloon":{"timeline":[{"from":"2025-01-01","to":"2026-01-01","value":99}]},
+              "opgegeven strandloon":{"timeline":[{"from":"2025-01-01","to":"2025-03-01","value":10}]}}}]}""");
+        assertEquals(200, r.statusCode(), r.body());
+        assertEquals(List.of("2025-01-01..2025-03-01=10", "2025-03-01..2025-06-01=20", "2025-06-01..2026-01-01=99"),
+                canonical(attribute(tree(r.body()), "J4", "strandloon")), r.body());
+    }
+
+    /** case5 of uchar's golden: a characteristic in its periods, October to December 2025, beside an input and an
+     *  opgave on the stormtoelage. The opgave decides November, the rule the other months of stormwacht, the input
+     *  January and February, and the initialisation the other days (uchar's pin: 0, 7, 0, 30, 12, 30, 0). */
+    @Test
+    void a_characteristic_takes_its_periods() throws Exception {
+        HttpResponse<String> r = post(opgave, "opgave", "", """
+            {"instances":[{"type":"Jutter","id":"J5",
+              "attributes":{
+                "stormtoelage":{"timeline":[{"from":"2025-01-01","to":"2025-03-01","value":7}]},
+                "opgegeven stormtoelage":{"timeline":[{"from":"2025-11-01","to":"2025-12-01","value":12}]}},
+              "characteristics":{"stormwacht":{"periods":[{"from":"2025-10-01","to":"2026-01-01"}]}}}]}""");
+        assertEquals(200, r.statusCode(), r.body());
+        assertEquals(List.of("..2025-01-01=0", "2025-01-01..2025-03-01=7", "2025-03-01..2025-10-01=0",
+                        "2025-10-01..2025-11-01=30", "2025-11-01..2025-12-01=12", "2025-12-01..2026-01-01=30",
+                        "2026-01-01..=0"),
+                canonical(attribute(tree(r.body()), "J5", "stormtoelage")), r.body());
+    }
+
+    /** case6 of uchar's anchor/jutterswet-borgdeel: an ordinary rule decides the months in which the jutter is
+     *  borgplichtig, January and February 2024, and the input 99 stands in March (uchar's pin: 12, 12, 99). */
+    @Test
+    void an_ordinary_writer_beside_the_input_decides_its_days() throws Exception {
+        HttpResponse<String> r = post(borgdeel, "borgdeel", "", """
+            {"instances":[{"type":"Jutter","id":"J1",
+              "attributes":{
+                "borgtarief":{"timeline":[{"from":"2024-01-01","to":"2025-01-01","value":12}]},
+                "borgdeel":{"timeline":[{"from":"2024-03-01","to":"2024-04-01","value":99}]}},
+              "characteristics":{"borgplichtig":{"periods":[{"from":"2024-01-01","to":"2024-03-01"}]}}}]}""");
+        assertEquals(200, r.statusCode(), r.body());
+        assertEquals(List.of("2024-01-01..2024-03-01=12", "2024-03-01..2024-04-01=99"),
+                canonical(attribute(tree(r.body()), "J1", "borgdeel")), r.body());
+    }
+
+    @Test
+    void a_scalar_on_a_time_dependent_attribute_is_400_unsupported_naming_the_timeline() throws Exception {
+        JsonNode v = violation(post(opgave, "opgave", "", """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{"strandloon":10}}]}"""));
+        assertEquals("UNSUPPORTED", v.get("kind").asText(), v.toString());
+        assertEquals("instances[0].attributes.strandloon", v.get("field").asText(), v.toString());
+        assertTrue(v.get("error").asText().contains("tijdsafhankelijk")
+                && v.get("error").asText().contains("{\"timeline\""), v.toString());
+    }
+
+    @Test
+    void a_timeline_on_an_attribute_without_one_is_400_wrong_type() throws Exception {
+        JsonNode v = violation(post(service, "heffing", "", """
+            {"parameters":{"havenheffing":%s},
+             "instances":[{"type":"Jutter","id":"J1","attributes":{"aantal boten":{"timeline":[{"value":2}]}}}]}"""
+                .formatted(OPEN_LEVY)));
+        assertEquals("WRONG_TYPE", v.get("kind").asText(), v.toString());
+        assertEquals("instances[0].attributes.aantal boten", v.get("field").asText(), v.toString());
+    }
+
+    @Test
+    void a_segment_of_an_attribute_off_its_grid_or_open_where_another_follows_is_400() throws Exception {
+        JsonNode offGrid = violation(post(opgave, "opgave", "", """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{
+              "strandloon":{"timeline":[{"from":"2025-01-15","to":"2025-03-01","value":10}]}}}]}"""));
+        assertEquals("WRONG_TYPE", offGrid.get("kind").asText(), offGrid.toString());
+        assertEquals("instances[0].attributes.strandloon.timeline[0].from", offGrid.get("field").asText(),
+                offGrid.toString());
+        JsonNode open = violation(post(opgave, "opgave", "", """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{
+              "strandloon":{"timeline":[{"to":"2025-03-01","value":10},{"value":20}]}}}]}"""));
+        assertEquals("MALFORMED", open.get("kind").asText(), open.toString());
+        assertEquals("instances[0].attributes.strandloon.timeline[1]", open.get("field").asText(), open.toString());
+    }
+
+    /** A segment value its declaration does not hold is uchar's EF-004, which uchar's input step raises per segment:
+     *  a 422, as for a scalar attribute. */
+    @Test
+    void a_segment_of_an_attribute_with_too_many_decimals_is_422_input_precision_fault() throws Exception {
+        HttpResponse<String> r = post(opgave, "opgave", "", """
+            {"instances":[{"type":"Jutter","id":"J1","attributes":{
+              "strandloon":{"timeline":[{"from":"2025-01-01","to":"2025-03-01","value":10.5}]}}}]}""");
+        assertEquals(422, r.statusCode(), r.body());
+        assertEquals("INPUT_PRECISION_FAULT", tree(r.body()).at("/faults/0/kind").asText(), r.body());
+    }
+
+    @Test
+    void a_boolean_on_a_time_dependent_characteristic_is_400_wrong_type_naming_its_periods() throws Exception {
+        JsonNode v = violation(post(opgave, "opgave", "", """
+            {"instances":[{"type":"Jutter","id":"J1","characteristics":{"stormwacht":true}}]}"""));
+        assertEquals("WRONG_TYPE", v.get("kind").asText(), v.toString());
+        assertEquals("instances[0].characteristics.stormwacht", v.get("field").asText(), v.toString());
+        assertTrue(v.get("error").asText().contains("{\"periods\""), v.toString());
+    }
+
+    @Test
+    void overlapping_periods_of_a_characteristic_are_400_malformed() throws Exception {
+        JsonNode v = violation(post(opgave, "opgave", "", """
+            {"instances":[{"type":"Jutter","id":"J1","characteristics":{"stormwacht":{"periods":[
+              {"from":"2025-10-01","to":"2025-12-01"},{"from":"2025-11-01","to":"2026-01-01"}]}}}]}"""));
+        assertEquals("MALFORMED", v.get("kind").asText(), v.toString());
+        assertEquals("instances[0].characteristics.stormwacht.periods[1]", v.get("field").asText(), v.toString());
+    }
+
+    /** uchar names per object and effective defaults stack one decider ({@code DroolsBackend.decisionsOf}), and refuses
+     *  a build with a stack on a timeline target, which decides per day: the explanation of such an entry point is a
+     *  400 naming those stacks, never a 500, and the answer without it is given. */
+    @Test
+    void the_explanation_of_a_defaults_group_that_decides_per_day_is_400_naming_the_stacks() throws Exception {
+        String request = """
+            {"instances":[{"type":"Jutter","id":"J4","attributes":{
+              "strandloon":{"timeline":[{"from":"2025-01-01","to":"2026-01-01","value":99}]}}}]}""";
+        JsonNode v = violation(post(opgave, "opgave", "explanation=true", request));
+        assertEquals("UNSUPPORTED", v.get("kind").asText(), v.toString());
+        assertEquals("explanation", v.get("field").asText(), v.toString());
+        String sentence = v.get("error").asText();
+        assertTrue(sentence.contains("'defaults A:Jutter.strandloon'") && sentence.contains("'defaults A:Jutter.stormtoelage'")
+                && sentence.contains("per dag"), sentence);
+        assertEquals(200, post(opgave, "opgave", "", request).statusCode());
     }
 
     // ---------------- the faults of a timeline: each with its kind and status ----------------
@@ -338,6 +506,22 @@ class TimelineHttpTest {
             assertEquals(List.of("from", "to", "value").stream().filter(want.get(k)::has).toList(),
                     names(got.get(k)), context);
         }
+    }
+
+    /** The canonical form of the timeline {@code actual} of an answer (uchar's RUNTIME-SEMANTICS ch. 3.1, as uchar's
+     *  replay compares a timeline): its segments in order, two adjacent ones with equal values joined, each as
+     *  {@code from..to=value} with an open bound empty and the value without trailing zeros. */
+    private static List<String> canonical(JsonNode actual) {
+        assertTrue(actual != null && actual.isObject() && actual.has("timeline"), String.valueOf(actual));
+        List<String[]> joined = new java.util.ArrayList<>();
+        for (JsonNode s : actual.get("timeline")) {
+            String from = s.has("from") ? s.get("from").asText() : "", to = s.has("to") ? s.get("to").asText() : "";
+            String value = s.get("value").decimalValue().stripTrailingZeros().toPlainString();
+            String[] last = joined.isEmpty() ? null : joined.get(joined.size() - 1);
+            if (last != null && last[1].equals(from) && !from.isEmpty() && last[2].equals(value)) last[1] = to;
+            else joined.add(new String[]{from, to, value});
+        }
+        return joined.stream().map(s -> s[0] + ".." + s[1] + "=" + s[2]).toList();
     }
 
     private static List<String> names(JsonNode n) {

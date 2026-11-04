@@ -13,6 +13,7 @@ import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.RoleValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Segment;
+import dev.uchar.regelspraak.ir.ResolvedScenario.TimeWindow;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -32,9 +33,9 @@ import java.util.List;
  * boolean/tekst/enum as its plain JSON scalar. Those are exactly the forms
  * {@link dev.uchar.regelspraak.toolchain.service.ValueCoder} accepts (a plain number is read in the declared unit),
  * so no request value is ever approximated. The cells of a dimensioned attribute go as {@code cells}, each with its
- * labels and its value in that form, and the timeline of a time-dependent parameter as {@code timeline}, each segment
- * with its bounds and its value in that form. A timeline value of an attribute, a time-dependent kenmerk and a fraction
- * that has no exact decimal form have no request form, and fail here by name ({@link NonPortable}).
+ * labels and its value in that form, the timeline of a time-dependent parameter or attribute as {@code timeline}, each
+ * segment with its bounds and its value in that form, and a time-dependent kenmerk as the {@code periods} in which it
+ * holds. A fraction that has no exact decimal form has no request form, and fails here by name ({@link NonPortable}).
  *
  * <p>The response shape produced matches {@link dev.uchar.regelspraak.toolchain.service.Request}:
  * {@code instanties[]{type,id,attributen,kenmerken,rollen}}, {@code parameters}, {@code rekendatum}.
@@ -76,19 +77,19 @@ final class SituationToRequest {
 
             if (!i.attributes().isEmpty()) {
                 ObjectNode attributes = inst.putObject("attributes");
-                for (AttributeValue a : i.attributes()) {
-                    if (a.timeline() != null)
-                        throw new NonPortable("attribuut '" + a.attribute() + "' van " + i.label()
-                                + " heeft een tijdlijn; het verzoek van de dienst draagt geen tijdlijnwaarde");
-                    attributes.set(a.attribute(), a.cells() != null ? cellsToJson(a.cells()) : valueToJson(a.value()));
-                }
+                for (AttributeValue a : i.attributes())
+                    attributes.set(a.attribute(), a.timeline() != null ? timelineToJson(a.timeline())
+                            : a.cells() != null ? cellsToJson(a.cells()) : valueToJson(a.value()));
             }
             if (!i.characteristics().isEmpty()) {
                 ObjectNode characteristics = inst.putObject("characteristics");
                 for (CharacteristicValue k : i.characteristics()) {
-                    if (k.periods() != null)
-                        throw new NonPortable("kenmerk '" + k.characteristic() + "' van " + i.label()
-                                + " is tijdsafhankelijk; het verzoek van de dienst draagt geen perioden");
+                    if (k.periods() != null) {
+                        ArrayNode periods = characteristics.putObject(k.characteristic()).putArray("periods");
+                        for (TimeWindow p : k.periods())
+                            periods.addObject().put("from", p.van().toString()).put("to", p.until().toString());
+                        continue;
+                    }
                     characteristics.put(k.characteristic(), Boolean.TRUE);   // a situatie only ever ASSERTS a kenmerk
                 }
             }
@@ -107,7 +108,7 @@ final class SituationToRequest {
         return root;
     }
 
-    /** The timeline of a time-dependent parameter as the request gives it, {@code {"timeline": [{"from", "to",
+    /** The timeline of a time-dependent parameter or attribute as the request gives it, {@code {"timeline": [{"from", "to",
      *  "value"}, ...]}}: each segment with its bounds, a bound left out where it is open, and its value as
      *  {@link #valueToJson} writes it. */
     private static ObjectNode timelineToJson(List<Segment> timeline) {

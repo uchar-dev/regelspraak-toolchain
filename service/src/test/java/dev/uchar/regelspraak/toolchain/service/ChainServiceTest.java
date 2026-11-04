@@ -94,20 +94,27 @@ class ChainServiceTest {
     }
 
     @Test
-    void schema_of_the_subtype_rejects_the_inherited_timeline_members_instead_of_offering_them_as_scalar() {
+    void schema_of_the_subtype_offers_the_inherited_timeline_members_as_timeline_and_periods_never_as_scalar() {
         JsonNode schema = subtypeSchema();
         JsonNode props = schema.get("properties");
-        // een tijdlijn-lid is door de dienst-kern NIET te bedienen: het mag geen eigenschap zijn ...
-        assertFalse(props.has("meldtermijn"),
-                "het geërfde tijdlijn-attribuut mag geen scalar-eigenschap worden: " + props);
-        assertFalse(props.has("verjaard"),
-                "het geërfde tijdlijn-kenmerk mag geen boolean-eigenschap worden: " + props);
-        // ... en de beschrijving MOET het noemen, anders verdwijnt het lid stilzwijgend uit het contract
+        // een tijdlijn-attribuut is een eigenschap van zijn tijdlijn, geen scalar ...
+        JsonNode meldtermijn = props.path("meldtermijn");
+        assertEquals("object", meldtermijn.path("type").asText(),
+                "het geërfde tijdlijn-attribuut hoort een tijdlijn te zijn, geen scalar-eigenschap: " + props);
+        assertEquals("[\"timeline\"]", meldtermijn.path("required").toString(), meldtermijn.toString());
+        assertEquals("integer", meldtermijn.at("/properties/timeline/items/properties/value/type").asText(),
+                meldtermijn.toString());
+        // ... en een tijdlijn-kenmerk een eigenschap van zijn perioden, geen boolean
+        JsonNode verjaard = props.path("verjaard");
+        assertEquals("object", verjaard.path("type").asText(),
+                "het geërfde tijdlijn-kenmerk hoort perioden te zijn, geen boolean-eigenschap: " + props);
+        assertEquals("[\"periods\"]", verjaard.path("required").toString(), verjaard.toString());
+        assertEquals("[\"from\",\"to\"]", verjaard.at("/properties/periods/items/required").toString(),
+                verjaard.toString());
         String description = schema.path("description").asText();
-        assertTrue(description.contains("meldtermijn (tijdlijn)"),
-                "de beschrijving hoort het geërfde tijdlijn-attribuut af te wijzen: " + description);
-        assertTrue(description.contains("verjaard (tijdlijn-kenmerk)"),
-                "de beschrijving hoort het geërfde tijdlijn-kenmerk af te wijzen: " + description);
+        assertTrue(description.contains("verjaard") && !description.contains("Kenmerken (boolean-eigenschappen): "
+                        + "aangemeld, meldplichtig, bergingsplichtig, verjaard"),
+                "de beschrijving hoort het geërfde tijdlijn-kenmerk apart te noemen: " + description);
         assertTrue(description.contains("aangemeld") && description.contains("meldplichtig"),
                 "de beschrijving hoort de geërfde kenmerken op te sommen: " + description);
     }
@@ -217,27 +224,40 @@ class ChainServiceTest {
                 "en hoort ook te verklaren waarom W2 hem NIET kreeg: " + story);
     }
 
-    // ---------------- de geërfde tijdlijn-leden: luid geweigerd, nooit stil verkeerd geschreven ----------------
+    // ---------------- de geërfde tijdlijn-leden: als tijdlijn en perioden, nooit stil als scalar ----------------
 
     @Test
-    void an_inherited_timeline_attribute_is_refused_loudly_on_the_subtype() {
+    void a_scalar_on_an_inherited_timeline_attribute_is_refused_loudly_on_the_subtype() {
         ServiceError f = assertThrows(ServiceError.class, () -> CORE.process("bergloon", parse("""
             { "instances": [
                 { "type": "Wrakstuk", "id": "W1", "attributes": { "meldtermijn": 30 } } ] }""")));
         assertTrue(f.violations().stream().anyMatch(s ->
                         s.kind() == Violation.Kind.UNSUPPORTED && s.message().contains("meldtermijn")),
-                () -> "een geërfd tijdlijn-attribuut hoort UNSUPPORTED te zijn (niet stil als scalar"
+                () -> "een scalar op een geërfd tijdlijn-attribuut hoort UNSUPPORTED te zijn (niet stil als scalar"
                         + " geschreven en niet 'onbekend'): " + f.violations());
     }
 
     @Test
-    void an_inherited_timeline_characteristic_is_refused_loudly_on_the_subtype() {
+    void a_boolean_on_an_inherited_timeline_characteristic_is_a_wrong_type_on_the_subtype() {
         ServiceError f = assertThrows(ServiceError.class, () -> CORE.process("bergloon", parse("""
             { "instances": [
                 { "type": "Wrakstuk", "id": "W1", "characteristics": { "verjaard": true } } ] }""")));
         assertTrue(f.violations().stream().anyMatch(s ->
-                        s.kind() == Violation.Kind.UNSUPPORTED && s.message().contains("verjaard")),
-                () -> "een geërfd tijdlijn-kenmerk hoort UNSUPPORTED te zijn: " + f.violations());
+                        s.kind() == Violation.Kind.WRONG_TYPE && s.message().contains("verjaard")),
+                () -> "een boolean op een geërfd tijdlijn-kenmerk hoort WRONG_TYPE te zijn: " + f.violations());
+    }
+
+    @Test
+    void the_inherited_timeline_members_take_their_timeline_and_periods_on_the_subtype() {
+        ObjectNode answer = CORE.process("bergloon", parse("""
+            { "instances": [
+                { "type": "Wrakstuk", "id": "W1",
+                  "attributes": { "vondstwaarde": 240,
+                                  "meldtermijn": { "timeline": [ { "from": "2026-01-01", "value": 30 } ] } },
+                  "characteristics": { "aangemeld": true,
+                                       "verjaard": { "periods": [ { "from": "2026-03-01", "to": "2026-04-01" } ] } } }
+              ] }"""));
+        assertAmount("60.00", find(answer, "W1", "attributes", "bergloon"), answer);
     }
 
     @Test

@@ -192,6 +192,20 @@ model declares) and the sentences of the messages, which keep their text. The ol
   route the same holds per day on a timeline target (uchar's card `writers-per-day-beside-input`): a writer, also the
   only one, decides the days on which its timeline reads a value, and the input stands on the other days, where one
   writer replaced the whole timeline.
+- **Timelines of attributes, periods of characteristics** (card `timeline-attribute-input`, on uchar's cards
+  `writers-per-day-beside-input` and `defaults-per-period-on-timeline`): a request gives a time-dependent attribute as
+  its timeline, `{"timeline": [{"from": …, "to": …, "value": …}]}`, as a time-dependent parameter, and a time-dependent
+  characteristic as the periods in which it holds, `{"periods": [{"from": …, "to": …}]}`, where each was a 400
+  `UNSUPPORTED` ("tijdlijn-gewaardeerd attribuut … wordt niet ondersteund door de dienst-kern"); the OpenAPI document
+  describes both as properties of their object type, where it left them out. A boolean on a time-dependent
+  characteristic is a 400 `WRONG_TYPE`, where it was `UNSUPPORTED`; a scalar on a time-dependent attribute stays a 400
+  `UNSUPPORTED`, with a sentence that names the timeline form. A full timeline where a rule reads the value in the
+  period of the evaluation date (the subject's own total) now reaches the service: a 422 of the kind
+  `INPUT_FORM_FAULT`. On a defaults group on a time-dependent attribute, which decides per day (the opgave marker on
+  such an attribute among them), the answer gives what uchar decided per day; `?explanation=true` on such an entry
+  point is a 400 `UNSUPPORTED` on `explanation` naming the stacks, since uchar names no decider per period, and the
+  playground and `bin/regelspraak scenario --explanation` give such a scenario its verdict and the reason as
+  `explanationError` (`geen uitleg: …`), where each failed with uchar's `IllegalStateException` of `decisionsOf`.
 
 ## The pin
 
@@ -260,9 +274,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
   case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (330). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 287); every golden that does not play is listed by name with
-  its reason (43, each a timeline form the request cannot express); a deviation always fails, and the list fails when
-  it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 323); every golden that does not play is listed by name with
+  its reason (7, each with a scalar on a time-dependent attribute, which the request does not carry); a deviation always
+  fails, and the list fails when it goes stale in either direction. A golden whose explanation the service refuses
+  (a defaults group that decides per day) stands by name in `EXPLANATION_REFUSED` (1), stale in both directions. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
   and a listed scenario uchar accepts fails the run.
@@ -406,11 +421,16 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   set from the scenario document itself: a `Parameterset <name>:` block, chosen with `met parameterset <name>`
   (uchar's scenario layer, since uchar's card `scenariolaag-in-uchar`). The former runner's JSON file beside the scenario has no
   counterpart.
-- **Timelines in a service request.** The request carries the timeline of a time-dependent parameter, but no
-  timeline value of an attribute, no characteristic with periods, and no scalar on a time-dependent attribute
-  (uchar's replay places one in the bucket of the evaluation date); the service refuses them as `UNSUPPORTED`. The
-  answer gives no time-dependent characteristic. 43 of the goldens gate 12 plays need one of these; the replay gate
-  lists them.
+- **A scalar on a time-dependent attribute in a service request.** The request carries the timeline of a
+  time-dependent parameter and of a time-dependent attribute and the periods of a time-dependent characteristic, but
+  no scalar on a time-dependent attribute (uchar's replay places one in the period of the evaluation date, the
+  asOfDate-bucket convention); the service refuses it as `UNSUPPORTED`. The answer gives no time-dependent
+  characteristic. 7 of the goldens gate 12 plays need a scalar there; the replay gate lists them.
+- **The explanation of a defaults group per day.** A defaults group on a time-dependent attribute decides per day
+  (uchar's RUNTIME-SEMANTICS ch. 7.11), and uchar names one decider per object and stack (`DroolsBackend.decisionsOf`),
+  none per period; the service gives such an entry point no explanation (a 400 `UNSUPPORTED` on `explanation`), and the
+  scenario route gives the scenario no explanation, with the reason. The sentence of an ordinary writer of a timeline
+  target names the writers and not the days on which the input stands, for the same reason.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
 - **The explanation** explains characteristic-attribution rules, defaults groups and the values ordinary rules
   compute, not consistencies or creations, whose readings uchar has as well. A rule outside the scope of an entry point

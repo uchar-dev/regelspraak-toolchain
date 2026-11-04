@@ -14,12 +14,14 @@ Uitvoer: per golden één regel "<golden>\\t<STATUS>\\t<detail>" in de volgorde 
   FAIL     een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is (detail: wat).
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
-haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vijf velden erbij: het
+haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt zes velden erbij: het
 aantal uitlegzinnen, het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want "), het aantal
 voorkomens van "niet is vast te stellen", het aantal zinnen over een waarde die een gewone regel schreef (kaart
 explanation-computed-attributes: "<onderwerp> heeft als ..." met de berekening als stuk COMPUTATION), sinds de kaart
-explanation-defaults-computation ook die over een waarde die een defaults-groep besliste, en het aantal gelezen waarden
-met een schrijver die de zin van hun (object, canonical) vinden (kaart explanation-read-objects-and-displaced).
+explanation-defaults-computation ook die over een waarde die een defaults-groep besliste, het aantal gelezen waarden
+met een schrijver die de zin van hun (object, canonical) vinden (kaart explanation-read-objects-and-displaced), en het
+aantal cases waarvan de dienst de uitleg weigert met een 400 UNSUPPORTED op explanation (kaart
+timeline-attribute-input: een defaults-groep die per dag beslist), met de zin van de eerste weigering.
 Het script oordeelt niet over de hele set: de poortscripts (check-service-replay.sh, check-twins.sh) doen dat.
 """
 import argparse
@@ -49,6 +51,10 @@ class NotExpressible(Exception):
 
 class Deviation(Exception):
     """Een antwoord dat van de gepinde verwachting afwijkt, of geen antwoord is."""
+
+
+class ExplanationRefused(Exception):
+    """Een uitleg die de dienst weigert met een 400 waarvan elke schending UNSUPPORTED op explanation is."""
 
 
 def norm(name):
@@ -91,8 +97,8 @@ def value_of(node, place):
 
 
 def timeline_of(node, place):
-    """De tijdlijn van een tijdsafhankelijke parameter zoals de dienst haar neemt: de vorm van de case, een open grens
-    weggelaten, elke waarde als verzoekwaarde."""
+    """De tijdlijn van een tijdsafhankelijke parameter of een tijdsafhankelijk attribuut zoals de dienst haar neemt: de
+    vorm van de case, een open grens weggelaten, elke waarde als verzoekwaarde."""
     out = []
     for k, seg in enumerate(node["timeline"]):
         s = {b: seg[b] for b in ("from", "to") if b in seg}
@@ -124,13 +130,16 @@ def request_body(case):
     for i in inp["instances"]:
         inst = {"type": i["objectType"], "id": i["label"]}
         attr = {a: cells_of(w, i["label"] + "." + a) if w is not None and "cells" in w
+                else timeline_of(w, i["label"] + "." + a) if w is not None and "timeline" in w
                 else value_of(w, i["label"] + "." + a) for a, w in (i.get("attributes") or {}).items()}
         if attr:
             inst["attributes"] = attr
-        if i.get("characteristics"):
-            inst["characteristics"] = {k: True for k in i["characteristics"]}
-        if i.get("characteristicTimelines"):
-            raise NotExpressible(f"kenmerk met perioden ({i['label']})")
+        characteristics = {k: True for k in i.get("characteristics") or []}
+        # een tijdsafhankelijk kenmerk neemt de perioden waarin het geldt, zoals de case ze geeft
+        for k, periods in (i.get("characteristicTimelines") or {}).items():
+            characteristics[k] = {"periods": [{"from": p["from"], "to": p["to"]} for p in periods]}
+        if characteristics:
+            inst["characteristics"] = characteristics
         if i.get("roles"):
             inst["roles"] = {r: list(ls) for r, ls in i["roles"].items()}
         instances.append(inst)
@@ -411,6 +420,10 @@ def explained(service, path, request, answer, name, document, scope):
     stukken achter elkaar de zin zijn, met de grondslag als laatste stuk, en elke gelezen waarde met een schrijver vindt
     haar zin (`read_links`; `document` het IR-document, `scope` de namen van de vormen die het entrypoint draagt)."""
     status, text_ = service.ask("POST", path + "?explanation=true&explanationParts=true", request)
+    if status == 400:
+        violations = json.loads(text_).get("violations", [])
+        if violations and all(v.get("kind") == "UNSUPPORTED" and v.get("field") == "explanation" for v in violations):
+            raise ExplanationRefused(violations[0]["error"])
     if status != 200:
         raise Deviation(f"{name}: met uitleg {status} {text_[:500]}")
     given = read_json(text_)
@@ -588,6 +601,7 @@ def play(golden, map_, descriptor_path=None, explanation=False):
             entrypoint = json.load(open(descriptor_path))["entrypoints"][0]
             scope = set(entrypoint.get("scope", {}).get("ruleNames", forms(document)))
             totals = [0, 0, 0, 0, 0]
+            refused = []
             with Service(descriptor_path, source, workdir) as service:
                 for name, v, c in requests:
                     status, text_ = service.ask("POST", path, v)
@@ -604,10 +618,16 @@ def play(golden, map_, descriptor_path=None, explanation=False):
                     except Deviation as a:
                         raise Deviation(f"{name}: {a}")
                     if explanation:
-                        for k, n in enumerate(explained(service, path, v, read_json(text_), name, document, scope)):
+                        try:
+                            counts = explained(service, path, v, read_json(text_), name, document, scope)
+                        except ExplanationRefused as r:
+                            refused.append(str(r))
+                            counts = (0, 0, 0, 0, 0)
+                        for k, n in enumerate(counts):
                             totals[k] += n
         if explanation:
-            return golden, "PLAYED", "\t".join(str(n) for n in [len(cases)] + totals)
+            return golden, "PLAYED", "\t".join(str(n) for n in [len(cases)] + totals + [len(refused)]
+                                              + ([refused[0]] if refused else []))
         return golden, "PLAYED", str(len(cases))
     except NotExpressible as n:
         return golden, "EXCLUDE", str(n)

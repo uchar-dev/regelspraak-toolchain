@@ -166,56 +166,26 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # beslist per dag, de opgave-markering op een tijdsafhankelijk attribuut) en jutterswet-gevolg-buiten-de-beurt (een
 # gevolg buiten de beurt faalt niet); geen van beide speelt door de dienst (een tijdlijn als invoerwaarde, een kenmerk
 # met perioden), dus beide staan hieronder.
-EXPECTED_REPLAY_PLAYED=287
+# 2026-11-04, kaart timeline-attribute-input: 323 — het verzoek draagt een tijdsafhankelijk attribuut als tijdlijn en
+# een tijdsafhankelijk kenmerk als zijn perioden, in de vorm van uchars case. 36 goldens spelen sindsdien door de dienst:
+# de 27 met de reden "tijdlijn als invoerwaarde" en de 9 met "kenmerk met perioden" die geen scalaire waarde op een
+# tijdsafhankelijk attribuut hebben. jutterswet-opgave-per-periode speelt zonder uitleg (EXPLANATION_REFUSED). De zeven
+# die blijven, hebben in een case een scalaire waarde op een tijdsafhankelijk attribuut; bij vijf daarvan stond eerst de
+# tijdlijn of het kenmerk als reden, de eerste vorm die het verzoek niet droeg.
+EXPECTED_REPLAY_PLAYED=323
 
-# De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt de tijdlijn
-# van een tijdsafhankelijke parameter, maar geen attribuutwaarde als tijdlijn, geen kenmerk met perioden en geen
-# scalaire waarde op een tijdsafhankelijk attribuut (uchars peildatumconventie legt die in de emmer van de peildatum;
-# de dienst weigert elk tijdsafhankelijk attribuut als invoer, UNSUPPORTED).
+# De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt een
+# tijdsafhankelijke parameter en een tijdsafhankelijk attribuut als tijdlijn en een tijdsafhankelijk kenmerk als zijn
+# perioden, maar geen scalaire waarde op een tijdsafhankelijk attribuut: uchars replay legt die in de periode van de
+# rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de dienst weigert haar met een 400 UNSUPPORTED.
 REPLAY_EXCLUDED=(
-  "anchor/jutterswet-borgdeel|tijdlijn als invoerwaarde"
-  "anchor/jutterswet-dagentelling|kenmerk met perioden"
-  "anchor/jutterswet-dubbelwacht|tijdlijn als invoerwaarde"
-  "anchor/jutterswet-nummerregister|tijdlijn als invoerwaarde"
-  "anchor/jutterswet-strandregister|tijdlijn als invoerwaarde"
-  "jutterswet-aantalfilter-gehele-jaar|kenmerk met perioden"
-  "jutterswet-aantalfilter-gehele-jaar-creatieguard|kenmerk met perioden"
-  "jutterswet-bakenmeester|tijdlijn als invoerwaarde"
-  "jutterswet-dagentelling-rgs|kenmerk met perioden"
-  "jutterswet-erfwacht|tijdlijn als invoerwaarde"
-  "jutterswet-gehele-jaar-gemaakte-koppeling|kenmerk met perioden"
-  "jutterswet-gehele-jaar-lege-grens|tijdlijn als invoerwaarde"
-  "jutterswet-gehele-periode-leeg|tijdlijn als invoerwaarde"
-  "jutterswet-gehele-periode-leeg-rgs|tijdlijn als invoerwaarde"
-  "jutterswet-gevolg-buiten-de-beurt|kenmerk met perioden"
-  "jutterswet-getijdenwacht|tijdlijn als invoerwaarde"
-  "jutterswet-kadetarief|tijdlijn als invoerwaarde"
-  "jutterswet-keurlast|tijdlijn als invoerwaarde"
-  "jutterswet-keurploeg|tijdlijn als invoerwaarde"
-  "jutterswet-klipwacht|tijdlijn als invoerwaarde"
-  "jutterswet-loon-per-periode|tijdlijn als invoerwaarde"
-  "jutterswet-maandloon|tijdlijn als invoerwaarde"
-  "jutterswet-muntbewaring|tijdlijn als invoerwaarde"
-  "jutterswet-opgave-per-periode|tijdlijn als invoerwaarde"
-  "jutterswet-pachtvenster|tijdlijn als invoerwaarde"
-  "jutterswet-peilwacht|tijdlijn als invoerwaarde"
+  "jutterswet-gevolg-buiten-de-beurt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-kadetarief|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-keurlast|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-muntbewaring|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-penningjaar|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-ploegpremie|tijdlijn als invoerwaarde"
-  "jutterswet-reddingsvloot|tijdlijn als invoerwaarde"
-  "jutterswet-rekenen-per-dag|tijdlijn als invoerwaarde"
-  "jutterswet-seinjaar|kenmerk met perioden"
-  "jutterswet-sleepvloot|tijdlijn als invoerwaarde"
-  "jutterswet-tegenwacht|tijdlijn als invoerwaarde"
   "jutterswet-tempototaal|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-tempovouw|tijdlijn als invoerwaarde"
-  "jutterswet-vast-startpunt|tijdlijn als invoerwaarde"
-  "jutterswet-verzuimrente-dagen-afgerond|kenmerk met perioden"
-  "jutterswet-wachtdagen-twee-schrijvers|kenmerk met perioden"
-  "jutterswet-wachtmaanden|tijdlijn als invoerwaarde"
-  "synth-gehelejaarkenmerk|kenmerk met perioden"
-  "synth2-clip-cond-over-prorata|tijdlijn als invoerwaarde"
-  "synth2-clip-over-prorata|tijdlijn als invoerwaarde"
-  "synth2-prorata-breed|tijdlijn als invoerwaarde"
+  "jutterswet-vast-startpunt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
 )
 
 # Kaart explanation-from-readings: de leg van de uitleg. Elk verzoek gaat ook met ?explanation=true; het antwoord
@@ -225,6 +195,12 @@ REPLAY_EXCLUDED=(
 # zin zijn, teken voor teken, met de grondslag als laatste stuk (service_replay.py faalt de golden anders). Een golden waarvoor dat toch
 # terugkomt, staat hieronder met de reden ("<golden>|<reden>"); de lijst faalt in beide richtingen op veroudering.
 EXPLANATION_UNDETERMINED=(
+)
+# Kaart timeline-attribute-input: de goldens waarvan de dienst de uitleg weigert (een 400 UNSUPPORTED op explanation),
+# "<golden>|<reden>"; het antwoord zonder uitleg speelt en telt mee. Een golden die een uitleg geweigerd krijgt en hier
+# niet staat, faalt de poort, en de lijst faalt in beide richtingen op veroudering.
+EXPLANATION_REFUSED=(
+  "jutterswet-opgave-per-periode|een defaults-groep op een tijdlijndoel beslist per dag, en uchar noemt per object en stapel één beslisser (decisionsOf), geen beslisser per periode"
 )
 # Het aantal uitgelegde voorwaarden (de voorkomens van "omdat " en "want " in de uitleg) over de gespeelde goldens: een
 # ondergrens, gemeten 2026-10-21 bij de kaart explanation-from-readings (1092 zinnen, 1241 voorwaarden over 231 goldens
@@ -244,6 +220,13 @@ EXPECTED_MIN_EXPLAINED_COMPUTATIONS=1852
 # zin ontbreekt. Een ondergrens, gemeten 2026-10-27 bij die kaart (4248 over 249 goldens en 673 cases); een leg die
 # stilletjes minder waarden aan hun zin koppelt, faalt.
 EXPECTED_MIN_READ_LINKS=4248
+
+is_refused_listed() {
+  local e; for e in "${EXPLANATION_REFUSED[@]+"${EXPLANATION_REFUSED[@]}"}"; do
+    [ "${e%%|*}" = "$1" ] && return 0
+  done
+  return 1
+}
 
 is_undetermined_listed() {
   local e; for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
@@ -293,14 +276,20 @@ output=$(python3 scripts/service_replay.py --corpus uchar/corpus/golden --explan
 duration=$(( $(date +%s) - begin ))
 
 played=0; excl=0; cases=0; sentences=0; conditions=0; computations=0; links=0
-deviations=(); unnamed=(); outdated=(); undetermined=(); explained_goldens=()
-while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined g_computations g_links; do
+deviations=(); unnamed=(); outdated=(); undetermined=(); refused=(); explained_goldens=()
+while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined g_computations g_links g_refused \
+    g_refusal; do
   [ -n "$g" ] || continue
   case "$status" in
     PLAYED)
       is_excluded "$g" && outdated+=("$g speelt door de dienst maar staat in REPLAY_EXCLUDED")
-      [ -n "$g_undetermined" ] && [ -n "$g_computations" ] && [ -n "$g_links" ] \
+      [ -n "$g_undetermined" ] && [ -n "$g_computations" ] && [ -n "$g_links" ] && [ -n "$g_refused" ] \
         || fail "$g: de replay-driver gaf geen telling van de uitleg"
+      if [ "$g_refused" -gt 0 ]; then
+        is_refused_listed "$g" || refused+=("$g: de dienst weigert de uitleg van $g_refused case(s): $g_refusal")
+      elif is_refused_listed "$g"; then
+        outdated+=("$g staat in EXPLANATION_REFUSED maar de dienst geeft zijn uitleg")
+      fi
       sentences=$((sentences + g_sentences)); conditions=$((conditions + g_conditions))
       computations=$((computations + g_computations)); links=$((links + g_links))
       explained_goldens+=("$g")
@@ -327,6 +316,11 @@ for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
   printf '%s\n' "${explained_goldens[@]}" | grep -qxF "$g" \
     || outdated+=("$g staat in EXPLANATION_UNDETERMINED maar speelt niet door de dienst")
 done
+for e in "${EXPLANATION_REFUSED[@]+"${EXPLANATION_REFUSED[@]}"}"; do
+  g="${e%%|*}"
+  printf '%s\n' "${explained_goldens[@]}" | grep -qxF "$g" \
+    || outdated+=("$g staat in EXPLANATION_REFUSED maar speelt niet door de dienst")
+done
 
 if [ ${#deviations[@]} -gt 0 ]; then
   echo "check-service-replay: FAIL — ${#deviations[@]} golden(s) wijken af of spelen niet:" >&2
@@ -339,6 +333,10 @@ fi
 if [ ${#outdated[@]} -gt 0 ]; then
   echo "check-service-replay: FAIL — REPLAY_EXCLUDED is verouderd:" >&2
   printf '    %s\n' "${outdated[@]}" >&2; exit 1
+fi
+if [ ${#refused[@]} -gt 0 ]; then
+  echo "check-service-replay: FAIL — ${#refused[@]} golden(s) krijgen geen uitleg en staan niet in EXPLANATION_REFUSED:" >&2
+  printf '    %s\n' "${refused[@]}" >&2; exit 1
 fi
 if [ ${#undetermined[@]} -gt 0 ]; then
   echo "check-service-replay: FAIL — ${#undetermined[@]} golden(s) leggen een voorwaarde uit als niet vast te stellen:" >&2
@@ -359,5 +357,5 @@ echo "check-service-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
 echo "  uitgesloten: $excl, bij naam met reden"
-echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), $computations berekende waarden (vloer $EXPECTED_MIN_EXPLAINED_COMPUTATIONS), $links gelezen waarden aan hun zin gekoppeld (vloer $EXPECTED_MIN_READ_LINKS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
+echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), $computations berekende waarden (vloer $EXPECTED_MIN_EXPLAINED_COMPUTATIONS), $links gelezen waarden aan hun zin gekoppeld (vloer $EXPECTED_MIN_READ_LINKS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst, geweigerde uitleg bij ${#EXPLANATION_REFUSED[@]} golden(s) op de lijst"
 echo "  duur: ${duration}s met ${REPLAY_WORKERS:-4} diensten tegelijk"

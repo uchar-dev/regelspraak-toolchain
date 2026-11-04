@@ -46,7 +46,8 @@ import java.util.stream.Stream;
  * conditions are read off the very session the report judged ({@link CaseSession}), and the {@link Verbaliser} explains
  * it once the report wrote its beans back. A case uchar's replay did not play out has no explanation; its session is
  * given when evaluation faults stand at its fixpoint, the faults the write-back of the replay throws, so that they are
- * there as data.
+ * there as data. A build with a defaults stack that decides per day has no explanation either ({@link
+ * Verbaliser#unexplained}): its report and its session are given, and the reason stands as the explanation error.
  */
 public final class ScenarioRunner {
     private ScenarioRunner() {}
@@ -129,16 +130,18 @@ public final class ScenarioRunner {
             Map<String, Handed> handed = new LinkedHashMap<>();
             CaseRunner.Handoff handoff = (caseFile, build, session, labels, firing) -> {
                 if (firing.noFixpoint() != null) {
-                    handed.put(caseFile, new Handed(labels, null, List.of(), List.of(), firing.noFixpoint()));
+                    handed.put(caseFile, new Handed(labels, null, List.of(), List.of(), firing.noFixpoint(), null));
                     return;
                 }
                 Map<Object, String> labelOf = new IdentityHashMap<>();
                 labels.forEach((label, bean) -> labelOf.put(bean, label));
                 Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, labelOf::get);
                 boolean answered = fixpoint.faults().isEmpty();
+                // uchar's decisionsOf refuses a build with a stack that decides per day, of which it names no decider
+                String unexplained = Verbaliser.unexplained(build);
                 handed.put(caseFile, new Handed(labels, fixpoint,
-                        answered ? DroolsBackend.decisionsOf(build, session) : List.of(),
-                        answered ? DroolsBackend.readingsOf(build, session) : List.of(), null));
+                        answered && unexplained == null ? DroolsBackend.decisionsOf(build, session) : List.of(),
+                        answered ? DroolsBackend.readingsOf(build, session) : List.of(), null, unexplained));
             };
             List<ScenarioResult> report;
             try {
@@ -185,9 +188,10 @@ public final class ScenarioRunner {
     }
 
     /** What the replay handed over of the session of one case: the case labels of its input beans, its fixpoint, and
-     *  the decisions and readings of a session without a standing fault; or, without a fixpoint, uchar's sentence. */
+     *  the decisions and readings of a session without a standing fault; or, without a fixpoint, uchar's sentence; and
+     *  why the build gives no explanation ({@link Verbaliser#unexplained}), null where it gives one. */
     private record Handed(Map<String, Object> labels, Fixpoint fixpoint, List<DefaultsDecision> decisions,
-                          List<ConditionReading> readings, String noFixpoint) {}
+                          List<ConditionReading> readings, String noFixpoint, String unexplained) {}
 
     /** The explanation of report {@code r}, whose case is {@code c} and whose session the replay handed over as
      *  {@code h} (null where its input or fire raised): verbalised in {@code vocabulary} on {@code explained}, what
@@ -225,6 +229,7 @@ public final class ScenarioRunner {
                         + " het fixpunt, en speelde de case toch niet uit");
             return new Explained(r, List.of(), noExplanation, session, null);
         }
+        if (h.unexplained() != null) return new Explained(r, List.of(), h.unexplained(), session, null);
         return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings(), h.fixpoint())
                 .sentences(session.beans(), types, h.decisions()), null, session, null);
     }

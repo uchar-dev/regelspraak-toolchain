@@ -431,6 +431,9 @@ public final class Playground {
      *       gives such a case, the name of the case file and uchar's sentence, and the trace and coverage of the 422;</li>
      *   <li>any other 400 of the service: FAIL naming its violations.</li>
      * </ul>
+     * An entry point that gives no explanation ({@link DecisionCore#withoutExplanation}: a defaults group that decides
+     * per day) is asked without one; the scenario has its verdict, and {@code explanationError} says why there is no
+     * explanation.
      */
     private static void renderViaService(ObjectNode n, int i, ResolvedScenario s, DecisionCore service,
                                       List<String> sourceLines, RegelSpraakModel model, Naming naming,
@@ -448,8 +451,11 @@ public final class Playground {
         String explanationError = null;
         try {
             path = service.pathForScope(s.scope());
-            RequestOptions options = new RequestOptions(true, vocabulary == null ? Naming.CANONICAL : vocabulary,
-                    Naming.CANONICAL, true, true, true, true);
+            // an entry point that gives no explanation still computes the scenario: it is asked without one
+            explanationError = service.withoutExplanation(path);
+            boolean explained = explanationError == null;
+            RequestOptions options = new RequestOptions(explained, vocabulary == null ? Naming.CANONICAL : vocabulary,
+                    Naming.CANONICAL, true, true, true, explained);
             DecisionCore.Assessment b = service.assess(path, SituationToRequest.assemble(s), options, expected);
             status = b.comparison().pass() ? ScenarioResult.Status.PASS : ScenarioResult.Status.FAIL;
             if (!b.comparison().pass()) diagnostic = caseName + ": " + b.comparison().diagnostic();

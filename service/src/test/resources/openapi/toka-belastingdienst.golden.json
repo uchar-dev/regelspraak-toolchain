@@ -4236,12 +4236,12 @@
                 "attributes": {
                   "type": "object",
                   "additionalProperties": true,
-                  "description": "attribuutnaam -> waarde (per het objecttype-schema)."
+                  "description": "attribuutnaam -> waarde (per het objecttype-schema); een tijdsafhankelijk attribuut neemt zijn tijdlijn: {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]}, met from of to weggelaten voor een open grens."
                 },
                 "characteristics": {
                   "type": "object",
                   "additionalProperties": true,
-                  "description": "kenmerknaam -> boolean."
+                  "description": "kenmerknaam -> boolean; een tijdsafhankelijk kenmerk neemt de perioden waarin het geldt: {\"periods\": [{\"from\": <datum>, \"to\": <datum>}, ...]}."
                 },
                 "roles": {
                   "type": "object",
@@ -4421,7 +4421,7 @@
                     "CHARACTERISTIC_PERIODS_FAULT",
                     "OTHER"
                   ],
-                  "description": "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400); WRITE_BOUNDARY_FAULT: een waarde die niet in de gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd; OPEN_SEGMENT_FAULT: een totaal over een segment met een open grens dat niet 0 is; CHARACTERISTIC_PERIODS_FAULT: de perioden waarin een tijdsafhankelijk kenmerk geldt, met een open grens; OTHER: een fout van een ander type die aan het fixpunt staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft."
+                  "description": "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die verschillen; INPUT_FORM_FAULT: een tijdlijn van het verzoek waar een regel de waarde in de periode van de rekendatum leest, zoals het eigen totaal van het onderwerp; WRITE_BOUNDARY_FAULT: een waarde die niet in de gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd; OPEN_SEGMENT_FAULT: een totaal over een segment met een open grens dat niet 0 is; CHARACTERISTIC_PERIODS_FAULT: de perioden waarin een tijdsafhankelijk kenmerk geldt, met een open grens; OTHER: een fout van een ander type die aan het fixpunt staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft."
                 },
                 "error": {
                   "type": "string",

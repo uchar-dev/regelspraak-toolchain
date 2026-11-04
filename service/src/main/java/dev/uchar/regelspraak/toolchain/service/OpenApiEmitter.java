@@ -46,8 +46,9 @@ import java.util.List;
  * DatumInDagen → {string, date}, DatumTijd → {string, date-time}, Enumeratie → {string, enum:[all waarden]}.
  * An eenheid-bearing attribuut documents its unit as {@code x-eenheid} PLUS a mention in the property
  * description. Kenmerken are boolean properties on the same schema (the description says which are kenmerken).
- * Tijdlijn-valued members are REJECTED by the service ({@link RequestMapper} UNSUPPORTED), so no property is emitted
- * for them — the schema description says so. A dimensioned attribuut is a property of its cells.
+ * A time-dependent attribuut is a property of its timeline ({@link #timelineSchema}), a time-dependent kenmerk one of the
+ * periods in which it holds ({@link #periodsSchema}), as {@link RequestMapper} takes them. A dimensioned attribuut is
+ * a property of its cells.
  *
  * <p><b>Per vocabulary.</b> {@link #emit(ServiceDescriptor, RegelSpraakModel, String)} writes the document of one
  * vocabulary the model declares, or of the canonical names: the object types, properties, enumeration values and
@@ -339,10 +340,10 @@ public final class OpenApiEmitter {
 
     // ------------------------------------------------------------------ objecttype schema
 
-    /** The component schema for one objecttype: an object with a property per attribuut that is no tijdlijn (tijdlijn
-     *  attributen and tijdlijn-kenmerken are rejected by the service, so none is emitted), a dimensioned one as its
-     *  cells ({@link #cellsSchema}), and a boolean property per (non-temporal) kenmerk. The description records the
-     *  eenheid-bearing attributen, the kenmerken, and any rejected (tijdlijn) member.
+    /** The component schema for one objecttype: an object with a property per attribuut, a time-dependent one as its
+     *  timeline ({@link #timelineSchema}) and a dimensioned one as its cells ({@link #cellsSchema}), and a property per
+     *  kenmerk, a boolean or, for a time-dependent one, its periods ({@link #periodsSchema}). The description records
+     *  the kenmerken of both kinds.
      *
      *  <p><b>IR-SPEC ch. 2.2: the member set is CHAIN-CLOSED</b> ({@link Objecttype#attributeMembers} /
      *  {@link DescriptorLoader#characteristicMembers}), nearest declaration first. A request instance of a subtype
@@ -359,14 +360,15 @@ public final class OpenApiEmitter {
         schema.put("type", "object");
 
         List<String> characteristics = new ArrayList<>();
-        List<String> rejected = new ArrayList<>();
+        List<String> withPeriods = new ArrayList<>();
         ObjectNode props = NF.objectNode();
 
         // attributen (own first, then inherited — declared order within each)
         for (var e : ot.attributeMembers().entrySet()) {
             String name = sp.in.attribute(ot, e.getKey());
-            if (temporalAttribute(ot, e.getKey()))      { rejected.add(name + " (tijdlijn)"); continue; }
-            ObjectNode attribute = ot.dimensionsOf(e.getKey()).isEmpty() ? attributeSchema(e.getValue(), sp)
+            ObjectNode attribute = temporalAttribute(ot, e.getKey())
+                    ? timelineSchema(e.getValue(), ot.granularityOf(e.getKey()), sp)
+                    : ot.dimensionsOf(e.getKey()).isEmpty() ? attributeSchema(e.getValue(), sp)
                     : cellsSchema(e.getValue(), ot.dimensionsOf(e.getKey()), model, sp);
             if (sp.enabled()) spellings(attribute, sp.of(Naming.attributeOf(ot, e.getKey())));
             props.set(name, attribute);
@@ -374,16 +376,21 @@ public final class OpenApiEmitter {
         // kenmerken (own first, then inherited) — boolean properties
         for (String k : DescriptorLoader.characteristicMembers(ot)) {
             String name = sp.in.characteristic(ot, k);
-            if (temporalCharacteristic(ot, k)) { rejected.add(name + " (tijdlijn-kenmerk)"); continue; }
-            ObjectNode kn = NF.objectNode();
-            kn.put("type", "boolean");
-            kn.put("description", "characteristic");
+            ObjectNode kn;
+            if (temporalCharacteristic(ot, k)) {
+                kn = periodsSchema(ot.characteristicGranularityOf(k));
+                withPeriods.add(name);
+            } else {
+                kn = NF.objectNode();
+                kn.put("type", "boolean");
+                kn.put("description", "characteristic");
+                characteristics.add(name);
+            }
             if (sp.enabled()) spellings(kn, sp.of(Naming.characteristicOf(ot, k)));
             props.set(name, kn);
-            characteristics.add(name);
         }
         schema.set("properties", props);
-        schema.put("description", objectTypeDescription(ot, sp.in, characteristics, rejected));
+        schema.put("description", objectTypeDescription(ot, sp.in, characteristics, withPeriods));
         if (sp.enabled()) spellings(schema, sp.of(Designatable.objectType(ot.name)));
         return schema;
     }
@@ -398,15 +405,71 @@ public final class OpenApiEmitter {
     }
 
     private static String objectTypeDescription(ObjectType ot, Naming in, List<String> characteristics,
-                                                 List<String> rejected) {
+                                                 List<String> withPeriods) {
         StringBuilder b = new StringBuilder();
         b.append("Objecttype '").append(in.objectType(ot.name)).append("'.");
         if (!characteristics.isEmpty())
             b.append(" Kenmerken (boolean-eigenschappen): ").append(String.join(", ", characteristics)).append(".");
-        if (!rejected.isEmpty())
-            b.append(" Tijdlijn-gewaardeerde leden worden door de dienst-kern niet ondersteund en"
-                    + " zijn hier niet als eigenschap opgenomen: ").append(String.join(", ", rejected)).append(".");
+        if (!withPeriods.isEmpty())
+            b.append(" Tijdsafhankelijke kenmerken (de perioden waarin ze gelden): ")
+                    .append(String.join(", ", withPeriods)).append(".");
         return b.toString();
+    }
+
+    /** A time-dependent attribuut of datatype {@code dt} on grid {@code g} as {@link RequestMapper} takes it and
+     *  {@link AnswerBuilder} gives it: {@code {"timeline": [{"from": <datum>, "to": <datum>, "value": ...}, ...]}}, the
+     *  value as {@link #attributeSchema} describes a scalar of {@code dt}, a bound left out where it is open. */
+    private static ObjectNode timelineSchema(Datatype dt, RegelSpraakModel.Granularity g, Spellings sp) {
+        ObjectNode s = NF.objectNode();
+        s.put("type", "object");
+        s.put("description", "tijdsafhankelijk" + (g == null ? "" : " (" + TimelineInput.perGrid(g) + ")")
+                + ": een tijdlijn, segmenten op volgorde die elkaar niet overlappen, elke grens op het raster van het"
+                + " attribuut. Een segment zonder from begint vóór elke dag, een zonder to loopt door na elke dag; alleen"
+                + " het eerste segment mag zonder from en alleen het laatste zonder to. Een dag zonder segment is leeg."
+                + " Een antwoord geeft het attribuut in dezelfde vorm. Een scalaire waarde is een 400 (UNSUPPORTED).");
+        s.putArray("required").add("timeline");
+        s.put("additionalProperties", false);
+        ObjectNode timeline = s.putObject("properties").putObject("timeline");
+        timeline.put("type", "array");
+        timeline.put("minItems", 1);
+        ObjectNode segment = timeline.putObject("items");
+        segment.put("type", "object");
+        segment.putArray("required").add("value");
+        segment.put("additionalProperties", false);
+        ObjectNode props = segment.putObject("properties");
+        dateProperty(props, "from");
+        dateProperty(props, "to");
+        props.set("value", attributeSchema(dt, sp));
+        return s;
+    }
+
+    /** A time-dependent kenmerk on grid {@code g} as {@link RequestMapper} takes it: {@code {"periods": [{"from":
+     *  <datum>, "to": <datum>}, ...]}}, the periods in which it holds. */
+    private static ObjectNode periodsSchema(RegelSpraakModel.Granularity g) {
+        ObjectNode s = NF.objectNode();
+        s.put("type", "object");
+        s.put("description", "tijdsafhankelijk kenmerk" + (g == null ? "" : " (" + TimelineInput.perGrid(g) + ")")
+                + ": de perioden waarin het geldt, elk van from tot to, die elkaar niet overlappen; op elke"
+                + " andere dag geldt het niet. Een boolean is een 400 (WRONG_TYPE).");
+        s.putArray("required").add("periods");
+        s.put("additionalProperties", false);
+        ObjectNode periods = s.putObject("properties").putObject("periods");
+        periods.put("type", "array");
+        ObjectNode period = periods.putObject("items");
+        period.put("type", "object");
+        ArrayNode required = period.putArray("required");
+        required.add("from"); required.add("to");
+        period.put("additionalProperties", false);
+        ObjectNode props = period.putObject("properties");
+        dateProperty(props, "from");
+        dateProperty(props, "to");
+        return s;
+    }
+
+    private static void dateProperty(ObjectNode props, String name) {
+        ObjectNode d = props.putObject(name);
+        d.put("type", "string");
+        d.put("format", "date");
     }
 
     /** A dimensioned attribuut of datatype {@code dt} as {@link RequestMapper} takes it and {@link AnswerBuilder} gives
@@ -548,9 +611,11 @@ public final class OpenApiEmitter {
         instProps.putObject("type").put("type", "string");
         instProps.putObject("id").put("type", "string");
         freeObject(instProps.putObject("attributes"),
-                "attribuutnaam -> waarde (per het objecttype-schema).");
+                "attribuutnaam -> waarde (per het objecttype-schema); een tijdsafhankelijk attribuut neemt zijn tijdlijn: "
+                        + TimelineInput.TIMELINE_FORM + ".");
         freeObject(instProps.putObject("characteristics"),
-                "kenmerknaam -> boolean.");
+                "kenmerknaam -> boolean; een tijdsafhankelijk kenmerk neemt de perioden waarin het geldt: "
+                        + TimelineInput.PERIODS_FORM + ".");
         freeObject(instProps.putObject("roles"),
                 "rolnaam -> doel-id of lijst van doel-ids.");
 
@@ -849,8 +914,8 @@ public final class OpenApiEmitter {
         for (EvaluationFault.Kind k : EvaluationFault.Kind.values()) kinds.add(k.name());
         kind.put("description", "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een"
                 + " berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die"
-                + " verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt,"
-                + " want de dienst weigert een tijdlijn (400); WRITE_BOUNDARY_FAULT: een waarde die niet in de"
+                + " verschillen; INPUT_FORM_FAULT: een tijdlijn van het verzoek waar een regel de waarde in de periode"
+                + " van de rekendatum leest, zoals het eigen totaal van het onderwerp; WRITE_BOUNDARY_FAULT: een waarde die niet in de"
                 + " gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet"
                 + " in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus"
                 + " zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel"

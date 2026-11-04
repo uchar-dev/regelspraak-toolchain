@@ -51,14 +51,23 @@ import java.util.Map;
  * name no cell (EF-034) and a cell given twice (EF-035) it refuses before any session, as it refuses EF-004 per cell,
  * and the result returns them as faults of the kind {@link EvaluationFault.Kind#CELL_FAULT}.
  *
- * <p>A time-dependent parameter takes its timeline ({@link ParameterTimeline}): uchar's branch reads it whole, as a
+ * <p>A time-dependent parameter takes its timeline ({@link TimelineInput}): uchar's branch reads it whole, as a
  * {@code List<Period>} global, and a segment may leave out {@code from} or {@code to}, an open bound. A scalar on such a
  * parameter and a timeline on another are violations.
  *
- * <p>Unsupported by the service core (a clear violation, never a silent accept): a tijdlijn-valued attribute (no
- * golden situatie uses one). An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid
- * mismatch, an unknown enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without
- * dimensions are all violations.
+ * <p>A time-dependent attribute takes its timeline in the same form, and a time-dependent characteristic the periods in
+ * which it holds, {@code {"periods": [{"from", "to"}, ...]}} ({@link TimelineInput}); the mapper writes them into the
+ * case as uchar's case gives them, a timeline under {@code attributes} and the periods under
+ * {@code characteristicTimelines}, and uchar's input step reads them. A timeline on an attribute without one, periods
+ * on a characteristic without them and a boolean on one with them are violations of the type. A scalar on a
+ * time-dependent attribute is a form the service does not carry ({@link Violation.Kind#UNSUPPORTED}): uchar's case
+ * reads it as the value of the period of the evaluation date (the asOfDate-bucket convention, RUNTIME-SEMANTICS
+ * ch. 8.4), a convention of its replay that the request does not take over. A timeline on a grid of more than one
+ * period or with a variable start uchar's case reader does not carry, and neither does the service.
+ *
+ * <p>An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid mismatch, an unknown
+ * enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without dimensions are all
+ * violations.
  *
  * <p>Every name is read by a {@link NameReader}: canonical or a designation in any vocabulary of the model, unless
  * the request pins its input vocabulary. A name that reads as two declarations is a
@@ -154,15 +163,15 @@ public final class RequestMapper {
                                 "onbekende parameter '" + name + "'" + reader.pinnedClause()));
                         return;
                     }
-                    Violation form = ParameterTimeline.formViolation(p, e.getValue(), field);
+                    Violation form = TimelineInput.formViolation(p, e.getValue(), field);
                     if (form != null) {
                         s.add(form);
                         return;
                     }
                     Object decoded;
                     try {
-                        decoded = ParameterTimeline.timeDependent(p)
-                                ? ParameterTimeline.decode(p, e.getValue(), field, (v, f, sink) -> scalar(p, v, f, sink), s)
+                        decoded = TimelineInput.timeDependent(p)
+                                ? TimelineInput.decode(p, e.getValue(), field, (v, f, sink) -> scalar(p, v, f, sink), s)
                                 : scalar(p, e.getValue(), field, s);
                     } catch (CaseRunner.InputPrecisionFault f) {
                         inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.INPUT_PRECISION_FAULT, f));
@@ -213,7 +222,7 @@ public final class RequestMapper {
                 instances.put(id, instance);
                 typePerLabel.put(id, ot);
                 setAttributes(ot, instance, in.get("attributes"), path + ".attributes", refusals, s);
-                setCharacteristics(ot, instance, in.get("characteristics"), path + ".characteristics", s);
+                setCharacteristics(ot, instance, in.get("characteristics"), path + ".characteristics", refusals, s);
             }
         }
 
@@ -362,8 +371,13 @@ public final class RequestMapper {
                 return;
             }
             if (isTemporal(ot, canonical)) {
-                s.add(Violation.of(Violation.Kind.UNSUPPORTED, field,
-                        "tijdlijn-gewaardeerd attribuut '" + name + "' wordt niet ondersteund door de dienst-kern"));
+                JsonNode timeline = timeline(ot, canonical, name, dt, e.getValue(), field, refusals, s);
+                if (timeline != null) objectIn(instance, "attributes").set(canonical, timeline);
+                return;
+            }
+            if (TimelineInput.isTimeline(e.getValue())) {
+                s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "attribuut '" + name + "' is niet"
+                        + " tijdsafhankelijk: zijn waarde is één waarde, geen tijdlijn"));
                 return;
             }
             JsonNode value = value(e.getValue(), dt, field, s);
@@ -389,6 +403,62 @@ public final class RequestMapper {
         if (r.value() instanceof BigDecimal b)
             CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(), "parameter " + p.name());
         return r.value();
+    }
+
+    /**
+     * The timeline of the time-dependent attribute {@code attribute} of {@code ot} ({@code name} as the request writes
+     * it) as the case writes it, {@code {"timeline": [{"from", "to", "value": <case value>}, ...]}}, an open bound left
+     * out; a null node for null, an empty timeline as an empty scalar is an empty value; null after adding the
+     * violations of a value that is no timeline uchar's case reader carries. A bound whose year the case lexeme does not
+     * carry is written as {@link LocalDate#toString} writes it, for uchar's reader to refuse, and its field is added to
+     * {@code refusals}, once the timeline has no violation.
+     */
+    private JsonNode timeline(ObjectType ot, String attribute, String name, Datatype dt, JsonNode value, String field,
+                              List<CaseRefusal> refusals, List<Violation> s) {
+        if (value == null || value.isNull()) return NF.nullNode();
+        RegelSpraakModel.Granularity g = ot.granularityOf(attribute);
+        String grid = g == null ? "" : " (" + TimelineInput.perGrid(g) + ")";
+        if (!TimelineInput.isTimeline(value)) {
+            s.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "attribuut '" + name + "' is tijdsafhankelijk" + grid
+                    + ": zijn invoer is een tijdlijn, " + TimelineInput.TIMELINE_FORM + "; een scalaire waarde, die"
+                    + " uchars replay in de periode van de rekendatum legt, draagt de dienst niet"));
+            return null;
+        }
+        Integer count = ot.timelineCountOf(attribute);
+        if (g == null || count != null && count != 1 || model.hasVariableStart(ot, attribute)) {
+            s.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "attribuut '" + name + "' ligt op "
+                    + (model.hasVariableStart(ot, attribute) ? "een tijdlijn met een variabel startpunt"
+                            : "een raster van meer dan één periode") + ", waarop uchars case-lezer geen tijdlijn draagt"));
+            return null;
+        }
+        List<TimelineInput.Segment> segments = TimelineInput.segments(new TimelineInput.Grid("attribuut '" + name + "'",
+                g, ot.fixedStartPointOf(attribute), dt), value, field, (v, f, sink) -> {
+                    JsonNode read = value(v, dt, f, sink);
+                    if (read == null) return null;
+                    ValueCoder.Result r = ValueCoder.decode(read, dt, f);
+                    sink.addAll(r.violations());
+                    return r.violations().isEmpty() ? r.value() : null;
+                }, s);
+        if (segments == null) return null;
+        ArrayNode out = NF.arrayNode();
+        for (int k = 0; k < segments.size(); k++) {
+            TimelineInput.Segment segment = segments.get(k);
+            ObjectNode n = out.addObject();
+            String at = field + ".timeline[" + k + "]";
+            if (segment.from() != null) n.put("from", bound(segment.from(), at + ".from", refusals));
+            if (segment.to() != null) n.put("to", bound(segment.to(), at + ".to", refusals));
+            n.set("value", NF.objectNode().put("number", segment.value().toString()));
+        }
+        ObjectNode n = NF.objectNode();
+        n.set("timeline", out);
+        return n;
+    }
+
+    /** {@code d} as the case writes a bound on {@code field}; a year the case lexeme does not carry adds the field to
+     *  {@code refusals}. */
+    private static String bound(LocalDate d, String field, List<CaseRefusal> refusals) {
+        if (!inCaseForm(d.getYear())) refusals.add(new CaseRefusal(field));
+        return d.toString();
     }
 
     /** Whether {@code value} is the input of a dimensioned attribute: an object with {@code cells} and nothing else. */
@@ -463,7 +533,8 @@ public final class RequestMapper {
         return n;
     }
 
-    private void setCharacteristics(ObjectType ot, ObjectNode instance, JsonNode characteristics, String path, List<Violation> s) {
+    private void setCharacteristics(ObjectType ot, ObjectNode instance, JsonNode characteristics, String path,
+                                    List<CaseRefusal> refusals, List<Violation> s) {
         if (characteristics == null || characteristics.isNull()) return;
         if (!characteristics.isObject()) { s.add(Violation.of(Violation.Kind.MALFORMED, path, "characteristics moet een object zijn")); return; }
         Duplicate duplicate = new Duplicate("deze instantie");
@@ -478,12 +549,30 @@ public final class RequestMapper {
                         "onbekend kenmerk '" + name + "' op objecttype '" + ot.name + "'" + reader.pinnedClause()));
                 return;
             }
+            JsonNode v = e.getValue();
             if (isTemporalCharacteristic(ot, canonical)) {
-                s.add(Violation.of(Violation.Kind.UNSUPPORTED, field,
-                        "tijdlijn-gewaardeerd kenmerk '" + name + "' wordt niet ondersteund door de dienst-kern"));
+                if (!TimelineInput.isPeriods(v)) {
+                    RegelSpraakModel.Granularity grid = ot.characteristicGranularityOf(canonical);
+                    s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "kenmerk '" + name + "' is tijdsafhankelijk"
+                            + (grid == null ? "" : " (" + TimelineInput.perGrid(grid) + ")")
+                            + ": zijn invoer zijn de perioden waarin het geldt, " + TimelineInput.PERIODS_FORM));
+                    return;
+                }
+                List<TimelineInput.Window> periods = TimelineInput.periods("kenmerk '" + name + "'", v, field, s);
+                if (periods == null) return;
+                ArrayNode out = objectIn(instance, "characteristicTimelines").putArray(canonical);
+                for (int k = 0; k < periods.size(); k++) {
+                    String at = field + ".periods[" + k + "]";
+                    out.addObject().put("from", bound(periods.get(k).from(), at + ".from", refusals))
+                            .put("to", bound(periods.get(k).to(), at + ".to", refusals));
+                }
                 return;
             }
-            JsonNode v = e.getValue();
+            if (TimelineInput.isPeriods(v)) {
+                s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "kenmerk '" + name + "' is niet tijdsafhankelijk:"
+                        + " zijn waarde is een boolean, geen perioden"));
+                return;
+            }
             if (!v.isBoolean()) {
                 s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "kenmerk '" + name + "' moet een boolean zijn"));
                 return;
@@ -750,8 +839,8 @@ public final class RequestMapper {
 
     /** Whether attribute {@code naam} on {@code ot} is a §13.3.6 tijdlijn (temporal, {@code List<Segment>}) —
      *  asked over the WHOLE chain (IR-SPEC ch. 2.2), not the own maps. An inherited timeline read as a scalar
-     *  is not a missing binding but a wrong judgement: the mapper would accept the value and write it as a scalar of
-     *  the case, which uchar's input step reads as the asOfDate-bucket scalar of a timeline the service does not
+     *  is not a missing binding but a wrong judgement: the mapper would accept a scalar and write it as a scalar of
+     *  the case, which uchar's input step reads as the asOfDate-bucket scalar, a convention the service does not
      *  carry, instead of a violation naming the field.
      *  The model's chain walk is case-INSENSITIVE, exactly as this scan was. */
     static boolean isTemporal(ObjectType ot, String name) {
@@ -759,7 +848,7 @@ public final class RequestMapper {
     }
 
     /** The kenmerk analogue of {@link #isTemporal} — a §13.3.6.7 tijdlijn kenmerk (a {@code List<Segment>}
-     *  field), which the service core does not support; chain-closed for the same reason. */
+     *  field, its true periods), which takes its periods; chain-closed for the same reason. */
     static boolean isTemporalCharacteristic(ObjectType ot, String name) {
         return ot.characteristicGranularityOf(name) != null || ot.characteristicTimelineCountOf(name) != null;
     }
