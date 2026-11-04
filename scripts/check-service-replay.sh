@@ -161,6 +161,11 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # tijdlijnen met open grenzen in het antwoord, sinds deze pin) en time-window-timeline-characteristic (een kenmerk
 # binnen een venster, met uitleg); de tien andere hebben een tijdlijn als invoerwaarde of een kenmerk met perioden en
 # staan hieronder.
+# 2026-11-04, uchar's kaarten defaults-per-period-on-timeline en clingo-lazy-bucket-scalar-fault (pin 474732d3): 287 —
+# de set van gate 12 groeit van 328 naar 330 met jutterswet-opgave-per-periode (een defaults-groep op een tijdlijndoel
+# beslist per dag, de opgave-markering op een tijdsafhankelijk attribuut) en jutterswet-gevolg-buiten-de-beurt (een
+# gevolg buiten de beurt faalt niet); geen van beide speelt door de dienst (een tijdlijn als invoerwaarde, een kenmerk
+# met perioden), dus beide staan hieronder.
 EXPECTED_REPLAY_PLAYED=287
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt de tijdlijn
@@ -182,6 +187,7 @@ REPLAY_EXCLUDED=(
   "jutterswet-gehele-jaar-lege-grens|tijdlijn als invoerwaarde"
   "jutterswet-gehele-periode-leeg|tijdlijn als invoerwaarde"
   "jutterswet-gehele-periode-leeg-rgs|tijdlijn als invoerwaarde"
+  "jutterswet-gevolg-buiten-de-beurt|kenmerk met perioden"
   "jutterswet-getijdenwacht|tijdlijn als invoerwaarde"
   "jutterswet-kadetarief|tijdlijn als invoerwaarde"
   "jutterswet-keurlast|tijdlijn als invoerwaarde"
@@ -190,6 +196,7 @@ REPLAY_EXCLUDED=(
   "jutterswet-loon-per-periode|tijdlijn als invoerwaarde"
   "jutterswet-maandloon|tijdlijn als invoerwaarde"
   "jutterswet-muntbewaring|tijdlijn als invoerwaarde"
+  "jutterswet-opgave-per-periode|tijdlijn als invoerwaarde"
   "jutterswet-pachtvenster|tijdlijn als invoerwaarde"
   "jutterswet-peilwacht|tijdlijn als invoerwaarde"
   "jutterswet-penningjaar|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"

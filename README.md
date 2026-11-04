@@ -258,10 +258,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (328). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (330). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 287); every golden that does not play is listed by name with
-  its reason (41, each a timeline form the request cannot express); a deviation always fails, and the list fails when
+  its reason (43, each a timeline form the request cannot express); a deviation always fails, and the list fails when
   it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
@@ -409,7 +409,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 - **Timelines in a service request.** The request carries the timeline of a time-dependent parameter, but no
   timeline value of an attribute, no characteristic with periods, and no scalar on a time-dependent attribute
   (uchar's replay places one in the bucket of the evaluation date); the service refuses them as `UNSUPPORTED`. The
-  answer gives no time-dependent characteristic. 41 of the goldens gate 12 plays need one of these; the replay gate
+  answer gives no time-dependent characteristic. 43 of the goldens gate 12 plays need one of these; the replay gate
   lists them.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
 - **The explanation** explains characteristic-attribution rules, defaults groups and the values ordinary rules
