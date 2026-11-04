@@ -20,6 +20,7 @@ import dev.uchar.regelspraak.toolchain.service.ServiceError;
 import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
 import dev.uchar.regelspraak.toolchain.service.ExplanationParts;
 import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
+import dev.uchar.regelspraak.toolchain.service.Limit;
 import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 import dev.uchar.regelspraak.toolchain.service.RequestOptions;
@@ -422,7 +423,8 @@ public final class Playground {
      * <ul>
      *   <li>no entry point carries the scope, a value the request cannot carry ({@link SituationToRequest.NonPortable}),
      *       a request form the service does not carry (each violation of its 400 {@code UNSUPPORTED}), an entry
-     *       point uchar does not carry, an expectation uchar does not compare: MARKER with the sentence;</li>
+     *       point uchar does not carry, an expectation uchar does not compare, a limit of uchar's branch at the
+     *       fixpoint (the service's 422 {@code LIMIT}, which uchar's replay excludes): MARKER with the sentence;</li>
      *   <li>an evaluation fault (the service's 422): FAIL with the line of uchar's report, the exception its write-back
      *       throws, and the trace, coverage and fixpoint of the 422;</li>
      *   <li>a session without a fixpoint (the service's 422 {@code NO_FIXPOINT}): FAIL with the line uchar's report
@@ -454,7 +456,8 @@ public final class Playground {
             expectations = b.comparison().expectations();
             session = b.answer();
         } catch (DecisionCore.NoEntryPoint | SituationToRequest.NonPortable | DecisionCore.NonExecutable
-                 | CaseRunner.Excluded none) {
+                 | CaseRunner.Excluded | Limit none) {
+            // a limit of uchar's branch at the fixpoint: uchar's replay excludes the case, its report a MARKER
             status = ScenarioResult.Status.MARKER;
             diagnostic = none.getMessage();
         } catch (ServiceError error) {

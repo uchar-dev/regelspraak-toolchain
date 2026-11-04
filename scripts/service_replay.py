@@ -90,6 +90,17 @@ def value_of(node, place):
     raise NotExpressible(f"waardevorm {sorted(node)} ({place})")
 
 
+def timeline_of(node, place):
+    """De tijdlijn van een tijdsafhankelijke parameter zoals de dienst haar neemt: de vorm van de case, een open grens
+    weggelaten, elke waarde als verzoekwaarde."""
+    out = []
+    for k, seg in enumerate(node["timeline"]):
+        s = {b: seg[b] for b in ("from", "to") if b in seg}
+        s["value"] = value_of(seg["value"], f"{place}[{k}]")
+        out.append(s)
+    return {"timeline": out}
+
+
 def cells_of(node, place):
     """De cellen van een gedimensioneerd attribuut zoals de dienst ze neemt: de vorm van de case, elke waarde als
     verzoekwaarde."""
@@ -105,9 +116,8 @@ def request_body(case):
     inp = case["input"]
     params = {}
     for name, w in (inp.get("parameters") or {}).items():
-        if w is not None and "timeline" in w:
-            raise NotExpressible(f"tijdlijn als parameterwaarde ({name})")
-        params[name] = value_of(w, "parameter " + name)
+        params[name] = timeline_of(w, "parameter " + name) if w is not None and "timeline" in w \
+            else value_of(w, "parameter " + name)
     if params:
         v["parameters"] = params
     instances = []
@@ -134,12 +144,10 @@ def selectors(case):
     out = []
     for e in case["expected"]:
         kind = e["kind"]
-        if kind in ("attributeValue", "attributeEmpty", "cellValue", "cellEmpty"):
+        if kind in ("attributeValue", "attributeEmpty", "cellValue", "cellEmpty", "attributeTimeline"):
             out.append(types[e["label"]] + "." + e["attribute"])
         elif kind in ("characteristicPresent", "characteristicAbsent"):
             out.append(types[e["label"]] + ":" + e["characteristic"])
-        elif kind == "attributeTimeline":
-            raise NotExpressible("tijdlijn als verwachte waarde")
     return out
 
 
@@ -190,6 +198,38 @@ def equal(expected, given, place):
     raise NotExpressible(f"verwachte waardevorm {sorted(expected)} ({place})")
 
 
+def canonical(segments, place):
+    """De canonieke vorm van RUNTIME-SEMANTICS ch. 3.1, zoals uchars replay (CaseRunner.canonical) een tijdlijn
+    vergelijkt: de maximale reeksen gelijke gevulde waarden, gaten weggelaten, een open grens zoals hij staat. Een lege
+    waarde leest als een gat, en een segment waarvan to niet na from ligt evenmin. Per segment (from, to, waarde), een
+    open grens als None."""
+    filled = []
+    for s in segments:
+        v = s.get("value")
+        if v is None:
+            continue
+        if isinstance(v, dict):
+            if "number" not in v:
+                raise NotExpressible(f"tijdlijnwaarde {sorted(v)} ({place})")
+            if "/" in v["number"]:
+                raise NotExpressible(f"breuk als verwachte waarde ({place})")
+            v = decimal.Decimal(v["number"])
+        if not isinstance(v, decimal.Decimal):
+            raise Deviation(f"{place}: een segment draagt geen getal: {s}")
+        f, t = s.get("from"), s.get("to")
+        if f is not None and t is not None and not t > f:
+            continue
+        filled.append((f, t, v))
+    filled.sort(key=lambda x: (x[0] is not None, x[0] or ""))
+    out = []
+    for f, t, v in filled:
+        if out and out[-1][1] is not None and out[-1][1] == f and out[-1][2] == v:
+            out[-1] = (out[-1][0], t, v)
+        else:
+            out.append((f, t, v))
+    return out
+
+
 def compare(case, answer):
     """Zet een Afwijking bij de eerste verwachting die het antwoord niet geeft. Dit leest het
     HTTP-antwoord zelf: uchars DroolsBackend.vergelijk oordeelt over een sessie in het geheugen, en
@@ -229,6 +269,17 @@ def compare(case, answer):
                     raise Deviation(f"{place}: verwacht leeg, kreeg {given}")
             elif not equal(e["value"], given, place):
                 raise Deviation(f"{place}: verwacht {json.dumps(e['value'])}, kreeg {given}")
+        elif kind == "attributeTimeline":
+            attrs = inst.get(e["label"], {}).get("attributes", {})
+            if e["attribute"] not in attrs:
+                raise Deviation(f"{place}: het antwoord noemt het attribuut niet")
+            given = attrs[e["attribute"]]
+            if given is not None and (not isinstance(given, dict) or not isinstance(given.get("timeline"), list)):
+                raise Deviation(f"{place}: het antwoord geeft het attribuut niet als tijdlijn: {given}")
+            want = canonical(e["timeline"], place)
+            got = [] if given is None else canonical(given["timeline"], place)
+            if want != got:
+                raise Deviation(f"{place}: verwacht {want}, kreeg {got}")
         elif kind in ("characteristicPresent", "characteristicAbsent"):
             characteristics = inst.get(e["label"], {}).get("characteristics", {})
             if e["characteristic"] not in characteristics:

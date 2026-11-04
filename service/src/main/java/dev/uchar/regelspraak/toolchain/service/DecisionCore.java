@@ -591,9 +591,10 @@ public final class DecisionCore {
         return "in de " + part + (text == null ? "" : " '" + text + "'") + " van default " + d.path();
     }
 
-    /** The descriptor parameter defaults, decoded per-parameter datatype to (globalName -> value). A number its
-     *  declaration does not hold is a violation with uchar's sentence of EF-004 ({@code CaseRunner.inputFits}), so the
-     *  descriptor does not load, as a request with that value gets the evaluation fault. */
+    /** The descriptor parameter defaults, decoded per-parameter datatype to (globalName -> value), a time-dependent
+     *  parameter as its timeline ({@link ParameterTimeline}), as a request gives it. A number its declaration does not
+     *  hold is a violation with uchar's sentence of EF-004 ({@code CaseRunner.inputFits}), so the descriptor does not
+     *  load, as a request with that value gets the evaluation fault. */
     private static Map<String, Object> defaultGlobals(ServiceDescriptor descriptor, RegelSpraakModel model) {
         Map<String, Object> globals = new LinkedHashMap<>();
         if (descriptor.parameters() == null) return globals;
@@ -602,22 +603,37 @@ public final class DecisionCore {
             RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, e.getKey());
             if (p == null) continue;   // already reported by descriptor validation
             String field = "parameters." + e.getKey();
-            ValueCoder.Result r = ValueCoder.decode(e.getValue(), p.datatype(), field);
-            errors.addAll(r.violations());
-            if (!r.violations().isEmpty()) continue;
-            if (r.value() instanceof java.math.BigDecimal b) {
-                try {
-                    CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(),
-                            "parameter " + p.name());
-                } catch (CaseRunner.InputPrecisionFault f) {
-                    errors.add(Violation.of(Violation.Kind.WRONG_TYPE, field, f.getMessage()));
-                    continue;
-                }
+            Violation form = ParameterTimeline.formViolation(p, e.getValue(), field);
+            if (form != null) {
+                errors.add(form);
+                continue;
             }
-            globals.put(RequestMapper.globalName(p.name()), r.value());
+            Object value;
+            try {
+                value = ParameterTimeline.timeDependent(p)
+                        ? ParameterTimeline.decode(p, e.getValue(), field, (v, f, sink) -> defaultScalar(p, v, f, sink),
+                                errors)
+                        : defaultScalar(p, e.getValue(), field, errors);
+            } catch (CaseRunner.InputPrecisionFault f) {
+                errors.add(Violation.of(Violation.Kind.WRONG_TYPE, field, f.getMessage()));
+                continue;
+            }
+            if (value != null) globals.put(RequestMapper.globalName(p.name()), value);
         }
         if (!errors.isEmpty()) throw new ServiceError("descriptor parameter-default ongeldig", errors);
         return globals;
+    }
+
+    /** The scalar default {@code node} of parameter {@code p} on {@code field}, or null after adding its violations.
+     *
+     *  @throws CaseRunner.InputPrecisionFault a number with more decimals than {@code p} declares (EF-004) */
+    private static Object defaultScalar(RegelSpraakModel.Parameter p, JsonNode node, String field, List<Violation> sink) {
+        ValueCoder.Result r = ValueCoder.decode(node, p.datatype(), field);
+        sink.addAll(r.violations());
+        if (!r.violations().isEmpty()) return null;
+        if (r.value() instanceof java.math.BigDecimal b)
+            CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(), "parameter " + p.name());
+        return r.value();
     }
 
     // ---------------- request handling ----------------
@@ -729,6 +745,9 @@ public final class DecisionCore {
         } catch (NoFixpoint none) {
             if (!withDetail) throw none;
             throw none.withDetail(detail(options, ep, observer, null, none.getMessage(), input, output));
+        } catch (Limit limit) {
+            if (!withDetail) throw limit;
+            throw limit.withDetail(detail(options, ep, observer, limit.fixpoint(), null, input, output));
         }
         ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());

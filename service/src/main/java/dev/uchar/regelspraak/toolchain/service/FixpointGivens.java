@@ -44,8 +44,9 @@ import java.util.TreeSet;
  * canonical name stands beside it under the key with {@code Canoniek} appended ({@code attribuut} and
  * {@code attribuutCanoniek}). <b>A value</b> is a JSON string for a number (plain decimal, with its scale), a date, a
  * date-time, a text and an enumeration value (in the chosen vocabulary), a JSON boolean for a truth value and null for
- * leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}. A dimensioned attribute has a row per cell,
- * with the cell's {@code labels} after the attribute, one per dimension in their declared spelling, as uchar's
+ * leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}, an open bound left out. A dimensioned
+ * attribute has a row per cell, with the cell's {@code labels} after the attribute, one per dimension in their declared
+ * spelling, as uchar's
  * {@link DerivedValue#labels} names a derived cell. {@code unit} is the declared unit of a number.
  *
  * <p><b>Order.</b> uchar's {@link Fixpoint} lists have no order, so every list here is sorted: the objects of the input in
@@ -430,15 +431,17 @@ public final class FixpointGivens {
         if (!chosen.equals(canonical)) n.put(key + "Canonical", canonical);
     }
 
-    /** A value in the form its bean field takes it: under {@code value}, a timeline under {@code timeline}. The value
-     *  of a cell is one of these; a dimensioned attribute has a row per cell ({@link #cellRows}). */
+    /** A value in the form its bean field takes it: under {@code value}, a timeline under {@code timeline}, a segment
+     *  without {@code from} or {@code to} where its bound is open (null on the bean, left out in uchar's case). The
+     *  value of a cell is one of these; a dimensioned attribute has a row per cell ({@link #cellRows}). */
     private static void java(ObjectNode n, Object v, Datatype dt, Naming ng) {
         if (v instanceof List<?> segments) {
             ArrayNode tl = n.putArray("timeline");
             for (Object seg : segments) {
                 ObjectNode sn = tl.addObject();
-                sn.set("from", scalar(CaseSession.read(seg, "getVan"), null));
-                sn.set("to", scalar(CaseSession.read(seg, "getTot"), null));
+                Object from = CaseSession.read(seg, "getVan"), to = CaseSession.read(seg, "getTot");
+                if (from != null) sn.set("from", scalar(from, null));
+                if (to != null) sn.set("to", scalar(to, null));
                 sn.set("value", scalar(CaseSession.read(seg, "getWaarde"), dt));
             }
         } else if (v instanceof String s && dt instanceof Datatype.Enumeration) {

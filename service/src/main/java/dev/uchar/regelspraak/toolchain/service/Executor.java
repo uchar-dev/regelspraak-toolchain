@@ -2,6 +2,7 @@ package dev.uchar.regelspraak.toolchain.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
@@ -10,10 +11,12 @@ import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import org.kie.api.runtime.KieSession;
 
 import java.time.LocalDate;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * The per-request executor: given an entry point's {@link DroolsBackend.Build} (built once at startup by uchar,
@@ -31,16 +34,33 @@ import java.util.Map;
  * rules give no answer on this input. Such a fault is an evaluation fault by its place at the fixpoint, whatever its
  * type, so it is read as data before the write-back, which would throw it as an exception like those the entry throws
  * itself for a session used wrongly; those stay internal faults. A run without a fixpoint, at uchar's fire cap or at
- * its creation budget, leaves as a {@link NoFixpoint} with uchar's sentence, and nothing is read or written back.
+ * its creation budget, leaves as a {@link NoFixpoint} with uchar's sentence, and nothing is read or written back. A
+ * limit of uchar's branch at the fixpoint (a value it cannot hold, DROOLS-312) is no fault of the rules: uchar's
+ * write-back refuses the session as an exclusion with its register code, before the faults beside it, and it leaves as a
+ * {@link Limit}.
+ *
+ * <p>A global is set where the build declares it: a parameter no scoped rule reads has none. A declared global takes
+ * its value or the request fails with Drools' sentence; the value of a time-dependent parameter is the
+ * {@code List<Period>} uchar's branch reads ({@link RequestMapper}), and no other form reaches it.
  */
 public final class Executor {
 
     private final DroolsBackend.Build build;
     private final Map<String, Object> defaultGlobals;   // descriptor parameter defaults (global name -> value)
+    private final Set<String> declaredGlobals;
 
     public Executor(DroolsBackend.Build build, Map<String, Object> defaultGlobals) {
         this.build = build;
         this.defaultGlobals = defaultGlobals == null ? Map.of() : defaultGlobals;
+        this.declaredGlobals = declaredGlobals(build);
+    }
+
+    /** The names of the globals the KieBase of {@code build} declares. */
+    static Set<String> declaredGlobals(DroolsBackend.Build build) {
+        Set<String> names = new HashSet<>();
+        for (org.kie.api.definition.KiePackage p : build.kieBase().getKiePackages())
+            for (org.kie.api.definition.rule.Global g : p.getGlobalVariables()) names.add(g.getName());
+        return names;
     }
 
     /** The result of a fire: the beans by id with the derived values written back, the firings, what stood at the
@@ -93,6 +113,8 @@ public final class Executor {
      * @throws Evaluatiefout            the evaluation faults that stand at the fixpoint, with the fixpoint they stand
      *                                  at; nothing is compared then, as uchar's report compares nothing of such a case
      * @throws NoFixpoint              a run that reached no fixpoint, with uchar's sentence; nothing is compared
+     * @throws Limit                   a limit of uchar's branch at the fixpoint, with its code and uchar's sentence;
+     *                                  nothing is compared
      * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare, in the
      *                                  sentence of its replay
      */
@@ -120,10 +142,10 @@ public final class Executor {
         KieSession session = build.kieBase().newKieSession();
         try {
             // the branch states the globals as facts at the first fire, so they all go on before it
-            for (var e : build.dayKindGlobals().entrySet()) setGlobalSafe(session, e.getKey(), e.getValue());
-            for (var e : globals.entrySet()) setGlobalSafe(session, e.getKey(), e.getValue());
+            for (var e : build.dayKindGlobals().entrySet()) setGlobal(session, e.getKey(), e.getValue());
+            for (var e : globals.entrySet()) setGlobal(session, e.getKey(), e.getValue());
             LocalDate rd = world.evaluationDate();
-            if (rd != null) setGlobalSafe(session, "rekendatum", rd);
+            if (rd != null) setGlobal(session, "rekendatum", rd);
             // the input as uchar's replay puts it in: the order of a list decides which member a fault of a fold
             // names, so the 422 names the member uchar's replay names on the same input
             DroolsBackend.insert(build, session, world.input().inputData());
@@ -136,7 +158,11 @@ public final class Executor {
             // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
             // it as one exception among those the entry throws itself, so the faults are read as data first
             Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, label::get);
-            if (!fixpoint.faults().isEmpty()) throw EvaluationFault.of(fixpoint, rethrown(session, label, fixpoint));
+            if (!fixpoint.faults().isEmpty()) {
+                RuntimeException thrown = rethrown(session, label, fixpoint);
+                if (thrown instanceof CaseRunner.Excluded limit) throw new Limit(limit, fixpoint);
+                throw EvaluationFault.of(fixpoint, thrown);
+            }
             DroolsBackend.setDerivedValues(build, session, label::get);
             DroolsBackend.Comparison comparison = expectations == null ? null
                     : DroolsBackend.compare(build, session, label::get, expectations);
@@ -150,8 +176,8 @@ public final class Executor {
     }
 
     /** The exception uchar's write-back throws for the faults that stand at {@code fixpunt}: the fault's own for one,
-     *  uchar's {@code EvaluationFaults} for two or more. It writes nothing back then; a write-back that does not throw
-     *  is a broken promise of uchar's entry. */
+     *  uchar's {@code EvaluationFaults} for two or more, and the exclusion of a limit of its branch where one stands
+     *  there. It writes nothing back then; a write-back that does not throw is a broken promise of uchar's entry. */
     private RuntimeException rethrown(KieSession session, Map<Object, String> label, Fixpoint fixpoint) {
         try {
             DroolsBackend.setDerivedValues(build, session, label::get);
@@ -162,10 +188,9 @@ public final class Executor {
                 + fixpoint.faults().size() + " evaluatiefout(en) staan, de eerste: " + fixpoint.faults().get(0).message());
     }
 
-    /** setGlobal tolerating a global the compiled DRL did not declare (a parameter no scoped rule reads is not
-     *  registered as a global — writing it would throw; harmless to skip). Mirrors ScenarioRunner. */
-    private static void setGlobalSafe(KieSession session, String name, Object value) {
-        try { session.setGlobal(name, value); }
-        catch (RuntimeException unknown) { /* global not declared: no scoped rule reads it */ }
+    /** Sets the global {@code name} where the build declares it; a parameter no scoped rule reads is no global of the
+     *  build, and nothing reads it. */
+    private void setGlobal(KieSession session, String name, Object value) {
+        if (declaredGlobals.contains(name)) session.setGlobal(name, value);
     }
 }

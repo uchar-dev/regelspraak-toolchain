@@ -105,6 +105,40 @@ class PlaygroundViaServiceTest {
                 "input": ["Jutter"], "output": ["Jutter.borgdagen"] } ],
               "parameters": {} }""";
 
+    /** A levy per month, a time-dependent parameter, times a number of boats: the period arithmetic over all time. */
+    private static final String LEVY = """
+            Parameter de havenheffing : Numeriek (getal met 2 decimalen) voor elke maand;
+
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                het aantal boten Numeriek (geheel getal);
+                de bootheffing Numeriek (getal met 2 decimalen) voor elke maand;
+
+            Regel bootheffing
+                geldig altijd
+                    De bootheffing van een Jutter moet berekend worden als de havenheffing maal zijn aantal boten.
+            """;
+
+    private static final String LEVY_SCENARIO = """
+            Scenario twee boten
+            Gegeven is de volgende situatie:
+            de parameter de havenheffing is 2,50 van 01-12-2023 tot 01-01-2024
+            de parameter de havenheffing is 3,00 van 01-01-2024 tot 01-03-2024
+            een Jutter J1
+            - het aantal boten is 2
+            Met als verwacht resultaat:
+            - de bootheffing van J1 is 0 tot 01-12-2023
+            - de bootheffing van J1 is 5,00 van 01-12-2023 tot 01-01-2024
+            - de bootheffing van J1 is 6,00 van 01-01-2024 tot 01-03-2024
+            - de bootheffing van J1 is 0 vanaf 01-03-2024
+            """;
+
+    private static final String LEVY_DESCRIPTOR = """
+            { "service": {"name":"haven","version":"1"},
+              "entrypoints": [ { "name":"heffing","path":"heffing",
+                "scope": {"ruleNames": ["bootheffing"]},
+                "input": ["Jutter"], "output": ["Jutter.bootheffing"] } ],
+              "parameters": {} }""";
+
     /** uchar's golden jutterswet-seizoenboeking: one entry point with every form of its source. */
     private static final String SEASON_BOOKING_DESCRIPTOR = """
             { "service": {"name":"seizoenboeking","version":"1"},
@@ -297,6 +331,25 @@ class PlaygroundViaServiceTest {
                 d.path("diagnosis").asText());
         assertEquals("dagen", d.path("path").asText());
         assertEquals(0, d.path("expectations").size());
+    }
+
+    /** The timeline of a time-dependent parameter in the situation goes as the timeline of the request, and the answer
+     *  gives the timeline the rule writes, with its open zeros, which uchar compares with the expected segments, open
+     *  ones among them: via the service the scenario has the verdict and the expectations of the ordinary route. */
+    @Test
+    void a_parameter_timeline_in_the_situation_is_carried() throws IOException {
+        DecisionCore core = DecisionCore.assemble(LEVY_DESCRIPTOR, Map.of("haven.rgs", LEVY),
+                CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
+        String source = LEVY + "\n" + LEVY_SCENARIO;
+        JsonNode g = Playground.analyze(source, null).path("scenario").path("results").get(0);
+        JsonNode d = Playground.analyze(source, null, core).path("scenario").path("results").get(0);
+        assertEquals("PASS", g.path("status").asText(), g.toString());
+        assertEquals("PASS", d.path("status").asText(), d.toString());
+        assertEquals("heffing", d.path("path").asText(), d.toString());
+        // uchar compares the four bullets as one timeline, in its canonical form
+        assertEquals(1, d.path("expectations").size(), d.toString());
+        assertTrue(d.at("/expectations/0/ok").asBoolean(), d.toString());
+        assertEquals(g.path("expectations"), d.path("expectations"));
     }
 
     /** A cell of a dimensioned attribute in the situation (uchar's golden jutterswet-seizoenboeking with its test

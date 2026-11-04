@@ -27,6 +27,7 @@ class ParameterSetLoaderTest {
     private static final String SOURCE = """
             Parameter de volwassenleeftijd : Numeriek (geheel getal) met eenheid jr
             Parameter het tarief : Numeriek (geheel getal)
+            Parameter het maandtarief : Numeriek (geheel getal) voor elke maand
             Objecttype de Persoon
                 de leeftijd Numeriek (geheel getal) met eenheid jr;
             """;
@@ -112,6 +113,19 @@ class ParameterSetLoaderTest {
             """;
         ParameterSetError f = assertThrows(ParameterSetError.class, () -> ParameterSetLoader.load(json, model()));
         assertTrue(f.errors().stream().anyMatch(m -> m.contains("tarief") && m.toLowerCase().contains("overlap")),
+                f::getMessage);
+    }
+
+    /** uchar's Drools branch reads a time-dependent parameter whole, as its timeline (a {@code List<Period>} global),
+     *  and a set gives the one value an asOfDate chooses: the loader refuses it by name, where a scalar global used to
+     *  go unset and the rules read the parameter as unbound. */
+    @Test void a_time_dependent_parameter_is_refused_by_name() {
+        String json = """
+            { "parameterSets": [ { "name": "s", "values": {
+                "maandtarief": [ { "value": 1, "from": "2025-01-01", "to": "2025-12-31" } ] } } ] }
+            """;
+        ParameterSetError f = assertThrows(ParameterSetError.class, () -> ParameterSetLoader.load(json, model()));
+        assertTrue(f.errors().stream().anyMatch(m -> m.contains("maandtarief") && m.contains("tijdsafhankelijk")),
                 f::getMessage);
     }
 

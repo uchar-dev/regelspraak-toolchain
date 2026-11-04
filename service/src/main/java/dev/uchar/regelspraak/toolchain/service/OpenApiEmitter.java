@@ -65,8 +65,9 @@ import java.util.List;
  * they add stand in {@code Answer} and, for the detail, in {@code EvaluationFault}, with the components
  * {@code ExplanationPart}, {@code Trace}, {@code Dekking} and {@code Fixpunt}.
  *
- * <p><b>The 422.</b> A request on which the rules give no answer gets one of two bodies: {@code EvaluationFault}, the faults
- * that stand at the fixpoint, or {@code NoFixpoint}, a session that reached no fixpoint, with uchar's sentence.
+ * <p><b>The 422.</b> A request on which the rules give no answer gets one of three bodies: {@code EvaluationFault}, the
+ * faults that stand at the fixpoint, {@code NoFixpoint}, a session that reached no fixpoint, with uchar's sentence, or
+ * {@code Limit}, a value uchar's Drools branch cannot hold, with its register code and uchar's sentence.
  */
 public final class OpenApiEmitter {
 
@@ -117,6 +118,7 @@ public final class OpenApiEmitter {
         schemas.set("Coverage", coverageSchema());
         schemas.set("Fixpoint", fixpointSchema());
         schemas.set("NoFixpoint", noFixpointSchema());
+        schemas.set("Limit", limitSchema());
 
         return doc;
     }
@@ -235,11 +237,13 @@ public final class OpenApiEmitter {
         answer(responses, "404", "onbekend pad", "#/components/schemas/Error");
         ObjectNode unanswered = responses.putObject("422");
         unanswered.put("description", "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout"
-                + " kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin");
+                + " kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of"
+                + " uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin");
         ArrayNode oneOf = unanswered.putObject("content").putObject("application/json").putObject("schema")
                 .putArray("oneOf");
         oneOf.addObject().put("$ref", "#/components/schemas/EvaluationFault");
         oneOf.addObject().put("$ref", "#/components/schemas/NoFixpoint");
+        oneOf.addObject().put("$ref", "#/components/schemas/Limit");
         answer(responses, "503", "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
                 "#/components/schemas/Error");
         answer(responses, "500", "interne fout (geen stacktrace gelekt)", "#/components/schemas/Error");
@@ -529,7 +533,9 @@ public final class OpenApiEmitter {
         ObjectNode parameters = props.putObject("parameters");
         parameters.put("type", "object");
         parameters.put("additionalProperties", true);
-        parameters.put("description", "parameternaam -> waarde; overschrijft de descriptor-defaults.");
+        parameters.put("description", "parameternaam -> waarde; overschrijft de descriptor-defaults. Een"
+                + " tijdsafhankelijke parameter (voor elke maand) neemt zijn tijdlijn: {\"timeline\": [{\"from\": <datum>,"
+                + " \"to\": <datum>, \"value\": <waarde>}, ...]}, from of to weggelaten voor een open grens.");
 
         // instanties[]
         ObjectNode instances = props.putObject("instances");
@@ -577,7 +583,9 @@ public final class OpenApiEmitter {
         ObjectNode instProps = inst.putObject("properties");
         instProps.putObject("id").put("type", "string");
         instProps.putObject("type").put("type", "string");
-        freeObject(instProps.putObject("attributes"), "attribuutnaam -> waarde (of null bij leeg).");
+        freeObject(instProps.putObject("attributes"), "attribuutnaam -> waarde (of null bij leeg); een attribuut op een"
+                + " tijdlijn als {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]},"
+                + " from of to weggelaten voor een open grens.");
         freeObject(instProps.putObject("characteristics"), "kenmerknaam -> boolean.");
 
         ObjectNode inc = props.putObject("inconsistencies");
@@ -846,7 +854,10 @@ public final class OpenApiEmitter {
                 + " gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet"
                 + " in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus"
                 + " zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel"
-                + " van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd; OTHER:"
+                + " van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd;"
+                + " OPEN_SEGMENT_FAULT: een totaal over een segment met een open grens dat niet 0 is;"
+                + " CHARACTERISTIC_PERIODS_FAULT: de perioden waarin een tijdsafhankelijk kenmerk geldt, met een open"
+                + " grens; OTHER:"
                 + " een fout van een ander type die aan het fixpunt"
                 + " staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft.");
         ObjectNode sentence = itemProps.putObject("error");
@@ -877,6 +888,31 @@ public final class OpenApiEmitter {
         ObjectNode fixpointError = props.putObject("fixpointError");
         fixpointError.put("type", "string");
         fixpointError.put("description", "met de vlag fixpoint: uchars zin, want er is geen fixpunt om te tonen.");
+        return s;
+    }
+
+    /** The 422 body of a limit of uchar's Drools branch, honest to {@link AnswerBuilder#limit}: {status, error, code,
+     *  reason}, and the detail a request may ask, as for an evaluation fault. */
+    private static ObjectNode limitSchema() {
+        ObjectNode s = NF.objectNode();
+        s.put("type", "object");
+        s.put("description", "uchars Drools-tak houdt een waarde van deze invoer niet, zoals een segment van de"
+                + " onbegrensde vorm waarvan de waarde niet eindigt: een grens van de tak, geen fout van de regels of van"
+                + " de invoer. Er wordt niets teruggeschreven.");
+        ArrayNode req = s.putArray("required");
+        req.add("status"); req.add("error"); req.add("code"); req.add("reason");
+        ObjectNode props = s.putObject("properties");
+        ObjectNode status = props.putObject("status");
+        status.put("type", "string");
+        status.putArray("enum").add("LIMIT");
+        props.putObject("error").put("type", "string");
+        ObjectNode code = props.putObject("code");
+        code.put("type", "string");
+        code.put("description", "uchars registercode van de grens, zoals DROOLS-312.");
+        ObjectNode reason = props.putObject("reason");
+        reason.put("type", "string");
+        reason.put("description", "uchars zin.");
+        detailFields(props);
         return s;
     }
 

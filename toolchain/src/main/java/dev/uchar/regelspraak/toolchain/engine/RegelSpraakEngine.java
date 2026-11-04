@@ -92,8 +92,8 @@ public final class RegelSpraakEngine {
 
     /**
      * Open a fresh session op één datumautoriteit: {@code asOfDate} wordt de {@code rekendatum}-global. Een model
-     * dat geen rekendatum-global declareert (niet-tijdgebonden) is tolerant — {@code setGlobal} wordt dan opgeslikt,
-     * geen fout. Dit is het pad zonder parametersets; de sessie draagt dan alleen de datum, geen parameter-globals.
+     * dat geen rekendatum-global declareert (niet-tijdgebonden) is tolerant — de datum wordt dan niet gezet, geen
+     * fout. Dit is het pad zonder parametersets; de sessie draagt dan alleen de datum, geen parameter-globals.
      */
     public Session newSession(LocalDate asOfDate) {
         Session s = newSession();
@@ -115,7 +115,8 @@ public final class RegelSpraakEngine {
      * </ul>
      * Elke opgeloste parameter wordt als global gezet onder {@code Namen.ident(parameternaam, false)}, de naam die de
      * transpiler de global geeft, tolerant voor niet-gedeclareerde globals: een parameter die geen enkele regel leest
-     * is geen fout.
+     * is geen fout. Een gedeclareerde global die de waarde niet neemt, faalt: de lader weigert een tijdsafhankelijke
+     * parameter in een set, want uchars regels lezen die als tijdlijn ({@code List<Period>}).
      */
     public Session newSession(LocalDate asOfDate, List<ParameterSet> parameterSets) {
         if (asOfDate == null)
@@ -144,11 +145,16 @@ public final class RegelSpraakEngine {
         return s;
     }
 
-    /** setGlobal, tolerant voor een model dat geen zodanige global declareerde (een parameter die geen regel leest,
-     *  of een niet-tijdgebonden model zonder rekendatum-global): schrijven zou throwen — hier onschadelijk gemaakt. */
-    private static void setGlobalSafe(Session s, String label, Object argument) {
-        try { s.setGlobal(label, argument); }
-        catch (RuntimeException unknown) { /* global niet gedeclareerd: onschadelijk — geen regel leest hem */ }
+    /** Zet de global {@code label} waar de rule base hem declareert; een parameter die geen regel leest, of de
+     *  rekendatum van een niet-tijdgebonden model, is geen global en wordt niet gelezen. Een gedeclareerde global die de
+     *  waarde niet neemt, faalt met de zin van Drools: zonder haar zou de sessie een andere invoer rekenen. */
+    private void setGlobalSafe(Session s, String label, Object argument) {
+        for (org.kie.api.definition.KiePackage p : build.kieBase().getKiePackages())
+            for (org.kie.api.definition.rule.Global g : p.getGlobalVariables())
+                if (g.getName().equals(label)) {
+                    s.setGlobal(label, argument);
+                    return;
+                }
     }
 
     /** The coverage manifest of the built rule base: one verdict per construct, every one LOWERED, because the build

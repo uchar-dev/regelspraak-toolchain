@@ -36,7 +36,8 @@ import java.util.List;
  * <p>Fouten worden VERZAMELEND gerapporteerd (alle eerst, dan één {@link ParameterSetError}), house-style: elke fout
  * noemt de overtreder + locatie. Malformed JSON mag direct één throw zijn. Gedekte fouten: onbekende parameternaam,
  * verkeerd getypeerde waarde, verkeerde eenheid, ongeldige/omgekeerde from/to, en overlap (via
- * {@link ParameterSet#overlapErrors}, ná decode).
+ * {@link ParameterSet#overlapErrors}, ná decode). Een tijdsafhankelijke parameter ({@code voor elke maand}) staat er niet
+ * in: een set geeft de jaargang die de peildatum kiest, en uchars regels lezen zo'n parameter heel, als tijdlijn.
  *
  * <p>De waarde-decodering spiegelt {@code dev.uchar.regelspraak.toolchain.service.ValueCoder} (Numeriek/Percentage → BigDecimal
  * met eenheid-objectvorm {@code {"value": n, "unit": "<afk>"}} waarvan de eenheid EXACT de gedeclareerde
@@ -147,6 +148,14 @@ public final class ParameterSetLoader {
                     RegelSpraakModel.Parameter param = parameter(model, paramName);
                     if (param == null) {
                         errors.add(valuesPath + ": onbekende parameter '" + paramName + "'");
+                        continue;
+                    }
+                    // a set gives the vintage an asOfDate chooses; the rules read a time-dependent parameter whole, as
+                    // its timeline, which a request or the descriptor gives
+                    if (param.granularity() != null) {
+                        errors.add(valuesPath + ": parameter '" + param.name() + "' is tijdsafhankelijk; de regels"
+                                + " lezen zijn hele tijdlijn, en een parameterset geeft één waarde op de peildatum."
+                                + " Geef de tijdlijn in het verzoek of als default in de descriptor");
                         continue;
                     }
                     String canonical = param.name();   // normaliseer naar de canonieke model-naam

@@ -12,6 +12,7 @@ import dev.uchar.regelspraak.ir.ResolvedScenario.CharacteristicValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.RoleValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
+import dev.uchar.regelspraak.ir.ResolvedScenario.Segment;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -31,8 +32,9 @@ import java.util.List;
  * boolean/tekst/enum as its plain JSON scalar. Those are exactly the forms
  * {@link dev.uchar.regelspraak.toolchain.service.ValueCoder} accepts (a plain number is read in the declared unit),
  * so no request value is ever approximated. The cells of a dimensioned attribute go as {@code cells}, each with its
- * labels and its value in that form. A timeline value, a time-dependent kenmerk and a fraction that has no exact decimal
- * form have no request form, and fail here by name ({@link NonPortable}).
+ * labels and its value in that form, and the timeline of a time-dependent parameter as {@code timeline}, each segment
+ * with its bounds and its value in that form. A timeline value of an attribute, a time-dependent kenmerk and a fraction
+ * that has no exact decimal form have no request form, and fail here by name ({@link NonPortable}).
  *
  * <p>The response shape produced matches {@link dev.uchar.regelspraak.toolchain.service.Request}:
  * {@code instanties[]{type,id,attributen,kenmerken,rollen}}, {@code parameters}, {@code rekendatum}.
@@ -61,12 +63,8 @@ final class SituationToRequest {
         // parameters — the last-wins merged parameter values, keyed by declared parameter name.
         if (!situation.parameters().isEmpty()) {
             ObjectNode params = root.putObject("parameters");
-            for (ParameterValue p : situation.parameters()) {
-                if (p.timeline() != null)
-                    throw new NonPortable("parameter '" + p.parameter() + "' heeft een tijdlijn; het "
-                            + "verzoek van de dienst draagt geen tijdlijnwaarde");
-                params.set(p.parameter(), valueToJson(p.value()));
-            }
+            for (ParameterValue p : situation.parameters())
+                params.set(p.parameter(), p.timeline() != null ? timelineToJson(p.timeline()) : valueToJson(p.value()));
         }
 
         // instanties — one per labelled instance, in first-seen order.
@@ -107,6 +105,21 @@ final class SituationToRequest {
             }
         }
         return root;
+    }
+
+    /** The timeline of a time-dependent parameter as the request gives it, {@code {"timeline": [{"from", "to",
+     *  "value"}, ...]}}: each segment with its bounds, a bound left out where it is open, and its value as
+     *  {@link #valueToJson} writes it. */
+    private static ObjectNode timelineToJson(List<Segment> timeline) {
+        ObjectNode n = NF.objectNode();
+        ArrayNode list = n.putArray("timeline");
+        for (Segment s : timeline) {
+            ObjectNode segment = list.addObject();
+            if (s.van() != null) segment.put("from", s.van().toString());
+            if (s.until() != null) segment.put("to", s.until().toString());
+            segment.set("value", valueToJson(s.value()));
+        }
+        return n;
     }
 
     /** The cells of a dimensioned attribute as the request gives them, {@code {"cells": [{"labels", "value"}, ...]}}:

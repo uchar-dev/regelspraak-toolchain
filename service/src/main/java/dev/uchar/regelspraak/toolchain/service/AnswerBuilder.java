@@ -38,7 +38,10 @@ import java.util.Map;
  * declaration without a designation by its canonical name. The canonical choice writes the names as the descriptor's
  * selectors and the facts spell them, as the answer always did.
  *
- * <p>A dimensioned attribute is answered as its cells ({@link #cells}), every cell with its labels and its value.
+ * <p>A dimensioned attribute is answered as its cells ({@link #cells}), every cell with its labels and its value. An
+ * attribute on a timeline is answered as its segments ({@link #timeline}), in the form of uchar's case: a segment
+ * without {@code from} begins before every day and one without {@code to} runs past every day (an open bound, uchar's
+ * RUNTIME-SEMANTICS ch. 3.1), as uchar's write-back puts a null bound on the bean.
  *
  * <p>Response shape:
  * <pre>{@code
@@ -46,6 +49,8 @@ import java.util.Map;
  *                     "attributes": { "<attribuut>": <waarde|null>,
  *                                     "<gedimensioneerd attribuut>": { "cells": [ { "labels": [...],
  *                                                                                   "value": <waarde|null> }, ... ] },
+ *                                     "<attribuut op een tijdlijn>": { "timeline": [ { "from"?: "<datum>",
+ *                                                                        "to"?: "<datum>", "value": <waarde> }, ... ] },
  *                                     ... },
  *                     "characteristics":  { "<kenmerk>": true|false, ... } }, ... ],
  *   "inconsistencies": [ "<regelnaam>", ... ],
@@ -53,8 +58,8 @@ import java.util.Map;
  * }</pre>
  *
  * <p>A request on which the rules give an evaluation fault gets no such answer but the one of
- * {@link #evaluationFault}, and a request whose session reached no fixpoint the one of {@link #noFixpoint}; both
- * adapters send them with HTTP 422.
+ * {@link #evaluationFault}, a request whose session reached no fixpoint the one of {@link #noFixpoint}, and a request
+ * on which uchar's branch reaches a limit the one of {@link #limit}; both adapters send them with HTTP 422.
  */
 public final class AnswerBuilder {
 
@@ -96,6 +101,8 @@ public final class AnswerBuilder {
                 if (u.characteristic()) characteristics.set(naming.characteristic(ot, u.member()), renderCharacteristic(value));
                 else if (!ot.dimensionsOf(u.member()).isEmpty())
                     attributes.set(naming.attribute(ot, u.member()), cells(value, ot, u.member()));
+                else if (RequestMapper.isTemporal(ot, u.member()))
+                    attributes.set(naming.attribute(ot, u.member()), timeline(value, ot, u.member()));
                 else attributes.set(naming.attribute(ot, u.member()), rend(value, ot.attribute(u.member())));
             }
             if (attributes.isEmpty() && characteristics.isEmpty()) continue;
@@ -152,6 +159,21 @@ public final class AnswerBuilder {
         return n;
     }
 
+    /** The answer to a request on which uchar's Drools branch reaches a limit at the fixpoint ({@link Limit}), which
+     *  both adapters send with HTTP 422: {@code {"status": "LIMIT", "error": <sentence>, "code": <uchar's register
+     *  code>, "reason": <uchar's sentence>}}. The detail of the session the request asked ({@link Limit#detail()})
+     *  follows the reason. */
+    public static ObjectNode limit(Limit limit) {
+        ObjectNode n = NF.objectNode();
+        n.put("status", "LIMIT");
+        n.put("error", "uchars Drools-tak houdt een waarde van deze invoer niet: een grens van de tak, geen fout van de"
+                + " regels of van de invoer");
+        n.put("code", limit.code());
+        n.put("reason", limit.getMessage());
+        if (limit.detail() != null) n.setAll(limit.detail());
+        return n;
+    }
+
     /** The request id whose bean IS {@code bean}, or null when it is none of the request's instances. */
     private static String idOf(Map<String, Object> beans, Object bean) {
         if (bean == null) return null;
@@ -192,6 +214,30 @@ public final class AnswerBuilder {
         }
         ObjectNode n = NF.objectNode();
         n.set("cells", cells);
+        return n;
+    }
+
+    /** The value of the attribute {@code attribute} of {@code ot} on a timeline as its segments, {@code {"timeline":
+     *  [{"from": <datum>, "to": <datum>, "value": <waarde|null>}, ...]}} in the order of the bean: the segments uchar's
+     *  write-back put there ({@code Period.beans}), a null bound left out, as uchar's case leaves out an open bound.
+     *  {@code segments} is the bean member, null where no rule wrote one and the input gave none: then null, as for an
+     *  empty value (uchar's RUNTIME-SEMANTICS ch. 3.1: such a timeline reads leeg on every day). */
+    private JsonNode timeline(Object segments, ObjectType ot, String attribute) {
+        if (segments == null) return NF.nullNode();
+        if (!(segments instanceof List<?> list))
+            throw new IllegalStateException("het attribuut '" + attribute + "' op een tijdlijn staat op de bean als "
+                    + segments.getClass().getName() + ", niet als lijst segmenten");
+        Datatype dt = ot.attribute(attribute);
+        ArrayNode out = NF.arrayNode();
+        for (Object segment : list) {
+            ObjectNode sn = out.addObject();
+            Object from = RegelSpraakRuntime.get(segment, "van"), to = RegelSpraakRuntime.get(segment, "tot");
+            if (from != null) sn.put("from", from.toString());
+            if (to != null) sn.put("to", to.toString());
+            sn.set("value", rend(RegelSpraakRuntime.get(segment, "waarde"), dt));
+        }
+        ObjectNode n = NF.objectNode();
+        n.set("timeline", out);
         return n;
     }
 

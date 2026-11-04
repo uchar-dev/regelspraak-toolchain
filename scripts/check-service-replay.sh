@@ -154,12 +154,19 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # jutterswet-kenmerk-aan-fixpunt en jutterswet-twee-schrijvers-aan-fixpunt, elk in beide regelvolgordes (een
 # schrijfactie staat alleen waar haar vorm aan het fixpunt beslist), en jutterswet-precisiepoort (de vormen die de
 # precisiepoort doorlaat); alle zeven spelen ook door de dienst, met uitleg.
-EXPECTED_REPLAY_PLAYED=285
+# 2026-11-04, uchar's kaarten timeline-arithmetic-by-rule, timeline-arithmetic-per-period, conditions-per-period en
+# total-over-partial-unit met hun fixrondes (pin 504522cc): 287 — de set van gate 12 groeit van 316 naar 328 met elf
+# goldens van tijd over alle tijd en met jutterswet-pachtvenster, die gate 12 nu speelt. Twee spelen ook door de
+# dienst: jutterswet-verzuimrente-30-360-afgerond (een tijdsafhankelijke parameter met open grenzen in het verzoek,
+# tijdlijnen met open grenzen in het antwoord, sinds deze pin) en time-window-timeline-characteristic (een kenmerk
+# binnen een venster, met uitleg); de tien andere hebben een tijdlijn als invoerwaarde of een kenmerk met perioden en
+# staan hieronder.
+EXPECTED_REPLAY_PLAYED=287
 
-# De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt geen
-# tijdlijn: een attribuut- of parameterwaarde als tijdlijn, een kenmerk met perioden, en een scalaire waarde op een
-# tijdsafhankelijk attribuut (uchars peildatumconventie legt die in de emmer van de peildatum; de dienst weigert elk
-# tijdsafhankelijk attribuut als invoer, UNSUPPORTED).
+# De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt de tijdlijn
+# van een tijdsafhankelijke parameter, maar geen attribuutwaarde als tijdlijn, geen kenmerk met perioden en geen
+# scalaire waarde op een tijdsafhankelijk attribuut (uchars peildatumconventie legt die in de emmer van de peildatum;
+# de dienst weigert elk tijdsafhankelijk attribuut als invoer, UNSUPPORTED).
 REPLAY_EXCLUDED=(
   "anchor/jutterswet-borgdeel|tijdlijn als invoerwaarde"
   "anchor/jutterswet-dagentelling|kenmerk met perioden"
@@ -171,6 +178,8 @@ REPLAY_EXCLUDED=(
   "jutterswet-bakenmeester|tijdlijn als invoerwaarde"
   "jutterswet-dagentelling-rgs|kenmerk met perioden"
   "jutterswet-erfwacht|tijdlijn als invoerwaarde"
+  "jutterswet-gehele-jaar-gemaakte-koppeling|kenmerk met perioden"
+  "jutterswet-gehele-jaar-lege-grens|tijdlijn als invoerwaarde"
   "jutterswet-gehele-periode-leeg|tijdlijn als invoerwaarde"
   "jutterswet-gehele-periode-leeg-rgs|tijdlijn als invoerwaarde"
   "jutterswet-getijdenwacht|tijdlijn als invoerwaarde"
@@ -178,16 +187,24 @@ REPLAY_EXCLUDED=(
   "jutterswet-keurlast|tijdlijn als invoerwaarde"
   "jutterswet-keurploeg|tijdlijn als invoerwaarde"
   "jutterswet-klipwacht|tijdlijn als invoerwaarde"
+  "jutterswet-loon-per-periode|tijdlijn als invoerwaarde"
+  "jutterswet-maandloon|tijdlijn als invoerwaarde"
   "jutterswet-muntbewaring|tijdlijn als invoerwaarde"
+  "jutterswet-pachtvenster|tijdlijn als invoerwaarde"
+  "jutterswet-peilwacht|tijdlijn als invoerwaarde"
   "jutterswet-penningjaar|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-ploegpremie|tijdlijn als invoerwaarde"
   "jutterswet-reddingsvloot|tijdlijn als invoerwaarde"
+  "jutterswet-rekenen-per-dag|tijdlijn als invoerwaarde"
   "jutterswet-seinjaar|kenmerk met perioden"
   "jutterswet-sleepvloot|tijdlijn als invoerwaarde"
   "jutterswet-tegenwacht|tijdlijn als invoerwaarde"
   "jutterswet-tempototaal|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-tempovouw|tijdlijn als invoerwaarde"
   "jutterswet-vast-startpunt|tijdlijn als invoerwaarde"
+  "jutterswet-verzuimrente-dagen-afgerond|kenmerk met perioden"
+  "jutterswet-wachtdagen-twee-schrijvers|kenmerk met perioden"
+  "jutterswet-wachtmaanden|tijdlijn als invoerwaarde"
   "synth-gehelejaarkenmerk|kenmerk met perioden"
   "synth2-clip-cond-over-prorata|tijdlijn als invoerwaarde"
   "synth2-clip-over-prorata|tijdlijn als invoerwaarde"

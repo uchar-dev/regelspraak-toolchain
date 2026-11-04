@@ -52,7 +52,11 @@ reads the working memory, the `Inconsistentie` facts among them.
 The facts are instances of the generated beans (`nieuw`, `beanLoader()`), in uchar's package
 `dev.uchar.regelspraak.facts`: the KieBase is built against those classes, so an object of a same-named class from
 another class loader never matches a rule. `newSession(asOfDate)` sets the `rekendatum` global;
-`newSession(asOfDate, parameterSets)` also selects each parameter's vintage on that one date. `compile` throws
+`newSession(asOfDate, parameterSets)` also selects each parameter's vintage on that one date. A time-dependent
+parameter (`voor elke maand`) is no vintage: uchar's branch reads it whole, from a global of type `List<Period>`
+(`Period.OPEN_FROM`, `Period.OPEN_TO` for an open bound), which `Session.setGlobal` takes, and the parameter-set
+loader refuses one by name. A global the rule base declares takes its value or the session fails with Drools'
+sentence; one it does not declare is not set. `compile` throws
 `RegelSpraakCompileException` for resolver errors and for a model uchar refuses. `bin/regelspraak facts <outdir>
 <source.rgs...>` (or `make facts` for the TOKA casus) writes the beans a model implies as source, for a consumer that
 wants to see them.
@@ -148,8 +152,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   instance the selected attributes and characteristics, `inconsistencies` (the rule names of the failed consistency
   checks) and `inconsistencyDetails` (the same, each with its `subject`: the request id of the instance the check
   is about). A 400 names per violation its `field`, its `kind` and its message; `kind` `UNSUPPORTED` marks a
-  request form the service does not carry (a timeline value, a characteristic with periods), and a detail flag of a
-  service started without `DETAIL` (below).
+  request form the service does not carry (a timeline value of an attribute, a characteristic with periods), and a
+  detail flag of a service started without `DETAIL` (below).
 - A dimensioned attribute (uchar's RUNTIME-SEMANTICS ch. 5.8c) has a value per cell and none of its own, so a request
   gives it as its cells, in the form of uchar's case: `"vondstgewicht": {"cells": [{"labels": ["voorjaar"], "value":
   1.50}, …]}`, one label per dimension in their declared order, each value as the attribute's datatype takes it, null
@@ -162,6 +166,23 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   a 400 `MALFORMED`. Labels that name no cell of the attribute (EF-034) and a cell given twice (EF-035) uchar's input
   step refuses before any session: the 422 below, kind `CELL_FAULT`; a value its declaration does not hold is EF-004,
   `INPUT_PRECISION_FAULT`, with the cell as its place (`J1.vondstgewicht[voorjaar]`).
+- A time-dependent parameter (`voor elke maand`, uchar's RUNTIME-SEMANTICS ch. 3.4, 8.3) has a value per day, which
+  uchar's Drools branch reads whole, from a global of type `List<Period>`. The service sets the globals itself, so a
+  request and a descriptor default give such a parameter its timeline, in the form of uchar's case: `"havenheffing":
+  {"timeline": [{"to": "2024-01-01", "value": 2.50}, {"from": "2024-01-01", "value": 3.00}]}`, each value as the
+  parameter's datatype takes it. A segment without `from` begins before every day and one without `to` runs past every
+  day (an open bound, ch. 3.1), so only the first may leave out `from` and only the last `to`; a day no segment covers
+  is a gap. The checks are those of uchar's case reader (`ParameterTimeline`): `from` before `to`, the segments in
+  order and apart, each bound a wall of the parameter's grid (uchar's `FixedStartPoint.opWand`); a violation is a 400
+  `MALFORMED` or `WRONG_TYPE` on the field of the segment, the calendar's week and quarter grid a 400 `UNSUPPORTED`,
+  and a value with more decimals than declared EF-004 (below). A scalar on such a parameter and a timeline on another
+  are a 400 `WRONG_TYPE`. A parameter set (`parameterSets`) gives the vintage an `asOfDate` chooses, so it may not name
+  a time-dependent parameter: the service does not start.
+- An attribute on a timeline in `output` is answered as its segments, in the same form, as uchar's write-back put them
+  on the bean (`"bootheffing": {"timeline": [{"to": "2024-01-01", "value": 5.00}, {"from": "2024-01-01", "value":
+  6.00}]}`), an open bound left out, and null where no rule wrote one and the input gave none. A time-dependent
+  characteristic in `output` refuses the start (`UNSUPPORTED`): the answer gives a characteristic as a boolean, and
+  the bean holds its true periods.
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
   `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"kind": …, "error": <uchar's sentence>}, …]}`, one element per
   fault in uchar's order. Every fault at the fixpoint is such an element, whatever its type: the core reads them from
@@ -172,8 +193,10 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   evaluation date), `WRITERS_CONFLICT` (two writers of one attribute that disagree), `INPUT_FORM_FAULT` (a timeline
   input in the other convention, which no request reaches, since a request carries no timeline),
   `WRITE_BOUNDARY_FAULT` (a value that does not fit the declared decimals of its target, EF-006),
-  `INPUT_PRECISION_FAULT` (below), `CELL_FAULT` (below) or `OTHER` (a fault
-  of another type, such as a fact creation that gives a to-one role a second filling). Where uchar's sentence names
+  `INPUT_PRECISION_FAULT` (below), `CELL_FAULT` (below), `OPEN_SEGMENT_FAULT` (a temporal total over a segment with an
+  open bound that is not 0, EF-036, uchar's `OpenSegmentFault`), `CHARACTERISTIC_PERIODS_FAULT` (the periods in which
+  a time-dependent characteristic holds have an open bound, EF-023, uchar's `CharacteristicPeriodsFault`) or `OTHER`
+  (a fault of another type, such as a fact creation that gives a to-one role a second filling). Where uchar's sentence names
   an object, it names an object of the request by its id; a sentence about a kind of object (the second filling: "a
   Jutter") names none. No stacktrace enters the answer. The Quarkus adapter answers the same, and the
   OpenAPI contract describes the body of the 422 (schema `EvaluationFault`, with `kind` as an enumeration of these
@@ -197,6 +220,13 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   the 422 carries `trace` and `coverage` of what fired up to the end of the run, and for `?fixpoint=true` `fixpointError`
   with the same sentence. The Quarkus adapter answers the same; the OpenAPI 422 is one of `EvaluationFault` and
   `NoFixpoint`. Any other exception stays a 500 `interne fout`.
+- A request on which uchar's Drools branch reaches a limit at the fixpoint, a value of the rules it cannot hold (a
+  segment of a timeline of the unbounded form whose value does not terminate, DROOLS-312, a `LIMIT` of uchar's
+  register), gets 422 with `{"status": "LIMIT", "error": …, "code": "DROOLS-312", "reason": <uchar's sentence>}`. It is
+  no fault of the rules or of the input: uchar's write-back refuses such a session as a `CaseRunner.Excluded` with its
+  register code, before the faults beside it, and its replay excludes the case; the core throws `Limit`, and nothing is
+  written back. With the detail flags the 422 carries `trace`, `coverage` and `fixpoint`, the limit among its faults.
+  The Quarkus adapter answers the same; the OpenAPI 422 is one of `EvaluationFault`, `NoFixpoint` and `Limit`.
 - The detail of a session. A service started with `--detail` or `DETAIL=true` (Quarkus: `DETAIL=true`; default off,
   as `PLAYGROUND`, and no part of the container contract) answers three more query flags, read as `explanation` is (`true`
   or bare), each adding a field after `explanation`: `?trace=true` gives `trace: [{rule, labels, count}]`, per form that
@@ -409,10 +439,11 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   - a session without a fixpoint (the service's 422 `NO_FIXPOINT`) is a FAIL with no `expectations` and the line
     uchar's report gives such a case, `<case file>: <sentence>`; `trace`, `coverage` and `fixpointError` are those of the
     422, and `explanationError` says there is no `explanation`. The other scenarios of the document are computed as usual;
-  - a situation a request cannot carry (a timeline, a characteristic with periods, a fraction without a decimal form),
-    a 400 of the service whose violations are all `UNSUPPORTED`, an entry point uchar does not carry and an
-    expectation uchar does not compare (`CaseRunner.Excluded`) are a MARKER with the sentence; any other 400 of the
-    service is a FAIL naming its violations.
+  - a situation a request cannot carry (a timeline of an attribute, a characteristic with periods, a fraction without
+    a decimal form), a 400 of the service whose violations are all `UNSUPPORTED`, an entry point uchar does not carry,
+    an expectation uchar does not compare (`CaseRunner.Excluded`) and a limit of uchar's branch (the service's 422
+    `LIMIT`, which uchar's replay excludes) are a MARKER with the sentence; any other 400 of the service is a FAIL
+    naming its violations. The timeline of a time-dependent parameter goes as the request's `timeline`.
   The entry point fires only the forms of its scope and uses the parameters of the descriptor beside those the
   situation sets, so a verdict can differ from the ordinary route's, which fires the forms of the scenario's own scope.
 
@@ -432,7 +463,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
 | `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below); `labels` where it names a cell of a dimensioned attribute, one label per dimension in their declared spelling |
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
-| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12); a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for "een tijdlijn", the value of a timeline target |
+| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`); a literal | `empty: true` for an empty one ("onbekend"); `timeline: true` for "een tijdlijn", the value of a timeline target, and for the periods of a time-dependent characteristic |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
@@ -498,7 +529,14 @@ filter, where it is one characteristic check or one read, is a `QUOTE` of its ow
 "`) and before each bound (`"; vóór de begrenzing "`). Every value is the engine's: the reading of the rule
 (`DroolsBackend.readingsOf`) carries the nodes of its value after those of its condition, and since uchar's card
 `readings-of-unconditional-forms` a rule without a condition has a reading of its value too; only the input value of
-the fourth form is read on the bean. A rule on a timeline target wrote "een tijdlijn" and has no computation. A rule
+the fourth form is read on the bean. A rule on a timeline target wrote "een tijdlijn" and has no computation; its
+condition, where it holds per period (a clip, ch. 3.10), is its text with the periods the engine read it to hold in
+(`omdat hij gedurende de gehele maand rentedragend is (van 01-12-2025 tot 01-03-2026)`), and two such writers each
+wrote on their own days. A timeline the engine read inside a computation stands as its periods, and the total of the
+subject's own timeline (ch. 3.6) has no `MEMBERS`: it is no fold over a set. A time-dependent characteristic a rule
+writes in a window has its own sentence, with the periods the bean holds: `"A1 is rentedragend van 16-11-2025 tot
+13-03-2026 volgens de regel 'rentedragend'"`, without its condition, or `"… is niet rentedragend volgens de regel
+'…'"` where it holds on no day. A rule
 outside the scope of an entry point gets the one sentence "de regel '…' staat buiten deze berekening", like an
 attribution rule.
 

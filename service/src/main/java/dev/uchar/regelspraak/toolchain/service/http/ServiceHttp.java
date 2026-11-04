@@ -19,6 +19,7 @@ import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceDescriptor;
 import dev.uchar.regelspraak.toolchain.service.ServiceError;
 import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
+import dev.uchar.regelspraak.toolchain.service.Limit;
 import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 import dev.uchar.regelspraak.toolchain.service.RequestOptions;
@@ -79,6 +80,9 @@ import java.util.concurrent.TimeoutException;
  *   <li>{@link NoFixpoint} → {@code 422}: the session of the request reached no fixpoint, at uchar's fire cap or its
  *       creation budget ({@link AnswerBuilder#noFixpoint}): {@code {"status": "NO_FIXPOINT", "error": <uchar's
  *       sentence>}}.</li>
+ *   <li>{@link Limit} → {@code 422}: uchar's Drools branch reaches a limit at the fixpoint, a value it cannot hold
+ *       ({@link AnswerBuilder#limit}): {@code {"status": "LIMIT", "error": …, "code": <uchar's register code>,
+ *       "reason": <uchar's sentence>}}.</li>
  *   <li>wrong method on a known path → {@code 405} naming the method.</li>
  *   <li>ANY other exception → {@code 500} {@code {"error": "interne fout"}} — never a stacktrace or an exception
  *       message in the body; the stack is logged to {@code stderr} server-side.</li>
@@ -216,6 +220,8 @@ public final class ServiceHttp {
             send(ex, 422, AnswerBuilder.evaluationFault(evaluationFault));
         } catch (NoFixpoint none) {
             send(ex, 422, AnswerBuilder.noFixpoint(none));
+        } catch (Limit limit) {
+            send(ex, 422, AnswerBuilder.limit(limit));
         } catch (Exception intern) {
             // NEVER leak a stacktrace or the exception message to the client; log it server-side.
             intern.printStackTrace(System.err);

@@ -123,8 +123,10 @@ public final class DescriptorLoader {
 
             // uitvoer: "Objecttype.attribute" | "Objecttype:kenmerk"
             List<String> outputs = ep.output() == null ? List.of() : ep.output();
-            for (int j = 0; j < outputs.size(); j++)
+            for (int j = 0; j < outputs.size(); j++) {
                 validateOutput(model, outputs.get(j), path + ".output[" + j + "]", sink);
+                answerable(model, outputs.get(j), path + ".output[" + j + "]", sink);
+            }
 
             // inputElements: same selector syntax as uitvoer — element-level scope-completeness opt-outs
             List<String> invEl = ep.inputElementsOrEmpty();
@@ -157,6 +159,19 @@ public final class DescriptorLoader {
                 sink.add(Violation.of(Violation.Kind.UNKNOWN_REFERENCE, field,
                         "onbekend attribuut '" + u.member() + "' op objecttype '" + u.objectType() + "'"));
         }
+    }
+
+    /** Whether the answer can carry the member output selector {@code sel} names: a time-dependent characteristic it
+     *  cannot, since the answer gives a characteristic as a boolean and the bean holds its true periods. A selector
+     *  {@link #validateOutput} refuses has its violation there. */
+    private static void answerable(RegelSpraakModel model, String sel, String field, List<Violation> sink) {
+        OutputSelector u = OutputSelector.parse(sel);
+        ObjectType ot = u == null ? null : objectType(model, u.objectType());
+        if (ot == null || !u.characteristic() || !hasCharacteristic(ot, u.member())) return;
+        if (RequestMapper.isTemporalCharacteristic(ot, u.member()))
+            sink.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "kenmerk '" + u.member() + "' op objecttype '"
+                    + u.objectType() + "' is tijdsafhankelijk; het antwoord van de dienst geeft een kenmerk als"
+                    + " boolean en draagt geen perioden"));
     }
 
     // ---- model lookups (case-insensitive on names, matching the resolver's own tolerance) ----

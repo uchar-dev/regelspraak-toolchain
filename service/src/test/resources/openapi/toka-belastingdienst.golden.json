@@ -99,7 +99,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -109,6 +109,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -232,7 +235,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -242,6 +245,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -365,7 +371,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -375,6 +381,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -498,7 +507,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -508,6 +517,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -631,7 +643,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -641,6 +653,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -764,7 +779,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -774,6 +789,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -897,7 +915,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -907,6 +925,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -1030,7 +1051,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1040,6 +1061,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -1163,7 +1187,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1173,6 +1197,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -1296,7 +1323,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1306,6 +1333,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -1429,7 +1459,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1439,6 +1469,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -1562,7 +1595,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1572,6 +1605,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -1695,7 +1731,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1705,6 +1741,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -1828,7 +1867,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1838,6 +1877,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -1961,7 +2003,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -1971,6 +2013,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -2094,7 +2139,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -2104,6 +2149,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -2227,7 +2275,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -2237,6 +2285,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -2360,7 +2411,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -2370,6 +2421,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -2493,7 +2547,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -2503,6 +2557,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -2626,7 +2683,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -2636,6 +2693,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -2759,7 +2819,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -2769,6 +2829,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -2892,7 +2955,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -2902,6 +2965,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -3025,7 +3091,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -3035,6 +3101,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -3158,7 +3227,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -3168,6 +3237,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -3291,7 +3363,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -3301,6 +3373,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -3424,7 +3499,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -3434,6 +3509,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -3557,7 +3635,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -3567,6 +3645,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -3690,7 +3771,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -3700,6 +3781,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -3823,7 +3907,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -3833,6 +3917,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
                     }
                   ]
                 }
@@ -4129,7 +4216,7 @@
           "parameters": {
             "type": "object",
             "additionalProperties": true,
-            "description": "parameternaam -> waarde; overschrijft de descriptor-defaults."
+            "description": "parameternaam -> waarde; overschrijft de descriptor-defaults. Een tijdsafhankelijke parameter (voor elke maand) neemt zijn tijdlijn: {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]}, from of to weggelaten voor een open grens."
           },
           "instances": {
             "type": "array",
@@ -4204,7 +4291,7 @@
                 "attributes": {
                   "type": "object",
                   "additionalProperties": true,
-                  "description": "attribuutnaam -> waarde (of null bij leeg)."
+                  "description": "attribuutnaam -> waarde (of null bij leeg); een attribuut op een tijdlijn als {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]}, from of to weggelaten voor een open grens."
                 },
                 "characteristics": {
                   "type": "object",
@@ -4330,9 +4417,11 @@
                     "WRITE_BOUNDARY_FAULT",
                     "INPUT_PRECISION_FAULT",
                     "CELL_FAULT",
+                    "OPEN_SEGMENT_FAULT",
+                    "CHARACTERISTIC_PERIODS_FAULT",
                     "OTHER"
                   ],
-                  "description": "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400); WRITE_BOUNDARY_FAULT: een waarde die niet in de gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd; OTHER: een fout van een ander type die aan het fixpunt staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft."
+                  "description": "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die verschillen; INPUT_FORM_FAULT: een tijdlijninvoer in de andere conventie, die geen verzoek bereikt, want de dienst weigert een tijdlijn (400); WRITE_BOUNDARY_FAULT: een waarde die niet in de gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd; OPEN_SEGMENT_FAULT: een totaal over een segment met een open grens dat niet 0 is; CHARACTERISTIC_PERIODS_FAULT: de perioden waarin een tijdsafhankelijk kenmerk geldt, met een open grens; OTHER: een fout van een ander type die aan het fixpunt staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft."
                 },
                 "error": {
                   "type": "string",
@@ -4655,6 +4744,8 @@
                     "WRITE_BOUNDARY_FAULT",
                     "INPUT_PRECISION_FAULT",
                     "CELL_FAULT",
+                    "OPEN_SEGMENT_FAULT",
+                    "CHARACTERISTIC_PERIODS_FAULT",
                     "OTHER"
                   ]
                 },
@@ -4710,6 +4801,48 @@
           "fixpointError": {
             "type": "string",
             "description": "met de vlag fixpoint: uchars zin, want er is geen fixpunt om te tonen."
+          }
+        }
+      },
+      "Limit": {
+        "type": "object",
+        "description": "uchars Drools-tak houdt een waarde van deze invoer niet, zoals een segment van de onbegrensde vorm waarvan de waarde niet eindigt: een grens van de tak, geen fout van de regels of van de invoer. Er wordt niets teruggeschreven.",
+        "required": [
+          "status",
+          "error",
+          "code",
+          "reason"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIMIT"
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "description": "uchars registercode van de grens, zoals DROOLS-312."
+          },
+          "reason": {
+            "type": "string",
+            "description": "uchars zin."
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "fixpoint": {
+            "$ref": "#/components/schemas/Fixpoint"
+          },
+          "fixpointError": {
+            "type": "string",
+            "description": "met de vlag fixpoint, in plaats van fixpoint: waarom een waarde van het fixpunt niet getoond kan worden."
           }
         }
       }

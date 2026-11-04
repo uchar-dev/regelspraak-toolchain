@@ -51,6 +51,10 @@ import java.util.Map;
  * name no cell (EF-034) and a cell given twice (EF-035) it refuses before any session, as it refuses EF-004 per cell,
  * and the result returns them as faults of the kind {@link EvaluationFault.Kind#CELL_FAULT}.
  *
+ * <p>A time-dependent parameter takes its timeline ({@link ParameterTimeline}): uchar's branch reads it whole, as a
+ * {@code List<Period>} global, and a segment may leave out {@code from} or {@code to}, an open bound. A scalar on such a
+ * parameter and a timeline on another are violations.
+ *
  * <p>Unsupported by the service core (a clear violation, never a silent accept): a tijdlijn-valued attribute (no
  * golden situatie uses one). An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid
  * mismatch, an unknown enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without
@@ -150,21 +154,21 @@ public final class RequestMapper {
                                 "onbekende parameter '" + name + "'" + reader.pinnedClause()));
                         return;
                     }
-                    JsonNode value = value(e.getValue(), p.datatype(), field, s);
-                    if (value == null) return;
-                    ValueCoder.Result r = ValueCoder.decode(value, p.datatype(), field);
-                    s.addAll(r.violations());
-                    if (!r.violations().isEmpty()) return;
-                    if (r.value() instanceof BigDecimal b) {
-                        try {
-                            CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(),
-                                    "parameter " + p.name());
-                        } catch (CaseRunner.InputPrecisionFault f) {
-                            inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.INPUT_PRECISION_FAULT, f));
-                            return;
-                        }
+                    Violation form = ParameterTimeline.formViolation(p, e.getValue(), field);
+                    if (form != null) {
+                        s.add(form);
+                        return;
                     }
-                    globals.put(globalName(p.name()), r.value());
+                    Object decoded;
+                    try {
+                        decoded = ParameterTimeline.timeDependent(p)
+                                ? ParameterTimeline.decode(p, e.getValue(), field, (v, f, sink) -> scalar(p, v, f, sink), s)
+                                : scalar(p, e.getValue(), field, s);
+                    } catch (CaseRunner.InputPrecisionFault f) {
+                        inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.INPUT_PRECISION_FAULT, f));
+                        return;
+                    }
+                    if (decoded != null) globals.put(globalName(p.name()), decoded);
                 });
             }
         }
@@ -370,6 +374,21 @@ public final class RequestMapper {
             JsonNode caseValue = caseValue(r.value(), dt, field, refusals, s);
             if (caseValue != null) objectIn(instance, "attributes").set(canonical, caseValue);
         });
+    }
+
+    /** The scalar {@code node} of parameter {@code p} on {@code field}, decoded by its datatype, or null after adding
+     *  the violations to {@code s}.
+     *
+     *  @throws CaseRunner.InputPrecisionFault a number with more decimals than {@code p} declares (EF-004) */
+    private Object scalar(RegelSpraakModel.Parameter p, JsonNode node, String field, List<Violation> s) {
+        JsonNode value = value(node, p.datatype(), field, s);
+        if (value == null) return null;
+        ValueCoder.Result r = ValueCoder.decode(value, p.datatype(), field);
+        s.addAll(r.violations());
+        if (!r.violations().isEmpty()) return null;
+        if (r.value() instanceof BigDecimal b)
+            CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(), "parameter " + p.name());
+        return r.value();
     }
 
     /** Whether {@code value} is the input of a dimensioned attribute: an object with {@code cells} and nothing else. */
@@ -735,13 +754,13 @@ public final class RequestMapper {
      *  the case, which uchar's input step reads as the asOfDate-bucket scalar of a timeline the service does not
      *  carry, instead of a violation naming the field.
      *  The model's chain walk is case-INSENSITIVE, exactly as this scan was. */
-    private static boolean isTemporal(ObjectType ot, String name) {
+    static boolean isTemporal(ObjectType ot, String name) {
         return ot.granularityOf(name) != null || ot.timelineCountOf(name) != null;
     }
 
     /** The kenmerk analogue of {@link #isTemporal} — a §13.3.6.7 tijdlijn kenmerk (a {@code List<Segment>}
      *  field), which the service core does not support; chain-closed for the same reason. */
-    private static boolean isTemporalCharacteristic(ObjectType ot, String name) {
+    static boolean isTemporalCharacteristic(ObjectType ot, String name) {
         return ot.characteristicGranularityOf(name) != null || ot.characteristicTimelineCountOf(name) != null;
     }
 

@@ -22,6 +22,7 @@ import dev.uchar.regelspraak.toolchain.service.AnswerBuilder;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceError;
 import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
+import dev.uchar.regelspraak.toolchain.service.Limit;
 import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 import dev.uchar.regelspraak.toolchain.service.RequestOptions;
@@ -31,9 +32,9 @@ import dev.uchar.regelspraak.toolchain.service.RequestOptions;
  * <ul>
  *   <li>{@code POST /<pad>} → {@link DecisionCore#process} → {@code 200} JSON; {@link ServiceError} → {@code 400}
  *       {@code {"error":…,"violations":[{"field":…,"error":…}]}}; {@link DecisionCore.UnknownPath} → {@code 404};
- *       {@link DecisionCore.NonExecutable} → {@code 503} with the MARKER answer; {@link EvaluationFault} and
- *       {@link NoFixpoint} → {@code 422} with the answer {@link AnswerBuilder#evaluationFault} or
- *       {@link AnswerBuilder#noFixpoint} builds, as {@code ServiceHttp} sends it.</li>
+ *       {@link DecisionCore.NonExecutable} → {@code 503} with the MARKER answer; {@link EvaluationFault},
+ *       {@link NoFixpoint} and {@link Limit} → {@code 422} with the answer {@link AnswerBuilder#evaluationFault},
+ *       {@link AnswerBuilder#noFixpoint} or {@link AnswerBuilder#limit} builds, as {@code ServiceHttp} sends it.</li>
  *   <li>{@code GET /info} → the SAME manifest {@code ServiceHttp} serves (via {@link InfoBuilder}).</li>
  * </ul>
  * The query parameters are {@code ServiceHttp}'s: {@code explanation}, {@code vocabulaire} (the vocabulary of the answer),
@@ -102,6 +103,8 @@ public class DecideResource {
             return response(422, AnswerBuilder.evaluationFault(evaluationFault));
         } catch (NoFixpoint none) {
             return response(422, AnswerBuilder.noFixpoint(none));
+        } catch (Limit limit) {
+            return response(422, AnswerBuilder.limit(limit));
         }
     }
 

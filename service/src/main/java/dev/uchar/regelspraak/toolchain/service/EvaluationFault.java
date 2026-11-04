@@ -4,9 +4,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.runtime.Breuk;
+import dev.uchar.regelspraak.transpiler.tms.CharacteristicPeriodsFault;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.InputFormFault;
 import dev.uchar.regelspraak.transpiler.tms.ComputeFault;
+import dev.uchar.regelspraak.transpiler.tms.OpenSegmentFault;
 import dev.uchar.regelspraak.transpiler.tms.WriteBoundaryFault;
 import dev.uchar.regelspraak.transpiler.tms.WritersConflict;
 
@@ -17,9 +19,11 @@ import java.util.List;
  * The evaluation faults that stand at the fixpoint of a request's session, as uchar's entry reads them
  * ({@code DroolsBackend.fixpointOf(…).fouten()}): the rules give no answer on this input. A fault there is an evaluation
  * fault by its place at the fixpoint, whatever the type of its exception, so each one is an element: it keeps uchar's
- * sentence and gets the kind of its exception, one of the five types uchar's README names ("Faults") or
- * {@link Kind#OTHER} for any other, such as the {@code IllegalStateException} of a fact creation that gives a to-one
- * role a second filling. Both adapters answer it with a 422 ({@link AnswerBuilder#evaluationFault}).
+ * sentence and gets the kind of its exception, one of the five types uchar's README names ("Faults"), one of the two
+ * faults of a timeline over all time ({@code OpenSegmentFault}, EF-036, and {@code CharacteristicPeriodsFault}, EF-023,
+ * uchar's RUNTIME-SEMANTICS ch. 3.6 and 3.11), or {@link Kind#OTHER} for any other, such as the
+ * {@code IllegalStateException} of a fact creation that gives a to-one role a second filling. Both adapters answer it
+ * with a 422 ({@link AnswerBuilder#evaluationFault}).
  *
  * <p>It carries the {@link Fixpoint} the faults stand at, and, when the request asked to see its session
  * ({@link RequestOptions#detailFlags()}), the fields the 422 gives beside the faults ({@link #detail()}). Its cause
@@ -40,7 +44,7 @@ public final class EvaluationFault extends RuntimeException {
     /** The kind of a fault, by the type of uchar's exception ({@link #CELL_FAULT}: {@code CaseInput.CellFault}). */
     public enum Kind {
         DIVISION_BY_ZERO, COMPUTE_FAULT, WRITERS_CONFLICT, INPUT_FORM_FAULT, WRITE_BOUNDARY_FAULT, INPUT_PRECISION_FAULT,
-        CELL_FAULT, OTHER
+        CELL_FAULT, OPEN_SEGMENT_FAULT, CHARACTERISTIC_PERIODS_FAULT, OTHER
     }
 
     /** One fault: its kind and uchar's sentence. */
@@ -94,6 +98,8 @@ public final class EvaluationFault extends RuntimeException {
             case InputFormFault i -> Kind.INPUT_FORM_FAULT;
             case WriteBoundaryFault w -> Kind.WRITE_BOUNDARY_FAULT;
             case CaseRunner.InputPrecisionFault p -> Kind.INPUT_PRECISION_FAULT;
+            case OpenSegmentFault o -> Kind.OPEN_SEGMENT_FAULT;
+            case CharacteristicPeriodsFault c -> Kind.CHARACTERISTIC_PERIODS_FAULT;
             default -> Kind.OTHER;
         };
     }

@@ -127,12 +127,13 @@ class NoFixpointTest {
         assertTrue(fired, body.path("coverage").toString());
     }
 
-    /** The contract names the body: the 422 is one of {@code EvaluationFault} and {@code NoFixpoint}. */
+    /** The contract names the body: the 422 is one of {@code EvaluationFault}, {@code NoFixpoint} and {@code Limit}. */
     @Test
     void the_openapi_422_names_the_body_of_NoFixpoint() {
         JsonNode doc = OpenApiEmitter.emit(core.descriptor(), core.model());
         JsonNode schema = doc.at("/paths/~1estafette/post/responses/422/content/application~1json/schema");
-        assertEquals("[{\"$ref\":\"#/components/schemas/EvaluationFault\"},{\"$ref\":\"#/components/schemas/NoFixpoint\"}]",
+        assertEquals("[{\"$ref\":\"#/components/schemas/EvaluationFault\"},{\"$ref\":\"#/components/schemas/NoFixpoint\"},"
+                        + "{\"$ref\":\"#/components/schemas/Limit\"}]",
                 schema.path("oneOf").toString(), schema::toString);
         JsonNode s = doc.at("/components/schemas/NoFixpoint");
         assertEquals("[\"status\",\"error\"]", s.path("required").toString(), s::toString);

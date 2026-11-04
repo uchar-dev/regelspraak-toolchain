@@ -158,6 +158,27 @@ model declares) and the sentences of the messages, which keep their text. The ol
   in the explanation: `"B2 heeft als ruwe deel 2,5 EUR"`, where the explanation rounded it to a whole number (`3 EUR`),
   and one that does not terminate is its fraction: `"B1 heeft als ruwe deel 100/3 EUR"`, where it stood as `33 EUR`.
   The answer is unchanged: a value of the unbounded form is the decimal uchar puts on the bean.
+- **Timelines over all time** (uchar's cards `timeline-arithmetic-by-rule`, `timeline-arithmetic-per-period`,
+  `conditions-per-period` and `total-over-partial-unit`): uchar's Drools branch reads a time-dependent parameter
+  (`voor elke maand`) whole, as a `List<Period>` global, so a request and a descriptor default give such a parameter
+  its timeline, `{"timeline": [{"from": …, "to": …, "value": …}]}`, where a segment without `from` begins before every
+  day and one without `to` runs past every day (an open bound). A scalar on such a parameter is a 400 `WRONG_TYPE`,
+  where the service set no global and the rules faulted on an unbound parameter (422 `COMPUTE_FAULT`), and a
+  parameter set may not name one. A timeline attribute in `output` is answered as its segments, an open bound left
+  out, where the answer gave the text of the bean's list; a time-dependent characteristic in `output` refuses the
+  start, where the answer gave `false`; the `fixpoint` leaves out an open bound, where it wrote `null`. A total over
+  an open segment that is not 0 (EF-036) has the kind `OPEN_SEGMENT_FAULT` and periods of a characteristic with an
+  open bound (EF-023) `CHARACTERISTIC_PERIODS_FAULT`, both where they were `OTHER`; a value uchar's branch cannot
+  hold, a segment of the unbounded form that does not terminate (DROOLS-312), is a 422 `{"status": "LIMIT", "error",
+  "code", "reason"}` (`docs/ENGINE.md`). The day count decides every day: a month without a true day counts 0, open
+  at both ends, so a jutter that is never borgplichtig has the timeline 0 on all time (`"J2 heeft als borgdagen een
+  tijdlijn volgens de regel 'borgdagen' (onvoorwaardelijk)"`, where it was `"J2 heeft geen borgdagen, want de regel
+  'borgdagen' gaf geen waarde (onvoorwaardelijk)"`). In the explanation a timeline the engine read stands as its
+  periods (`zijn maandrente (0,000 EUR/mnd tot 01-11-2025, 16,667 EUR/mnd van 01-11-2025 tot 01-12-2025, … en 0,000
+  EUR/mnd vanaf 01-04-2026)`), where it was the text of the engine's list, the total of the subject's own timeline
+  has no members, where it said `er is geen enkel lid`, a time-dependent characteristic a rule writes in a window
+  has a sentence with its periods (`"A1 is rentedragend van 16-11-2025 tot 13-03-2026 volgens de regel
+  'rentedragend'"`), and a condition per period of a timeline target names the periods it holds in.
 
 ## The pin
 
@@ -224,10 +245,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (316). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (328). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 285); every golden that does not play is listed by name with
-  its reason (31, each a timeline form the request cannot express); a deviation always fails, and the list fails when
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 287); every golden that does not play is listed by name with
+  its reason (41, each a timeline form the request cannot express); a deviation always fails, and the list fails when
   it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
@@ -286,8 +307,9 @@ and the value and unit it read), here and in the service's `?explanation=true`; 
 value stands as "(onbekend)", a member the engine did not reach is not named, and a condition that did not hold names
 the member where the engine stopped. The engine reads a number exactly: a value that does not terminate stands as its
 fraction, as uchar's reading writes it (`vóór de afronding 100/3 EUR`), and a value of the unbounded form (`Numeriek
-(getal)`) with every decimal it has. uchar's scenario resolver refuses three of the 29 golden TOKA
-scenarios (listed with their reasons in `scripts/toka-manifest-exclusions.txt`).
+(getal)`) with every decimal it has. A timeline the engine read stands as its periods, as RegelSpraak writes them
+(`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`). uchar's scenario resolver refuses three of the 29
+golden TOKA scenarios (listed with their reasons in `scripts/toka-manifest-exclusions.txt`).
 
 The decision service serves a descriptor over `.rgs` sources or over one `uchar-ir-v1` document; `docs/ENGINE.md`
 describes its routes, its MARKER answer and the dev-only playground. A scope that names a base rule also carries the
@@ -371,9 +393,11 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   set from the scenario document itself: a `Parameterset <name>:` block, chosen with `met parameterset <name>`
   (uchar's scenario layer, since uchar's card `scenariolaag-in-uchar`). The former runner's JSON file beside the scenario has no
   counterpart.
-- **Timelines in a service request.** The request has no timeline value, no characteristic with periods, and no
-  scalar on a time-dependent attribute (uchar's replay places one in the bucket of the evaluation date); the service
-  refuses them as `UNSUPPORTED`. 30 of the goldens gate 12 plays need one; the replay gate lists them.
+- **Timelines in a service request.** The request carries the timeline of a time-dependent parameter, but no
+  timeline value of an attribute, no characteristic with periods, and no scalar on a time-dependent attribute
+  (uchar's replay places one in the bucket of the evaluation date); the service refuses them as `UNSUPPORTED`. The
+  answer gives no time-dependent characteristic. 41 of the goldens gate 12 plays need one of these; the replay gate
+  lists them.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
 - **The explanation** explains characteristic-attribution rules, defaults groups and the values ordinary rules
   compute, not consistencies or creations, whose readings uchar has as well. A rule outside the scope of an entry point

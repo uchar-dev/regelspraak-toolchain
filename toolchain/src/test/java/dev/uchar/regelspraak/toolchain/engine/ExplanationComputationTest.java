@@ -234,7 +234,9 @@ class ExplanationComputationTest {
         assertEquals(EXPECTED, explanation(MODEL + SCENARIO));
     }
 
-    /** A rule on a timeline target writes a timeline: the sentence says so, and gives no computation. */
+    /** A rule on a timeline target writes a timeline: the sentence says so, and gives no computation. The day count
+     *  decides every day (uchar's RUNTIME-SEMANTICS ch. 3.1, 3.9): a month without a true day counts 0, open at both
+     *  ends, so a jutter that is never borgplichtig has the timeline 0 on all time, not an empty one. */
     @Test
     void a_timeline_target_gets_a_timeline_and_no_computation() {
         String document = """
@@ -252,13 +254,113 @@ class ExplanationComputationTest {
                 - is borgplichtig van 10-01-2024 tot 14-02-2024
                 een Jutter J2
                 Met als verwacht resultaat:
+                - de borgdagen van J1 is 0 tot 01-01-2024
                 - de borgdagen van J1 is 22 van 01-01-2024 tot 01-02-2024
                 - de borgdagen van J1 is 13 van 01-02-2024 tot 01-03-2024
-                - de borgdagen van J2 is altijd leeg
+                - de borgdagen van J1 is 0 vanaf 01-03-2024
+                - de borgdagen van J2 is altijd 0
                 """;
         assertEquals(List.of(
                 "J1 heeft als borgdagen een tijdlijn volgens de regel 'borgdagen' (onvoorwaardelijk)",
-                "J2 heeft geen borgdagen, want de regel 'borgdagen' gaf geen waarde (onvoorwaardelijk)"),
+                "J2 heeft als borgdagen een tijdlijn volgens de regel 'borgdagen' (onvoorwaardelijk)"),
+                explanation(document));
+    }
+
+    /** The total of a timeline of the subject is no fold over a set: it has no members. The engine reads the timeline
+     *  under it whole (RUNTIME-SEMANTICS ch. 5.12), here one the period arithmetic of a time-dependent parameter
+     *  wrote, with a 0 open before and after the parameter's periods (ch. 3.4), and the explanation writes it as
+     *  RegelSpraak writes periods. */
+    @Test
+    void a_total_over_a_timeline_names_its_periods_and_no_members() {
+        String document = """
+                Parameter de havenheffing : Numeriek (getal met 2 decimalen) voor elke maand;
+
+                Objecttype de Jutter (mv: Jutters) (bezield)
+                    het aantal boten Numeriek (geheel getal);
+                    de bootheffing Numeriek (getal met 2 decimalen) voor elke maand;
+                    de totale bootheffing Numeriek (getal met 2 decimalen);
+
+                Regel bootheffing
+                    geldig altijd
+                        De bootheffing van een Jutter moet berekend worden als de havenheffing maal zijn aantal boten.
+
+                Regel totale bootheffing
+                    geldig altijd
+                        De totale bootheffing van een Jutter moet berekend worden als (het totaal van zijn bootheffing) rekenkundig afgerond op 2 decimalen.
+
+                Scenario twee boten
+                Gegeven is de volgende situatie:
+                de parameter de havenheffing is 2,50 van 01-12-2023 tot 01-01-2024
+                de parameter de havenheffing is 3,00 van 01-01-2024 tot 01-03-2024
+                een Jutter J1
+                - het aantal boten is 2
+                Met als verwacht resultaat:
+                - de bootheffing van J1 is 0 tot 01-12-2023
+                - de bootheffing van J1 is 5,00 van 01-12-2023 tot 01-01-2024
+                - de bootheffing van J1 is 6,00 van 01-01-2024 tot 01-03-2024
+                - de bootheffing van J1 is 0 vanaf 01-03-2024
+                - de totale bootheffing van J1 is 17,00
+                """;
+        assertEquals(List.of(
+                "J1 heeft als bootheffing een tijdlijn volgens de regel 'bootheffing' (onvoorwaardelijk)",
+                "J1 heeft als totale bootheffing 17,00 volgens de regel 'totale bootheffing' (onvoorwaardelijk): (het"
+                        + " totaal van zijn bootheffing) rekenkundig afgerond op 2 decimalen, met het totaal van zijn"
+                        + " bootheffing (17,00) en zijn bootheffing (0,00 tot 01-12-2023, 5,00 van 01-12-2023 tot"
+                        + " 01-01-2024, 6,00 van 01-01-2024 tot 01-03-2024 en 0,00 vanaf 01-03-2024); vóór de afronding"
+                        + " 17"),
+                explanation(document));
+    }
+
+    /** A time-dependent characteristic a rule writes within a window holds in periods (RUNTIME-SEMANTICS ch. 3.10,
+     *  3.11), and the sentence names them. Two rules write one timeline on their own days, each where its condition per
+     *  period holds, in the periods the engine read; the one whose value is a binder of {@code Daarbij geldt} wrote as
+     *  well (ch. 10.6: uchar sees such a Let through and reads the value at its definition). This explanation was an
+     *  {@code IllegalStateException} on the pin of uchar that carried these forms first. */
+    @Test
+    void a_characteristic_in_periods_and_two_writers_per_period_name_their_periods() {
+        String document = """
+                Eenheidsysteem Rentetijd
+                    de dag (mv: dagen) dg
+                    de maand (mv: maanden) mnd
+
+                Objecttype de Afdracht (mv: Afdrachten)
+                    de vervaldatum Datum in dagen;
+                    de betaaldatum Datum in dagen;
+                    is rentedragend kenmerk (bijvoeglijk) voor elke dag;
+                    de rentedagen Numeriek (niet-negatief geheel getal) met eenheid dg/mnd voor elke maand;
+
+                Regel rentedragend
+                    geldig altijd
+                        Een Afdracht is rentedragend van zijn vervaldatum plus 1 dg tot en met zijn betaaldatum.
+
+                Regel rentedagen in een gehele maand
+                    geldig altijd
+                        De rentedagen van een Afdracht moet gesteld worden op 30 dg/mnd gedurende de tijd dat hij gedurende de gehele maand rentedragend is.
+
+                Regel rentedagen in een gedeeltelijke maand
+                    geldig altijd
+                        De rentedagen van een Afdracht moet berekend worden als de getelde dagen gedurende de tijd dat hij niet gedurende de gehele maand rentedragend is.
+                        Daarbij geldt:
+                            de getelde dagen is het aantal dagen in de maand dat hij rentedragend is.
+
+                Scenario november tot maart
+                Gegeven is de volgende situatie:
+                een Afdracht A1
+                - de vervaldatum is 15-11-2025
+                - de betaaldatum is 12-03-2026
+                Met als verwacht resultaat:
+                - de rentedagen van A1 is 0 dg/mnd tot 01-11-2025
+                - de rentedagen van A1 is 15 dg/mnd van 01-11-2025 tot 01-12-2025
+                - de rentedagen van A1 is 30 dg/mnd van 01-12-2025 tot 01-03-2026
+                - de rentedagen van A1 is 12 dg/mnd van 01-03-2026 tot 01-04-2026
+                - de rentedagen van A1 is 0 dg/mnd vanaf 01-04-2026
+                """;
+        assertEquals(List.of(
+                "A1 is rentedragend van 16-11-2025 tot 13-03-2026 volgens de regel 'rentedragend'",
+                "A1 heeft als rentedagen een tijdlijn volgens de regel 'rentedagen in een gehele maand', omdat hij"
+                        + " gedurende de gehele maand rentedragend is (van 01-12-2025 tot 01-03-2026), en volgens de"
+                        + " regel 'rentedagen in een gedeeltelijke maand', omdat hij niet gedurende de gehele maand"
+                        + " rentedragend is (tot 01-12-2025 en vanaf 01-03-2026)"),
                 explanation(document));
     }
 

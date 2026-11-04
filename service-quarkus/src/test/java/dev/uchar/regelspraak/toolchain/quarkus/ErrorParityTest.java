@@ -30,8 +30,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * Pins that the Quarkus adapter answers a request it refuses with the SAME status and body as {@code ServiceHttp},
  * over the SAME {@link DecisionCore}: the 400 of a request that does not validate (each violation with its
  * {@code veld}, {@code soort} and message), the 400 of an empty or malformed body, the 404 of an unknown path, the
- * 503 MARKER answer of an entry point uchar does not carry, and the 422 of a request on which the rules give an
- * evaluation fault. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
+ * 503 MARKER answer of an entry point uchar does not carry, the 422 of a request on which the rules give an
+ * evaluation fault, and the 422 LIMIT of a value uchar's Drools branch cannot hold. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
  * 422s include a fault at the fixpoint of another type than the four uchar's README names, {@code OTHER}, alone and
  * beside a read of the rekenjaar without an evaluation date. {@link DecideResource} builds the first bodies by hand, as {@code ServiceHttp}'s builders
  * are package-private in the service module, and the 422 body with the service core's builder, as {@code ServiceHttp}
@@ -201,18 +201,38 @@ class ErrorParityTest {
               "input": ["Kustwacht", "Haven", "Jutter"], "output": ["Haven.jutteraantal", "Haven.ligplaatsdeel"] } ],
           "parameters": {} }""";
 
+    /** A levy per month over three boats: 2,50 / 3 does not terminate, and a segment of uchar's Drools branch holds a
+     *  decimal, a limit of the branch (DROOLS-312). */
+    private static final String LIMIT_SOURCE = """
+        Parameter de havenheffing : Numeriek (getal met 2 decimalen) voor elke maand;
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            het aantal boten Numeriek (geheel getal);
+            de ruwe bootheffing Numeriek (getal) voor elke maand;
+        Regel ruwe bootheffing
+            geldig altijd
+                De ruwe bootheffing van een Jutter moet berekend worden als de havenheffing gedeeld door zijn aantal boten.
+        """;
+    private static final String LIMIT_DESCRIPTOR = """
+        { "service": {"name":"haven","version":"1"},
+          "entrypoints": [ { "name":"ruw","path":"ruw",
+            "scope": {"ruleNames": ["ruwe bootheffing"]},
+            "input": ["Jutter"], "output": ["Jutter.ruwe bootheffing"] } ],
+          "parameters": {} }""";
+
     private static DecisionCore toka;
     private static DecisionCore marker;
     private static DecisionCore role;
     private static DecisionCore evaluation;
     private static DecisionCore aanmelding;
     private static DecisionCore filling;
+    private static DecisionCore limit;
     private static ServiceHttp tokaService;
     private static ServiceHttp markerService;
     private static ServiceHttp roleService;
     private static ServiceHttp evaluationService;
     private static ServiceHttp submissionService;
     private static ServiceHttp fillingService;
+    private static ServiceHttp limitService;
 
     @BeforeAll
     static void assemble() throws Exception {
@@ -227,12 +247,14 @@ class ErrorParityTest {
         aanmelding = DecisionCore.assemble(AANMELDING_DESCRIPTOR, Map.of("vouw.rgs", AANMELDING_SOURCE), CoreConfig.strict(),
                 cl);
         filling = DecisionCore.assemble(FILLING_DESCRIPTOR, Map.of("vulling.rgs", FILLING_SOURCE), CoreConfig.strict(), cl);
+        limit = DecisionCore.assemble(LIMIT_DESCRIPTOR, Map.of("haven.rgs", LIMIT_SOURCE), CoreConfig.strict(), cl);
         tokaService = ServiceHttp.bind(toka, "127.0.0.1", 0).start();
         markerService = ServiceHttp.bind(marker, "127.0.0.1", 0).start();
         roleService = ServiceHttp.bind(role, "127.0.0.1", 0).start();
         evaluationService = ServiceHttp.bind(evaluation, "127.0.0.1", 0).start();
         submissionService = ServiceHttp.bind(aanmelding, "127.0.0.1", 0).start();
         fillingService = ServiceHttp.bind(filling, "127.0.0.1", 0).start();
+        limitService = ServiceHttp.bind(limit, "127.0.0.1", 0).start();
     }
 
     @AfterAll
@@ -243,6 +265,7 @@ class ErrorParityTest {
         if (evaluationService != null) evaluationService.stop(0);
         if (submissionService != null) submissionService.stop(0);
         if (fillingService != null) fillingService.stop(0);
+        if (limitService != null) limitService.stop(0);
     }
 
     @Test
@@ -322,6 +345,15 @@ class ErrorParityTest {
               {"type":"Haven","id":"H1","attributes":{"ligplaatsen":0}},
               {"type":"Haven","id":"H2","attributes":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""", 422);
         assertEquals(List.of("OTHER", "COMPUTE_FAULT"), kinds(body), body.toString());
+    }
+
+    @Test
+    void a_limit_of_uchars_branch_422_limit_with_its_code() throws Exception {
+        JsonNode body = compare(limit, limitService, "ruw", """
+            {"parameters":{"havenheffing":{"timeline":[{"value":2.50}]}},
+             "instances":[{"type":"Jutter","id":"J1","attributes":{"aantal boten":3}}]}""", 422);
+        assertEquals("LIMIT", body.path("status").asText(), body.toString());
+        assertEquals("DROOLS-312", body.path("code").asText(), body.toString());
     }
 
     private static List<String> kinds(JsonNode body) {

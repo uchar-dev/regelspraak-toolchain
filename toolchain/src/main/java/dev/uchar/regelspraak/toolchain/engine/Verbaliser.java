@@ -23,6 +23,8 @@ import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
+import dev.uchar.regelspraak.transpiler.tms.Period;
+import dev.uchar.regelspraak.transpiler.tms.PeriodArithmetic;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -1186,12 +1188,13 @@ public final class Verbaliser {
                 ConditionReading.Status status = w.reading().status();
                 if (status == ConditionReading.Status.FAULTS) throw faulted(w.pointer(), label);
                 if (status != ConditionReading.Status.HOLDS) continue;
-                Object v = valueRead(w).of(w.rule().value()).value();
+                Object v = valueRead(w).of(timeline ? seenThrough(w.rule().value()) : w.rule().value()).value();
                 if (v == null || v instanceof List<?> periods && periods.isEmpty()) {
                     empty.add(w);
                     continue;
                 }
-                if (!wrote.isEmpty() && !same(written, v))
+                // writers of a timeline write per day, each its own periods; a disagreement on a day faults (EF-016)
+                if (!timeline && !wrote.isEmpty() && !same(written, v))
                     throw new IllegalStateException("de regels '" + formName(wrote.get(0)) + "' en '" + formName(w)
                             + "' gelden op " + label + " met verschillende waarden voor '" + member + "'"
                             + (cell == null ? "" : " in de cel " + cell) + " (" + written + " en " + v + "), en de"
@@ -1287,9 +1290,16 @@ public final class Verbaliser {
             if (c == null && !initialisation) b.text(" (onvoorwaardelijk)");
             if (!timeline) computation(b, r.value(), writtenByUchar(r), valueRead(w));
             if (c != null) {
+                Read conditionRead = read(w.pointer(), bean, label, c);
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
-                verbaliseCondition(b, c, read(w.pointer(), bean, label, c), w.target().objectType(),
-                        writtenByUchar(r));
+                // a condition per period on a timeline target holds in periods, which the engine read (ch. 3.10, 5.12)
+                if (timeline && conditionRead.has(c) && conditionRead.reached(c)
+                        && conditionRead.of(c).value() instanceof List<?> periods) {
+                    b.leaf(Part.Kind.QUOTE, summary(c));
+                    reading(b, renderPeriods(periods, null, null), false);
+                } else {
+                    verbaliseCondition(b, c, conditionRead, w.target().objectType(), writtenByUchar(r));
+                }
             } else if (initialisation) {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" de ");
                 targetName(b, member, w.labels());
@@ -1432,10 +1442,22 @@ public final class Verbaliser {
 
         /** Of {@code e} een vouw over een verzameling is (RUNTIME-SEMANTICS ch. 3.4): een aggregatie met één argument,
          *  de verzameling, zonder dimensieselectie; haar knoop draagt haar bijdragers. Een aggregatie over haar
-         *  argumenten ("de laatste van A en B") is er geen. */
+         *  argumenten ("de laatste van A en B") is er geen, en het eigen totaal van een tijdlijn van het onderwerp
+         *  ({@link #ownTotal}) evenmin. */
         private boolean overASet(Expr e, Read read) {
             return e instanceof Expr.FunctionCall f && "Aggregation".equals(kindOf(e)) && f.dimensionSelections() == null
-                    && (f.arguments().size() == 1 || read.has(e) && !read.of(e).contributors().isEmpty());
+                    && !ownTotal(f) && (f.arguments().size() == 1 || read.has(e) && !read.of(e).contributors().isEmpty());
+        }
+
+        /** Of {@code f} het eigen totaal van een tijdlijn is (RUNTIME-SEMANTICS ch. 3.6): het totaal van één attribuut
+         *  op een tijdlijn van het onderwerp zelf, zonder rol. Het telt de perioden van die tijdlijn en heeft geen leden;
+         *  het attribuut eronder is een eigen operand, met de tijdlijn die de motor las. */
+        private static boolean ownTotal(Expr.FunctionCall f) {
+            if (f.kind() != Expr.FunctionKind.TOTAAL || f.arguments().size() != 1
+                    || !(f.arguments().get(0) instanceof Expr.AttributeReference ref)) return false;
+            boolean ownMember = !ref.set() && (ref.navigationPath() == null || ref.navigationPath().isEmpty())
+                    && ref.navigationRole() == null;
+            return ownMember && ref.objectType() != null && ref.objectType().granularityOf(ref.attribute()) != null;
         }
 
         /** Of {@code e} een vouw over de cellen van een gedimensioneerd attribuut is (RUNTIME-SEMANTICS ch. 5.8c): een
@@ -1581,9 +1603,12 @@ public final class Verbaliser {
      *  dan kwam het uit de invoer of van een andere schrijver, en zegt de zin dat deze regel niet gold. */
     private Sentence verbaliseAssignment(String label, Object bean, Expr.AttributeReference ref, ResolvedRule r) {
         String characteristic = ref.attribute();
+        ObjectType subject = ref.objectType();
+        if (subject.characteristicGranularityOf(characteristic) != null
+                || subject.characteristicTimelineCountOf(characteristic) != null)
+            return periodAssignment(label, bean, ref, r);
         boolean present = readBoolean(bean, characteristic);
         Condition v = r.condition();
-        ObjectType subject = ref.objectType();
         if (!present && v == null) return null;   // onvoorwaardelijk maar afwezig: niets te verantwoorden
         // de conclusie van de regel ("Een … heeft de uitkeringsduur verstreken") draagt het lidwoord
         Predicate predicate = predicate(subject, characteristic, present, ref.source() == null ? null : ref.source().snippet());
@@ -1626,6 +1651,43 @@ public final class Verbaliser {
         }
         ground(b, sourceAnnotations(r), ruleDecider(r));
         return b.build();
+    }
+
+    /** Eén kenmerktoekenning op een tijdsafhankelijk kenmerk voor één instantie (RUNTIME-SEMANTICS ch. 3.10, 3.11): de
+     *  regel kent het kenmerk toe in de perioden waarin haar voorwaarde geldt, en de bean houdt die ware perioden. De
+     *  zin noemt ze zoals RegelSpraak een periode schrijft, met de regel: {@code "A1 is rentedragend van 16-11-2025 tot
+     *  13-03-2026 volgens de regel 'rentedragend'"}, zonder de voorwaarde, zoals de zin van een tijdlijndoel geen
+     *  berekening geeft. Zonder ware periode geldt het kenmerk op geen dag: {@code "… is niet rentedragend volgens de
+     *  regel '…'"}. */
+    private Sentence periodAssignment(String label, Object bean, Expr.AttributeReference ref, ResolvedRule r) {
+        String characteristic = ref.attribute();
+        Object held = readRaw(bean, Namen.getter(characteristic));
+        if (held != null && !(held instanceof List<?>))
+            throw new IllegalStateException("het tijdsafhankelijke kenmerk '" + characteristic + "' staat op " + label
+                    + " als " + held.getClass().getName() + ", niet als lijst perioden");
+        List<?> periods = held == null ? List.of() : (List<?>) held;
+        boolean present = !periods.isEmpty();
+        Predicate predicate = predicate(ref.objectType(), characteristic, present,
+                ref.source() == null ? null : ref.source().snippet());
+        if (predicate == null)
+            throw new IllegalStateException("de kenmerktoekenning '" + r.name() + "' kent '" + characteristic + "' toe, en "
+                    + ref.objectType().name + " heeft geen kenmerk met die naam: de uitleg kent de soort niet");
+        Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+        predicate.mainClause(b, new On(label));
+        if (present)
+            b.text(" ").leaf(Part.Kind.VALUE, renderPeriods(Period.list(periods), null, null), Part.meta("timeline", true));
+        b.text(" volgens de regel '").leaf(Part.Kind.RULE, RegelSpraakModel.formName(r.name())).text("'");
+        ground(b, sourceAnnotations(r), ruleDecider(r));
+        return b.build();
+    }
+
+    /** De knoop die de waarde van {@code e} draagt: een Let waarvan het lichaam haar eigen binder leest, is haar
+     *  definitie. uchar ziet zo'n Let door voor een tijdlijndoel (RUNTIME-SEMANTICS ch. 10.6) en noteert de waarde in
+     *  zijn lezing bij de definitie; de Let zelf staat er onbereikt. */
+    private static Expr seenThrough(Expr e) {
+        while (e instanceof Expr.Let l && l.body() instanceof Expr.BinderRef b && b.name().equals(l.binder()))
+            e = l.value();
+        return e;
     }
 
     /** Een regel als beslisser van een grondslag: de naam van haar vorm, {@code rules.rules[].name} op de draad, die
@@ -2140,6 +2202,7 @@ public final class Verbaliser {
      *  lid van een vouw op die knoop bijdroeg. */
     private String renderRead(Expr e, Object v, Unit u) {
         if (v == null) return "onbekend";
+        if (v instanceof List<?> timeline) return renderTimeline(e, timeline, u);
         Datatype.Enumeration enumArray = enumerationOf(e);
         if (enumArray != null) return render(v, enumArray);
         // een jaartal schrijft geen duizendtalpunt: "2026", niet "2.026"
@@ -2156,6 +2219,43 @@ public final class Verbaliser {
         String number = nlExact(v, type);
         if (number == null) return renderValue(v, type);
         return unit == null ? number : number + " " + unit;
+    }
+
+    /** Een tijdlijn die de motor op knoop {@code e} las (RUNTIME-SEMANTICS ch. 5.12: een lijst perioden, de waarden
+     *  van rekenen per periode exact), als RegelSpraak een periode schrijft ({@link #renderPeriods}), elke waarde zoals
+     *  {@link #renderRead} haar schrijft. */
+    private String renderTimeline(Expr e, List<?> timeline, Unit u) {
+        return renderPeriods(timeline, e, value -> renderRead(e, value, u));
+    }
+
+    /** De perioden {@code timeline} als RegelSpraak een periode schrijft: per segment zijn waarde met {@code van <datum>
+     *  tot <datum>}, {@code tot <datum>} waar het open begint, {@code vanaf <datum>} waar het open eindigt, en
+     *  {@code altijd} voor een segment over alle tijd; een periode zonder waarde, zoals een periode waarin een kenmerk
+     *  of een voorwaarde geldt, alleen als periode, en zonder {@code value} elke periode zo. Een tijdlijn zonder segment
+     *  is leeg op elke dag: "altijd leeg". {@code e} is de knoop die de motor las, voor de zin van een fout. */
+    private static String renderPeriods(List<?> timeline, Expr e, java.util.function.Function<Object, String> value) {
+        if (timeline.isEmpty()) return "altijd leeg";
+        List<String> segments = new ArrayList<>();
+        for (Object s : timeline) {
+            LocalDate from, to;
+            Object v;
+            if (s instanceof Period p) { from = p.from(); to = p.to(); v = p.value(); }
+            else if (s instanceof PeriodArithmetic.Exact x) { from = x.from(); to = x.to(); v = x.value(); }
+            else throw new IllegalStateException("de motor las" + (e == null ? "" : " op \"" + snippet(e) + "\"")
+                    + " een tijdlijn met een segment van de vorm " + s.getClass().getName() + ", dat de uitleg niet kent");
+            boolean openFrom = from.equals(Period.OPEN_FROM), openTo = to.equals(Period.OPEN_TO);
+            String period = openFrom && openTo ? "altijd" : openFrom ? "tot " + renderValue(to, null)
+                    : openTo ? "vanaf " + renderValue(from, null)
+                    : "van " + renderValue(from, null) + " tot " + renderValue(to, null);
+            if (v == null || value == null) segments.add(period);
+            else segments.add(openFrom && openTo ? period + " " + value.apply(v) : value.apply(v) + " " + period);
+        }
+        return segments.size() == 1 ? segments.get(0)
+                : String.join(", ", segments.subList(0, segments.size() - 1)) + " en " + segments.get(segments.size() - 1);
+    }
+
+    private static String snippet(Expr e) {
+        return e.source() == null || e.source().snippet() == null ? "" : e.source().snippet().trim();
     }
 
     /** Het type van een operand: dat van de expressie, of voor een attribuut-, cel- of parameterlezing dat van de
