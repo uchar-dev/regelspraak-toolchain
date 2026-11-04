@@ -21,6 +21,7 @@ import dev.uchar.regelspraak.loader.NodePositions;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
+import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.Period;
@@ -2167,9 +2168,12 @@ public final class Verbaliser {
                 b.text(" is");
             };
         if (c instanceof Condition.Predicate p) {
+            // de toets of een attribuut met afwezigheidsmarkers een waarde heeft, zoals het dialect hem schrijft
+            boolean value = p.operand() instanceof Expr.PayloadAccess access
+                    && Namen.norm(access.constructor()).equals(Namen.norm(RegelSpraakModel.VALUE_CONSTRUCTOR));
             String core = switch (p.kind()) {
-                case LEEG -> "leeg is";
-                case GEVULD -> "gevuld is";
+                case LEEG -> value ? "geen waarde heeft" : "leeg is";
+                case GEVULD -> value ? "een waarde heeft" : "gevuld is";
                 default -> "voldoet aan " + p.kind().name().toLowerCase(Locale.ROOT);
             };
             return b -> {
@@ -2386,8 +2390,11 @@ public final class Verbaliser {
     // ---------------- rendering ----------------
 
     /** De waarde van een operand zoals de motor haar las, in NL-notatie met haar eenheid; "onbekend" voor een lege
-     *  waarde. Een getal staat met de decimalen van zijn type, of van de declaratie van het gelezen lid; een getalliteral
-     *  met de decimalen die zijn lexeem schrijft ("30.00" als "30,00"), want het type van een literal noemt ze niet. */
+     *  waarde, en "leeg" op een operand van een sum type, zoals een attribuut met afwezigheidsmarkers, waar "onbekend" een
+     *  waarde is. Een getal staat met de decimalen van zijn type, of van de declaratie van het gelezen lid; een
+     *  getalliteral met de decimalen die zijn lexeem schrijft ("30.00" als "30,00"), want het type van een literal noemt
+     *  ze niet. Een constructorwaarde staat als haar payload of, zonder payload, bij de naam van haar constructor
+     *  ({@link #render}). */
     private String renderOperand(Expr e, Read read) {
         ConditionReading.NodeReading n = read.of(e);
         return renderRead(e, n.value(), n.unit());
@@ -2396,8 +2403,16 @@ public final class Verbaliser {
     /** {@link #renderOperand} van waarde {@code v} met eenheid {@code u}, die de motor op knoop {@code e} las, of een
      *  lid van een vouw op die knoop bijdroeg. */
     private String renderRead(Expr e, Object v, Unit u) {
-        if (v == null) return "onbekend";
+        if (v == null) return typeOf(e) instanceof Datatype.SumType ? "leeg" : "onbekend";
         if (v instanceof List<?> timeline) return renderTimeline(e, timeline, u);
+        if (v instanceof ConstructorValue c) {
+            if (c.payload() == null) return c.constructor();
+            Datatype payload = payloadType(typeOf(e), c.constructor());
+            String number = nlExact(c.payload(), payload);
+            if (number == null) return render(c.payload(), payload);
+            String unit = u != null ? u.rendering() : unitWord(payload);
+            return unit == null ? number : number + " " + unit;
+        }
         Datatype.Enumeration enumArray = enumerationOf(e);
         if (enumArray != null) return render(v, enumArray);
         // een jaartal schrijft geen duizendtalpunt: "2026", niet "2.026"
@@ -2499,6 +2514,9 @@ public final class Verbaliser {
 
     /** {@link #renderValue}, met een enumeratiewaarde in het gekozen vocabulaire: een waarde is een declaratie. */
     private String render(Object v, Datatype type) {
+        // de lezer kent de waarde en de afwezigheidsmarker, niet uchars constructorwaarde (RUNTIME-SEMANTICS ch. 9.5)
+        if (v instanceof ConstructorValue c)
+            return c.payload() != null ? render(c.payload(), payloadType(type, c.constructor())) : c.constructor();
         if (v instanceof String s && type instanceof Datatype.Enumeration e) return enumerationValue(e, s);
         return renderValue(v, type);
     }
@@ -2530,11 +2548,17 @@ public final class Verbaliser {
      *  tussen haakjes ("de maandloon nieuw van EOver (3.000,00 EUR)"), zodat de jurist de norm én het feit ziet. Een
      *  operand dat de motor niet bereikte, staat er zonder waarde. */
     private void operandProse(Sentence.Builder b, Expr e, Read read, boolean ucharText) {
+        // de lezing van de waarde van een attribuut met afwezigheidsmarkers is leeg op een marker: de zin noemt het
+        // attribuut met wat het hield, de waarde of de marker (uchars RUNTIME-SEMANTICS ch. 9.5)
+        if (e instanceof Expr.PayloadAccess p && read.has(p.base())) {
+            operandProse(b, p.base(), read, ucharText);
+            return;
+        }
         if (!read.reached(e)) {
             describe(b, e, ucharText);
             return;
         }
-        if (e instanceof Expr.Literal) {
+        if (e instanceof Expr.Literal || e instanceof Expr.Construct c && c.argument() == null) {
             value(b, renderOperand(e, read), read.of(e).value() == null);
             return;
         }
@@ -2558,6 +2582,16 @@ public final class Verbaliser {
                     dt.getYear(), dt.getHour(), dt.getMinute());
         if (v instanceof Boolean b) return b ? "ja" : "nee";
         return v.toString();
+    }
+
+    /** Het datatype van de payload van constructor {@code constructor} van sum type {@code type}, zoals uchar
+     *  constructornamen vergelijkt ({@link Namen#norm}); voor een ander type dat type zelf. */
+    private static Datatype payloadType(Datatype type, String constructor) {
+        if (!(type instanceof Datatype.SumType sum)) return type;
+        for (Datatype.Constructor c : sum.constructors())
+            if (Namen.norm(c.name()).equals(Namen.norm(constructor))) return c.payload();
+        throw new IllegalStateException("de motor las de constructor '" + constructor + "', die het sum type '"
+                + sum.domain() + "' niet declareert");
     }
 
     /** Een getal zoals de motor het las, in NL-notatie: een decimaal zoals {@link #nlNumber} het schrijft, of een

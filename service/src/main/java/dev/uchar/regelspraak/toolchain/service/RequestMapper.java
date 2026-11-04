@@ -16,6 +16,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -64,6 +65,13 @@ import java.util.Map;
  * reads it as the value of the period of the evaluation date (the asOfDate-bucket convention, RUNTIME-SEMANTICS
  * ch. 8.4), a convention of its replay that the request does not take over. A timeline on a grid of more than one
  * period or with a variable start uchar's case reader does not carry, and neither does the service.
+ *
+ * <p>An attribute with absence markers ({@link Markers}, uchar's RUNTIME-SEMANTICS ch. 9.5) takes a value of its
+ * datatype, which is the value {@code waarde(…)}, or a marker, {@code {"marker": "onbekend"}} or {@code {"marker": "niet
+ * van toepassing"}}, also as the value of a segment of its timeline; the mapper writes them into the case as uchar's case
+ * gives a value of the sum type such an attribute holds, {@code {"constructor": "waarde", "payload": <case value>}} and
+ * {@code {"constructor": "onbekend"}}. A marker the attribute does not declare is a
+ * {@link Violation.Kind#UNKNOWN_MARKER}, a marker on an attribute without markers a {@link Violation.Kind#WRONG_TYPE}.
  *
  * <p>An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid mismatch, an unknown
  * enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without dimensions are all
@@ -360,8 +368,9 @@ public final class RequestMapper {
                         "onbekend attribuut '" + name + "' op objecttype '" + ot.name + "'" + reader.pinnedClause()));
                 return;
             }
+            Markers markers = Markers.of(ot, canonical);
             if (!ot.dimensionsOf(canonical).isEmpty()) {
-                JsonNode cells = cells(ot, canonical, name, dt, e.getValue(), field, refusals, s);
+                JsonNode cells = cells(ot, canonical, name, dt, markers, e.getValue(), field, refusals, s);
                 if (cells != null) objectIn(instance, "attributes").set(canonical, cells);
                 return;
             }
@@ -371,7 +380,7 @@ public final class RequestMapper {
                 return;
             }
             if (isTemporal(ot, canonical)) {
-                JsonNode timeline = timeline(ot, canonical, name, dt, e.getValue(), field, refusals, s);
+                JsonNode timeline = timeline(ot, canonical, name, dt, markers, e.getValue(), field, refusals, s);
                 if (timeline != null) objectIn(instance, "attributes").set(canonical, timeline);
                 return;
             }
@@ -380,14 +389,71 @@ public final class RequestMapper {
                         + " tijdsafhankelijk: zijn waarde is één waarde, geen tijdlijn"));
                 return;
             }
-            JsonNode value = value(e.getValue(), dt, field, s);
-            if (value == null) return;
-            ValueCoder.Result r = ValueCoder.decode(value, dt, field);
-            s.addAll(r.violations());
-            if (!r.violations().isEmpty()) return;
-            JsonNode caseValue = caseValue(r.value(), dt, field, refusals, s);
+            JsonNode caseValue = attributeValue(e.getValue(), dt, markers, name, field, refusals, s);
             if (caseValue != null) objectIn(instance, "attributes").set(canonical, caseValue);
         });
+    }
+
+    /**
+     * The case value of the value {@code node} of an attribute of datatype {@code dt} ({@code name} as the request
+     * writes it) on {@code field}, or null after adding its violations. On an attribute with {@code markers} a marker
+     * object is the constructor of that marker, and any other value the constructor {@code waarde} with that value, a
+     * value of the payload datatype, as its payload: the form in which uchar's case gives a value of the sum type such an
+     * attribute holds (uchar's RUNTIME-SEMANTICS ch. 9.4, 9.5); null stays null, leeg. A marker object on an attribute
+     * without markers is a violation.
+     */
+    private JsonNode attributeValue(JsonNode node, Datatype dt, Markers markers, String name, String field,
+                                    List<CaseRefusal> refusals, List<Violation> s) {
+        if (Markers.isMarker(node)) {
+            if (markers == null) {
+                s.add(Markers.without(name, field));
+                return null;
+            }
+            String marker = markers.read(node, name, field, s);
+            return marker == null ? null : NF.objectNode().put("constructor", marker);
+        }
+        Datatype payload = markers == null ? dt : markers.payload();
+        JsonNode value = value(node, payload, field, s);
+        if (value == null) return null;
+        ValueCoder.Result r = ValueCoder.decode(value, payload, field);
+        s.addAll(r.violations());
+        if (!r.violations().isEmpty()) return null;
+        JsonNode caseValue = caseValue(r.value(), payload, field, refusals, s);
+        if (markers == null || caseValue == null || caseValue.isNull()) return caseValue;
+        ObjectNode constructed = NF.objectNode().put("constructor", RegelSpraakModel.VALUE_CONSTRUCTOR);
+        constructed.set("payload", caseValue);
+        return constructed;
+    }
+
+    /** The value {@code node} of a segment of a timeline of attribute {@code name} on {@code field}, as uchar's branch
+     *  holds it: a value of datatype {@code dt}, or on an attribute with {@code markers} uchar's constructor value of a
+     *  marker or of the value as the payload of {@code waarde}; null after adding its violations. */
+    private Object segmentValue(JsonNode node, Datatype dt, Markers markers, String name, String field,
+                                List<Violation> s) {
+        if (Markers.isMarker(node)) {
+            if (markers == null) {
+                s.add(Markers.without(name, field));
+                return null;
+            }
+            String marker = markers.read(node, name, field, s);
+            return marker == null ? null : new ConstructorValue(marker, null);
+        }
+        Datatype payload = markers == null ? dt : markers.payload();
+        JsonNode read = value(node, payload, field, s);
+        if (read == null) return null;
+        ValueCoder.Result r = ValueCoder.decode(read, payload, field);
+        s.addAll(r.violations());
+        if (!r.violations().isEmpty()) return null;
+        return markers == null ? r.value() : new ConstructorValue(RegelSpraakModel.VALUE_CONSTRUCTOR, r.value());
+    }
+
+    /** The case value of a segment value {@link TimelineInput#segments} let through: a number, or uchar's constructor
+     *  value of a marker or of a number. */
+    private static JsonNode segmentCaseValue(Object v) {
+        if (!(v instanceof ConstructorValue c)) return NF.objectNode().put("number", v.toString());
+        ObjectNode n = NF.objectNode().put("constructor", c.constructor());
+        if (c.payload() != null) n.set("payload", NF.objectNode().put("number", c.payload().toString()));
+        return n;
     }
 
     /** The scalar {@code node} of parameter {@code p} on {@code field}, decoded by its datatype, or null after adding
@@ -409,12 +475,14 @@ public final class RequestMapper {
      * The timeline of the time-dependent attribute {@code attribute} of {@code ot} ({@code name} as the request writes
      * it) as the case writes it, {@code {"timeline": [{"from", "to", "value": <case value>}, ...]}}, an open bound left
      * out; a null node for null, an empty timeline as an empty scalar is an empty value; null after adding the
-     * violations of a value that is no timeline uchar's case reader carries. A bound whose year the case lexeme does not
+     * violations of a value that is no timeline uchar's case reader carries. On an attribute with {@code markers} the value
+     * of a segment is a marker or a value of the payload datatype ({@link #segmentValue}), written as uchar's case writes
+     * a constructor value. A bound whose year the case lexeme does not
      * carry is written as {@link LocalDate#toString} writes it, for uchar's reader to refuse, and its field is added to
      * {@code refusals}, once the timeline has no violation.
      */
-    private JsonNode timeline(ObjectType ot, String attribute, String name, Datatype dt, JsonNode value, String field,
-                              List<CaseRefusal> refusals, List<Violation> s) {
+    private JsonNode timeline(ObjectType ot, String attribute, String name, Datatype dt, Markers markers, JsonNode value,
+                              String field, List<CaseRefusal> refusals, List<Violation> s) {
         if (value == null || value.isNull()) return NF.nullNode();
         RegelSpraakModel.Granularity g = ot.granularityOf(attribute);
         String grid = g == null ? "" : " (" + TimelineInput.perGrid(g) + ")";
@@ -432,13 +500,8 @@ public final class RequestMapper {
             return null;
         }
         List<TimelineInput.Segment> segments = TimelineInput.segments(new TimelineInput.Grid("attribuut '" + name + "'",
-                g, ot.fixedStartPointOf(attribute), dt), value, field, (v, f, sink) -> {
-                    JsonNode read = value(v, dt, f, sink);
-                    if (read == null) return null;
-                    ValueCoder.Result r = ValueCoder.decode(read, dt, f);
-                    sink.addAll(r.violations());
-                    return r.violations().isEmpty() ? r.value() : null;
-                }, s);
+                g, ot.fixedStartPointOf(attribute), markers == null ? dt : markers.payload()), value, field,
+                (v, f, sink) -> segmentValue(v, dt, markers, name, f, sink), s);
         if (segments == null) return null;
         ArrayNode out = NF.arrayNode();
         for (int k = 0; k < segments.size(); k++) {
@@ -447,7 +510,7 @@ public final class RequestMapper {
             String at = field + ".timeline[" + k + "]";
             if (segment.from() != null) n.put("from", bound(segment.from(), at + ".from", refusals));
             if (segment.to() != null) n.put("to", bound(segment.to(), at + ".to", refusals));
-            n.set("value", NF.objectNode().put("number", segment.value().toString()));
+            n.set("value", segmentCaseValue(segment.value()));
         }
         ObjectNode n = NF.objectNode();
         n.set("timeline", out);
@@ -473,8 +536,8 @@ public final class RequestMapper {
      * cells. Labels that name no cell of the attribute or one cell twice are no violation: uchar's input step refuses
      * them (EF-034, EF-035, {@link CaseInput.CellFault}), before the values of the cells.
      */
-    private JsonNode cells(ObjectType ot, String attribute, String name, Datatype dt, JsonNode value, String field,
-                           List<CaseRefusal> refusals, List<Violation> s) {
+    private JsonNode cells(ObjectType ot, String attribute, String name, Datatype dt, Markers markers, JsonNode value,
+                           String field, List<CaseRefusal> refusals, List<Violation> s) {
         List<String> dimensions = ot.dimensionsOf(attribute);
         if (!isCells(value)) {
             s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "attribuut '" + name + "' is gedimensioneerd met "
@@ -514,13 +577,7 @@ public final class RequestMapper {
                 s.add(Violation.of(Violation.Kind.MALFORMED, cellField + ".value", "value ontbreekt"));
                 continue;
             }
-            String valueField = cellField + ".value";
-            JsonNode v = value(c.get("value"), dt, valueField, s);
-            if (v == null) continue;
-            ValueCoder.Result r = ValueCoder.decode(v, dt, valueField);
-            s.addAll(r.violations());
-            if (!r.violations().isEmpty()) continue;
-            JsonNode caseValue = caseValue(r.value(), dt, valueField, ofValues, s);
+            JsonNode caseValue = attributeValue(c.get("value"), dt, markers, name, cellField + ".value", ofValues, s);
             if (caseValue == null) continue;
             ObjectNode cell = out.addObject();
             cell.set("labels", labels);

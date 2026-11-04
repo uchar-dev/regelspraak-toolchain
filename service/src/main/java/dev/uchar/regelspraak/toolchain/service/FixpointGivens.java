@@ -14,6 +14,7 @@ import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint.DerivedCharacteristic;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint.DerivedValue;
@@ -451,8 +452,12 @@ public final class FixpointGivens {
         }
     }
 
+    /** A scalar value as the fixpoint shows it; uchar's constructor value of an attribute with absence markers in the
+     *  form of the answer ({@link Markers}): {@code waarde(…)} as its payload, a marker as {@code {"marker": <naam>}}. */
     private static JsonNode scalar(Object v, Datatype dt) {
         if (v == null) return NF.nullNode();
+        if (v instanceof ConstructorValue c)
+            return c.payload() != null ? scalar(c.payload(), dt) : NF.objectNode().put(Markers.KEY, c.constructor());
         if (v instanceof BigDecimal b) return NF.textNode(b.toPlainString());
         if (v instanceof LocalDate d) return NF.textNode(d.toString());
         if (v instanceof LocalDateTime d) return NF.textNode(d.toString());

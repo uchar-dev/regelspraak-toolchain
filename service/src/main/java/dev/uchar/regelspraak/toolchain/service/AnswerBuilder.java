@@ -11,6 +11,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -42,6 +43,10 @@ import java.util.Map;
  * attribute on a timeline is answered as its segments ({@link #timeline}), in the form of uchar's case: a segment
  * without {@code from} begins before every day and one without {@code to} runs past every day (an open bound, uchar's
  * RUNTIME-SEMANTICS ch. 3.1), as uchar's write-back puts a null bound on the bean.
+ *
+ * <p>An attribute with absence markers ({@link Markers}, uchar's RUNTIME-SEMANTICS ch. 9.5) is answered in the form of
+ * the request: its value {@code waarde(…)} as the payload, a marker as {@code {"marker": "onbekend"}}, also as the value
+ * of a segment or a cell.
  *
  * <p>Response shape:
  * <pre>{@code
@@ -103,7 +108,7 @@ public final class AnswerBuilder {
                     attributes.set(naming.attribute(ot, u.member()), cells(value, ot, u.member()));
                 else if (RequestMapper.isTemporal(ot, u.member()))
                     attributes.set(naming.attribute(ot, u.member()), timeline(value, ot, u.member()));
-                else attributes.set(naming.attribute(ot, u.member()), rend(value, ot.attribute(u.member())));
+                else attributes.set(naming.attribute(ot, u.member()), rend(value, ot, u.member()));
             }
             if (attributes.isEmpty() && characteristics.isEmpty()) continue;
             ObjectNode inst = NF.objectNode();
@@ -181,6 +186,21 @@ public final class AnswerBuilder {
         return null;
     }
 
+    /** Render a value of attribute {@code attribute} of {@code ot} as {@link #rend(Object, Datatype)} renders a value
+     *  of its datatype. A value of an attribute with absence markers ({@link Markers}) is uchar's constructor value: the
+     *  value {@code waarde(…)} as its payload, a marker as {@code {"marker": <naam>}}, as the request gives them. The
+     *  descriptor refuses another sum type in {@code output} ({@link DescriptorLoader}), so a constructor value on an
+     *  attribute without markers is a broken promise, and fails. */
+    private JsonNode rend(Object v, ObjectType ot, String attribute) {
+        if (!(v instanceof ConstructorValue c)) return rend(v, ot.attribute(attribute));
+        Markers markers = Markers.of(ot, attribute);
+        if (markers == null)
+            throw new IllegalStateException("het attribuut '" + attribute + "' van " + ot.name + " heeft de waarde " + c
+                    + " van een sum type, die het antwoord alleen geeft voor een attribuut met markers");
+        return c.payload() != null ? rend(c.payload(), markers.payload())
+                : NF.objectNode().put(Markers.KEY, c.constructor());
+    }
+
     /** Render an attribute value of datatype {@code dt} as an EXACT JSON node: BigDecimal as a number (no double),
      *  date as ISO string, boolean as boolean, tekst as string, an enumeration value by its name in the chosen
      *  vocabulary, null as JSON null. */
@@ -204,13 +224,12 @@ public final class AnswerBuilder {
             throw new IllegalStateException("het gedimensioneerde attribuut '" + attribute + "' staat op de bean als "
                     + map.getClass().getName() + ", niet als uchars kaart van cellen");
         Map<?, ?> filled = map == null ? Map.of() : (Map<?, ?>) map;
-        Datatype dt = ot.attribute(attribute);
         ArrayNode cells = NF.arrayNode();
         for (List<String> labels : cellsOf(model, ot.dimensionsOf(attribute))) {
             ObjectNode cell = cells.addObject();
             ArrayNode ln = cell.putArray("labels");
             labels.forEach(ln::add);
-            cell.set("value", rend(filled.get(labels), dt));
+            cell.set("value", rend(filled.get(labels), ot, attribute));
         }
         ObjectNode n = NF.objectNode();
         n.set("cells", cells);
@@ -227,14 +246,13 @@ public final class AnswerBuilder {
         if (!(segments instanceof List<?> list))
             throw new IllegalStateException("het attribuut '" + attribute + "' op een tijdlijn staat op de bean als "
                     + segments.getClass().getName() + ", niet als lijst segmenten");
-        Datatype dt = ot.attribute(attribute);
         ArrayNode out = NF.arrayNode();
         for (Object segment : list) {
             ObjectNode sn = out.addObject();
             Object from = RegelSpraakRuntime.get(segment, "van"), to = RegelSpraakRuntime.get(segment, "tot");
             if (from != null) sn.put("from", from.toString());
             if (to != null) sn.put("to", to.toString());
-            sn.set("value", rend(RegelSpraakRuntime.get(segment, "waarde"), dt));
+            sn.set("value", rend(RegelSpraakRuntime.get(segment, "waarde"), ot, attribute));
         }
         ObjectNode n = NF.objectNode();
         n.set("timeline", out);

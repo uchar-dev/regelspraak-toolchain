@@ -28,6 +28,8 @@ public record Violation(Kind kind, String field, String message) {
         WRONG_UNIT,
         /** An enumeratie value is not one of the domein's declared waarden. */
         UNKNOWN_ENUM_VALUE,
+        /** A marker ({@code {"marker": <naam>}}) is not one the attribute declares (uchar's RUNTIME-SEMANTICS ch. 9.5). */
+        UNKNOWN_MARKER,
         /** A request name reads as two different declarations — in two vocabularies, or as a designation in one and as
          *  a canonical name — and the request has not pinned its input vocabulary. The service never guesses which. */
         AMBIGUOUS_NAME,

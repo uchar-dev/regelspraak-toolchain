@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
+import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
@@ -162,11 +163,18 @@ public final class DescriptorLoader {
     }
 
     /** Whether the answer can carry the member output selector {@code sel} names: a time-dependent characteristic it
-     *  cannot, since the answer gives a characteristic as a boolean and the bean holds its true periods. A selector
+     *  cannot, since the answer gives a characteristic as a boolean and the bean holds its true periods; nor an
+     *  attribute of a sum type that is not that of an attribute with absence markers ({@link Markers}), which only a
+     *  {@code uchar-ir-v1} document of another producer declares and for which the answer has no form. A selector
      *  {@link #validateOutput} refuses has its violation there. */
     private static void answerable(RegelSpraakModel model, String sel, String field, List<Violation> sink) {
         OutputSelector u = OutputSelector.parse(sel);
         ObjectType ot = u == null ? null : objectType(model, u.objectType());
+        if (ot != null && !u.characteristic() && ot.attribute(u.member()) instanceof Datatype.SumType sum
+                && Markers.of(ot, u.member()) == null)
+            sink.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "attribuut '" + u.member() + "' op objecttype '"
+                    + u.objectType() + "' heeft het sum type '" + sum.domain() + "', dat geen attribuut met markers is;"
+                    + " het antwoord van de dienst heeft er geen vorm voor"));
         if (ot == null || !u.characteristic() || !hasCharacteristic(ot, u.member())) return;
         if (RequestMapper.isTemporalCharacteristic(ot, u.member()))
             sink.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "kenmerk '" + u.member() + "' op objecttype '"
