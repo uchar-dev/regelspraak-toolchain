@@ -1104,15 +1104,17 @@ public final class Verbaliser {
      * <ul>
      *   <li>een regel gold en gaf een waarde: "heeft als X W volgens de regel 'R'", haar berekening en waarom zij gold;</li>
      *   <li>een regel gold en gaf geen waarde (RUNTIME-SEMANTICS ch. 1.2g): wat het doel houdt, "want de regel 'R' gaf
-     *       geen waarde", haar berekening en waarom zij gold;</li>
+     *       geen waarde", haar berekening en waarom zij gold; houdt het doel een invoerwaarde, dan "gaf geen waarde en
+     *       besliste niets", want een lege waarde beslist niets (ch. 3.11);</li>
      *   <li>geen regel gold en het doel is leeg: "heeft geen X, want geen regel gold";</li>
      *   <li>geen regel gold en het doel houdt een invoerwaarde: "houdt als X de invoerwaarde W, want geen regel
      *       gold".</li>
      * </ul>
      *
      * <p>Daarna elke andere schrijver als groep {@link Part.Kind#VARIANT}, met de reden dat zij niet schreef: haar
-     * voorwaarde gold niet (het lid waar de motor stopte), zij valt buiten haar geldigheid, zij gold en gaf geen waarde,
-     * of zij is een initialisatie die niet aan de beurt was ("verdrongen"). Dan de grondslag van de regel die gold.
+     * voorwaarde gold niet (het lid waar de motor stopte), zij valt buiten haar geldigheid, zij gold en gaf geen waarde
+     * en besliste dus niets naast de regel die schreef, of zij is een initialisatie die niet aan de beurt was
+     * ("verdrongen"). Dan de grondslag van de regel die gold.
      *
      * <p>De berekening ({@link Part.Kind#COMPUTATION}) is de regeltekst van de waarde, met elke knoop die iets leest of
      * samenvat ({@link #OPERAND_KINDS}) met de waarde die de motor er las, elke brontekst één keer; leest de waarde één
@@ -1213,16 +1215,15 @@ public final class Verbaliser {
                 else value(b, written(first, member), false);
                 for (int i = 0; i < wrote.size(); i++) {
                     b.text(i == 0 ? " volgens " : ", en volgens ");
-                    decider(b, wrote.get(i), member, timeline, false);
+                    decider(b, wrote.get(i), member, timeline, false, false);
                 }
             } else {
-                if (cell == null) standing(b, member, timeline);
-                else cellStanding(b, member, cell);
+                boolean stands = cell == null ? standing(b, member, timeline) : cellStanding(b, member, cell);
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" ");
                 if (empty.isEmpty()) b.text("geen regel gold");
                 for (int i = 0; i < empty.size(); i++) {
                     if (i > 0) b.text(", en ");
-                    decider(b, empty.get(i), member, timeline, true);
+                    decider(b, empty.get(i), member, timeline, true, stands);
                 }
             }
             for (Writer w : writers) if (!deciders.contains(w)) variant(b, w);
@@ -1244,21 +1245,19 @@ public final class Verbaliser {
         }
 
         /** Wat het doel houdt waar geen regel een waarde schreef: leeg of de invoerwaarde; van een tijdlijn-doel "een
-         *  tijdlijn". */
-        private void standing(Sentence.Builder b, String member, boolean timeline) {
+         *  tijdlijn". Geeft of er een invoerwaarde staat. */
+        private boolean standing(Sentence.Builder b, String member, boolean timeline) {
             Object v = readRaw(bean, Namen.getter(member));
-            if (!timeline || v == null) {
-                attributeStanding(b, bean, label, type, member);
-                return;
-            }
+            if (!timeline || v == null) return attributeStanding(b, bean, label, type, member);
             b.text("houdt als ");
             attributeName(b, type, member, new On(label));
             b.text(" de invoerwaarde ").leaf(Part.Kind.VALUE, "een tijdlijn", Part.meta("timeline", true));
+            return true;
         }
 
         /** Wat cel {@code cell} van {@code member} houdt waar geen regel een waarde schreef: leeg of de invoerwaarde,
-         *  uit uchars kaart van cellen op de bean. */
-        private void cellStanding(Sentence.Builder b, String member, List<String> cell) {
+         *  uit uchars kaart van cellen op de bean. Geeft of er een invoerwaarde staat. */
+        private boolean cellStanding(Sentence.Builder b, String member, List<String> cell) {
             Object map = readRaw(bean, Namen.getter(member));
             if (map != null && !(map instanceof Map<?, ?>))
                 throw new IllegalStateException("het gedimensioneerde attribuut '" + member + "' van " + label
@@ -1270,6 +1269,7 @@ public final class Verbaliser {
                 b.text(" de invoerwaarde ");
                 value(b, render(v, type.attribute(member)), false);
             }
+            return v != null;
         }
 
         /** Het doel van de zin: attribuut {@code member}, of zijn cel {@code cell}, op het object van de zin. */
@@ -1279,15 +1279,18 @@ public final class Verbaliser {
         }
 
         /** Een regel die gold: haar naam, haar berekening en waarom zij gold; met {@code gaveNothing} dat zij geen waarde
-         *  gaf. Een initialisatie zonder voorwaarde gold omdat het doel in de invoer leeg was, zoals de zin van een
-         *  initialisatie in een stapel het zegt. */
-        private void decider(Sentence.Builder b, Writer w, String member, boolean timeline, boolean gaveNothing) {
+         *  gaf, en met {@code inputStands} ook dat zij daarom niets besliste, waar het doel zijn invoerwaarde houdt
+         *  (uchars RUNTIME-SEMANTICS ch. 3.11: een lege waarde beslist niets). Een initialisatie zonder voorwaarde gold
+         *  omdat het doel in de invoer leeg was, zoals de zin van een initialisatie in een stapel het zegt. */
+        private void decider(Sentence.Builder b, Writer w, String member, boolean timeline, boolean gaveNothing,
+                             boolean inputStands) {
             ResolvedRule r = w.rule();
             b.text("de regel '").leaf(Part.Kind.RULE, formName(w)).text("'");
             if (gaveNothing) b.text(" gaf geen waarde");
             Condition c = r.condition();
             boolean initialisation = r.kind() == ResolvedRule.Kind.INITIALISATIE;
             if (c == null && !initialisation) b.text(" (onvoorwaardelijk)");
+            if (gaveNothing && inputStands) b.text(" en besliste niets");
             if (!timeline) computation(b, r.value(), writtenByUchar(r), valueRead(w));
             if (c != null) {
                 Read conditionRead = read(w.pointer(), bean, label, c);
@@ -1322,7 +1325,8 @@ public final class Verbaliser {
                 b.text("; de regel '").leaf(Part.Kind.RULE, formName(w)).text("' ");
                 Condition c = w.rule().condition();
                 switch (status) {
-                    case HOLDS -> b.text("gaf geen waarde");
+                    // only beside a writer that wrote: its value stands, and a leeg decides nothing (ch. 3.11)
+                    case HOLDS -> b.text("gaf geen waarde en besliste niets");
                     case FAILS -> {
                         if (c == null)
                             throw new IllegalStateException("de motor noemt de voorwaarde van '" + w.rule().name()
@@ -1808,18 +1812,19 @@ public final class Verbaliser {
     }
 
     /** Wat attribuut {@code member} van {@code bean}, van objecttype {@code type} en met naam {@code label}, houdt waar
-     *  niemand het schreef: leeg, of de invoerwaarde, van de bean gelezen. */
-    private void attributeStanding(Sentence.Builder b, Object bean, String label, ObjectType type, String member) {
+     *  niemand het schreef: leeg, of de invoerwaarde, van de bean gelezen. Geeft of er een invoerwaarde staat. */
+    private boolean attributeStanding(Sentence.Builder b, Object bean, String label, ObjectType type, String member) {
         Object v = readRaw(bean, Namen.getter(member));
         if (v == null) {
             b.text("heeft geen ");
             attributeName(b, type, member, new On(label));
-            return;
+            return false;
         }
         b.text("houdt als ");
         attributeName(b, type, member, new On(label));
         b.text(" de invoerwaarde ");
         value(b, render(v, type.attribute(member)), false);
+        return true;
     }
 
     /** De lezing van vorm {@code form} op {@code bean}; faalt luid waar de motor er geen gaf. */

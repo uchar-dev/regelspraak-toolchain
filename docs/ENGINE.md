@@ -509,14 +509,17 @@ prepositions are `TEXT`, the `NAME` carries the cell under `labels`. The four fo
   <CONDITION>`, or ` (onvoorwaardelijk)<COMPUTATION>` without a condition, or `<COMPUTATION>, omdat de <NAME> in de
   invoer leeg was` for an initialisation without one;
 - a rule held and gave no value: `<SUBJECT> heeft geen <NAME>, want de regel '<RULE>' gaf geen waarde<COMPUTATION>,
-  omdat <CONDITION>`;
+  omdat <CONDITION>`; an empty value decides nothing (uchar's RUNTIME-SEMANTICS ch. 3.11), so where the target keeps
+  its input value the sentence says so: `<SUBJECT> houdt als <NAME> de invoerwaarde <VALUE>, want de regel '<RULE>'
+  gaf geen waarde en besliste niets<COMPUTATION>, omdat <CONDITION>`;
 - no rule held and the target is empty: `<SUBJECT> heeft geen <NAME>, want geen regel gold`;
 - no rule held and the target keeps an input value: `<SUBJECT> houdt als <NAME> de invoerwaarde <VALUE>, want geen
   regel gold`.
 
 Then each other writer as a `VARIANT`: `; de regel '…' gold niet, want niet geldt: <the member where the engine
 stopped>`, `; de regel '…' gold niet, want zij valt op de rekendatum buiten haar geldigheid`, `; de regel '…' gaf geen
-waarde`, or `; verdrongen: de regel '…'`; then the ground of the rule that held. The `COMPUTATION` is `": "`, the rule
+waarde en besliste niets` (beside the rule that wrote, whose value stands), or `; verdrongen: de regel '…'`; then the
+ground of the rule that held. The `COMPUTATION` is `": "`, the rule
 text of the value (`QUOTE`), and `", met "` with every node that reads or folds something (an attribute, a parameter, a
 dimension cell, a binder of `Daarbij geldt` by the text of its definition, a built-in function, a fold), each rule text
 once, with the value the engine read there; where the value reads one declaration or folds over a set or over the
@@ -532,7 +535,9 @@ filter, where it is one characteristic check or one read, is a `QUOTE` of its ow
 the fourth form is read on the bean. A rule on a timeline target wrote "een tijdlijn" and has no computation; its
 condition, where it holds per period (a clip, ch. 3.10), is its text with the periods the engine read it to hold in
 (`omdat hij gedurende de gehele maand rentedragend is (van 01-12-2025 tot 01-03-2026)`), and two such writers each
-wrote on their own days. A timeline the engine read inside a computation stands as its periods, and the total of the
+wrote on their own days. A writer of a timeline target, also its only one, decides the days on which its timeline
+reads a value, and on the other days the target keeps its input (uchar's RUNTIME-SEMANTICS ch. 3.11); the sentence
+names the writers and not the days of the input. A timeline the engine read inside a computation stands as its periods, and the total of the
 subject's own timeline (ch. 3.6) has no `MEMBERS`: it is no fold over a set. A time-dependent characteristic a rule
 writes in a window has its own sentence, with the periods the bean holds: `"A1 is rentedragend van 16-11-2025 tot
 13-03-2026 volgens de regel 'rentedragend'"`, without its condition, or `"… is niet rentedragend volgens de regel

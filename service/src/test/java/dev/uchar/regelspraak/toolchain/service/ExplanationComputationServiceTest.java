@@ -668,4 +668,86 @@ class ExplanationComputationServiceTest {
         assertEquals(24, computations);
         assertEquals(12, variants);
     }
+
+    /** After uchar's fixtures {@code ref/test/fixtures/empty-write} (card empty-write-decides-nothing, RUNTIME-SEMANTICS
+     *  ch. 3.11, 5.7, 7.8): a writer that fires with an empty value decides nothing, on every scalar target. Beside a
+     *  second writer that does not hold (taxatie of V1) and with a validity window (keurwaarde of V1) the input of the
+     *  request stands, where the answer was empty; beside a writer that gives 50 the target is 50 (taxatie of V2);
+     *  beside a conditional initialisation the initialisation fills an empty target (beoordeling of V1) and an input
+     *  stands (beoordeling of V2); those three were a 422 WRITERS_CONFLICT. The answer gives what stands at the
+     *  fixpoint, with and without the explanation. Where the target holds a value the rule did not write, the input or
+     *  that of another writer, the explanation says that the rule that gave no value decided nothing; on an empty
+     *  target (keurwaarde of V2) it says that the rule gave no value. */
+    @Test
+    void a_rule_that_gives_no_value_decides_nothing_and_the_input_stands() throws Exception {
+        String source = """
+                Objecttype de Vondst (mv: Vondsten)
+                    de taxatie Numeriek (geheel getal);
+                    de keurwaarde Numeriek (geheel getal);
+                    de beoordeling Numeriek (geheel getal);
+                    de opgave Numeriek (geheel getal);
+                    de schatting Numeriek (geheel getal);
+                    is gemeld kenmerk (bijvoeglijk);
+                    is erkend kenmerk (bijvoeglijk);
+
+                Regel taxatie uit opgave
+                    geldig altijd
+                        De taxatie van een Vondst moet gesteld worden op zijn opgave indien hij gemeld is.
+
+                Regel taxatie uit schatting
+                    geldig altijd
+                        De taxatie van een Vondst moet gesteld worden op zijn schatting indien hij erkend is.
+
+                Regel keurwaarde
+                    geldig vanaf 2020
+                        De keurwaarde van een Vondst moet gesteld worden op zijn opgave.
+
+                Regel beoordeling uit opgave
+                    geldig altijd
+                        De beoordeling van een Vondst moet gesteld worden op zijn opgave.
+
+                Regel standaardbeoordeling
+                    geldig altijd
+                        De beoordeling van een Vondst moet geïnitialiseerd worden op 3 indien hij gemeld is.
+                """;
+        String descriptor = """
+                { "service": {"name":"Een lege waarde beslist niets","version":"1"},
+                  "entrypoints": [ { "name":"jutters","path":"jutters",
+                    "scope": {"ruleNames": ["taxatie uit opgave", "taxatie uit schatting", "keurwaarde",
+                      "beoordeling uit opgave", "standaardbeoordeling"]},
+                    "input": ["Vondst"], "output": ["Vondst.taxatie", "Vondst.keurwaarde", "Vondst.beoordeling"] } ],
+                  "parameters": {} }""";
+        String request = """
+                { "asOfDate": "2025-07-01",
+                  "instances": [
+                    { "type": "Vondst", "id": "V1", "characteristics": { "gemeld": true, "erkend": false },
+                      "attributes": { "taxatie": 40, "keurwaarde": 40 } },
+                    { "type": "Vondst", "id": "V2", "characteristics": { "gemeld": true, "erkend": true },
+                      "attributes": { "taxatie": 40, "schatting": 50, "beoordeling": 9 } } ] }""";
+        DecisionCore core = fromSources(source, descriptor);
+        ObjectNode answer = answer(core, request);
+        ObjectNode plain = core.process("jutters", DescriptorLoader.MAPPER.readTree(request),
+                ServiceHttp.options(""));
+        for (ObjectNode a : List.of(answer, plain)) {
+            assertEquals("{\"taxatie\":40,\"keurwaarde\":40,\"beoordeling\":3}",
+                    a.at("/instances/0/attributes").toString(), a.toString());
+            assertEquals("{\"taxatie\":50,\"keurwaarde\":null,\"beoordeling\":9}",
+                    a.at("/instances/1/attributes").toString(), a.toString());
+        }
+        assertEquals(List.of(
+                "V1 houdt als taxatie de invoerwaarde 40, want de regel 'taxatie uit opgave' gaf geen waarde en besliste"
+                        + " niets: zijn opgave (onbekend), omdat het onderwerp gemeld is; de regel 'taxatie uit"
+                        + " schatting' gold niet, want niet geldt: het onderwerp erkend is",
+                "V1 houdt als keurwaarde de invoerwaarde 40, want de regel 'keurwaarde' gaf geen waarde"
+                        + " (onvoorwaardelijk) en besliste niets: zijn opgave (onbekend)",
+                "V1 heeft als beoordeling 3 volgens de regel 'standaardbeoordeling': 3, omdat het onderwerp gemeld is;"
+                        + " de regel 'beoordeling uit opgave' gaf geen waarde en besliste niets",
+                "V2 heeft als taxatie 50 volgens de regel 'taxatie uit schatting': zijn schatting (50), omdat het"
+                        + " onderwerp erkend is; de regel 'taxatie uit opgave' gaf geen waarde en besliste niets",
+                "V2 heeft geen keurwaarde, want de regel 'keurwaarde' gaf geen waarde (onvoorwaardelijk): zijn opgave"
+                        + " (onbekend)",
+                "V2 houdt als beoordeling de invoerwaarde 9, want de regel 'beoordeling uit opgave' gaf geen waarde"
+                        + " (onvoorwaardelijk) en besliste niets: zijn opgave (onbekend); verdrongen: de regel"
+                        + " 'standaardbeoordeling'"), sentences(answer));
+    }
 }

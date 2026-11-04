@@ -415,6 +415,81 @@ class ExplanationComputationTest {
                 explanation(document));
     }
 
+    /** A writer that fires with an empty value decides nothing, on every scalar target (uchar's card
+     *  empty-write-decides-nothing, RUNTIME-SEMANTICS ch. 3.11, 5.7, 7.8): beside a second writer and with a validity
+     *  window the input stands, beside a writer that gives 50 the target is 50, and beside a conditional initialisation
+     *  the initialisation fills an empty target. The model and the sentences are those of
+     *  {@code ExplanationComputationServiceTest.a_rule_that_gives_no_value_decides_nothing_and_the_input_stands}. */
+    @Test
+    void a_rule_that_gives_no_value_decides_nothing_and_the_input_stands() {
+        String document = """
+                Objecttype de Vondst (mv: Vondsten)
+                    de taxatie Numeriek (geheel getal);
+                    de keurwaarde Numeriek (geheel getal);
+                    de beoordeling Numeriek (geheel getal);
+                    de opgave Numeriek (geheel getal);
+                    de schatting Numeriek (geheel getal);
+                    is gemeld kenmerk (bijvoeglijk);
+                    is erkend kenmerk (bijvoeglijk);
+
+                Regel taxatie uit opgave
+                    geldig altijd
+                        De taxatie van een Vondst moet gesteld worden op zijn opgave indien hij gemeld is.
+
+                Regel taxatie uit schatting
+                    geldig altijd
+                        De taxatie van een Vondst moet gesteld worden op zijn schatting indien hij erkend is.
+
+                Regel keurwaarde
+                    geldig vanaf 2020
+                        De keurwaarde van een Vondst moet gesteld worden op zijn opgave.
+
+                Regel beoordeling uit opgave
+                    geldig altijd
+                        De beoordeling van een Vondst moet gesteld worden op zijn opgave.
+
+                Regel standaardbeoordeling
+                    geldig altijd
+                        De beoordeling van een Vondst moet geïnitialiseerd worden op 3 indien hij gemeld is.
+
+                Scenario twee vondsten
+                met peildatum 01-07-2025
+                Gegeven is de volgende situatie:
+                een Vondst V1
+                - is gemeld
+                - de taxatie is 40
+                - de keurwaarde is 40
+                een Vondst V2
+                - is gemeld
+                - is erkend
+                - de taxatie is 40
+                - de schatting is 50
+                - de beoordeling is 9
+                Met als verwacht resultaat:
+                - de taxatie van V1 is 40
+                - de keurwaarde van V1 is 40
+                - de beoordeling van V1 is 3
+                - de taxatie van V2 is 50
+                - de beoordeling van V2 is 9
+                """;
+        assertEquals(List.of(
+                "V1 houdt als taxatie de invoerwaarde 40, want de regel 'taxatie uit opgave' gaf geen waarde en besliste"
+                        + " niets: zijn opgave (onbekend), omdat het onderwerp gemeld is; de regel 'taxatie uit"
+                        + " schatting' gold niet, want niet geldt: het onderwerp erkend is",
+                "V1 houdt als keurwaarde de invoerwaarde 40, want de regel 'keurwaarde' gaf geen waarde"
+                        + " (onvoorwaardelijk) en besliste niets: zijn opgave (onbekend)",
+                "V1 heeft als beoordeling 3 volgens de regel 'standaardbeoordeling': 3, omdat het onderwerp gemeld is;"
+                        + " de regel 'beoordeling uit opgave' gaf geen waarde en besliste niets",
+                "V2 heeft als taxatie 50 volgens de regel 'taxatie uit schatting': zijn schatting (50), omdat het"
+                        + " onderwerp erkend is; de regel 'taxatie uit opgave' gaf geen waarde en besliste niets",
+                "V2 heeft geen keurwaarde, want de regel 'keurwaarde' gaf geen waarde (onvoorwaardelijk): zijn opgave"
+                        + " (onbekend)",
+                "V2 houdt als beoordeling de invoerwaarde 9, want de regel 'beoordeling uit opgave' gaf geen waarde"
+                        + " (onvoorwaardelijk) en besliste niets: zijn opgave (onbekend); verdrongen: de regel"
+                        + " 'standaardbeoordeling'"),
+                explanation(document));
+    }
+
     private static List<String> explanation(String document) {
         List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(document));
         assertEquals(1, u.size());

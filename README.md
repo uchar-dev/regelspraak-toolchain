@@ -179,6 +179,19 @@ model declares) and the sentences of the messages, which keep their text. The ol
   has no members, where it said `er is geen enkel lid`, a time-dependent characteristic a rule writes in a window
   has a sentence with its periods (`"A1 is rentedragend van 16-11-2025 tot 13-03-2026 volgens de regel
   'rentedragend'"`), and a condition per period of a timeline target names the periods it holds in.
+- **An empty value decides nothing** (uchar's card `empty-write-decides-nothing`): a rule that fires with an empty
+  value decides nothing, on every scalar target, so a request with an input value on an attribute that rules write
+  gets that input back where no rule decides. Beside a second rule that does not hold and with a validity window
+  (`geldig vanaf 2020`) the answer gives the input, where it gave `null`; beside a rule that gives 50 the answer is
+  50, and beside a conditional initialisation the initialisation fills an empty target and an input stands, where
+  each was a 422 `WRITERS_CONFLICT` ("de regel … schrijft leeg en de regel … schrijft 50"). Two rules with different
+  values stay `WRITERS_CONFLICT`. The explanation says that the rule decided nothing where the target keeps a value
+  it did not write: `"V1 houdt als taxatie de invoerwaarde 40, want de regel 'taxatie uit opgave' gaf geen waarde en
+  besliste niets: …"`, where it was `"V1 heeft geen taxatie, want de regel 'taxatie uit opgave' gaf geen waarde: …"`,
+  and a rule beside the rule that wrote is `"; de regel '…' gaf geen waarde en besliste niets"`. On the scenario
+  route the same holds per day on a timeline target (uchar's card `writers-per-day-beside-input`): a writer, also the
+  only one, decides the days on which its timeline reads a value, and the input stands on the other days, where one
+  writer replaced the whole timeline.
 
 ## The pin
 
