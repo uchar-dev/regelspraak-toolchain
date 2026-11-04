@@ -179,6 +179,9 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # -op-keurklasse (invoer in de stapel van een doel, naast een initialisatie, een verdeling en een creatie) en
 # jutterswet-gevolg-buiten-de-beurt-som. Zeven spelen ook door de dienst, met uitleg; de achtste geeft een scalaire
 # waarde op een tijdsafhankelijk attribuut en staat hieronder.
+# 2026-11-05, uchar's kaart absence-markers (pin d208bbfa): 330 — de set van gate 12 groeit van 338 naar 339 met
+# jutterswet-afwezigheidsmarkers (een attribuut met de markers onbekend en niet van toepassing, een sum type); zij speelt
+# niet door de dienst, waarvan het verzoek geen vorm voor een marker heeft, en staat hieronder.
 EXPECTED_REPLAY_PLAYED=330
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt een
@@ -186,6 +189,7 @@ EXPECTED_REPLAY_PLAYED=330
 # perioden, maar geen scalaire waarde op een tijdsafhankelijk attribuut: uchars replay legt die in de periode van de
 # rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de dienst weigert haar met een 400 UNSUPPORTED.
 REPLAY_EXCLUDED=(
+  "jutterswet-afwezigheidsmarkers|een marker of een waarde van een attribuut met markers (een constructorwaarde van uchars sum type, RUNTIME-SEMANTICS ch. 9.5) in invoer en verwachting, waarvoor het verzoek en het antwoord van de dienst geen vorm hebben"
   "jutterswet-gevolg-buiten-de-beurt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-gevolg-buiten-de-beurt-som|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-kadetarief|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"

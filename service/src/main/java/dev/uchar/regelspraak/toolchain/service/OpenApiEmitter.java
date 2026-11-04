@@ -541,6 +541,8 @@ public final class OpenApiEmitter {
                 }
             }
             case Datatype.Unknown o -> s.put("type", "string");
+            case Datatype.SumType st -> throw new IllegalStateException("het sum type '" + st.domain()
+                    + "' heeft in het contract van de dienst geen vorm");
         }
         if (unit != null) {
             String rendering = unit.rendering();
