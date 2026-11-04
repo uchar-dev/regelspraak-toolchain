@@ -272,10 +272,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (330). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (338). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 323); every golden that does not play is listed by name with
-  its reason (7, each with a scalar on a time-dependent attribute, which the request does not carry); a deviation always
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 330); every golden that does not play is listed by name with
+  its reason (8, each with a scalar on a time-dependent attribute, which the request does not carry); a deviation always
   fails, and the list fails when it goes stale in either direction. A golden whose explanation the service refuses
   (a defaults group that decides per day) stands by name in `EXPLANATION_REFUSED` (1), stale in both directions. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
@@ -425,7 +425,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   time-dependent parameter and of a time-dependent attribute and the periods of a time-dependent characteristic, but
   no scalar on a time-dependent attribute (uchar's replay places one in the period of the evaluation date, the
   asOfDate-bucket convention); the service refuses it as `UNSUPPORTED`. The answer gives no time-dependent
-  characteristic. 7 of the goldens gate 12 plays need a scalar there; the replay gate lists them.
+  characteristic. 8 of the goldens gate 12 plays need a scalar there; the replay gate lists them.
 - **The explanation of a defaults group per day.** A defaults group on a time-dependent attribute decides per day
   (uchar's RUNTIME-SEMANTICS ch. 7.11), and uchar names one decider per object and stack (`DroolsBackend.decisionsOf`),
   none per period; the service gives such an entry point no explanation (a 400 `UNSUPPORTED` on `explanation`), and the

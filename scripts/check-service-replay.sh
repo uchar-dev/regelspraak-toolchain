@@ -172,7 +172,14 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # tijdsafhankelijk attribuut hebben. jutterswet-opgave-per-periode speelt zonder uitleg (EXPLANATION_REFUSED). De zeven
 # die blijven, hebben in een case een scalaire waarde op een tijdsafhankelijk attribuut; bij vijf daarvan stond eerst de
 # tijdlijn of het kenmerk als reden, de eerste vorm die het verzoek niet droeg.
-EXPECTED_REPLAY_PLAYED=323
+# 2026-11-04, uchar's kaarten early-faults-and-sum-reading, decisions-per-period en writers-as-one-defaults-stack (pin
+# 53605e86): 330 — de set van gate 12 groeit van 330 naar 338 met bound-day-behind-a-failing-condition,
+# context-value-behind-a-failing-condition en unresolved-behind-a-failing-condition (een foutsoort achter een
+# voorwaarde die niet geldt), jutterswet-invoer-naast-initialisatie, -naast-verdeling, -naast-objectcreatie en
+# -op-keurklasse (invoer in de stapel van een doel, naast een initialisatie, een verdeling en een creatie) en
+# jutterswet-gevolg-buiten-de-beurt-som. Zeven spelen ook door de dienst, met uitleg; de achtste geeft een scalaire
+# waarde op een tijdsafhankelijk attribuut en staat hieronder.
+EXPECTED_REPLAY_PLAYED=330
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt een
 # tijdsafhankelijke parameter en een tijdsafhankelijk attribuut als tijdlijn en een tijdsafhankelijk kenmerk als zijn
@@ -180,6 +187,7 @@ EXPECTED_REPLAY_PLAYED=323
 # rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de dienst weigert haar met een 400 UNSUPPORTED.
 REPLAY_EXCLUDED=(
   "jutterswet-gevolg-buiten-de-beurt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-gevolg-buiten-de-beurt-som|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-kadetarief|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-keurlast|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-muntbewaring|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
