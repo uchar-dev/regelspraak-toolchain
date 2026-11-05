@@ -25,10 +25,11 @@ import java.util.List;
  * @param payload  the datatype of the value
  * @param declared the markers the attribute declares
  */
-record Markers(Datatype payload, List<String> declared) {
+public record Markers(Datatype payload, List<String> declared) {
 
-    /** The key of the marker object of the request and the answer. */
-    static final String KEY = "marker";
+    /** The key of the marker object of the request and the answer; the playground writes a marker of a test document
+     *  under it too. */
+    public static final String KEY = "marker";
 
     /** The markers of attribute {@code attribute} of {@code ot}, or null for an attribute without them. */
     static Markers of(ObjectType ot, String attribute) {

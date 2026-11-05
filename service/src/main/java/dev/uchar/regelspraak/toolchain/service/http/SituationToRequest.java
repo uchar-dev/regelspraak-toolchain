@@ -14,6 +14,8 @@ import dev.uchar.regelspraak.ir.ResolvedScenario.RoleValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Segment;
 import dev.uchar.regelspraak.ir.ResolvedScenario.TimeWindow;
+import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.toolchain.service.Markers;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -32,10 +34,12 @@ import java.util.List;
  * {@code BigDecimal} node, never a double) with no eenheid object; a date/datetime as its ISO string; a
  * boolean/tekst/enum as its plain JSON scalar. Those are exactly the forms
  * {@link dev.uchar.regelspraak.toolchain.service.ValueCoder} accepts (a plain number is read in the declared unit),
- * so no request value is ever approximated. The cells of a dimensioned attribute go as {@code cells}, each with its
- * labels and its value in that form, the timeline of a time-dependent parameter or attribute as {@code timeline}, each
- * segment with its bounds and its value in that form, and a time-dependent kenmerk as the {@code periods} in which it
- * holds. A fraction that has no exact decimal form has no request form, and fails here by name ({@link NonPortable}).
+ * so no request value is ever approximated. A value of an attribute with absence markers, which the resolver gives as a
+ * constructor value, goes as the payload of {@code waarde} in that form and a marker as {@code {"marker": <naam>}}. The
+ * cells of a dimensioned attribute go as {@code cells}, each with its labels and its value in that form, the timeline of
+ * a time-dependent parameter or attribute as {@code timeline}, each segment with its bounds and its value in that form,
+ * and a time-dependent kenmerk as the {@code periods} in which it holds. A fraction that has no exact decimal form has
+ * no request form, and fails here by name ({@link NonPortable}).
  *
  * <p>The response shape produced matches {@link dev.uchar.regelspraak.toolchain.service.Request}:
  * {@code instanties[]{type,id,attributen,kenmerken,rollen}}, {@code parameters}, {@code rekendatum}.
@@ -139,14 +143,35 @@ final class SituationToRequest {
     }
 
     /** The already-normalised value → its JSON form the request mapper accepts. A number lexeme → exact number;
-     *  LocalDate/LocalDateTime → ISO string; Boolean → boolean; String/enum → string. */
+     *  LocalDate/LocalDateTime → ISO string; Boolean → boolean; String/enum → string; a constructor value of an
+     *  attribute with absence markers ({@link #constructorToJson}) → the payload of {@code waarde} in its own form, a
+     *  marker as {@code {"marker": <naam>}}.
+     *
+     *  @throws IllegalStateException a value of no known form, which uchar's scenario resolver does not give */
     static com.fasterxml.jackson.databind.JsonNode valueToJson(ScenarioValue w) {
         if (w.number() != null) return NF.numberNode(number(w.number()));   // EXACT BigDecimal, no double
         if (w.date() != null) return NF.textNode(w.date().toString()); // yyyy-MM-dd
         if (w.dateTime() != null) return NF.textNode(w.dateTime().toString());
         if (w.bool() != null) return NF.booleanNode(w.bool());
         if (w.enumValue() != null) return NF.textNode(w.enumValue());  // enum literal
-        return NF.textNode(w.text());
+        if (w.text() != null) return NF.textNode(w.text());
+        if (w.constructor() != null) return constructorToJson(w);
+        throw new IllegalStateException("uchars scenarioresolver gaf een waarde zonder variant");
+    }
+
+    /** A constructor value of an attribute with absence markers (uchar's RUNTIME-SEMANTICS ch. 9.5) as the request
+     *  gives it ({@link Markers}): a marker, a constructor without payload, as {@code {"marker": <naam>}}, which the
+     *  mapper holds to the markers the attribute declares; the payload of {@code waarde} as the value it holds.
+     *
+     *  @throws IllegalStateException a constructor with a payload other than {@code waarde}, which no attribute of
+     *          uchar's RegelSpraak frontend holds */
+    private static com.fasterxml.jackson.databind.JsonNode constructorToJson(ScenarioValue w) {
+        if (w.payload() == null) return NF.objectNode().put(Markers.KEY, w.constructor());
+        if (!RegelSpraakModel.VALUE_CONSTRUCTOR.equals(w.constructor()))
+            throw new IllegalStateException("uchars scenarioresolver gaf de constructorwaarde '" + w.constructor()
+                    + "' met een payload; een attribuut met markers heeft alleen '" + RegelSpraakModel.VALUE_CONSTRUCTOR
+                    + "' met een payload");
+        return valueToJson(w.payload());
     }
 
     /** A case number lexeme as an exact BigDecimal: a decimal with a dot, or a reduced fraction {@code p/q} whose

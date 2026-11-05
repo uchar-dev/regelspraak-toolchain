@@ -279,6 +279,8 @@ function scalar(w) {
   if (w === null || w === undefined) return '<span class="muted">leeg</span>';
   if (w === true) return "waar";
   if (w === false) return "onwaar";
+  // an absence marker, {"marker": <naam>}, as situation and fixpoint give it: its name, set apart from a text value
+  if (typeof w === "object" && typeof w.marker === "string") return '<span class="muted">' + esc(w.marker) + "</span>";
   return esc(w);
 }
 function timelineHtml(tl) {

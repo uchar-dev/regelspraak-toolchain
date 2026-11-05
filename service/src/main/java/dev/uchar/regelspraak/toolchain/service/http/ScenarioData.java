@@ -22,6 +22,7 @@ import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
+import dev.uchar.regelspraak.toolchain.service.Markers;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -38,10 +39,11 @@ import java.util.TreeMap;
  * canonical name stands beside it under the key with {@code Canoniek} appended ({@code attribuut} and
  * {@code attribuutCanoniek}). <b>A value</b> is a JSON string for a number (the exact lexeme or plain decimal, with its
  * scale), a date, a date-time, a text and an enumeration value (in the chosen vocabulary), a JSON boolean for a truth
- * value and null for leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}; a dimensioned attribute
- * is {@code cells}, a list of {@code {labels, value}}, one label per dimension in their declared spelling, as the
- * request of the service gives it, and the fixpoint has a row per cell ({@link FixpointGivens}). {@code unit} is the
- * declared unit of a number.
+ * value, {@code {"marker": <naam>}} for an absence marker (a value of an attribute with markers otherwise being the
+ * value it holds) and null for leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}; a
+ * dimensioned attribute is {@code cells}, a list of {@code {labels, value}}, one label per dimension in their declared
+ * spelling, as the request of the service gives it, and the fixpoint has a row per cell ({@link FixpointGivens}).
+ * {@code unit} is the declared unit of a number.
  *
  * <p><b>Order.</b> The objects of a situation stand in its order. The fixpoint is rendered by
  * {@link FixpointGivens}, which the decision service uses as well, with the objects of the situation as the input; its
@@ -170,7 +172,9 @@ final class ScenarioData {
         FixpointGivens.name(n, key, chosen, canonical);
     }
 
-    /** A value of the situation under {@code waarde}: the case value as uchar's resolver normalised it. */
+    /** A value of the situation under {@code waarde}: the case value as uchar's resolver normalised it; a constructor
+     *  value of an attribute with absence markers in the form of the request, a marker as {@code {"marker": <naam>}} and
+     *  the payload of {@code waarde} as the value it holds, {@code dt} being the datatype of that payload. */
     private static void value(ObjectNode n, ScenarioValue w, Datatype dt, Naming ng) {
         if (w.number() != null) n.put("value", w.number());
         else if (w.date() != null) n.put("value", w.date().toString());
@@ -178,6 +182,12 @@ final class ScenarioData {
         else if (w.bool() != null) n.put("value", w.bool());
         else if (w.text() != null) n.put("value", w.text());
         else if (w.enumValue() != null) enumValue(n, w.enumValue(), dt, ng);
+        else if (w.constructor() != null && w.payload() == null) n.putObject("value").put(Markers.KEY, w.constructor());
+        else if (RegelSpraakModel.VALUE_CONSTRUCTOR.equals(w.constructor())) value(n, w.payload(), dt, ng);
+        else if (w.constructor() != null)
+            throw new IllegalStateException("uchars resolver gaf de constructorwaarde '" + w.constructor() + "' met een"
+                    + " payload; een attribuut met markers heeft alleen '" + RegelSpraakModel.VALUE_CONSTRUCTOR
+                    + "' met een payload");
         else throw new IllegalStateException("uchars resolver gaf een waarde zonder variant");
     }
 
