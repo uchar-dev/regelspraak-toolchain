@@ -138,7 +138,9 @@ import java.util.regex.Pattern;
  * {@code «"<creatie>"»(<onderwerp>)#1}, met het onderwerp zoals de uitleg het noemt: een object van de invoer bij zijn
  * label, een gemaakt object bij deze naam ("«"schrijf een kwitantie"»(«"geef een vangstpenning"»(J1)#1)#1"). Zo'n
  * object krijgt zijn zinnen na de objecten van de invoer, in de volgorde van het fixpunt, en heet zo ook als lid van
- * een kwantorvouw.
+ * een kwantorvouw. Het heeft geen invoer: waar een object van de invoer zijn invoerwaarde houdt, houdt het de waarde
+ * die de creatie het gaf (uchars RUNTIME-SEMANTICS ch. 7.8), en de zin noemt die "de waarde bij het maken", ook per
+ * periode; een initialisatie besliste daar omdat het doel "bij het maken leeg was".
  *
  * <p><b>Stukken.</b> Elke zin schrijft de verbalisator op één {@link Sentence.Builder}, als een ondiepe boom van
  * {@link Part}s met een soort: het onderwerp, de namen met hun declaratie, de regeltekst, de waarden, de regelnamen, de
@@ -651,8 +653,8 @@ public final class Verbaliser {
             return b.build();
         }
 
-        /** Wat {@code member} houdt in periode {@code s}, waarin geen variant schreef: de invoerwaarde met de periode,
-         *  of geen waarde. */
+        /** Wat {@code member} houdt in periode {@code s}, waarin geen variant schreef: de invoerwaarde met de periode
+         *  ({@link #standingValue}), of geen waarde. */
         private void standingIn(Sentence.Builder b, String member, PeriodDecisions.Span s) {
             if (s.input() == null) {
                 b.text("heeft geen ");
@@ -662,7 +664,7 @@ public final class Verbaliser {
             }
             b.text("houdt als ");
             attributeName(b, type, member, new On(label));
-            b.text(" de invoerwaarde ");
+            b.text(" " + standingValue(bean) + " ");
             periodValue(b, s.input(), s, member);
         }
 
@@ -954,7 +956,7 @@ public final class Verbaliser {
                     b.text("de ");
                     attributeName(b, type, targetOf(v), new On(label));
                 }
-                b.text(" in de invoer leeg was");
+                b.text(emptyBefore(bean));
                 return;
             }
             if (c == null || c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE
@@ -1416,8 +1418,8 @@ public final class Verbaliser {
                     decider(b, wrote.get(i), member, true, false, false);
                 }
                 if (!input.isEmpty())
-                    b.text("; de invoerwaarde ").leaf(Part.Kind.VALUE, joined(input), Part.meta("timeline", true))
-                            .text(" bleef staan");
+                    b.text("; " + standingValue(bean) + " ")
+                            .leaf(Part.Kind.VALUE, joined(input), Part.meta("timeline", true)).text(" bleef staan");
             } else {
                 boolean stands = timelineStanding(b, member);
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" ");
@@ -1456,13 +1458,13 @@ public final class Verbaliser {
             Datatype datatype = type.attribute(member);
             b.text("houdt als ");
             attributeName(b, type, member, new On(label));
-            b.text(" de invoerwaarde ").leaf(Part.Kind.VALUE,
+            b.text(" " + standingValue(bean) + " ").leaf(Part.Kind.VALUE,
                     renderPeriods(Period.list(segments), null, x -> render(x, datatype)), Part.meta("timeline", true));
             return true;
         }
 
-        /** Wat cel {@code cell} van {@code member} houdt waar geen regel een waarde schreef: leeg of de invoerwaarde,
-         *  uit uchars kaart van cellen op de bean. Geeft of er een invoerwaarde staat. */
+        /** Wat cel {@code cell} van {@code member} houdt waar geen regel een waarde schreef: leeg of de invoerwaarde
+         *  ({@link #standingValue}), uit uchars kaart van cellen op de bean. Geeft of er een invoerwaarde staat. */
         private boolean cellStanding(Sentence.Builder b, String member, List<String> cell) {
             Object map = readRaw(bean, Namen.getter(member));
             if (map != null && !(map instanceof Map<?, ?>))
@@ -1472,7 +1474,7 @@ public final class Verbaliser {
             b.text(v == null ? "heeft geen " : "houdt als ");
             cellName(b, type, member, cell, new On(label));
             if (v != null) {
-                b.text(" de invoerwaarde ");
+                b.text(" " + standingValue(bean) + " ");
                 value(b, render(v, type.attribute(member)), false);
             }
             return v != null;
@@ -1487,7 +1489,8 @@ public final class Verbaliser {
         /** Een regel die gold: haar naam, haar berekening en waarom zij gold; met {@code gaveNothing} dat zij geen waarde
          *  gaf, en met {@code inputStands} ook dat zij daarom niets besliste, waar het doel zijn invoerwaarde houdt
          *  (uchars RUNTIME-SEMANTICS ch. 3.11: een lege waarde beslist niets). Een initialisatie zonder voorwaarde gold
-         *  omdat het doel in de invoer leeg was, zoals de zin van een initialisatie in een stapel het zegt. */
+         *  omdat het doel in de invoer leeg was ({@link #emptyBefore}), zoals de zin van een initialisatie in een stapel
+         *  het zegt; op een tijdlijndoel beslist zij zo de dagen die de regels en de invoer leeg laten (ch. 7.8). */
         private void decider(Sentence.Builder b, Writer w, String member, boolean timeline, boolean gaveNothing,
                              boolean inputStands) {
             ResolvedRule r = w.rule();
@@ -1506,7 +1509,7 @@ public final class Verbaliser {
             } else if (initialisation) {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" de ");
                 targetName(b, member, w.labels());
-                b.text(" in de invoer leeg was");
+                b.text(emptyBefore(bean));
             }
         }
 
@@ -2003,7 +2006,8 @@ public final class Verbaliser {
     }
 
     /** Wat attribuut {@code member} van {@code bean}, van objecttype {@code type} en met naam {@code label}, houdt waar
-     *  niemand het schreef: leeg, of de invoerwaarde, van de bean gelezen. Geeft of er een invoerwaarde staat. */
+     *  niemand het schreef: leeg, of de invoerwaarde ({@link #standingValue}), van de bean gelezen. Geeft of er een
+     *  invoerwaarde staat. */
     private boolean attributeStanding(Sentence.Builder b, Object bean, String label, ObjectType type, String member) {
         Object v = readRaw(bean, Namen.getter(member));
         if (v == null) {
@@ -2013,9 +2017,28 @@ public final class Verbaliser {
         }
         b.text("houdt als ");
         attributeName(b, type, member, new On(label));
-        b.text(" de invoerwaarde ");
+        b.text(" " + standingValue(bean) + " ");
         value(b, render(v, type.attribute(member)), false);
         return true;
+    }
+
+    /** Of {@code bean} een object is dat een creatie van de sessie maakte ({@link Fixpoint#objects}). */
+    private boolean madeObject(Object bean) {
+        for (Fixpoint.MadeObject g : made) if (g.object() == bean) return true;
+        return false;
+    }
+
+    /** Hoe de zin de waarde noemt die op {@code bean} staat waar geen schrijver besliste. Een verzoek geeft een gemaakt
+     *  object niets: wat daar de plaats van de invoer heeft, is de lidwaarde die de creatie het gaf (uchars
+     *  RUNTIME-SEMANTICS ch. 7.8, rang 2 van de stapel), dus "de waarde bij het maken"; anders "de invoerwaarde". */
+    private String standingValue(Object bean) {
+        return madeObject(bean) ? "de waarde bij het maken" : "de invoerwaarde";
+    }
+
+    /** Waar het doel van een initialisatie op {@code bean} leeg was, met de spatie ervoor: op een gemaakt object bij het
+     *  maken ({@link #standingValue}), anders in de invoer. */
+    private String emptyBefore(Object bean) {
+        return madeObject(bean) ? " bij het maken leeg was" : " in de invoer leeg was";
     }
 
     /** De lezing van vorm {@code form} op {@code bean}; faalt luid waar de motor er geen gaf. */
