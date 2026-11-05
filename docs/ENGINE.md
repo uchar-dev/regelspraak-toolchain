@@ -209,17 +209,18 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   bean (`Markers` reads the markers off the model of a source, where they stand beside the attribute, and off the model
   of an IR document, where the attribute is that sum type). A request gives such an attribute a value of its datatype,
   which is the value `waarde(…)`, or a marker, `"taxatie": {"marker": "onbekend"}`, also as the `value` of a segment
-  of its timeline, and `RequestMapper` writes them into the case as uchar's case gives them, `{"constructor": "waarde",
-  "payload": {"number": "40.00"}}` and `{"constructor": "onbekend"}`; a marker name compares as a name (case and spacing
-  aside) and goes in its declared spelling. A marker the attribute does not declare is a 400 `UNKNOWN_MARKER` that
-  names the declared ones, a marker on an attribute without markers a 400 `WRONG_TYPE`, and a marker object with another
-  key a 400 `MALFORMED`. The answer gives the attribute in the same form, the value as its payload and a marker as
-  `{"marker": "onbekend"}`, also per segment (`"opslagkosten": {"timeline": [{"from": "2025-01-01", "to": "2025-03-01",
-  "value": {"marker": "onbekend"}}, {"from": "2025-03-01", "to": "2025-06-01", "value": 10}, …]}`), and so does the
-  `fixpoint` of the detail. A marker decides as a value does (uchar's ch. 9.5): it displaces an input, and a writer
-  that writes a marker and one that writes a value on the same day are a `WRITERS_CONFLICT`. An attribute of another
-  sum type, which only an IR document of another producer declares, has no form in the service: a value on it is a 400
-  `UNSUPPORTED`, and in `output` it refuses the start (`UNSUPPORTED`).
+  of its timeline and of a cell of a dimensioned attribute with markers (`"gewicht": {"cells": [{"labels": ["najaar"],
+  "value": {"marker": "onbekend"}}]}`), and `RequestMapper` writes them into the case as uchar's case gives them,
+  `{"constructor": "waarde", "payload": {"number": "40.00"}}` and `{"constructor": "onbekend"}`; a marker name compares
+  as a name (case and spacing aside) and goes in its declared spelling. A marker the attribute does not declare is a
+  400 `UNKNOWN_MARKER` that names the declared ones, a marker on an attribute without markers a 400 `WRONG_TYPE`, and a
+  marker object with another key a 400 `MALFORMED`. The answer gives the attribute in the same form, the value as its
+  payload and a marker as `{"marker": "onbekend"}`, also per segment (`"opslagkosten": {"timeline": [{"from":
+  "2025-01-01", "to": "2025-03-01", "value": {"marker": "onbekend"}}, {"from": "2025-03-01", "to": "2025-06-01",
+  "value": 10}, …]}`) and per cell, and so does the `fixpoint` of the detail. A marker decides as a value does (uchar's
+  ch. 9.5): it displaces an input, and a writer that writes a marker and one that writes a value on the same day are a
+  `WRITERS_CONFLICT`. An attribute of another sum type, which only an IR document of another producer declares, has no
+  form in the service: a value on it is a 400 `UNSUPPORTED`, and in `output` it refuses the start (`UNSUPPORTED`).
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
   `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"kind": …, "error": <uchar's sentence>}, …]}`, one element per
   fault in uchar's order. Every fault at the fixpoint is such an element, whatever its type: the core reads them from
@@ -354,7 +355,10 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`rule`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in; a dimensioned
-  attribute in `objects[].attributes[]` as `cells`, `[{labels, value}]`, as a request gives it), and the `fixpoint`
+  attribute in `objects[].attributes[]` as `cells`, `[{labels, value}]`, as a request gives it; a value of an attribute
+  with absence markers, which uchar's resolver gives as a constructor value, as a request gives it too, a marker as
+  `{"marker": "onbekend"}` under `value` and the value `waarde(…)` as its payload, also in a segment and a cell; the
+  page shows a marker by its name), and the `fixpoint`
   of the case's own session as uchar reads it (`DroolsBackend.fixpointOf`): per object every value and characteristic with
   its origin, the made objects, the links, the evaluation faults as data and the inconsistencies, each list sorted, or
   `fixpointError` with the reason there is none. `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
@@ -467,7 +471,10 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
     it as `path`, after `rule`. Without one the result is a MARKER whose `diagnosis` says what each entry point lacks,
     with `path` null; there is no fallback to the ordinary route;
   - the situation becomes a request (`SituationToRequest`, each instance with its label as its id, the names
-    canonical, read with `inputVocabulary=canonical`, a dimensioned attribute as its `cells`), and the core answers it
+    canonical, read with `inputVocabulary=canonical`, a dimensioned attribute as its `cells`, a marker as `{"marker":
+    <naam>}` and the value `waarde(…)` as its payload; a value of a form uchar's RegelSpraak frontend does not write, a
+    constructor with a payload other than `waarde` or a value without a variant, is a 500 `interne fout` with the
+    sentence that names it on stderr, as on the ordinary route), and the core answers it
     with `explanation`, `explanationParts`,
     `trace`, `coverage` and `fixpoint`, in the vocabulary of `?vocabulary=` (canonical without it). uchar compares the `expected` of the case
     its frontend writes for the scenario with the written-back session of that request, the ids of the request as
@@ -628,7 +635,9 @@ period are not named in its sentence.
 markers as uchar's `ConstructorValue` (RUNTIME-SEMANTICS ch. 9.5). The explanation writes the value `waarde(…)` as
 its payload, with the decimals and the unit of the declared datatype, and a marker by its declared name, as the head of
 a sentence (`"V1 heeft als taxatie onbekend volgens de regel 'taxatie onbekend': onbekend, omdat …"`), as a value a
-condition or a computation read, and per period (`"V1 heeft als opslagkosten onbekend van 01-01-2025 tot 01-03-2025
+condition or a computation read, on a cell (`"V1 heeft als gewicht in voorjaar onbekend volgens de regel
+'voorjaarsgewicht onbekend': onbekend, …"`, `"zijn gewicht in voorjaar (onbekend) is gelijk aan onbekend"`), and per
+period (`"V1 heeft als opslagkosten onbekend van 01-01-2025 tot 01-03-2025
 volgens de regel 'opslag onbekend in de winter', …, en niet van toepassing van 01-06-2025 tot 01-01-2026 volgens …;
 de invoerwaarde 10 van 01-03-2025 tot 01-06-2025 bleef staan"`). A read of the value under a test of it (uchar's
 `PayloadAccess`) is empty where the attribute holds a marker, so the sentence names the attribute with what it holds:

@@ -237,6 +237,14 @@ model declares) and the sentences of the messages, which keep their text. The ol
   dan de minimumleeftijd (17)"`, `"met zijn schatting (leeg)"`); the `VALUE` of an empty value (`empty: true`) has the
   text `leeg`. `onbekend` in an explanation is the absence marker alone. The answer is unchanged: an empty attribute
   is `null`.
+- **Markers in a test document** (card `markers-in-test-documents`, on uchar's card `absence-markers-residue`): uchar's
+  scenario layer reads a marker as the value of a situation and an expectation (`- de taxatie is onbekend`), also in a
+  segment and in a cell, where it refused one as a syntax error. The playground gives such a value in the `situation`
+  in the form of the request, a marker as `{"marker": "onbekend"}` under `value` and a value of an attribute with
+  markers as its payload (`"40.00"`), and `?via=service` sends it so; the page shows a marker by its name. A marker on
+  a cell of a dimensioned attribute with markers, which a rule now writes and a condition tests, goes in the request,
+  the answer, the `fixpoint` and the explanation as a marker on a scalar does (`"V1 heeft als gewicht in voorjaar
+  onbekend volgens de regel 'voorjaarsgewicht onbekend': onbekend, …"`).
 
 ## The pin
 
@@ -303,10 +311,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (339). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (344). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 331); every golden that does not play is listed by name with
-  its reason (8, each with a scalar on a time-dependent attribute, which the request does not carry); a deviation always
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 335); every golden that does not play is listed by name with
+  its reason (9, each with a scalar on a time-dependent attribute, which the request does not carry); a deviation always
   fails, and the list fails when it goes stale in either direction. Every golden that plays is asked with
   `?explanation=true` as well, and an explanation the service does not give fails it. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
@@ -457,7 +465,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   time-dependent parameter and of a time-dependent attribute and the periods of a time-dependent characteristic, but
   no scalar on a time-dependent attribute (uchar's replay places one in the period of the evaluation date, the
   asOfDate-bucket convention); the service refuses it as `UNSUPPORTED`. The answer gives no time-dependent
-  characteristic. 8 of the goldens gate 12 plays need a scalar there; the replay gate lists them.
+  characteristic. 9 of the goldens gate 12 plays need a scalar there; the replay gate lists them.
 - **The other variants of a period.** The sentence of a period of a defaults group on a time-dependent attribute
   names the variant that decided, the conflict or the input that stood (`DroolsBackend.periodDecisionsOf`), and not the
   variants before or after it in that period: uchar reads each default once per object, not per period.
@@ -465,8 +473,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
 - **A sum type other than that of absence markers.** The request, the answer and the OpenAPI document carry the sum
   type uchar's frontend writes for an attribute with absence markers. Another sum type, which only an IR document of
   another producer declares (whose `Match` uchar's Drools branch refuses), has no form there: a value on it is a 400
-  `UNSUPPORTED`, it refuses the start in `output`, and the OpenAPI emitter fails on it. A scenario of a test document
-  gives no marker either: uchar's scenario layer has no form for one in a situation.
+  `UNSUPPORTED`, it refuses the start in `output`, and the OpenAPI emitter fails on it.
 - **The explanation** explains characteristic-attribution rules, defaults groups and the values ordinary rules
   compute, not consistencies or creations, whose readings uchar has as well. A rule outside the scope of an entry point
   has no rule in its build and gets the one sentence "de regel '…' staat buiten deze berekening".
