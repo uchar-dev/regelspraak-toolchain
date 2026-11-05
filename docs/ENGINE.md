@@ -192,7 +192,9 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   case. On a timeline target every writer decides the days on which its timeline reads a value, and the input stands
   on the other days, also beside a defaults group, which decides per day (uchar's RUNTIME-SEMANTICS ch. 3.11, 7.11):
   with the opgave marker on `strandloon`, an input of 99 on 2025 and an opgave of 10 in January and February, a rule
-  writing 20 from March to May gives `10, 20, 99`. A boolean on a time-dependent characteristic, periods on another and
+  writing 20 from March to May gives `10, 20, 99`. An initialisation decides the days the writers and the input leave
+  empty, over all time, and on an object a creation made the member value the creation gave it stands in the place of
+  the input, a scalar on every day or a timeline per period (the stack of ch. 7.8 per day). A boolean on a time-dependent characteristic, periods on another and
   a timeline on an attribute without one are a 400 `WRONG_TYPE`. A scalar on a time-dependent attribute is a 400
   `UNSUPPORTED`: uchar's case reads it as the value of the period of the evaluation date (the asOfDate-bucket
   convention, ch. 8.4), a convention of its replay that the request does not take over. A grid of more than one period
@@ -309,7 +311,14 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   marker. Strict, the service refuses to start (exit 3, `MARKER: …` with uchar's sentence). With `--allow-markers`
   (`ALLOW_MARKERS=true` for Quarkus) it starts, and every request to that entry point gets 503 with
   `{"status": "MARKER", "error": …, "reason": <uchar's sentence>, "markers": […]}`: an answer without the construct
-  would be an answer to another rule set.
+  would be an answer to another rule set. On a timeline target such a construct is the value of an initialisation or
+  of a creation's member that is neither period arithmetic nor the constructor of a literal (DROOLS-316: `regel
+  'standaardbijdrage' in de scope van entrypoint 'bijdrage' is een marker (niet gedragen): transpiler SKIP: regel:
+  standaardbijdrage — de waarde van een initialisatie op het tijdsafhankelijke attribuut 'onderhoudsbijdrage' van
+  Bakenmeester is geen rekenen per periode …`). An allocation that names a time-dependent attribute is not
+  well-formed (uchar's WF-128): from RegelSpraak the frontend refuses it (RGS-378) and the service does not start with
+  that resolver error; a `uchar-ir-v1` document, which the service does not verify, gets as far as uchar's branch,
+  which refuses it (DROOLS-315, a `contract` of its register), and the entry point is a marker with that sentence.
 - `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`). A source with a
   parse or resolver error gets its diagnostics and nothing else. A clean source gets the `uchar-ir-v1` document, the
   exec-model verdict (`executable` with the `coverage` and `generated`, or uchar's `refusal`), the DRL of the
@@ -592,13 +601,32 @@ the input stood follow: `"A1 heeft als rentedagen 30 dg/mnd van 01-12-2025 tot 0
 01-03-2026), en 0 dg/mnd tot 01-11-2025, … volgens de regel 'rentedagen in een gedeeltelijke maand', omdat …"`,
 `"J1 heeft als borgdeel 12,00 van 01-01-2024 tot 01-03-2024 volgens de regel 'borgdeel van een jutter'
 (onvoorwaardelijk); de invoerwaarde 99,00 van 01-03-2024 tot 01-04-2024 bleef staan"`. Where no rule decided a day,
-the target keeps its input as its periods, or is empty. A timeline the engine read inside a computation stands as its periods, and the total of the
+the target keeps its input as its periods, or is empty. An initialisation of a timeline target is the lowest layer of
+that stack (uchar's RUNTIME-SEMANTICS ch. 7.8): uchar names it among the rules on the days it decided, the days the
+other rules and the input leave empty, over all time, so the sentence gives it those periods with `omdat de <NAME> in
+de invoer leeg was`, or its condition with the periods it holds in, as the first form gives an initialisation:
+`"J2 heeft als voorjaarsloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'voorjaarsloon', omdat …, en 5 tot
+01-01-2025 en 5 vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat de voorjaarsloon in de invoer leeg
+was; de invoerwaarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`. Where the rules and the input leave it no day,
+its reading is `DISPLACED` and it is `; verdrongen: de regel '…'`. A timeline the engine read inside a computation stands as its periods, and the total of the
 subject's own timeline (ch. 3.6) has no `MEMBERS`: it is no fold over a set. A time-dependent characteristic a rule
 writes in a window has its own sentence, with the periods the bean holds: `"A1 is rentedragend van 16-11-2025 tot
 13-03-2026 volgens de regel 'rentedragend'"`, without its condition, or `"… is niet rentedragend volgens de regel
 '…'"` where it holds on no day. A rule
 outside the scope of an entry point gets the one sentence "de regel '…' staat buiten deze berekening", like an
 attribution rule.
+
+**The value of the making** (card `timeline-stack-in-service`). An object a creation made has no input: in the place
+the input has on an object of the request, it holds the member value its creation gave it (rank 2 of uchar's stack,
+RUNTIME-SEMANTICS ch. 7.8), a scalar on every day or a timeline per period. Every sentence names that value `de
+waarde bij het maken` where it names an input value `de invoerwaarde`, on a target with one value, on a cell, per
+period and in the sentence of a defaults group, and an initialisation decided there `omdat de <NAME> bij het maken
+leeg was`: `"«"meld de jutter"»(J1)#1 heeft als seizoensloon 20 van 01-03-2025 tot 01-09-2025 volgens de regel
+'seizoensloon', omdat …; de waarde bij het maken 10 van 01-01-2025 tot 01-03-2025 bleef staan"`, `"«"meld de
+jutter"»(J1)#1 heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf 01-07-2025 volgens de regel 'standaardaanvulloon',
+omdat de aanvulloon bij het maken leeg was; de waarde bij het maken 10 van 01-01-2025 tot 01-07-2025 bleef staan"`,
+`"«"meld de vangst"»(J1)#1 houdt als meldwaarde de waarde bij het maken 7, want de regel 'meldwaarde uit toeslag' gaf
+geen waarde (onvoorwaardelijk) en besliste niets: zijn toeslag (leeg)"`.
 
 **The deciding variant of a defaults group** (card `explanation-defaults-computation`). In the sentence of a defaults
 group on an attribute, the variant that decided gets the same `COMPUTATION` after its name, where the sentence of a
@@ -625,7 +653,8 @@ sentence per period, in the order of the days:
   kustwacht' besliste 'heeft als toelage 10' en de regel 'toelage voor stormwacht' besliste 'heeft als toelage 20', dus
   de groep schrijft niets"`);
 - no variant decided and the input stood: `"J4 houdt als strandloon de invoerwaarde 99 van 01-06-2025 tot 01-01-2026,
-  want geen variant besliste"`.
+  want geen variant besliste"`, on a made object the value of the making (above): `"«"meld de jutter"»(J1)#1 houdt
+  als toelage de waarde bij het maken 10 van 01-03-2025 tot 01-07-2025, want geen variant besliste"`.
 
 A period without a decider and without input has no sentence; where no variant decided on any day and no input
 stands, one sentence says so: `"J2 heeft geen toelage, want geen variant besliste"`. The variants that did not decide a
