@@ -506,7 +506,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
 | `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below); `labels` where it names a cell of a dimensioned attribute, one label per dimension in their declared spelling |
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
-| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`), a value of an attribute with absence markers as its payload or the name of its marker; a literal | `empty: true` for an empty one ("onbekend", and "leeg" on an attribute with absence markers); `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic |
+| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`), a value of an attribute with absence markers as its payload or the name of its marker; a literal | `empty: true` for an empty one ("leeg", on every attribute); `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
@@ -633,8 +633,9 @@ volgens de regel 'opslag onbekend in de winter', …, en niet van toepassing van
 de invoerwaarde 10 van 01-03-2025 tot 01-06-2025 bleef staan"`). A read of the value under a test of it (uchar's
 `PayloadAccess`) is empty where the attribute holds a marker, so the sentence names the attribute with what it holds:
 `"zijn taxatie (niet van toepassing) een waarde heeft"`, the test of a value in the words of the dialect; a marker in a
-comparison stands once, as a literal does (`"zijn taxatie (onbekend) is gelijk aan onbekend"`). An empty value of such
-an attribute stands as `leeg`, since `onbekend` is a marker there.
+comparison stands once, as a literal does (`"zijn taxatie (onbekend) is gelijk aan onbekend"`). An empty value stands
+as `leeg`, here as on an attribute without markers (`"zijn taxatie (leeg) is gelijk aan onbekend"`), so `onbekend` in
+an explanation is always the marker.
 
 **What a displaced variant found** (card `explanation-read-objects-and-displaced`). Every variant of a defaults group
 after the decider says, after its name, what it found, from uchar's reading of a displaced default (RUNTIME-SEMANTICS

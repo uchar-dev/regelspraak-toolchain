@@ -226,14 +226,17 @@ model declares) and the sentences of the messages, which keep their text. The ol
   does not declare is a 400 of the new kind `UNKNOWN_MARKER`, and a marker on an attribute without markers a 400
   `WRONG_TYPE` whose sentence names the attribute ("heeft geen markers"). The answer, and the `fixpoint` of the detail,
   give the attribute in the same form, where they gave the text of uchar's value (`"waarde(300)"`, `"onbekend"`). The
-  explanation writes the value as its payload (`"V1 heeft als taxatie 300,00 volgens …"`, where it wrote
-  `waarde(300)`) and a marker by its name, also per period; the test whether such an attribute holds a value reads
-  `"zijn taxatie (niet van toepassing) een waarde heeft"`, where it read `"zijn taxatie (onbekend) gevuld is"`; a
-  marker in a comparison stands once (`"is gelijk aan onbekend"`, where it was `"is gelijk aan onbekend (onbekend)"`);
-  and an empty value of such an attribute stands as `leeg`, where it stood as `onbekend`, which is a marker there. In
-  the OpenAPI document such an attribute is `oneOf` the schema of its datatype and the marker object, with an `enum`
-  of the markers it declares. An attribute of another sum type, which only an IR document of another producer declares,
-  refuses the start in `output` (`UNSUPPORTED`).
+  explanation writes the value as its payload (`"V1 heeft als taxatie 300,00 volgens …"`) and a marker by its name,
+  also per period; the test whether such an attribute holds a value reads `"zijn taxatie (niet van toepassing) een
+  waarde heeft"`, and a marker in a comparison stands once (`"is gelijk aan onbekend"`). In the OpenAPI document such
+  an attribute is `oneOf` the schema of its datatype and the marker object, with an `enum` of the markers it declares.
+  An attribute of another sum type, which only an IR document of another producer declares, refuses the start in
+  `output` (`UNSUPPORTED`).
+- **Empty is leeg** (card `empty-as-leeg-in-explanation`): the explanation writes an empty value as `leeg` on every
+  attribute, as RegelSpraak writes it (`is leeg`), also as a value the engine read (`"zijn leeftijd (leeg) is groter
+  dan de minimumleeftijd (17)"`, `"met zijn schatting (leeg)"`); the `VALUE` of an empty value (`empty: true`) has the
+  text `leeg`. `onbekend` in an explanation is the absence marker alone. The answer is unchanged: an empty attribute
+  is `null`.
 
 ## The pin
 
@@ -360,9 +363,9 @@ explanation of its outcome: uchar's replay plays it on the build with readings a
 (`CaseRunner.report` with a handoff), and the verbaliser renders each condition from the engine's readings of that
 session (`DroolsBackend.readingsOf`: per form and object how the condition came out, per node what the engine reached
 and the value and unit it read), here and in the service's `?explanation=true`; it computes nothing itself. An empty
-value stands as "(onbekend)", and as "(leeg)" on an attribute with absence markers, where `onbekend` is a marker; a
-member the engine did not reach is not named, and a condition that did not hold names the member where the engine
-stopped. The engine reads a number exactly: a value that does not terminate stands as its
+value stands as "(leeg)" on every attribute, and `onbekend` is only the absence marker; a member the engine did not
+reach is not named, and a condition that did not hold names the member where the engine stopped. The engine reads a
+number exactly: a value that does not terminate stands as its
 fraction, as uchar's reading writes it (`vóór de afronding 100/3 EUR`), and a value of the unbounded form (`Numeriek
 (getal)`) with every decimal it has. A timeline the engine read stands as its periods, as RegelSpraak writes them
 (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`). uchar's scenario resolver refuses three of the 29
