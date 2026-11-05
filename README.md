@@ -268,6 +268,15 @@ model declares) and the sentences of the messages, which keep their text. The ol
   "derived", "input": [{"value": "7"}], "inputOrigin": "creation"}`. A row without a derived value keeps the origin
   `creation`; the rows of an instance of the request are unchanged. The OpenAPI description of `values` names
   `inputOrigin`.
+- **A writer that held on no day** (card `writer-holds-on-no-day`): a rule or an initialisation on a timeline target
+  whose condition per period holds on no day (uchar's reading `HOLDS` with a condition that reads no period) is named as
+  a rule that did not hold, with its condition and the periods the engine read: `"; de regel 'standaardstormloon' gold
+  op geen dag, want niet geldt: hij stormwacht is (altijd leeg)"`, where it was `"; de regel 'standaardstormloon' gaf
+  geen waarde en besliste niets"`, and `"J4 heeft geen berekende stormtoelage, want geen regel gold; de regel
+  'stormtoelage' gold op geen dag, want niet geldt: hij stormwacht is (altijd leeg)"`, where it was `"J4 heeft geen
+  berekende stormtoelage, want de regel 'stormtoelage' gaf geen waarde, omdat hij stormwacht is (altijd leeg)"`. A
+  writer that held on some day and gave leeg there still gave no value. Over uchar's goldens 30 of 5145 sentences
+  change; the answer is unchanged.
 
 ## The pin
 

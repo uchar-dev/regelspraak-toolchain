@@ -537,7 +537,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
 | `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`), a value of an attribute with absence markers as its payload or the name of its marker; a literal | `empty: true` for an empty one ("leeg", on every attribute); `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
-| `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet | — |
+| `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, gold op geen dag | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
 | `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
@@ -589,8 +589,10 @@ prepositions are `TEXT`, the `NAME` carries the cell under `labels`. The four fo
   regel gold`.
 
 Then each other writer as a `VARIANT`: `; de regel '…' gold niet, want niet geldt: <the member where the engine
-stopped>`, `; de regel '…' gold niet, want zij valt op de rekendatum buiten haar geldigheid`, `; de regel '…' gaf geen
-waarde en besliste niets` (beside the rule that wrote, whose value stands), or `; verdrongen: de regel '…'`; then the
+stopped>`, `; de regel '…' gold niet, want zij valt op de rekendatum buiten haar geldigheid`, `; de regel '…' gold op
+geen dag, want niet geldt: <the condition per period, with the periods the engine read>` (a writer of a timeline target,
+below), `; de regel '…' gaf geen waarde en besliste niets` (beside the rule that wrote, whose value stands), or `;
+verdrongen: de regel '…'`; then the
 ground of the rule that held. The `COMPUTATION` is `": "`, the rule
 text of the value (`QUOTE`), and `", met "` with every node that reads or folds something (an attribute, a parameter, a
 dimension cell, a binder of `Daarbij geldt` by the text of its definition, a built-in function, a fold), each rule text
@@ -614,7 +616,15 @@ the input stood follow: `"A1 heeft als rentedagen 30 dg/mnd van 01-12-2025 tot 0
 01-03-2026), en 0 dg/mnd tot 01-11-2025, … volgens de regel 'rentedagen in een gedeeltelijke maand', omdat …"`,
 `"J1 heeft als borgdeel 12,00 van 01-01-2024 tot 01-03-2024 volgens de regel 'borgdeel van een jutter'
 (onvoorwaardelijk); de invoerwaarde 99,00 van 01-03-2024 tot 01-04-2024 bleef staan"`. Where no rule decided a day,
-the target keeps its input as its periods, or is empty. An initialisation of a timeline target is the lowest layer of
+the target keeps its input as its periods, or is empty. A writer whose condition per period holds on no day has
+uchar's reading `HOLDS` with a condition that reads no period (RUNTIME-SEMANTICS ch. 5.12); it did not hold, and the
+sentence names it as a rule that did not hold, with its condition and the periods the engine read, a rule and an
+initialisation alike (`Verbaliser`, one decision from the reading): `"J4 heeft geen berekende stormtoelage, want geen
+regel gold; de regel 'stormtoelage' gold op geen dag, want niet geldt: hij stormwacht is (altijd leeg)"`, `"…; de regel
+'standaardstormloon' gold op geen dag, want niet geldt: hij stormwacht is (altijd leeg)"`. A writer whose condition
+holds on some day and whose value is leeg there gave no value: `"…; de regel 'kustloon' gaf geen waarde en besliste
+niets"`. A default of a group on a timeline target that holds on no day is not named, as every variant that decided no
+period (below). An initialisation of a timeline target is the lowest layer of
 that stack (uchar's RUNTIME-SEMANTICS ch. 7.8): uchar names it among the rules on the days it decided, the days the
 other rules and the input leave empty, over all time, so the sentence gives it those periods with `omdat de <NAME> in
 de invoer leeg was`, or its condition with the periods it holds in, as the first form gives an initialisation:
