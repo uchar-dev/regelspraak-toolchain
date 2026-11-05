@@ -278,7 +278,17 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   instance by its id, its input values read off its bean before the fire, a made object `#<n>`, a type by its name;
   or `fixpointError` with the reason a value of it cannot be shown. A dimensioned attribute has a row per cell, with
   the cell's `labels` after `attribute`, in their declared spelling, as uchar's `Fixpoint.DerivedValue.labels` names a
-  derived cell, the cells in the declared order of their labels.
+  derived cell, the cells in the declared order of their labels. A row a rule, a default or an allocation derived has
+  the origin `derived`, with the value it replaced beside it as `input`: the input of an instance of the request, as
+  read off its bean before the fire. An object a creation made has no input; in its place stands the value of the
+  making, what the creation put on its bean (rank 2 of uchar's stack, RUNTIME-SEMANTICS ch. 7.8), which `Executor`
+  reads at the fixpoint before the write-back (`CaseSession.making`), as the write-back replaces it on the same bean. A
+  row of a made object without a derived value has the origin `creation`, and beside a derived value the value of the
+  making stands as `input` with `inputOrigin: "creation"`, a scalar, a timeline as its segments and a cell as its
+  value, in the 422 of an evaluation fault and of a limit too: on uchar's golden `jutterswet-creatie-per-dag`, where
+  the creation gives the seizoenswaarde 7 and a rule writes 20 from March to August, `{"attribute": "seizoenswaarde",
+  "timeline": [{"to": "2025-03-01", "value": "7"}, {"from": "2025-03-01", "to": "2025-09-01", "value": "20"}, {"from":
+  "2025-09-01", "value": "7"}], "origin": "derived", "input": [{"value": "7"}], "inputOrigin": "creation"}`.
   A form and a declaration are named in the vocabulary of the answer; in `fixpoint` the canonical name stands beside a
   name that differs (`objectTypeCanonical`), as in the playground, whose trace and coverage name a form without it. A
   422 gets the asked fields beside its faults, so the faults stand as data in `fixpoint.faults` next to the values. The
@@ -369,8 +379,11 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `{"marker": "onbekend"}` under `value` and the value `waarde(…)` as its payload, also in a segment and a cell; the
   page shows a marker by its name), and the `fixpoint`
   of the case's own session as uchar reads it (`DroolsBackend.fixpointOf`): per object every value and characteristic with
-  its origin, the made objects, the links, the evaluation faults as data and the inconsistencies, each list sorted, or
-  `fixpointError` with the reason there is none. `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
+  its origin, on a made object the value of the making as the service gives it (above, `?fixpoint=true`), read in the
+  session uchar's replay hands over before its write-back (`CaseRunner.Handoff`), the made objects, the links, the
+  evaluation faults as data and the inconsistencies, each list sorted, or `fixpointError` with the reason there is
+  none. The page writes the `input` of a made object as `(bij het maken …)`, that of an instance as `(invoer …)`.
+  `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
   coverage, the explanation, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
   that differs (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
 - `drlRules` (card `drl-rule-provenance`) has one entry per rule of `drl`, in the order of its headers: `name`, the
@@ -626,7 +639,9 @@ leeg was`: `"«"meld de jutter"»(J1)#1 heeft als seizoensloon 20 van 01-03-2025
 jutter"»(J1)#1 heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf 01-07-2025 volgens de regel 'standaardaanvulloon',
 omdat de aanvulloon bij het maken leeg was; de waarde bij het maken 10 van 01-01-2025 tot 01-07-2025 bleef staan"`,
 `"«"meld de vangst"»(J1)#1 houdt als meldwaarde de waarde bij het maken 7, want de regel 'meldwaarde uit toeslag' gaf
-geen waarde (onvoorwaardelijk) en besliste niets: zijn toeslag (leeg)"`.
+geen waarde (onvoorwaardelijk) en besliste niets: zijn toeslag (leeg)"`. The sentence names the value of the making on
+the days it stood; the `fixpoint` gives it whole, as `input` with `inputOrigin: "creation"` beside the derived value
+("The decision service", `?fixpoint=true`).
 
 **The deciding variant of a defaults group** (card `explanation-defaults-computation`). In the sentence of a defaults
 group on an attribute, the variant that decided gets the same `COMPUTATION` after its name, where the sentence of a

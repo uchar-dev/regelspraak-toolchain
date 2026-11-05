@@ -260,6 +260,14 @@ model declares) and the sentences of the messages, which keep their text. The ol
   of a literal makes the entry point a marker with uchar's sentence (DROOLS-316); an allocation that names a
   time-dependent attribute refuses the start with the frontend's error (RGS-378), and in a `uchar-ir-v1` document the
   entry point is a marker with uchar's sentence naming WF-128 (DROOLS-315).
+- **The value of the making in the fixpoint** (card `fixpoint-creation-value`): the `fixpoint` of the detail and of the
+  playground gives on an object a creation made, beside a value a rule derived, the value the creation put on it as
+  `input`, with `inputOrigin: "creation"`, as it gives the input of an instance of the request beside a derived value:
+  a scalar, a timeline as its segments and a cell. Where it gave the derived value alone, a made melding of uchar's
+  golden `jutterswet-creatie-per-dag` now has `{"attribute": "seizoenswaarde", "timeline": [… 7, 20, 7 …], "origin":
+  "derived", "input": [{"value": "7"}], "inputOrigin": "creation"}`. A row without a derived value keeps the origin
+  `creation`; the rows of an instance of the request are unchanged. The OpenAPI description of `values` names
+  `inputOrigin`.
 
 ## The pin
 
