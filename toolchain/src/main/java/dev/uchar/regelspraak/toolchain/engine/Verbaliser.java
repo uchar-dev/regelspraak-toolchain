@@ -1230,8 +1230,9 @@ public final class Verbaliser {
      *
      * <p>Daarna elke andere schrijver als groep {@link Part.Kind#VARIANT}, met de reden dat zij niet schreef: haar
      * voorwaarde gold niet (het lid waar de motor stopte), zij valt buiten haar geldigheid, zij gold op geen dag (haar
-     * voorwaarde per periode, met de perioden die de motor las: geen), zij gold en gaf geen waarde en besliste dus niets
-     * naast de regel die schreef, of zij is een initialisatie die niet aan de beurt was ("verdrongen"). Dan de
+     * voorwaarde per periode, met de perioden die de motor las: geen), zij is een initialisatie die alleen gold op
+     * dagen die al een waarde hadden (haar voorwaarde met die perioden), zij gold en gaf geen waarde en besliste dus
+     * niets naast de regel die schreef, of zij is een initialisatie die niet aan de beurt was ("verdrongen"). Dan de
      * grondslag van de regel die gold.
      *
      * <p>De berekening ({@link Part.Kind#COMPUTATION}) is de regeltekst van de waarde, met elke knoop die iets leest of
@@ -1372,9 +1373,9 @@ public final class Verbaliser {
          * staan. Wie welke dagen besliste, komt van de motor ({@link DroolsBackend#periodDecisionsOf}): per regel die
          * besliste de perioden met hun waarde, "volgens de regel '…'" en waarom zij gold, daarna de perioden waarin de
          * invoer bleef staan. Besliste geen regel een dag, dan wat het doel houdt, zoals bij een attribuut zonder
-         * tijdlijn. Een regel die op een dag gold en op geen dag een waarde las, gaf geen waarde; een regel die op geen
-         * dag gold ({@link #heldOnNoDay}), gold niet. Twee regels die een dag verschillend beslissen geven EF-016
-         * (ch. 5.7), een sessie zonder antwoord.
+         * tijdlijn. Waarom een regel die gold geen dag besliste, zegt {@link #undecided}: zij gold op geen dag, dan gold
+         * zij niet; een initialisatie gold alleen op dagen die al een waarde hadden; of zij gaf geen waarde. Twee regels
+         * die een dag verschillend beslissen geven EF-016 (ch. 5.7), een sessie zonder antwoord.
          */
         private Sentence timelineSentence(List<Writer> writers) {
             String member = writers.get(0).target().attribute();
@@ -1401,7 +1402,8 @@ public final class Verbaliser {
                                 + member + "' van " + label + " op " + periods.get(w.pointer()) + ", en haar lezing is "
                                 + status);
                     wrote.add(w);
-                } else if (status == ConditionReading.Status.HOLDS && !heldOnNoDay(w)) empty.add(w);
+                } else if (status == ConditionReading.Status.HOLDS && undecided(w) != Undecided.HELD_ON_NO_DAY)
+                    empty.add(w);
             }
             if (wrote.size() != periods.size())
                 throw new IllegalStateException("de motor noemt als beslissers van '" + member + "' van " + label + " "
@@ -1428,7 +1430,11 @@ public final class Verbaliser {
                 if (empty.isEmpty()) b.text("geen regel gold");
                 for (int i = 0; i < empty.size(); i++) {
                     if (i > 0) b.text(", en ");
-                    decider(b, empty.get(i), member, true, true, stands);
+                    Writer w = empty.get(i);
+                    if (undecided(w) == Undecided.HELD_ON_DAYS_WITH_A_VALUE) {
+                        b.text("de regel '").leaf(Part.Kind.RULE, formName(w)).text("' ");
+                        onlyOnDaysWithAValue(b, w);
+                    } else decider(b, w, member, true, true, stands);
                 }
             }
             for (Writer w : writers) if (!deciders.contains(w)) variant(b, w);
@@ -1531,14 +1537,16 @@ public final class Verbaliser {
                 Condition c = w.rule().condition();
                 switch (status) {
                     case HOLDS -> {
-                        if (heldOnNoDay(w)) {
-                            b.leaf(Part.Kind.CONNECTIVE, "gold op geen dag").text(", ")
-                                    .leaf(Part.Kind.CONNECTIVE, "want").text(" ");
-                            notHolds(b);
-                            heldInPeriods(b, c, read(w.pointer(), bean, label, c));
-                        } else {
-                            // only beside a writer that wrote: its value stands, and a leeg decides nothing (ch. 3.11)
-                            b.text("gaf geen waarde en besliste niets");
+                        switch (undecided(w)) {
+                            case HELD_ON_NO_DAY -> {
+                                b.leaf(Part.Kind.CONNECTIVE, "gold op geen dag").text(", ")
+                                        .leaf(Part.Kind.CONNECTIVE, "want").text(" ");
+                                notHolds(b);
+                                heldInPeriods(b, c, read(w.pointer(), bean, label, c));
+                            }
+                            case HELD_ON_DAYS_WITH_A_VALUE -> onlyOnDaysWithAValue(b, w);
+                            // a leeg decides nothing (ch. 3.11)
+                            case GAVE_NO_VALUE -> b.text("gaf geen waarde en besliste niets");
                         }
                     }
                     case FAILS -> {
@@ -1558,15 +1566,55 @@ public final class Verbaliser {
             b.close(Part.Kind.VARIANT);
         }
 
-        /** Of schrijver {@code w}, een regel of een initialisatie met de lezing {@code HOLDS}, op geen dag gold: zijn
-         *  voorwaarde, een voorwaarde per periode van een tijdlijndoel (uchars RUNTIME-SEMANTICS ch. 3.10), leest in de
-         *  lezing geen periode (ch. 5.12). Hij besliste geen dag omdat zijn voorwaarde nergens gold, zoals een regel die
-         *  niet gold; een schrijver die op een dag gold en daar leeg gaf, gaf geen waarde. De zin van een tijdlijndoel
-         *  beslist het hier, voor elke schrijver die zij noemt. */
-        private boolean heldOnNoDay(Writer w) {
+        /** Waarom schrijver {@code w}, een regel of een initialisatie met de lezing {@code HOLDS}, geen dag besliste. */
+        private enum Undecided {
+            /** Zijn voorwaarde per periode leest geen periode: hij gold nergens. */
+            HELD_ON_NO_DAY,
+            /** Een initialisatie wier voorwaarde alleen geldt op dagen die een andere schrijver of de invoer vulde. */
+            HELD_ON_DAYS_WITH_A_VALUE,
+            /** Hij gold op een dag die hij had kunnen beslissen, en zijn waarde was daar leeg. */
+            GAVE_NO_VALUE
+        }
+
+        /**
+         * Waarom schrijver {@code w} met de lezing {@code HOLDS} geen dag besliste: de ene plaats die het beslist, voor
+         * elke schrijver die de zinnen over een attribuut noemen. Uit de lezing (ch. 5.12) de perioden van zijn
+         * voorwaarde, een voorwaarde per periode van een tijdlijndoel (uchars RUNTIME-SEMANTICS ch. 3.10): geen periode,
+         * dan gold hij nergens. Een initialisatie vult alleen de dagen die de andere schrijvers en de invoer leeg laten
+         * (ch. 7.8); liggen alle dagen van haar perioden in spans van {@link DroolsBackend#periodDecisionsOf} met een
+         * regel of een invoer, dan gold zij alleen op dagen die al een waarde hadden. Anders, ook voor elke andere
+         * regel, die voor geen schrijver of invoer wijkt, en voor een voorwaarde die een poort is: zijn waarde was leeg
+         * waar hij gold.
+         */
+        private Undecided undecided(Writer w) {
             Condition c = w.rule().condition();
-            return c != null && read(w.pointer(), bean, label, c).of(c).value() instanceof List<?> periods
-                    && periods.isEmpty();
+            if (c == null || !(read(w.pointer(), bean, label, c).of(c).value() instanceof List<?> periods))
+                return Undecided.GAVE_NO_VALUE;
+            if (periods.isEmpty()) return Undecided.HELD_ON_NO_DAY;
+            if (w.rule().kind() != ResolvedRule.Kind.INITIALISATIE) return Undecided.GAVE_NO_VALUE;
+            String member = w.target().attribute();
+            PeriodDecisions p = byRules.get(member);
+            if (p == null)
+                throw new IllegalStateException("de motor gaf geen beslissingen per periode over '" + member + "' van "
+                        + label + ", en de initialisatie '" + formName(w) + "' leest haar voorwaarde per periode");
+            for (Object o : periods) {
+                if (!(o instanceof Period q))
+                    throw new IllegalStateException("de motor las de voorwaarde van '" + formName(w) + "' op " + label
+                            + " als een periode van de vorm " + o.getClass().getName() + ", die de uitleg niet kent");
+                for (PeriodDecisions.Span s : p.spans())
+                    if (s.from().isBefore(q.to()) && q.from().isBefore(s.to()) && s.rules().isEmpty()
+                            && s.input() == null)
+                        return Undecided.GAVE_NO_VALUE;
+            }
+            return Undecided.HELD_ON_DAYS_WITH_A_VALUE;
+        }
+
+        /** "gold alleen op dagen die al een waarde hadden: " en de voorwaarde per periode van {@code w}, met de perioden
+         *  die de motor las. */
+        private void onlyOnDaysWithAValue(Sentence.Builder b, Writer w) {
+            Condition c = w.rule().condition();
+            b.leaf(Part.Kind.CONNECTIVE, "gold alleen op dagen die al een waarde hadden").text(": ");
+            heldInPeriods(b, c, read(w.pointer(), bean, label, c));
         }
 
         /** De lezing van regel {@code w} op de knopen van haar waarde, die op die van haar voorwaarde volgen. */

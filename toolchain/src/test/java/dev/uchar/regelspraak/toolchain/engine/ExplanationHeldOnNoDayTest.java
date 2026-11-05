@@ -18,7 +18,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * nowhere, not because it gave leeg where it held: the explanation names it as a scalar rule that did not hold, "de
  * regel '…' gold op geen dag, want niet geldt: <the condition with the periods the engine read>", and "gaf geen waarde"
  * stays for a writer that held on some day and gave leeg there. A rule and an initialisation are the same kind of
- * writer here. Own material after uchar's golden {@code jutterswet-initialisatie-per-dag}.
+ * writer here. An initialisation fills only the days the other writers and the input leave empty (ch. 7.8): one whose
+ * condition holds only on days that already had a value "gold alleen op dagen die al een waarde hadden", with its
+ * condition and periods. Own material after uchar's golden {@code jutterswet-initialisatie-per-dag}.
  */
 class ExplanationHeldOnNoDayTest {
 
@@ -103,6 +105,69 @@ class ExplanationHeldOnNoDayTest {
         assertEquals(List.of("TEXT:; de regel '", "RULE:standaardkustloon", "TEXT:' ", "CONNECTIVE:gold op geen dag",
                 "TEXT:, ", "CONNECTIVE:want", "TEXT: ", "CONNECTIVE:niet geldt", "TEXT:: ", "QUOTE:hij stormwacht is",
                 "READING[[TEXT: (, VALUE:altijd leeg, TEXT:)]]"), leaves);
+    }
+
+    /** J1 is stormwacht from March to May, with an input 7 on the kustloon over 2025 and no toeslag. The stormloon: a
+     *  rule decides March to May, and the initialisation under stormwacht finds those days filled; the kustloon: only an
+     *  initialisation under stormwacht, whose days the input fills; the havenloon: a rule decides March, and the
+     *  initialisation under stormwacht, which gives the empty toeslag, finds April and May empty. */
+    private static final String DAYS_WITH_A_VALUE = """
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                het stormloon Numeriek (geheel getal) voor elke maand;
+                het kustloon Numeriek (geheel getal) voor elke maand;
+                het havenloon Numeriek (geheel getal) voor elke maand;
+                de toeslag Numeriek (geheel getal) voor elke maand;
+                is stormwacht kenmerk (bijvoeglijk) voor elke maand;
+
+            Regel stormloon
+                geldig altijd
+                    Het stormloon van een Jutter moet gesteld worden op 20 van dd. 01-03-2025 tot dd. 01-06-2025.
+
+            Regel standaardstormloon
+                geldig altijd
+                    Het stormloon van een Jutter moet geïnitialiseerd worden op 5 gedurende de tijd dat hij stormwacht is.
+
+            Regel standaardkustloon
+                geldig altijd
+                    Het kustloon van een Jutter moet geïnitialiseerd worden op 5 gedurende de tijd dat hij stormwacht is.
+
+            Regel havenloon
+                geldig altijd
+                    Het havenloon van een Jutter moet gesteld worden op 20 van dd. 01-03-2025 tot dd. 01-04-2025.
+
+            Regel standaardhavenloon
+                geldig altijd
+                    Het havenloon van een Jutter moet geïnitialiseerd worden op zijn toeslag gedurende de tijd dat hij stormwacht is.
+
+            Scenario stormwacht in het voorjaar
+            Gegeven is de volgende situatie:
+            een Jutter J1
+            - het kustloon is 7 van 01-01-2025 tot 01-01-2026
+            - is stormwacht van 01-03-2025 tot 01-06-2025
+            Met als verwacht resultaat:
+            - het stormloon van J1 is 20 van 01-03-2025 tot 01-06-2025
+            - het kustloon van J1 is 7 van 01-01-2025 tot 01-01-2026
+            - het havenloon van J1 is 20 van 01-03-2025 tot 01-04-2025
+            """;
+
+    /** An initialisation fills only the days the other writers and the input leave empty (uchar's ch. 7.8): where its
+     *  condition holds only on days a rule or the input already filled, it held only on days that already had a value,
+     *  beside the rule that wrote and as the reason of the head where the input stands; where its condition holds on
+     *  an empty day and its value is leeg there, it gave no value. */
+    @Test
+    void an_initialisation_whose_condition_holds_only_on_days_with_a_value_says_so() {
+        assertEquals(List.of(
+                "J1 heeft als stormloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'stormloon', omdat van dd."
+                        + " 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025); de regel 'standaardstormloon'"
+                        + " gold alleen op dagen die al een waarde hadden: hij stormwacht is (van 01-03-2025 tot"
+                        + " 01-06-2025)",
+                "J1 houdt als kustloon de invoerwaarde 7 van 01-01-2025 tot 01-01-2026, want de regel"
+                        + " 'standaardkustloon' gold alleen op dagen die al een waarde hadden: hij stormwacht is (van"
+                        + " 01-03-2025 tot 01-06-2025)",
+                "J1 heeft als havenloon 20 van 01-03-2025 tot 01-04-2025 volgens de regel 'havenloon', omdat van dd."
+                        + " 01-03-2025 tot dd. 01-04-2025 (van 01-03-2025 tot 01-04-2025); de regel 'standaardhavenloon'"
+                        + " gaf geen waarde en besliste niets"),
+                explained(DAYS_WITH_A_VALUE).explanation());
     }
 
     private static ScenarioRunner.Explained explained(String source) {
