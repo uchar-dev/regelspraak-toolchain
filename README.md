@@ -311,9 +311,9 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (344). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (347). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 335); every golden that does not play is listed by name with
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 338); every golden that does not play is listed by name with
   its reason (9, each with a scalar on a time-dependent attribute, which the request does not carry); a deviation always
   fails, and the list fails when it goes stale in either direction. Every golden that plays is asked with
   `?explanation=true` as well, and an explanation the service does not give fails it. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
