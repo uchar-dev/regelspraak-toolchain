@@ -854,8 +854,9 @@ public final class OpenApiEmitter {
         objectProps.putObject("object").put("type", "string");
         objectProps.putObject("objectType").put("type", "string");
         ObjectNode values = list(objectProps, "values", "attribute, labels (bij een cel, één label per dimensie),"
-                + " value (of timeline), origin (input, derived of creation), input (bij een afgeleide waarde de"
-                + " invoerwaarde die zij verving) en unit.");
+                + " value (of timeline), origin (input, derived of creation: op een gemaakt object de waarde bij het"
+                + " maken), input (bij een afgeleide waarde de invoerwaarde die zij verving, op een gemaakt object de"
+                + " waarde bij het maken), inputOrigin (creation naast de waarde bij het maken) en unit.");
         values.put("additionalProperties", true);
         ObjectNode characteristics = list(objectProps, "characteristics", "elk kenmerk dat geldt: characteristic, origin (input of"
                 + " derived), en input: true als ook de invoer het zette.");

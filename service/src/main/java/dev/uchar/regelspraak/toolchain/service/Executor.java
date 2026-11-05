@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
@@ -66,12 +67,14 @@ public final class Executor {
 
     /** The result of a fire: the beans by id with the derived values written back, the firings, what stood at the
      *  fixpoint before the write-back, as uchar's entry reads it with the ids of the request, its §9.5 deposits
-     *  included ({@link Fixpoint#inconsistencies}), uchar's verdict on the expectations the caller gave
+     *  included ({@link Fixpoint#inconsistencies}), the values the creations put on the objects they made, read at the
+     *  same moment ({@link CaseSession#making}), uchar's verdict on the expectations the caller gave
      *  ({@link DroolsBackend#vergelijk}), null when it gave none, which default of each defaults stack decided
      *  ({@link DroolsBackend#decisionsOf}), who decided each timeline target per period
      *  ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out ({@link DroolsBackend#readingsOf}),
      *  all three empty when the caller did not ask for the explanation. */
     public record Outcome(Map<String, Object> beans, int fired, Fixpoint fixpoint,
+                           Map<Object, Map<String, Object>> making,
                            DroolsBackend.Comparison comparison, List<DefaultsDecision> decisions,
                            List<PeriodDecisions> periodDecisions, List<ConditionReading> readings) {}
 
@@ -161,10 +164,11 @@ public final class Executor {
             // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
             // it as one exception among those the entry throws itself, so the faults are read as data first
             Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, label::get);
+            Map<Object, Map<String, Object>> making = CaseSession.making(build, fixpoint);
             if (!fixpoint.faults().isEmpty()) {
                 RuntimeException thrown = rethrown(session, label, fixpoint);
-                if (thrown instanceof CaseRunner.Excluded limit) throw new Limit(limit, fixpoint);
-                throw EvaluationFault.of(fixpoint, thrown);
+                if (thrown instanceof CaseRunner.Excluded limit) throw new Limit(limit, fixpoint, making);
+                throw EvaluationFault.of(fixpoint, making, thrown);
             }
             DroolsBackend.setDerivedValues(build, session, label::get);
             DroolsBackend.Comparison comparison = expectations == null ? null
@@ -173,8 +177,8 @@ public final class Executor {
             List<PeriodDecisions> periodDecisions = withExplanation ? DroolsBackend.periodDecisionsOf(build, session)
                     : List.of();
             List<ConditionReading> readings = withExplanation ? DroolsBackend.readingsOf(build, session) : List.of();
-            return new Outcome(world.beans(), firing.firings(), fixpoint, comparison, decisions, periodDecisions,
-                    readings);
+            return new Outcome(world.beans(), firing.firings(), fixpoint, making, comparison, decisions,
+                    periodDecisions, readings);
         } finally {
             session.dispose();
             Thread.currentThread().setContextClassLoader(previous);

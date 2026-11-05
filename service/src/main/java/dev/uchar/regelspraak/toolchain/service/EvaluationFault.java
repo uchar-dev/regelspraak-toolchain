@@ -14,6 +14,7 @@ import dev.uchar.regelspraak.transpiler.tms.WritersConflict;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * The evaluation faults that stand at the fixpoint of a request's session, as uchar's entry reads them
@@ -25,7 +26,8 @@ import java.util.List;
  * {@code IllegalStateException} of a fact creation that gives a to-one role a second filling. Both adapters answer it
  * with a 422 ({@link AnswerBuilder#evaluationFault}).
  *
- * <p>It carries the {@link Fixpoint} the faults stand at, and, when the request asked to see its session
+ * <p>It carries the {@link Fixpoint} the faults stand at, with the values of the making read at the same moment
+ * ({@code CaseSession.making}), and, when the request asked to see its session
  * ({@link RequestOptions#detailFlags()}), the fields the 422 gives beside the faults ({@link #detail()}). Its cause
  * is the exception uchar's write-back throws for these faults: the fault's own for one, uchar's
  * {@code EvaluationFaults} for two or more, the one uchar's scenario report names in its diagnose.
@@ -55,23 +57,26 @@ public final class EvaluationFault extends RuntimeException {
 
     private final transient List<Fault> errors;
     private final transient Fixpoint fixpoint;
+    private final transient Map<Object, Map<String, Object>> making;
     private final transient ObjectNode detail;
 
-    private EvaluationFault(List<Fault> errors, RuntimeException cause, Fixpoint fixpoint, ObjectNode detail) {
+    private EvaluationFault(List<Fault> errors, RuntimeException cause, Fixpoint fixpoint,
+                            Map<Object, Map<String, Object>> making, ObjectNode detail) {
         super(errors.size() == 1 ? "de regels geven op deze invoer een evaluatiefout"
                 : "de regels geven op deze invoer " + errors.size() + " evaluatiefouten", cause);
         this.errors = List.copyOf(errors);
         this.fixpoint = fixpoint;
+        this.making = making;
         this.detail = detail;
     }
 
     /** The faults that stand at {@code fixpunt}, one element per fault in the order of its {@code errors}, which is
-     *  uchar's: by the name of the form, then by the sentence. {@code cause} is what uchar's write-back threw for
-     *  them. */
-    static EvaluationFault of(Fixpoint fixpoint, RuntimeException cause) {
+     *  uchar's: by the name of the form, then by the sentence; {@code making} the values of the making at that
+     *  fixpoint. {@code cause} is what uchar's write-back threw for them. */
+    static EvaluationFault of(Fixpoint fixpoint, Map<Object, Map<String, Object>> making, RuntimeException cause) {
         List<Fault> sink = new ArrayList<>();
         for (dev.uchar.regelspraak.transpiler.tms.Fault f : fixpoint.faults()) sink.add(new Fault(kind(f.fault()), f.message()));
-        return new EvaluationFault(sink, cause, fixpoint, null);
+        return new EvaluationFault(sink, cause, fixpoint, making, null);
     }
 
     /** The values of a request that uchar's input refuses: its input fence ({@link CaseRunner.InputPrecisionFault},
@@ -81,12 +86,12 @@ public final class EvaluationFault extends RuntimeException {
     static EvaluationFault ofInput(List<InputFault> faults) {
         List<Fault> sink = new ArrayList<>();
         for (InputFault f : faults) sink.add(new Fault(f.kind(), f.fault().getMessage()));
-        return new EvaluationFault(sink, faults.get(0).fault(), null, null);
+        return new EvaluationFault(sink, faults.get(0).fault(), null, null, null);
     }
 
     /** The same faults with {@code detail}, the fields the request asked to see of its session. */
     EvaluationFault withDetail(ObjectNode detail) {
-        return new EvaluationFault(errors, (RuntimeException) getCause(), fixpoint, detail);
+        return new EvaluationFault(errors, (RuntimeException) getCause(), fixpoint, making, detail);
     }
 
     /** The kind of uchar's fault {@code f}. */
@@ -113,6 +118,11 @@ public final class EvaluationFault extends RuntimeException {
      *  ({@link #ofInput}). */
     public Fixpoint fixpoint() {
         return fixpoint;
+    }
+
+    /** The values the creations put on the objects they made, at {@link #fixpoint}; null where that is null. */
+    public Map<Object, Map<String, Object>> making() {
+        return making;
     }
 
     /** The fields the 422 gives beside the faults ({@code trace}, {@code dekking}, {@code fixpunt}), or null when the

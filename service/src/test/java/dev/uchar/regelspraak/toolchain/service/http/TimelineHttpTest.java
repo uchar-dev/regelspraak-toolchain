@@ -473,6 +473,56 @@ class TimelineHttpTest {
         assertTrue(body.has("coverage") && body.has("fixpoint"), r.body());
     }
 
+    /** Own material: a creation gives the melding it makes the number of boats of its jutter, and a rule divides the
+     *  levy by it on the melding. */
+    private static final String MADE_LEVY = """
+        Parameter de havenheffing : Numeriek (getal met 2 decimalen) voor elke maand;
+
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            het aantal boten Numeriek (geheel getal);
+
+        Objecttype de Melding (mv: Meldingen)
+            de vlootgrootte Numeriek (geheel getal);
+            de ruwe meldheffing Numeriek (getal) voor elke maand;
+
+        Feittype jutmelding
+            de melder Jutter
+            de melding (mv: meldingen) Melding
+        Eén melder heeft meerdere meldingen
+
+        Regel meld de vloot
+            geldig altijd
+                Een Jutter heeft een melding met vlootgrootte gelijk aan zijn aantal boten.
+
+        Regel ruwe meldheffing
+            geldig altijd
+                De ruwe meldheffing van een Melding moet berekend worden als de havenheffing gedeeld door zijn vlootgrootte.
+        """;
+
+    /** The limit on a made object: the 422 gives the fixpoint with the value of the making of the melding. */
+    @Test
+    void a_limit_on_a_made_object_gives_the_value_of_the_making_in_the_fixpoint() throws Exception {
+        ServiceHttp made = ServiceHttp.bind(DecisionCore.assemble("""
+                { "service": {"name":"melding","version":"1"},
+                  "entrypoints": [ { "name":"melding","path":"melding",
+                    "scope": {"ruleNames": ["meld de vloot", "ruwe meldheffing"]},
+                    "input": ["Jutter"], "output": ["Jutter.aantal boten"] } ],
+                  "parameters": {} }""", Map.of("melding.rgs", MADE_LEVY), CoreConfig.strict().withDetail(),
+                Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
+        try {
+            HttpResponse<String> r = post(made, "melding", "fixpoint=true", request(OPEN_LEVY, 3));
+            assertEquals(422, r.statusCode(), r.body());
+            JsonNode body = tree(r.body());
+            assertEquals("LIMIT", body.get("status").asText(), r.body());
+            assertEquals("#1", body.at("/fixpoint/objects/1/object").asText(), r.body());
+            assertEquals(tree("""
+                    {"attribute":"vlootgrootte","value":"3","origin":"creation"}"""),
+                    body.at("/fixpoint/objects/1/values/0"), r.body());
+        } finally {
+            made.stop(0);
+        }
+    }
+
     // ---------------- a timeline characteristic is no output ----------------
 
     @Test

@@ -137,7 +137,8 @@ final class ScenarioData {
     /**
      * What stands at the fixpoint of {@code session}, the case of scenario {@code s}, as {@link FixpointGivens#fixpoint}
      * renders it, with the objects of the situation as the input: each by its label, with the values and the
-     * characteristics (those without periods) the situation gives it.
+     * characteristics (those without periods) the situation gives it; the objects its creations made with the values
+     * of the making uchar's replay handed over ({@link CaseSession.Outcome#making}).
      *
      * @throws FixpointGivens.UnrenderableValue a value in a form this view does not show
      */
@@ -165,7 +166,7 @@ final class ScenarioData {
         if (session.beans().size() != input.size())
             throw new IllegalStateException("de sessie van het scenario '" + s.name() + "' heeft de objecten "
                     + session.beans().keySet() + ", de situatie " + input.size());
-        return FixpointGivens.fixpoint(session.fixpoint(), input, model, ng);
+        return FixpointGivens.fixpoint(session.fixpoint(), session.making(), input, model, ng);
     }
 
     private static void name(ObjectNode n, String key, String chosen, String canonical) {

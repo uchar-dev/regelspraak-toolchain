@@ -287,6 +287,128 @@ class DetailHttpTest {
         }
     }
 
+    // ---------------- the value of the making on a made object ----------------
+
+    /** uchar's golden {@code jutterswet-invoer-naast-objectcreatie}: the creation gives the melding of J1 and of J2 the
+     *  waarde 7, the rule displaces it with the toeslag where that is filled (99 for J2), and decides nothing where it
+     *  is leeg (J1). Beside the derived waarde of J2's melding stands the value of the making it displaced, as the
+     *  input it displaced stands beside the derived waarde of M1, with {@code inputOrigin} {@code creation}; the
+     *  melding of J1 holds the value of the making. */
+    @Test
+    void beside_a_derived_value_on_a_made_object_the_value_of_the_making() throws Exception {
+        String source = Files.readString(
+                TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-invoer-naast-objectcreatie/source.rgs"));
+        ServiceHttp made = ServiceHttp.bind(DecisionCore.assemble("""
+                { "service": {"name":"meldingen","version":"1"},
+                  "entrypoints": [ { "name":"meldingen","path":"meldingen",
+                    "scope": {"ruleNames": ["meld de vangst", "waarde uit toeslag", "terug van een jutter"]},
+                    "input": ["Jutter", "Melding"], "output": ["Jutter.terug", "Melding.waarde"] } ],
+                  "parameters": {} }""", Map.of("bron.rgs", source), CoreConfig.strict().withDetail(),
+                Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
+        try {
+            HttpResponse<String> r = post(made, "meldingen", "fixpoint=true", """
+                    {"instances":[{"type":"Jutter","id":"J1","attributes":{"vangst":7}},
+                                  {"type":"Jutter","id":"J2","attributes":{"vangst":7,"bonus":99}},
+                                  {"type":"Melding","id":"M1","attributes":{"waarde":40,"toeslag":30}},
+                                  {"type":"Melding","id":"M2","attributes":{"waarde":40}}]}""");
+            assertEquals(200, r.statusCode(), r.body());
+            JsonNode objects = ServiceHttp.MAPPER.readTree(r.body()).at("/fixpoint/objects");
+            assertEquals(List.of("J1", "J2", "M1", "M2", "#1", "#2"), text(objects, "object"));
+            assertEquals(ServiceHttp.MAPPER.readTree("""
+                    [{"attribute":"waarde","value":"30","origin":"derived","input":"40"},
+                     {"attribute":"toeslag","value":"30","origin":"input"}]"""), objects.at("/2/values"));
+            assertEquals(ServiceHttp.MAPPER.readTree("""
+                    [{"attribute":"waarde","value":"7","origin":"creation"}]"""), objects.at("/4/values"));
+            assertEquals(ServiceHttp.MAPPER.readTree("""
+                    [{"attribute":"waarde","value":"99","origin":"derived","input":"7","inputOrigin":"creation"},
+                     {"attribute":"toeslag","value":"99","origin":"creation"}]"""), objects.at("/5/values"));
+        } finally {
+            made.stop(0);
+        }
+    }
+
+    /** A cell the creation fills and a rule writes: beside the derived cell the value the creation put in it. */
+    @Test
+    void beside_a_derived_cell_on_a_made_object_the_value_of_the_making() throws Exception {
+        ServiceHttp cells = ServiceHttp.bind(DecisionCore.assemble("""
+                { "service": {"name":"vangst","version":"1"},
+                  "entrypoints": [ { "name":"vangst","path":"vangst",
+                    "scope": {"ruleNames": ["boek een vangst bij elke jutter", "najaar van een vangst"]},
+                    "input": ["Jutter"], "output": ["Jutter.vondstgewicht"] } ],
+                  "parameters": {} }""", Map.of("vangst.rgs", CELL_OF_A_MAKING), CoreConfig.strict().withDetail(),
+                Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
+        try {
+            HttpResponse<String> r = post(cells, "vangst", "fixpoint=true", """
+                    {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
+                      {"labels":["voorjaar"],"value":2},{"labels":["najaar"],"value":4}]}}}]}""");
+            assertEquals(200, r.statusCode(), r.body());
+            JsonNode objects = ServiceHttp.MAPPER.readTree(r.body()).at("/fixpoint/objects");
+            assertEquals(List.of("J1", "#1"), text(objects, "object"));
+            assertEquals(ServiceHttp.MAPPER.readTree("""
+                    [{"attribute":"vangstgewicht","labels":["voorjaar"],"value":"2","origin":"creation","unit":"kg"},
+                     {"attribute":"vangstgewicht","labels":["najaar"],"value":"9","origin":"derived","input":"4",
+                      "inputOrigin":"creation","unit":"kg"}]"""), objects.at("/1/values"));
+        } finally {
+            cells.stop(0);
+        }
+    }
+
+    /** A second rule that writes the najaar cell otherwise: the 422 of the conflict gives the fixpoint with the values
+     *  of the making of the made vangst, which nothing wrote back. */
+    @Test
+    void a_422_gives_the_value_of_the_making_of_a_made_object() throws Exception {
+        ServiceHttp cells = ServiceHttp.bind(DecisionCore.assemble("""
+                { "service": {"name":"vangst","version":"1"},
+                  "entrypoints": [ { "name":"vangst","path":"vangst",
+                    "scope": {"ruleNames": ["boek een vangst bij elke jutter", "najaar van een vangst",
+                                            "ander najaar van een vangst"]},
+                    "input": ["Jutter"], "output": ["Jutter.vondstgewicht"] } ],
+                  "parameters": {} }""", Map.of("vangst.rgs", CELL_OF_A_MAKING + """
+                Regel ander najaar van een vangst
+                    geldig altijd
+                        Het vangstgewicht in najaar van een Vangst moet gesteld worden op 8 kg.
+                """), CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader()),
+                "127.0.0.1", 0).start();
+        try {
+            HttpResponse<String> r = post(cells, "vangst", "fixpoint=true", """
+                    {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
+                      {"labels":["voorjaar"],"value":2},{"labels":["najaar"],"value":4}]}}}]}""");
+            assertEquals(422, r.statusCode(), r.body());
+            JsonNode fixpoint = ServiceHttp.MAPPER.readTree(r.body()).get("fixpoint");
+            assertEquals("WRITERS_CONFLICT", fixpoint.at("/faults/0/kind").asText(), r.body());
+            assertEquals(ServiceHttp.MAPPER.readTree("""
+                    {"attribute":"vangstgewicht","labels":["voorjaar"],"value":"2","origin":"creation","unit":"kg"}"""),
+                    fixpoint.at("/objects/1/values/0"), r.body());
+        } finally {
+            cells.stop(0);
+        }
+    }
+
+    /** Own material: the creation puts the vondstgewicht of the jutter in two cells of the vangst it makes, and a rule
+     *  writes the najaar cell of every vangst. */
+    private static final String CELL_OF_A_MAKING = """
+            Eenheidsysteem Gewicht
+                het kilogram (mv: kilogrammen) kg
+            Dimensie het seizoen, bestaande uit de seizoenen (na het attribuut met voorzetsel in):
+                1. voorjaar
+                2. zomer
+                3. najaar
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                het vondstgewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg gedimensioneerd met seizoen;
+            Objecttype de Vangst (mv: Vangsten)
+                het vangstgewicht Numeriek (niet-negatief getal met 2 decimalen) met eenheid kg gedimensioneerd met seizoen;
+            Feittype vangstboeking
+                de boeker Jutter
+                de geboekte vangst Vangst
+            Eén boeker heeft één geboekte vangst
+            Regel boek een vangst bij elke jutter
+                geldig altijd
+                    Een Jutter heeft een geboekte vangst met vangstgewicht in najaar gelijk aan zijn vondstgewicht in najaar en vangstgewicht in voorjaar gelijk aan zijn vondstgewicht in voorjaar.
+            Regel najaar van een vangst
+                geldig altijd
+                    Het vangstgewicht in najaar van een Vangst moet gesteld worden op 9 kg.
+            """;
+
     /** The values of an object of the fixpoint, one line per row: the attribute, the labels of a cell, the value and
      *  the origin. */
     private static List<String> rows(JsonNode object) {

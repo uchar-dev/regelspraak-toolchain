@@ -761,18 +761,19 @@ public final class DecisionCore {
             outcome = executor.fire(mr.world(), setGlobals, observer, expectations, options.explanation());
         } catch (EvaluationFault error) {
             if (!withDetail) throw error;
-            throw error.withDetail(detail(options, ep, observer, error.fixpoint(), null, input, output));
+            throw error.withDetail(detail(options, ep, observer, error.fixpoint(), error.making(), null, input, output));
         } catch (NoFixpoint none) {
             if (!withDetail) throw none;
-            throw none.withDetail(detail(options, ep, observer, null, none.getMessage(), input, output));
+            throw none.withDetail(detail(options, ep, observer, null, null, none.getMessage(), input, output));
         } catch (Limit limit) {
             if (!withDetail) throw limit;
-            throw limit.withDetail(detail(options, ep, observer, limit.fixpoint(), null, input, output));
+            throw limit.withDetail(detail(options, ep, observer, limit.fixpoint(), limit.making(), null, input, output));
         }
         ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());
         if (options.explanation()) addExplanation(answer, outcome, mr, ep, output, options.explanationParts());
-        if (withDetail) answer.setAll(detail(options, ep, observer, outcome.fixpoint(), null, input, output));
+        if (withDetail) answer.setAll(detail(options, ep, observer, outcome.fixpoint(), outcome.making(), null, input,
+                output));
         return new Assessment(answer, outcome.comparison());
     }
 
@@ -782,12 +783,14 @@ public final class DecisionCore {
      * request its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's
      * {@code observer} recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
      * ({@link DroolsBackend#coverage}: {@code FIRED} or {@code NOT_FIRED}); and {@code fixpunt}, what stands at the
-     * fixpoint with the instances of the request as its input ({@link FixpointGivens}), or {@code fixpointError} with the
+     * fixpoint with the instances of the request as its input and {@code making} the values of the making of the
+     * objects its creations made ({@link FixpointGivens}), or {@code fixpointError} with the
      * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no fixpoint
      * (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.
      */
     private ObjectNode detail(RequestOptions options, Entrypoint ep, DroolsBackend.Observer observer, Fixpoint fixpoint,
-                              String withoutFixpoint, List<FixpointGivens.InputObject> input, Naming naming) {
+                              Map<Object, Map<String, Object>> making, String withoutFixpoint,
+                              List<FixpointGivens.InputObject> input, Naming naming) {
         ObjectNode n = NF.objectNode();
         if (options.trace()) {
             ArrayNode trace = n.putArray("trace");
@@ -811,7 +814,7 @@ public final class DecisionCore {
             n.put("fixpointError", withoutFixpoint);
         } else if (options.fixpoint()) {
             try {
-                n.set("fixpoint", FixpointGivens.fixpoint(fixpoint, input, model, naming));
+                n.set("fixpoint", FixpointGivens.fixpoint(fixpoint, making, input, model, naming));
             } catch (FixpointGivens.UnrenderableValue o) {
                 n.put("fixpointError", o.getMessage());
             }

@@ -991,7 +991,7 @@
                 },
                 "values": {
                   "type": "array",
-                  "description": "attribute, labels (bij een cel, één label per dimensie), value (of timeline), origin (input, derived of creation), input (bij een afgeleide waarde de invoerwaarde die zij verving) en unit.",
+                  "description": "attribute, labels (bij een cel, één label per dimensie), value (of timeline), origin (input, derived of creation: op een gemaakt object de waarde bij het maken), input (bij een afgeleide waarde de invoerwaarde die zij verving, op een gemaakt object de waarde bij het maken), inputOrigin (creation naast de waarde bij het maken) en unit.",
                   "items": {
                     "type": "object",
                     "additionalProperties": true

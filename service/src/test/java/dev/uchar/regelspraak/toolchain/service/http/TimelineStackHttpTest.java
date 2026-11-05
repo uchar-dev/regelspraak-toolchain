@@ -34,7 +34,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * initialisation decides the days that leaves leeg, over all time. uchar's goldens jutterswet-initialisatie-per-dag,
  * jutterswet-creatie-per-dag and jutterswet-afwezigheidsmarkers-initialisatie give their pinned timelines through the
  * service, and the explanation names per period who decided: a rule, the input, the value of the making or the
- * initialisation. What uchar's Drools branch refuses on a timeline target reaches the service as its refusal: the value
+ * initialisation. The fixpoint of the detail and of the playground gives on a made object the value of the making
+ * beside the derived timeline, as it gives the input of an object of the request, with {@code inputOrigin}
+ * {@code creation}. What uchar's Drools branch refuses on a timeline target reaches the service as its refusal: the value
  * of an initialisation that is neither period arithmetic nor the constructor of a literal (DROOLS-316) is a marker, and
  * an allocation that names a time-dependent attribute is refused by the frontend (RGS-378) and, in a document, by the
  * branch as not well-formed (DROOLS-315, WF-128).
@@ -80,6 +82,7 @@ class TimelineStackHttpTest {
 
     private static ServiceHttp initialisation;
     private static ServiceHttp creation;
+    private static ServiceHttp creationDetail;
     private static ServiceHttp markers;
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
@@ -92,6 +95,9 @@ class TimelineStackHttpTest {
         creation = ServiceHttp.bind(DecisionCore.assemble(CREATION_DESCRIPTOR,
                 Map.of("source.rgs", Files.readString(CREATION.resolve("source.rgs"))), CoreConfig.strict(), cl),
                 "127.0.0.1", 0).start();
+        creationDetail = ServiceHttp.bind(DecisionCore.assemble(CREATION_DESCRIPTOR,
+                Map.of("source.rgs", Files.readString(CREATION.resolve("source.rgs"))), CoreConfig.strict().withDetail(),
+                cl), "127.0.0.1", 0).start();
         markers = ServiceHttp.bind(DecisionCore.assemble(MARKERS_DESCRIPTOR,
                 Map.of("source.rgs", Files.readString(MARKERS.resolve("source.rgs"))), CoreConfig.strict(), cl),
                 "127.0.0.1", 0).start();
@@ -101,6 +107,7 @@ class TimelineStackHttpTest {
     static void stop() {
         if (initialisation != null) initialisation.stop(0);
         if (creation != null) creation.stop(0);
+        if (creationDetail != null) creationDetail.stop(0);
         if (markers != null) markers.stop(0);
     }
 
@@ -190,6 +197,79 @@ class TimelineStackHttpTest {
                         + " 'standaardaanvulloon', omdat de aanvulloon bij het maken leeg was; de waarde bij het maken 10"
                         + " van 01-01-2025 tot 01-07-2025 bleef staan"),
                 sentences.stream().filter(s -> s.startsWith(made)).toList(), r.body());
+    }
+
+    // ---------------- the fixpoint: the value of the making beside the derived timeline ----------------
+
+    /** What the creation gave the made melding of case1: the meldwaarde, the seizoenswaarde 7 on every day, the
+     *  meldloon, the seizoensloon and the aanvulloon J1's strandloon, 10 from January to June. */
+    private static final String MADE_CASE1 = """
+        [{"attribute":"meldwaarde","timeline":[{"value":"7"}],"origin":"creation"},
+         {"attribute":"meldloon","timeline":[{"from":"2025-01-01","to":"2025-07-01","value":"10"}],"origin":"creation"},
+         {"attribute":"seizoenswaarde",
+          "timeline":[{"to":"2025-03-01","value":"7"},{"from":"2025-03-01","to":"2025-09-01","value":"20"},
+                      {"from":"2025-09-01","value":"7"}],
+          "origin":"derived","input":[{"value":"7"}],"inputOrigin":"creation"},
+         {"attribute":"seizoensloon",
+          "timeline":[{"from":"2025-01-01","to":"2025-03-01","value":"10"},{"from":"2025-03-01","to":"2025-09-01","value":"20"}],
+          "origin":"derived","input":[{"from":"2025-01-01","to":"2025-07-01","value":"10"}],"inputOrigin":"creation"},
+         {"attribute":"aanvulloon",
+          "timeline":[{"to":"2025-01-01","value":"5"},{"from":"2025-01-01","to":"2025-07-01","value":"10"},
+                      {"from":"2025-07-01","value":"5"}],
+          "origin":"derived","input":[{"from":"2025-01-01","to":"2025-07-01","value":"10"}],"inputOrigin":"creation"}]""";
+
+    /** The made melding has no input: beside a timeline the rules derived stands what the creation gave it, as the
+     *  input stands beside it on an object of the request, with {@code inputOrigin} {@code creation}; a member no rule
+     *  writes keeps the origin {@code creation}. J1, an object of the request, keeps the form it had. */
+    @Test
+    void the_fixpoint_of_a_made_object_gives_the_value_of_the_making_beside_the_derived_timeline() throws Exception {
+        HttpResponse<String> r = post(creationDetail, "meldingen", "fixpoint=true", CREATION_CASE1);
+        assertEquals(200, r.statusCode(), r.body());
+        JsonNode objects = tree(r.body()).at("/fixpoint/objects");
+        assertEquals("#1", objects.at("/1/object").asText(), r.body());
+        assertEquals(tree(MADE_CASE1), objects.at("/1/values"), r.body());
+        assertEquals(tree("""
+                {"attribute":"strandloon","timeline":[{"from":"2025-01-01","to":"2025-07-01","value":"10"}],
+                 "origin":"input"}"""), objects.at("/0/values/0"), r.body());
+    }
+
+    /** case2: J2 has no strandloon, so the creation gives the meldloon, the seizoensloon and the aanvulloon no value:
+     *  the meldloon has no row, and beside the derived seizoensloon and aanvulloon stands no input. */
+    @Test
+    void without_a_value_of_the_making_the_fixpoint_gives_no_input() throws Exception {
+        HttpResponse<String> r = post(creationDetail, "meldingen", "fixpoint=true", """
+                {"instances":[{"type":"Jutter","id":"J2"}]}""");
+        assertEquals(200, r.statusCode(), r.body());
+        assertEquals(tree("""
+                [{"attribute":"meldwaarde","timeline":[{"value":"7"}],"origin":"creation"},
+                 {"attribute":"seizoenswaarde",
+                  "timeline":[{"to":"2025-03-01","value":"7"},{"from":"2025-03-01","to":"2025-09-01","value":"20"},
+                              {"from":"2025-09-01","value":"7"}],
+                  "origin":"derived","input":[{"value":"7"}],"inputOrigin":"creation"},
+                 {"attribute":"seizoensloon","timeline":[{"from":"2025-03-01","to":"2025-09-01","value":"20"}],
+                  "origin":"derived"},
+                 {"attribute":"aanvulloon","timeline":[{"value":"5"}],"origin":"derived"}]"""),
+                tree(r.body()).at("/fixpoint/objects/1/values"), r.body());
+    }
+
+    /** The playground gives the scenario of case1 the same fixpoint: uchar's replay hands its session over before the
+     *  write-back, where the value of the making is read. */
+    @Test
+    void the_playground_gives_the_value_of_the_making_in_the_same_fixpoint() throws Exception {
+        String source = Files.readString(CREATION.resolve("source.rgs")) + """
+
+                Scenario strandloon tot juli
+                Gegeven is de volgende situatie:
+                een Jutter J1
+                - het strandloon is 10 van 01-01-2025 tot 01-07-2025
+                Met als verwacht resultaat:
+                - het seizoensloontotaal van J1 is 10 van 01-01-2025 tot 01-03-2025
+                - het seizoensloontotaal van J1 is 20 van 01-03-2025 tot 01-09-2025
+                """;
+        JsonNode playground = Playground.analyze(source).at("/scenario/results/0");
+        assertEquals(tree(MADE_CASE1), playground.at("/fixpoint/objects/1/values"), playground.toString());
+        HttpResponse<String> r = post(creationDetail, "meldingen", "fixpoint=true", CREATION_CASE1);
+        assertEquals(playground.get("fixpoint"), tree(r.body()).get("fixpoint"), r.body());
     }
 
     /** case2 of jutterswet-afwezigheidsmarkers-initialisatie: the input niet van toepassing in January and February

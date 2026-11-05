@@ -130,7 +130,7 @@ public final class ScenarioRunner {
             Map<String, Handed> handed = new LinkedHashMap<>();
             CaseRunner.Handoff handoff = (caseFile, build, session, labels, firing) -> {
                 if (firing.noFixpoint() != null) {
-                    handed.put(caseFile, new Handed(labels, null, List.of(), List.of(), List.of(),
+                    handed.put(caseFile, new Handed(labels, null, null, List.of(), List.of(), List.of(),
                             firing.noFixpoint()));
                     return;
                 }
@@ -138,7 +138,7 @@ public final class ScenarioRunner {
                 labels.forEach((label, bean) -> labelOf.put(bean, label));
                 Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, labelOf::get);
                 boolean answered = fixpoint.faults().isEmpty();
-                handed.put(caseFile, new Handed(labels, fixpoint,
+                handed.put(caseFile, new Handed(labels, fixpoint, CaseSession.making(build, fixpoint),
                         answered ? DroolsBackend.decisionsOf(build, session) : List.of(),
                         answered ? DroolsBackend.periodDecisionsOf(build, session) : List.of(),
                         answered ? DroolsBackend.readingsOf(build, session) : List.of(), null));
@@ -187,11 +187,12 @@ public final class ScenarioRunner {
         return sink;
     }
 
-    /** What the replay handed over of the session of one case: the case labels of its input beans, its fixpoint, and
-     *  the decisions, the decisions per period and the readings of a session without a standing fault; or, without a
-     *  fixpoint, uchar's sentence. */
-    private record Handed(Map<String, Object> labels, Fixpoint fixpoint, List<DefaultsDecision> decisions,
-                          List<PeriodDecisions> periodDecisions, List<ConditionReading> readings, String noFixpoint) {}
+    /** What the replay handed over of the session of one case: the case labels of its input beans, its fixpoint with
+     *  the values of the making ({@link CaseSession#making}), and the decisions, the decisions per period and the
+     *  readings of a session without a standing fault; or, without a fixpoint, uchar's sentence. */
+    private record Handed(Map<String, Object> labels, Fixpoint fixpoint, Map<Object, Map<String, Object>> making,
+                          List<DefaultsDecision> decisions, List<PeriodDecisions> periodDecisions,
+                          List<ConditionReading> readings, String noFixpoint) {}
 
     /** The explanation of report {@code r}, whose case is {@code c} and whose session the replay handed over as
      *  {@code h} (null where its input or fire raised): verbalised in {@code vocabulary} on {@code explained}, what
@@ -221,7 +222,7 @@ public final class ScenarioRunner {
             types.put(label, named);
         }
         CaseSession.Outcome session = new CaseSession.Outcome(new LinkedHashMap<>(h.labels()), types,
-                r.trace().firings(), h.fixpoint(), h.decisions(), h.periodDecisions(), h.readings());
+                r.trace().firings(), h.fixpoint(), h.making(), h.decisions(), h.periodDecisions(), h.readings());
         if (!playedOut) {
             // the write-back of the replay throws a fault that stands at the fixpoint: that is a case not played out
             if (h.fixpoint().faults().isEmpty())
