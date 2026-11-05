@@ -537,7 +537,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
 | `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`), a value of an attribute with absence markers as its payload or the name of its marker; a literal | `empty: true` for an empty one ("leeg", on every attribute); `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
-| `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, gold op geen dag | — |
+| `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, gold op geen dag, gold alleen op dagen die al een waarde hadden | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
 | `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
@@ -591,8 +591,9 @@ prepositions are `TEXT`, the `NAME` carries the cell under `labels`. The four fo
 Then each other writer as a `VARIANT`: `; de regel '…' gold niet, want niet geldt: <the member where the engine
 stopped>`, `; de regel '…' gold niet, want zij valt op de rekendatum buiten haar geldigheid`, `; de regel '…' gold op
 geen dag, want niet geldt: <the condition per period, with the periods the engine read>` (a writer of a timeline target,
-below), `; de regel '…' gaf geen waarde en besliste niets` (beside the rule that wrote, whose value stands), or `;
-verdrongen: de regel '…'`; then the
+below), `; de regel '…' gold alleen op dagen die al een waarde hadden: <the condition per period, with its periods>`
+(an initialisation of a timeline target, below), `; de regel '…' gaf geen waarde en besliste niets` (beside the rule
+that wrote, whose value stands), or `; verdrongen: de regel '…'`; then the
 ground of the rule that held. The `COMPUTATION` is `": "`, the rule
 text of the value (`QUOTE`), and `", met "` with every node that reads or folds something (an attribute, a parameter, a
 dimension cell, a binder of `Daarbij geldt` by the text of its definition, a built-in function, a fold), each rule text
@@ -619,7 +620,8 @@ the input stood follow: `"A1 heeft als rentedagen 30 dg/mnd van 01-12-2025 tot 0
 the target keeps its input as its periods, or is empty. A writer whose condition per period holds on no day has
 uchar's reading `HOLDS` with a condition that reads no period (RUNTIME-SEMANTICS ch. 5.12); it did not hold, and the
 sentence names it as a rule that did not hold, with its condition and the periods the engine read, a rule and an
-initialisation alike (`Verbaliser`, one decision from the reading): `"J4 heeft geen berekende stormtoelage, want geen
+initialisation alike (`Verbaliser.undecided`, the one place that says why a writer that held decided no day):
+`"J4 heeft geen berekende stormtoelage, want geen
 regel gold; de regel 'stormtoelage' gold op geen dag, want niet geldt: hij stormwacht is (altijd leeg)"`, `"…; de regel
 'standaardstormloon' gold op geen dag, want niet geldt: hij stormwacht is (altijd leeg)"`. A writer whose condition
 holds on some day and whose value is leeg there gave no value: `"…; de regel 'kustloon' gaf geen waarde en besliste
@@ -631,7 +633,16 @@ de invoer leeg was`, or its condition with the periods it holds in, as the first
 `"J2 heeft als voorjaarsloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'voorjaarsloon', omdat …, en 5 tot
 01-01-2025 en 5 vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat de voorjaarsloon in de invoer leeg
 was; de invoerwaarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`. Where the rules and the input leave it no day,
-its reading is `DISPLACED` and it is `; verdrongen: de regel '…'`. A timeline the engine read inside a computation stands as its periods, and the total of the
+its reading is `DISPLACED` and it is `; verdrongen: de regel '…'`. Where they leave it days, but its condition holds
+only on days they filled (every day of the periods of its condition lies in a span of `periodDecisionsOf` with a rule
+or an input), its reading is `HOLDS` and it held only on days that already had a value, with its condition and the
+periods it holds in: `"J1 heeft als stormloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'stormloon', omdat …;
+de regel 'standaardstormloon' gold alleen op dagen die al een waarde hadden: hij stormwacht is (van 01-03-2025 tot
+01-06-2025)"`, and where no rule decided a day, as the reason the input stands: `"J1 houdt als kustloon de invoerwaarde
+7 van 01-01-2025 tot 01-01-2026, want de regel 'standaardkustloon' gold alleen op dagen die al een waarde hadden: hij
+stormwacht is (van 01-03-2025 tot 01-06-2025)"`. An ordinary rule gives way to no writer and no input, so this is the
+initialisation's alone; where its condition holds on an empty day and its value is leeg there, it gave no value. A
+timeline the engine read inside a computation stands as its periods, and the total of the
 subject's own timeline (ch. 3.6) has no `MEMBERS`: it is no fold over a set. A time-dependent characteristic a rule
 writes in a window has its own sentence, with the periods the bean holds: `"A1 is rentedragend van 16-11-2025 tot
 13-03-2026 volgens de regel 'rentedragend'"`, without its condition, or `"… is niet rentedragend volgens de regel
