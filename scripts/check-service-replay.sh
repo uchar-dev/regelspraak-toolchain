@@ -186,7 +186,14 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # waarde als waarde van het datatype en een marker als {"marker": <naam>}, ook in een segment van een tijdlijn, en de
 # uitleg noemt een marker bij zijn naam; jutterswet-afwezigheidsmarkers speelt sindsdien door de dienst, met uitleg
 # (10 cases).
-EXPECTED_REPLAY_PLAYED=331
+# 2026-11-05, uchar's kaarten reading-and-uniqueness-residue en absence-markers-residue (pin 9c275fd8): 335 — de set van
+# gate 12 groeit van 339 naar 344 met jutterswet-uniciteit-reeks (een uniciteit over een unie met een tekstsleutel),
+# jutterswet-voorwaarde-buiten-de-beurt (een rechtvaardiging per periode over de rekendatumscalair) en
+# jutterswet-afwezigheidsmarkers-cel, -creatie en -kopie (een marker in een cel, in een objectcreatie, de kopie van een
+# tijdlijn van een sum type). Vier spelen ook door de dienst, met uitleg (de cel als {"marker": <naam>} in de cellen van
+# het verzoek en het antwoord); jutterswet-voorwaarde-buiten-de-beurt geeft een scalaire waarde op een tijdsafhankelijk
+# attribuut en staat hieronder.
+EXPECTED_REPLAY_PLAYED=335
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt een
 # tijdsafhankelijke parameter en een tijdsafhankelijk attribuut als tijdlijn en een tijdsafhankelijk kenmerk als zijn
@@ -201,6 +208,7 @@ REPLAY_EXCLUDED=(
   "jutterswet-penningjaar|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-tempototaal|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-vast-startpunt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-voorwaarde-buiten-de-beurt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
 )
 
 # Kaart explanation-from-readings: de leg van de uitleg. Elk verzoek gaat ook met ?explanation=true; het antwoord
