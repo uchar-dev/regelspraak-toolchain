@@ -106,7 +106,7 @@ class ExplanationGeneratedRuleInVocabularyTest {
     private static final String V1_AUTHOR =
             "V1 is eigenhandig gemeld, omdat zijn opgegeven meldingsdatum (12-03-2026) gevuld is";
     private static final String V2_AUTHOR =
-            "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is";
+            "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (leeg) gevuld is";
 
     /** The sentence of the computed value the author's rule 'melding' writes on {@code label} (card
      *  explanation-computed-attributes): the generated attribute {@code berekende <name>}, named in the vocabulary;
@@ -129,7 +129,7 @@ class ExplanationGeneratedRuleInVocabularyTest {
                 melding("V1", "meldingsdatum"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave meldingsdatum, want niet geldt: zijn opgegeven meldingsdatum"
-                        + " (onbekend) gevuld is",
+                        + " (leeg) gevuld is",
                 "V2 heeft als meldingsdatum 13-03-2026 volgens 'berekende meldingsdatum' (onvoorwaardelijk): zijn"
                         + " berekende meldingsdatum (13-03-2026); 'opgegeven meldingsdatum' gaf geen waarde",
                 melding("V2", "meldingsdatum")),
@@ -150,7 +150,7 @@ class ExplanationGeneratedRuleInVocabularyTest {
                 melding("V1", "Datum melding vondst"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
-                        + " vondst (onbekend) gevuld is",
+                        + " vondst (leeg) gevuld is",
                 "V2 heeft als Datum melding vondst 13-03-2026 volgens 'berekende Datum melding vondst'"
                         + " (onvoorwaardelijk): zijn berekende Datum melding vondst (13-03-2026); 'opgegeven"
                         + " Datum melding vondst' gaf geen waarde",
@@ -172,7 +172,7 @@ class ExplanationGeneratedRuleInVocabularyTest {
                 melding("V1", "dag van de melding"),
                 V2_AUTHOR,
                 "V2 heeft geen afwijkende opgave dag van de melding, want niet geldt: zijn opgegeven dag van de"
-                        + " melding (onbekend) gevuld is",
+                        + " melding (leeg) gevuld is",
                 "V2 heeft als dag van de melding 13-03-2026 volgens 'berekende dag van de melding'"
                         + " (onvoorwaardelijk): zijn berekende dag van de melding (13-03-2026); 'opgegeven"
                         + " dag van de melding' gaf geen waarde",
@@ -199,9 +199,9 @@ class ExplanationGeneratedRuleInVocabularyTest {
         Object v2 = engine.newInstance("Vondst");
         RegelSpraakRuntime.set(v2, Namen.ident("vinddag", false), LocalDate.of(2026, 3, 10));
         assertEquals(List.of(
-                "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
+                "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (leeg) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
-                        + " vondst (onbekend) gevuld is"),
+                        + " vondst (leeg) gevuld is"),
                 engine.explain("cgm", "Vondst", Map.of("V2", v2)));
     }
 }

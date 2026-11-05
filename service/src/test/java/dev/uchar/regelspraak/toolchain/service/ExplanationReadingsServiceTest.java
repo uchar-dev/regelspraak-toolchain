@@ -154,10 +154,10 @@ class ExplanationReadingsServiceTest {
 
     static final List<String> EXPECTED = List.of(
             "J1 is niet gerechtigd, want niet geldt: het onderwerp in dienst is",
-            "J1 is niet bijzonder, want niet geldt: het onderwerp in dienst is of zijn aantal meldingen (onbekend) is groter dan 10",
+            "J1 is niet bijzonder, want niet geldt: het onderwerp in dienst is of zijn aantal meldingen (leeg) is groter dan 10",
             "J1 is actief, omdat het onderwerp ingezetene is en het aantal vondsten van de Jutter die aan de volgende voorwaarde voldoen: hij is waardevol (1) is groter dan 0",
             "J1 is niet gelukkig, want aan de voorwaarde \"alle vondsten van de Jutter waardevol zijn\" is niet voldaan: niet voor W2 (1 van de 2)",
-            "J1 is niet meldplichtig, want niet geldt: zijn aantal meldingen (onbekend) is groter dan 3",
+            "J1 is niet meldplichtig, want niet geldt: zijn aantal meldingen (leeg) is groter dan 3",
             "J1 is niet bonuswaardig, want niet geldt: zijn bonus maal 2 (0,00 EUR) is groter dan 10,00 EUR",
             "J1 is niet kustjutter, want niet geldt: zijn afstand tot de kust (700 m) is kleiner dan 0,5 km",
             "J1 is niet minderjarig, want niet geldt: de tijdsduur van zijn geboortedatum tot zijn peildatum in hele jaren (30 jr) is kleiner dan 18 jr",

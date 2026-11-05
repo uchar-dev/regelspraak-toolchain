@@ -18,7 +18,7 @@ import static org.junit.jupiter.api.Assertions.assertNull;
  * ({@code TmsTranspiler.navigationBindings}, {@code DroolsBackend.reached}). Before, every such operand stood there as
  * "(onbekend)", also where the engine had derived it: of a characteristic the engine assigned, the explanation said
  * that it held because an unknown value was filled, and of one it withheld, that a filled value was not filled. Where
- * the value on the reached object is leeg, or no object is reached, "(onbekend)" stays.
+ * the value on the reached object is leeg, or no object is reached, the operand stands as "(leeg)".
  *
  * <p>The scenario route plays uchar's IR document, whose reads carry their walk beside them, in the build, and not on
  * them. Before, the explanation read such a read as the subject's own member: where the subject declares a member of
@@ -107,7 +107,7 @@ class ExplanationRolePathTest {
                     + " de afronding 2.625, omdat zijn maandloon (3.000,00) gevuld is",
             "D1 heeft als maximeringsfactor 1 volgens de regel 'maximeringsfactor' (onvoorwaardelijk): 1",
             "R2 heeft geen herlevingsgrens, want geen regel gold; de regel 'herlevingsgrens' gold niet, want niet geldt:"
-                    + " zijn maandloon (onbekend) gevuld is",
+                    + " zijn maandloon (leeg) gevuld is",
             "M1 heeft de herlevingsgrens overschreden, omdat zijn inkomen (2.800,00) gevuld is en de herlevingsgrens van"
                     + " het recht van het Maandinkomen (2.625,00) gevuld is en zijn inkomen maal de maximeringsfactor van"
                     + " het dagloon van het recht van het Maandinkomen (2.800,00) is groter dan de herlevingsgrens van het"
@@ -116,9 +116,9 @@ class ExplanationRolePathTest {
                     + " dagloon van het recht van het Maandinkomen (1.354,84) is groter dan de herlevingsgrens van het"
                     + " recht van het Maandinkomen (2.625,00)",
             "M3 heeft geen herlevingsgrens overschreden, want niet geldt: de herlevingsgrens van het recht van het"
-                    + " Maandinkomen (onbekend) gevuld is",
+                    + " Maandinkomen (leeg) gevuld is",
             "M4 heeft geen herlevingsgrens overschreden, want niet geldt: de herlevingsgrens van het recht van het"
-                    + " Maandinkomen (onbekend) gevuld is");
+                    + " Maandinkomen (leeg) gevuld is");
 
     private static List<String> explanation(String document) {
         List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(document));

@@ -60,9 +60,9 @@ class ExplanationOriginFromIrTest {
                         + " (12-03-2026) gevuld is en zijn berekende Datum melding vondst (13-03-2026) gevuld is en"
                         + " zijn opgegeven Datum melding vondst (12-03-2026) is ongelijk aan zijn berekende Datum"
                         + " melding vondst (13-03-2026)",
-                "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (onbekend) gevuld is",
+                "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (leeg) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
-                        + " vondst (onbekend) gevuld is");
+                        + " vondst (leeg) gevuld is");
         // since card explanation-from-readings every route explains on the model uchar's loader reads from the
         // document, with the readings of the engine; the frontend's model is no longer a route of the explanation
         assertEquals(expected, engine.explain("cgm", "Vondst", beans), "op het model uit het IR-document");

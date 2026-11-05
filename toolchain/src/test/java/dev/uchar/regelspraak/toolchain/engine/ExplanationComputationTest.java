@@ -172,13 +172,13 @@ class ExplanationComputationTest {
                     + " het onderwerp ingezetene is. Grondslag: Jutterswet art. 11",
             "J1 heeft als bonus 25,00 volgens de regel 'bonus voor ingezetenen': 25,00, omdat het onderwerp ingezetene"
                     + " is; verdrongen: de regel 'bonus zonder voorwaarde'",
-            "J1 heeft geen toelage, want de regel 'toelage' gaf geen waarde: zijn tarief (onbekend), omdat het"
+            "J1 heeft geen toelage, want de regel 'toelage' gaf geen waarde: zijn tarief (leeg), omdat het"
                     + " onderwerp ingezetene is",
             "J1 heeft als havengeld 2,00 " + HAVENGELD,
             "J2 heeft als meldtermijn 15-02-2026 volgens de regel 'meldtermijn' (onvoorwaardelijk): zijn startdag plus"
                     + " 14 dagen, met zijn startdag (01-02-2026)",
             "J2 heeft geen eerste waardevolle vinddag, want de regel 'eerste waardevolle vinddag' gaf geen waarde"
-                    + " (onvoorwaardelijk): " + FIRST + " (onbekend): er is geen enkel lid",
+                    + " (onvoorwaardelijk): " + FIRST + " (leeg): er is geen enkel lid",
             "J2 heeft als vondstwaarde 0,00 volgens de regel 'vondstwaarde' (onvoorwaardelijk): " + SUM + " (0,00):"
                     + " over V3 (0,00), het enige lid",
             "J2 heeft geen premie, want geen regel gold; de regel 'premie' gold niet, want niet geldt: het onderwerp"
@@ -189,11 +189,11 @@ class ExplanationComputationTest {
                     + " ingezetene is",
             "J2 heeft als havengeld 2,00 " + HAVENGELD,
             "J3 heeft geen meldtermijn, want de regel 'meldtermijn' gaf geen waarde (onvoorwaardelijk): zijn startdag"
-                    + " plus 14 dagen, met zijn startdag (onbekend)",
+                    + " plus 14 dagen, met zijn startdag (leeg)",
             "J3 heeft geen eerste waardevolle vinddag, want de regel 'eerste waardevolle vinddag' gaf geen waarde"
-                    + " (onvoorwaardelijk): " + FIRST + " (onbekend): er is geen enkel lid",
+                    + " (onvoorwaardelijk): " + FIRST + " (leeg): er is geen enkel lid",
             "J3 heeft geen vondstwaarde, want de regel 'vondstwaarde' gaf geen waarde (onvoorwaardelijk): " + SUM
-                    + " (onbekend): er is geen enkel lid",
+                    + " (leeg): er is geen enkel lid",
             "J3 heeft geen premie, want geen regel gold; de regel 'premie' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is",
             "J3 houdt als bonus de invoerwaarde 7,50, want geen regel gold; de regel 'bonus voor ingezetenen' gold"
@@ -480,18 +480,18 @@ class ExplanationComputationTest {
                 """;
         assertEquals(List.of(
                 "V1 houdt als taxatie de invoerwaarde 40, want de regel 'taxatie uit opgave' gaf geen waarde en besliste"
-                        + " niets: zijn opgave (onbekend), omdat het onderwerp gemeld is; de regel 'taxatie uit"
+                        + " niets: zijn opgave (leeg), omdat het onderwerp gemeld is; de regel 'taxatie uit"
                         + " schatting' gold niet, want niet geldt: het onderwerp erkend is",
                 "V1 houdt als keurwaarde de invoerwaarde 40, want de regel 'keurwaarde' gaf geen waarde"
-                        + " (onvoorwaardelijk) en besliste niets: zijn opgave (onbekend)",
+                        + " (onvoorwaardelijk) en besliste niets: zijn opgave (leeg)",
                 "V1 heeft als beoordeling 3 volgens de regel 'standaardbeoordeling': 3, omdat het onderwerp gemeld is;"
                         + " de regel 'beoordeling uit opgave' gaf geen waarde en besliste niets",
                 "V2 heeft als taxatie 50 volgens de regel 'taxatie uit schatting': zijn schatting (50), omdat het"
                         + " onderwerp erkend is; de regel 'taxatie uit opgave' gaf geen waarde en besliste niets",
                 "V2 heeft geen keurwaarde, want de regel 'keurwaarde' gaf geen waarde (onvoorwaardelijk): zijn opgave"
-                        + " (onbekend)",
+                        + " (leeg)",
                 "V2 houdt als beoordeling de invoerwaarde 9, want de regel 'beoordeling uit opgave' gaf geen waarde"
-                        + " (onvoorwaardelijk) en besliste niets: zijn opgave (onbekend); verdrongen: de regel"
+                        + " (onvoorwaardelijk) en besliste niets: zijn opgave (leeg); verdrongen: de regel"
                         + " 'standaardbeoordeling'"),
                 explanation(document));
     }

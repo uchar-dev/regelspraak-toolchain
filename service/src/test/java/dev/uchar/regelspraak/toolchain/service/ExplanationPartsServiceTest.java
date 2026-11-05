@@ -154,7 +154,7 @@ public class ExplanationPartsServiceTest {
             "J3 heeft geen premie, want geen variant besliste; 'jeugdpremie' gold niet, want niet geldt: het onderwerp"
                     + " ervaren is; de regel 'premie' gold niet, want niet geldt: het onderwerp ervaren is",
             noMeldpremie("J3"),
-            "J4 is niet ervaren, want niet geldt: zijn leeftijd (onbekend) is groter dan de minimumleeftijd (17)"
+            "J4 is niet ervaren, want niet geldt: zijn leeftijd (leeg) is groter dan de minimumleeftijd (17)"
                     + GROUND,
             "J4 is gelukkig, omdat " + FOLD + " is voldaan: er is geen enkel lid",
             "J4 heeft geen recht op strandgoed, want niet geldt: het onderwerp ervaren is",
@@ -231,7 +231,7 @@ public class ExplanationPartsServiceTest {
                     + " CONDITION{holds=false}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
                     + " canonical=ingezetene, object=J3}«ingezetene» « is»]] " + GROUND_PARTS,
             15, "SUBJECT«J4» « is niet » " + ervaren("J4") + " «, » CONNECTIVE«want» « » CONNECTIVE«niet geldt» «: »"
-                    + " CONDITION{holds=false}[" + leeftijd("J4") + " READING[« (» VALUE{empty=true}«onbekend» «)»] «"
+                    + " CONDITION{holds=false}[" + leeftijd("J4") + " READING[« (» VALUE{empty=true}«leeg» «)»] «"
                     + " is groter dan » "
                     + MINIMUMLEEFTIJD + " READING[« (» VALUE«17» «)»]] " + GROUND_PARTS,
             20, "SUBJECT«V1» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=aangemeld, object=V1}«aangemeld»"

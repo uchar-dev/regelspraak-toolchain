@@ -20,7 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * every such operand stood there as "(onbekend)", also where the engine had derived it, and the sentence of an
  * assigned characteristic said that it held because an unknown value was filled. Measured on a rule set of the
  * workbench (herleving-ww, scenario s01): five of the twenty sentences. Where the value is leeg, or no object is
- * reached, "(onbekend)" stays.
+ * reached, the operand stands as "(leeg)".
  *
  * <p>Both starts of the service: from sources the explanation runs on the model the frontend resolved, whose read
  * carries its written navigation, and the walk is the one uchar's emitter writes for it; from a {@code uchar-ir-v1}
@@ -99,7 +99,7 @@ class ExplanationRolePathServiceTest {
                     + " de afronding 2.625, omdat zijn maandloon (3.000,00) gevuld is",
             "D1 heeft als maximeringsfactor 1 volgens de regel 'maximeringsfactor' (onvoorwaardelijk): 1",
             "R2 heeft geen herlevingsgrens, want geen regel gold; de regel 'herlevingsgrens' gold niet, want niet geldt:"
-                    + " zijn maandloon (onbekend) gevuld is",
+                    + " zijn maandloon (leeg) gevuld is",
             "M1 heeft de herlevingsgrens overschreden, omdat zijn inkomen (2.800,01) gevuld is en de herlevingsgrens van"
                     + " het recht van het Maandinkomen (2.625,00) gevuld is en zijn inkomen maal de maximeringsfactor van"
                     + " het dagloon van het recht van het Maandinkomen (2.800,01) is groter dan de herlevingsgrens van het"
@@ -108,9 +108,9 @@ class ExplanationRolePathServiceTest {
                     + " dagloon van het recht van het Maandinkomen (1.354,84) is groter dan de herlevingsgrens van het"
                     + " recht van het Maandinkomen (2.625,00)",
             "M3 heeft geen herlevingsgrens overschreden, want niet geldt: de herlevingsgrens van het recht van het"
-                    + " Maandinkomen (onbekend) gevuld is",
+                    + " Maandinkomen (leeg) gevuld is",
             "M4 heeft geen herlevingsgrens overschreden, want niet geldt: de herlevingsgrens van het recht van het"
-                    + " Maandinkomen (onbekend) gevuld is");
+                    + " Maandinkomen (leeg) gevuld is");
 
     @Test
     void from_sources_an_operand_over_a_role_names_the_value_the_engine_derived() throws Exception {

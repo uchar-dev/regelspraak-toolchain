@@ -167,7 +167,7 @@ class ExplanationGroundSourceServiceTest {
     /** The sentence of the rule the opgave marker makes, on an object without a given meldingsdatum. */
     private static String notDiffering(String label) {
         return label + " heeft geen afwijkende opgave meldingsdatum, want niet geldt: zijn opgegeven meldingsdatum"
-                + " (onbekend) gevuld is";
+                + " (leeg) gevuld is";
     }
 
     /** The meta of the ground of each sentence, "" where it has none: the two versions of 'gevestigd' are one form,

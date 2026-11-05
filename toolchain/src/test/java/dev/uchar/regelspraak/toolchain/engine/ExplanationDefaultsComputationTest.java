@@ -128,23 +128,23 @@ class ExplanationDefaultsComputationTest {
             "J2 heeft als premie 15,43 volgens 'premie uit bonus': " + UIT_BONUS + " (123,45); vóór de afronding"
                     + " 15,43125, omdat het onderwerp ingezetene is; verdrongen: de regel 'premie' (onvoorwaardelijk,"
                     + " 30,00)",
-            "V1 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (onbekend) gevuld is",
+            "V1 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (leeg) gevuld is",
             "V1 heeft als waarde 110,00 volgens 'berekende waarde' (onvoorwaardelijk): zijn berekende waarde (110,00);"
                     + " 'opgegeven waarde' gaf geen waarde; verdrongen: 'waarde bij onbekende taxatie'"
                     + " (onvoorwaardelijk, 25,00)",
             "V1 heeft als berekende waarde 110,00 volgens de regel 'waarde': zijn taxatie plus zijn bergingskosten, met"
                     + " zijn taxatie (100,00) en zijn bergingskosten (10,00), omdat zijn taxatie (100,00) gevuld is",
-            "V2 heeft geen afwijkende opgave waarde, want niet geldt: zijn berekende waarde (onbekend) gevuld is",
+            "V2 heeft geen afwijkende opgave waarde, want niet geldt: zijn berekende waarde (leeg) gevuld is",
             "V2 heeft als waarde 80,00 volgens 'opgegeven waarde' (onvoorwaardelijk): zijn opgegeven waarde (80,00);"
                     + " verdrongen: 'berekende waarde' (onvoorwaardelijk, gaf geen waarde), 'waarde bij onbekende"
                     + " taxatie' (onvoorwaardelijk, 25,00)",
             "V2 heeft geen berekende waarde, want geen regel gold; de regel 'waarde' gold niet, want niet geldt: zijn"
-                    + " taxatie (onbekend) gevuld is",
-            "V3 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (onbekend) gevuld is",
+                    + " taxatie (leeg) gevuld is",
+            "V3 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (leeg) gevuld is",
             "V3 heeft als waarde 25,00 volgens 'waarde bij onbekende taxatie': 25,00, omdat de waarde in de invoer leeg"
                     + " was; 'opgegeven waarde' gaf geen waarde; 'berekende waarde' gaf geen waarde",
             "V3 heeft geen berekende waarde, want geen regel gold; de regel 'waarde' gold niet, want niet geldt: zijn"
-                    + " taxatie (onbekend) gevuld is",
+                    + " taxatie (leeg) gevuld is",
             "W1 heeft als uitkering 20,00 volgens de regel 'uitkering van een wrakrecht' (onvoorwaardelijk): zijn"
                     + " grondslag maal 2, met zijn grondslag (10,00); 'betwiste uitkering' gold niet, want niet geldt:"
                     + " het onderwerp betwist is",

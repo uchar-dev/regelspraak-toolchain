@@ -247,6 +247,16 @@ class AbsenceMarkerHttpTest {
                 String.join("\n", explanation));
     }
 
+    /** case4: an empty value on an attribute without markers is leeg as well, so that "onbekend" in an explanation is
+     *  the marker alone. */
+    @Test
+    void an_empty_value_is_leeg_on_an_attribute_without_markers_too() throws Exception {
+        List<String> explanation = explanation(post(service, "explanation=true", vondst("\"attributes\":{}")));
+        assertContains(explanation, "V1 heeft geen taxatie, want de regel 'taxatie uit schatting' gaf geen waarde"
+                + " (onvoorwaardelijk): zijn schatting, met zijn schatting (leeg); de regel 'taxatie onbekend' gold niet");
+        assertFalse(String.join("\n", explanation).contains("(onbekend)"), String.join("\n", explanation));
+    }
+
     /** case10: the markers per period, and the value of the request between them. */
     @Test
     void the_explanation_names_a_marker_per_period() throws Exception {

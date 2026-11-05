@@ -65,7 +65,7 @@ import java.util.regex.Pattern;
  * lezingen ({@link DroolsBackend#readingsOf}: per vorm, op haar pointer, en object de status en per knoop bereikt of
  * niet, oordeel of waarde met eenheid). De uitleg rekent niets na: zij legt elke lezing op de knopen van het document
  * van de build ({@link Document}, dat uchars lader met de posities van de knopen las) en zet ze in zinnen. Een lege
- * waarde staat er als "(onbekend)"; een lid of operand dat de motor niet bereikte, noemt de zin niet, of zonder
+ * waarde staat er als "(leeg)"; een lid of operand dat de motor niet bereikte, noemt de zin niet, of zonder
  * waarde. Bij een voorwaarde die niet gold noemt de zin het lid waar de motor stopte. Een kwantorvouw staat er met haar
  * brontekst en het oordeel van de motor, en daarachter de leden die die uitkomst dragen, bij hun naam en met hun
  * aantal ("is niet voldaan: niet voor V2 en V4 (2 van de 4)"). Een lezing die ontbreekt, of een
@@ -2389,9 +2389,13 @@ public final class Verbaliser {
 
     // ---------------- rendering ----------------
 
-    /** De waarde van een operand zoals de motor haar las, in NL-notatie met haar eenheid; "onbekend" voor een lege
-     *  waarde, en "leeg" op een operand van een sum type, zoals een attribuut met afwezigheidsmarkers, waar "onbekend" een
-     *  waarde is. Een getal staat met de decimalen van zijn type, of van de declaratie van het gelezen lid; een
+    /** Het woord voor een lege waarde, op elk operand en elk attribuut, zoals RegelSpraak het schrijft ("is leeg"): een
+     *  attribuut met afwezigheidsmarkers kan de waarde "onbekend" houden (RUNTIME-SEMANTICS ch. 9.5), dus dat woord is
+     *  de marker en nooit leeg. */
+    private static final String EMPTY = "leeg";
+
+    /** De waarde van een operand zoals de motor haar las, in NL-notatie met haar eenheid; {@link #EMPTY} voor een lege
+     *  waarde. Een getal staat met de decimalen van zijn type, of van de declaratie van het gelezen lid; een
      *  getalliteral met de decimalen die zijn lexeem schrijft ("30.00" als "30,00"), want het type van een literal noemt
      *  ze niet. Een constructorwaarde staat als haar payload of, zonder payload, bij de naam van haar constructor
      *  ({@link #render}). */
@@ -2403,7 +2407,7 @@ public final class Verbaliser {
     /** {@link #renderOperand} van waarde {@code v} met eenheid {@code u}, die de motor op knoop {@code e} las, of een
      *  lid van een vouw op die knoop bijdroeg. */
     private String renderRead(Expr e, Object v, Unit u) {
-        if (v == null) return typeOf(e) instanceof Datatype.SumType ? "leeg" : "onbekend";
+        if (v == null) return EMPTY;
         if (v instanceof List<?> timeline) return renderTimeline(e, timeline, u);
         if (v instanceof ConstructorValue c) {
             if (c.payload() == null) return c.constructor();
@@ -2444,7 +2448,7 @@ public final class Verbaliser {
      *  of een voorwaarde geldt, alleen als periode, en zonder {@code value} elke periode zo. Een tijdlijn zonder segment
      *  is leeg op elke dag: "altijd leeg". {@code e} is de knoop die de motor las, voor de zin van een fout. */
     private static String renderPeriods(List<?> timeline, Expr e, java.util.function.Function<Object, String> value) {
-        if (timeline.isEmpty()) return "altijd leeg";
+        if (timeline.isEmpty()) return "altijd " + EMPTY;
         List<String> segments = new ArrayList<>();
         for (Object s : timeline) {
             LocalDate from, to;
@@ -2569,7 +2573,7 @@ public final class Verbaliser {
     /** Een Java-waarde in helder Nederlands: getallen met punt-duizend/komma-decimaal en de eenheid uit het type;
      *  datums als dd-mm-jjjj; booleans als ja/nee. */
     static String renderValue(Object v, Datatype type) {
-        if (v == null) return "leeg";
+        if (v == null) return EMPTY;
         String number = nlExact(v, type);
         if (number != null) {
             String unit = unitWord(type);
