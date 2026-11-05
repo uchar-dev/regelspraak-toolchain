@@ -1229,9 +1229,10 @@ public final class Verbaliser {
      * </ul>
      *
      * <p>Daarna elke andere schrijver als groep {@link Part.Kind#VARIANT}, met de reden dat zij niet schreef: haar
-     * voorwaarde gold niet (het lid waar de motor stopte), zij valt buiten haar geldigheid, zij gold en gaf geen waarde
-     * en besliste dus niets naast de regel die schreef, of zij is een initialisatie die niet aan de beurt was
-     * ("verdrongen"). Dan de grondslag van de regel die gold.
+     * voorwaarde gold niet (het lid waar de motor stopte), zij valt buiten haar geldigheid, zij gold op geen dag (haar
+     * voorwaarde per periode, met de perioden die de motor las: geen), zij gold en gaf geen waarde en besliste dus niets
+     * naast de regel die schreef, of zij is een initialisatie die niet aan de beurt was ("verdrongen"). Dan de
+     * grondslag van de regel die gold.
      *
      * <p>De berekening ({@link Part.Kind#COMPUTATION}) is de regeltekst van de waarde, met elke knoop die iets leest of
      * samenvat ({@link #OPERAND_KINDS}) met de waarde die de motor er las, elke brontekst één keer; leest de waarde één
@@ -1371,8 +1372,9 @@ public final class Verbaliser {
          * staan. Wie welke dagen besliste, komt van de motor ({@link DroolsBackend#periodDecisionsOf}): per regel die
          * besliste de perioden met hun waarde, "volgens de regel '…'" en waarom zij gold, daarna de perioden waarin de
          * invoer bleef staan. Besliste geen regel een dag, dan wat het doel houdt, zoals bij een attribuut zonder
-         * tijdlijn. Een regel die gold en op geen dag een waarde las, gaf geen waarde. Twee regels die een dag
-         * verschillend beslissen geven EF-016 (ch. 5.7), een sessie zonder antwoord.
+         * tijdlijn. Een regel die op een dag gold en op geen dag een waarde las, gaf geen waarde; een regel die op geen
+         * dag gold ({@link #heldOnNoDay}), gold niet. Twee regels die een dag verschillend beslissen geven EF-016
+         * (ch. 5.7), een sessie zonder antwoord.
          */
         private Sentence timelineSentence(List<Writer> writers) {
             String member = writers.get(0).target().attribute();
@@ -1399,7 +1401,7 @@ public final class Verbaliser {
                                 + member + "' van " + label + " op " + periods.get(w.pointer()) + ", en haar lezing is "
                                 + status);
                     wrote.add(w);
-                } else if (status == ConditionReading.Status.HOLDS) empty.add(w);
+                } else if (status == ConditionReading.Status.HOLDS && !heldOnNoDay(w)) empty.add(w);
             }
             if (wrote.size() != periods.size())
                 throw new IllegalStateException("de motor noemt als beslissers van '" + member + "' van " + label + " "
@@ -1528,8 +1530,17 @@ public final class Verbaliser {
                 b.text("; de regel '").leaf(Part.Kind.RULE, formName(w)).text("' ");
                 Condition c = w.rule().condition();
                 switch (status) {
-                    // only beside a writer that wrote: its value stands, and a leeg decides nothing (ch. 3.11)
-                    case HOLDS -> b.text("gaf geen waarde en besliste niets");
+                    case HOLDS -> {
+                        if (heldOnNoDay(w)) {
+                            b.leaf(Part.Kind.CONNECTIVE, "gold op geen dag").text(", ")
+                                    .leaf(Part.Kind.CONNECTIVE, "want").text(" ");
+                            notHolds(b);
+                            heldInPeriods(b, c, read(w.pointer(), bean, label, c));
+                        } else {
+                            // only beside a writer that wrote: its value stands, and a leeg decides nothing (ch. 3.11)
+                            b.text("gaf geen waarde en besliste niets");
+                        }
+                    }
                     case FAILS -> {
                         if (c == null)
                             throw new IllegalStateException("de motor noemt de voorwaarde van '" + w.rule().name()
@@ -1545,6 +1556,17 @@ public final class Verbaliser {
                 }
             }
             b.close(Part.Kind.VARIANT);
+        }
+
+        /** Of schrijver {@code w}, een regel of een initialisatie met de lezing {@code HOLDS}, op geen dag gold: zijn
+         *  voorwaarde, een voorwaarde per periode van een tijdlijndoel (uchars RUNTIME-SEMANTICS ch. 3.10), leest in de
+         *  lezing geen periode (ch. 5.12). Hij besliste geen dag omdat zijn voorwaarde nergens gold, zoals een regel die
+         *  niet gold; een schrijver die op een dag gold en daar leeg gaf, gaf geen waarde. De zin van een tijdlijndoel
+         *  beslist het hier, voor elke schrijver die zij noemt. */
+        private boolean heldOnNoDay(Writer w) {
+            Condition c = w.rule().condition();
+            return c != null && read(w.pointer(), bean, label, c).of(c).value() instanceof List<?> periods
+                    && periods.isEmpty();
         }
 
         /** De lezing van regel {@code w} op de knopen van haar waarde, die op die van haar voorwaarde volgen. */

@@ -373,8 +373,9 @@ class TimelineHttpTest {
     /** case4 of uchar's golden with the explanation: a defaults group on a timeline target decides per day, and uchar
      *  names who decided per period ({@code DroolsBackend.periodDecisionsOf}). The explanation gives the strandloon a
      *  sentence per period: the opgave in January and February, the computed value from March to May, the input 99
-     *  from June, where no default decided; the stormtoelage, without input, the initialisation on all days; and the
-     *  days the rule wrote the computed strandloon. The answer beside the explanation is the answer without it. */
+     *  from June, where no default decided; the stormtoelage, without input, the initialisation on all days; the
+     *  days the rule wrote the computed strandloon; and the rule of the computed stormtoelage, which held on no day,
+     *  since J4 is never stormwacht. The answer beside the explanation is the answer without it. */
     @Test
     void the_explanation_of_a_defaults_group_that_decides_per_day_names_each_period() throws Exception {
         String request = """
@@ -396,8 +397,8 @@ class TimelineHttpTest {
                         + " leeg was",
                 "J4 heeft als berekende strandloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'strandloon in"
                         + " het voorjaar', omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025)",
-                "J4 heeft geen berekende stormtoelage, want de regel 'stormtoelage' gaf geen waarde, omdat hij"
-                        + " stormwacht is (altijd leeg)"),
+                "J4 heeft geen berekende stormtoelage, want geen regel gold; de regel 'stormtoelage' gold op geen dag,"
+                        + " want niet geldt: hij stormwacht is (altijd leeg)"),
                 sentences, r.body());
         JsonNode with = tree(r.body());
         ((com.fasterxml.jackson.databind.node.ObjectNode) with).remove("explanation");

@@ -172,6 +172,40 @@ class TimelineStackHttpTest {
         assertEquals(tree(post(initialisation, "lonen", "", INITIALISATION_CASE2).body()), with, r.body());
     }
 
+    /** case3 of jutterswet-initialisatie-per-dag: J3 without input and never stormwacht. The initialisation of the
+     *  stormloon, under stormwacht, held on no day: uchar reads it {@code HOLDS} with a condition that holds in no
+     *  period, and the explanation names it as a rule that did not hold. The rule of the kustloon held from March to
+     *  August and gave the empty basisloon there: it gave no value. Every sentence of the case, in its order. */
+    @Test
+    void the_explanation_names_a_writer_that_held_on_no_day_apart_from_one_that_gave_no_value() throws Exception {
+        HttpResponse<String> r = post(initialisation, "lonen", "explanation=true", """
+            {"instances":[{"type":"Jutter","id":"J3"}]}""");
+        assertEquals(200, r.statusCode(), r.body());
+        assertPins(INITIALISATION.resolve("case3-zonder-stormwacht.json"), "J3", tree(r.body()));
+        assertEquals(List.of(
+                "J3 heeft als strandloon altijd 5 volgens de regel 'standaardstrandloon', omdat de strandloon in de"
+                        + " invoer leeg was",
+                "J3 heeft als voorjaarsloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'voorjaarsloon', omdat van"
+                        + " dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025), en 5 tot 01-03-2025 en 5"
+                        + " vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat de voorjaarsloon in de invoer"
+                        + " leeg was",
+                "J3 heeft als zomerloon 5 tot 01-03-2025 en 5 vanaf 01-06-2025 volgens de regel 'standaardzomerloon',"
+                        + " omdat de zomerloon in de invoer leeg was, en 20 van 01-03-2025 tot 01-06-2025 volgens de regel"
+                        + " 'zomerloon', omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025)",
+                "J3 heeft als wachtloon altijd 5 volgens de regel 'standaardwachtloon', omdat de wachtloon in de invoer"
+                        + " leeg was",
+                "J3 heeft als kustloon altijd 5 volgens de regel 'standaardkustloon', omdat de kustloon in de invoer"
+                        + " leeg was; de regel 'kustloon' gaf geen waarde en besliste niets",
+                "J3 heeft als havenloon altijd 5 volgens de regel 'standaardhavenloon', omdat de havenloon in de invoer"
+                        + " leeg was; de regel 'havenloon' gaf geen waarde en besliste niets",
+                "J3 heeft als stormloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'stormloon', omdat van dd."
+                        + " 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025), en 30 van 01-09-2025 tot"
+                        + " 01-11-2025 volgens de regel 'stormloon in de herfst', omdat van dd. 01-09-2025 tot dd."
+                        + " 01-11-2025 (van 01-09-2025 tot 01-11-2025); de regel 'standaardstormloon' gold op geen dag,"
+                        + " want niet geldt: hij stormwacht is (altijd leeg)"),
+                sentences(r.body()), r.body());
+    }
+
     /** case1 of jutterswet-creatie-per-dag: J1 has a strandloon of 10 from January to June, which the creation gives
      *  the made melding as its seizoensloon and aanvulloon. */
     private static final String CREATION_CASE1 = """
