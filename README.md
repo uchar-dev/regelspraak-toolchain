@@ -296,6 +296,15 @@ model declares) and the sentences of the messages, which keep their text. The ol
   naar-één-rol "haven" van "J1" heeft twee verschillende vullingen; …`), where it named its type (`van een Jutter`).
   The kind `OTHER` is gone: uchar's branch puts no fault at the fixpoint outside the types its README names
   (`Fault.KINDS`), and each has its own kind.
+- **Names as uchar's case reader reads them** (uchar's card `caselezer-zoals-ref` and IR-SPEC ch. 2.1): a name in a
+  request or a descriptor is compared as uchar's case reader compares it, a run of spaces and tabs as one space, A–Z
+  as a–z and every other character as written (`Namen.norm`), where the service compared case-insensitively and took
+  whitespace as written. `" vondst"` and `"Aangemelde  Vondsten"` name `Vondst` and `aangemelde vondsten`, where they
+  were a 400 `UNKNOWN_FIELD`; an output selector with a tab starts the service, where it refused the start; a capital
+  outside A–Z no longer folds (`COÖRDINAAT` names no `coördinaat`). A role written at an instance is read by its
+  declared name or declared plural, as uchar reads a role key; a plural the model does not declare is a 400
+  `UNKNOWN_FIELD`. The answer names an attribute or characteristic of `output` in its declared spelling, where it
+  repeated the spelling of the selector.
 
 ## The pin
 
@@ -366,12 +375,12 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (362). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   replay excludes a case, not a golden: a golden plays when every case the service carries plays. The numbers of
-  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 353; `EXPECTED_REPLAY_CASES`, 999); every case
-  that does not play is listed by golden and case file with its reason (11 cases of 10 goldens: 10 with a scalar on a
-  time-dependent attribute, which the request does not carry, and 1 with names in a whitespace that no declared name
-  has, a tab or two spaces, which uchar's case reader folds and the service does not), and every golden the service
-  does not start on by name (1, whose document holds an `Unresolved` node); a deviation always fails, and the list
-  fails when it goes stale in either direction. Every golden that plays is asked with
+  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 353; `EXPECTED_REPLAY_CASES`, 1000); every case
+  that does not play is listed by golden and case file with its reason (10 cases of 9 goldens, each with a scalar on a
+  time-dependent attribute, which the request does not carry), and every golden the service does not start on by name
+  (1, whose document holds an `Unresolved` node); a deviation always fails, and the list fails when it goes stale in
+  either direction. An attribute or characteristic of the answer is compared by its name under uchar's name equality
+  (`Namen.norm`), since the answer spells a name as declared and a case as it writes it. Every golden that plays is asked with
   `?explanation=true` as well, and an explanation the service does not give fails it. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
@@ -451,9 +460,11 @@ handboek`, `(handboek: totale premie)`; uchar's `spec/IR-SPEC.md` ch. 2.12). The
 rules are written and computed in the canonical names. The distribution uses them at the edge, as one service:
 
 - **Input is liberal.** A request may write every name — object type, attribute, characteristic, fact type, role,
-  parameter, enumeration value — canonically or as its designation in any vocabulary, mixed within one request,
-  case-insensitively, within the scope of the name (the members of an object type with the inherited ones, the roles
-  of a fact type, the values of a domain, the rest model-wide). A violation names its field as the request wrote it.
+  parameter, enumeration value — canonically or as its designation in any vocabulary, mixed within one request, as
+  uchar's case reader compares names (a run of spaces and tabs as one space, A–Z as a–z, every other character as
+  written; `Namen.norm`), within the scope of the name (the members of an object type with the inherited ones, the
+  roles of a fact type, the values of a domain, the rest model-wide). A role written at an instance is read by its
+  declared name or its declared plural. A violation names its field as the request wrote it.
   A name that reads as two different declarations is a 400 `AMBIGUOUS_NAME` whose sentence names both readings; the query parameter `inputVocabulary=<name>` pins
   the vocabulary the names are read in (`canonical` for the canonical names), which resolves it.
 - **Output is chosen.** `vocabulary=<name>` names the declarations of the answer, its inconsistencies and its

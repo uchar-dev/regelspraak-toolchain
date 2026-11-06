@@ -165,4 +165,37 @@ class NameReaderTest {
         assertEquals(Violation.Kind.UNKNOWN_FIELD, s.kind());
         assertEquals("onbekend attribuut 'schoenmaat' op objecttype 'Jutter'", s.message());
     }
+
+    /** Own material for the name equality of uchar's case reader ({@code Namen.norm}): a run of spaces and tabs is one
+     *  space, A–Z fold to a–z, and every other character stands as written, so the Ö of COÖRDINAAT does not fold. */
+    private static final String BUOY = """
+        Objecttype de Boei (mv: Boeien)
+            de coördinaat Numeriek (geheel getal);
+            de gemeten diepte Numeriek (geheel getal);
+
+        Regel gemeten diepte van een boei
+            geldig altijd
+                De gemeten diepte van een Boei moet berekend worden als de coördinaat van de Boei plus 1.
+        """;
+
+    @Test
+    void a_name_is_compared_as_uchar_case_reader_compares_names() {
+        // the output selector carries a tab and capitals; the service starts and answers in the declared spelling
+        DecisionCore core = DecisionCore.assemble("""
+            { "service": {"name":"boei","version":"1"},
+              "entrypoints": [ { "name":"diepte", "path":"diepte",
+                "scope": {"ruleNames": ["gemeten diepte van een boei"]},
+                "input": [" boei"], "output": ["BOEI.Gemeten\\tdiepte"] } ],
+              "parameters": {} }""", java.util.Map.of("boei.rgs", BUOY), CoreConfig.strict(),
+                Thread.currentThread().getContextClassLoader());
+        ObjectNode answer = core.process("diepte", VocabularySource.json("""
+            { "instances": [ { "type": "  BOEI", "id": "B1", "attributes": { "COöRDINAAT\\t ": 4 } } ] }"""));
+        assertEquals(5, instance(answer, "B1").at("/attributes/gemeten diepte").asInt(), answer.toString());
+
+        ServiceError f = assertThrows(ServiceError.class, () -> core.process("diepte", VocabularySource.json("""
+            { "instances": [ { "type": "Boei", "id": "B1", "attributes": { "COÖRDINAAT": 4 } } ] }""")));
+        Violation s = only(f);
+        assertEquals(Violation.Kind.UNKNOWN_FIELD, s.kind());
+        assertEquals("instances[0].attributes.COÖRDINAAT", s.field());
+    }
 }

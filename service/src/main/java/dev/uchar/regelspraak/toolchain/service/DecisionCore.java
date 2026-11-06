@@ -221,6 +221,7 @@ public final class DecisionCore {
         if (startErrors.isEmpty()) startErrors.addAll(DescriptorLoader.validate(descriptor, model, forms));
         if (!startErrors.isEmpty())
             throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
+        descriptor = DescriptorLoader.declared(descriptor, model);
 
         // 3. per entry point: the document of the forms its scope carries, built through uchar. What uchar does not
         //    carry — a refusal on the way, or a scoped rule that carries no form — is a marker of that entry point;
@@ -344,6 +345,7 @@ public final class DecisionCore {
         List<Violation> startErrors = DescriptorLoader.validate(descriptor, model, forms);
         if (!startErrors.isEmpty())
             throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
+        descriptor = DescriptorLoader.declared(descriptor, model);
 
         // one build: every entry point serves the whole document; beside it the build with readings when an entry
         // point explains

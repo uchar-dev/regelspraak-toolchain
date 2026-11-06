@@ -137,25 +137,6 @@ def cells_of(node, place):
                       for c in node["cells"]]}
 
 
-def whitespace_as_declared(case):
-    """Een NotExpressible bij de eerste naam van de case met witruimte die een gedeclareerde naam niet heeft: een tab,
-    twee spaties, of een spatie vooraan of achteraan. uchars caselezer vouwt die witruimte (Namen.norm, IR-SPEC ch.
-    2.1: een gedeclareerde naam is witruimte-gevouwen); de dienst leest een naam van het verzoek alleen
-    hoofdletterongevoelig, en weigert zo'n naam met UNKNOWN_FIELD, of start niet als een uitvoerselector haar
-    draagt."""
-    inp = case["input"]
-    names = list((inp.get("parameters") or {}).keys())
-    for i in inp["instances"]:
-        names.append(i["objectType"])
-        names += list((i.get("attributes") or {}).keys()) + list(i.get("characteristics") or [])
-        names += list((i.get("characteristicTimelines") or {}).keys()) + list((i.get("roles") or {}).keys())
-    names += [e[k] for e in case["expected"] for k in ("attribute", "characteristic") if k in e]
-    for name in names:
-        if " ".join(w for w in re.split(r"[ \t]+", name) if w) != name:
-            raise NotExpressible(f"een naam met witruimte die geen gedeclareerde naam heeft ({name!r}): uchars"
-                                 " caselezer vouwt haar, de dienst niet")
-
-
 def request_body(case):
     """Het verzoek van een casebestand."""
     v = {}
@@ -294,10 +275,17 @@ def canonical(segments, place):
     return out
 
 
+def by_name(members):
+    """De leden van het antwoord met hun naam onder norm, uchars naamgelijkheid van de caselezer: het antwoord spelt
+    een naam zoals gedeclareerd, een case zoals zij hem schrijft."""
+    return {norm(k): v for k, v in members.items()}
+
+
 def compare(case, answer):
     """Zet een Afwijking bij de eerste verwachting die het antwoord niet geeft. Dit leest het
     HTTP-antwoord zelf: uchars DroolsBackend.vergelijk oordeelt over een sessie in het geheugen, en
-    die gaat niet over de lijn; deze gate toetst wat de dienst stuurt."""
+    die gaat niet over de lijn; deze gate toetst wat de dienst stuurt. Een attribuut of kenmerk zoekt het op zijn
+    naam onder norm."""
     inst = {i["id"]: i for i in answer.get("instances", [])}
     inconsistencies = answer.get("inconsistencies")
     details = answer.get("inconsistencyDetails")
@@ -306,8 +294,8 @@ def compare(case, answer):
         place = f"verwachting {n} ({kind} {e.get('label', '')} {e.get('attribute', e.get('characteristic', ''))}" \
                 + (f" {e['labels']}" if "labels" in e else "") + ")"
         if kind in ("cellValue", "cellEmpty"):
-            attrs = inst.get(e["label"], {}).get("attributes", {})
-            cells = attrs.get(e["attribute"])
+            attrs = by_name(inst.get(e["label"], {}).get("attributes", {}))
+            cells = attrs.get(norm(e["attribute"]))
             if not isinstance(cells, dict) or not isinstance(cells.get("cells"), list):
                 raise Deviation(f"{place}: het antwoord geeft het attribuut niet als cellen: {cells}")
             # een label vergelijkt als naam; het antwoord spelt het zoals gedeclareerd
@@ -321,10 +309,10 @@ def compare(case, answer):
             elif not equal(e["value"], given, place):
                 raise Deviation(f"{place}: verwacht {json.dumps(e['value'])}, kreeg {given}")
         elif kind in ("attributeValue", "attributeEmpty"):
-            attrs = inst.get(e["label"], {}).get("attributes", {})
-            if e["attribute"] not in attrs:
+            attrs = by_name(inst.get(e["label"], {}).get("attributes", {}))
+            if norm(e["attribute"]) not in attrs:
                 raise Deviation(f"{place}: het antwoord noemt het attribuut niet")
-            given = attrs[e["attribute"]]
+            given = attrs[norm(e["attribute"])]
             if kind == "attributeEmpty":
                 if given is not None:
                     raise Deviation(f"{place}: verwacht leeg, kreeg {given}")
@@ -334,10 +322,10 @@ def compare(case, answer):
             elif not equal(e["value"], given, place):
                 raise Deviation(f"{place}: verwacht {json.dumps(e['value'])}, kreeg {given}")
         elif kind == "attributeTimeline":
-            attrs = inst.get(e["label"], {}).get("attributes", {})
-            if e["attribute"] not in attrs:
+            attrs = by_name(inst.get(e["label"], {}).get("attributes", {}))
+            if norm(e["attribute"]) not in attrs:
                 raise Deviation(f"{place}: het antwoord noemt het attribuut niet")
-            given = attrs[e["attribute"]]
+            given = attrs[norm(e["attribute"])]
             if given is not None and (not isinstance(given, dict) or not isinstance(given.get("timeline"), list)):
                 raise Deviation(f"{place}: het antwoord geeft het attribuut niet als tijdlijn: {given}")
             want = canonical(e["timeline"], place)
@@ -345,11 +333,11 @@ def compare(case, answer):
             if want != got:
                 raise Deviation(f"{place}: verwacht {want}, kreeg {got}")
         elif kind in ("characteristicPresent", "characteristicAbsent"):
-            characteristics = inst.get(e["label"], {}).get("characteristics", {})
-            if e["characteristic"] not in characteristics:
+            characteristics = by_name(inst.get(e["label"], {}).get("characteristics", {}))
+            if norm(e["characteristic"]) not in characteristics:
                 raise Deviation(f"{place}: het antwoord noemt het kenmerk niet")
-            if characteristics[e["characteristic"]] is not (kind == "characteristicPresent"):
-                raise Deviation(f"{place}: kreeg {characteristics[e['characteristic']]}")
+            if characteristics[norm(e["characteristic"])] is not (kind == "characteristicPresent"):
+                raise Deviation(f"{place}: kreeg {characteristics[norm(e['characteristic'])]}")
         elif kind == "consistent":
             if inconsistencies:
                 raise Deviation(f"{place}: kreeg inconsistenties {inconsistencies}")
@@ -648,7 +636,6 @@ def play(golden, map_, descriptor_path=None, explanation=False):
         requests = []
         for name, c in cases:
             try:
-                whitespace_as_declared(c)
                 requests.append((name, request_body(c), c))
             except NotExpressible as n:
                 excluded.append((f"{golden}/{name}", "EXCLUDE", str(n)))

@@ -215,9 +215,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 EXPECTED_REPLAY_PLAYED=353
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
-# de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve;
-# jutterswet-keurunie/case2-spelling.json staat hieronder.
-EXPECTED_REPLAY_CASES=999
+# de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
+# 1000: de dienst leest een naam zoals uchars caselezer (Namen.norm: spaties en tabs als één spatie, A-Z gevouwen), dus
+# jutterswet-keurunie/case2-spelling.json, met namen met een tab, twee spaties en een spatie vooraan, speelt.
+EXPECTED_REPLAY_CASES=1000
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
@@ -225,14 +226,10 @@ EXPECTED_REPLAY_CASES=999
 # tijdsafhankelijk attribuut: uchars replay legt die in de periode van de rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de
 # dienst weigert haar met een 400 UNSUPPORTED. Op een document met een Unresolved-knoop start de dienst niet: hij
 # weigert een onopgeloste naam als fout in de bron, waar uchar pas faalt als de evaluatie de knoop bereikt (WF-044).
-# Een naam met een tab, twee spaties of een spatie vooraan leest uchars caselezer als de gedeclareerde naam (Namen.norm,
-# sinds uchars kaart caselezer-zoals-ref); de dienst leest een naam van het verzoek en van een uitvoerselector alleen
-# hoofdletterongevoelig, dus de replay sluit zo'n case uit (service_replay.py, whitespace_as_declared).
 REPLAY_EXCLUDED=(
   "jutterswet-gevolg-buiten-de-beurt/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-gevolg-buiten-de-beurt-som/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-kadetarief/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-keurunie/case2-spelling.json|namen met een tab, twee spaties of een spatie vooraan: uchars caselezer vouwt die witruimte, de dienst leest een naam alleen hoofdletterongevoelig (UNKNOWN_FIELD)"
   "jutterswet-keurlast/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-muntbewaring/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-penningjaar/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"

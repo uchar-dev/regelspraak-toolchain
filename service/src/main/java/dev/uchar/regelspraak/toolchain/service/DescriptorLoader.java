@@ -6,8 +6,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.io.IOException;
 import java.nio.file.Files;
@@ -25,6 +27,9 @@ import java.util.Set;
  * <p>The parse is a Jackson bind to {@link ServiceDescriptor} (unknown fields ignored, so a descriptor may
  * carry doc-only keys); the numeric values under {@code parameters} are kept as raw {@link JsonNode}s and
  * decoded per-parameter datatype later by the request mapper — never as {@code double}.
+ *
+ * <p>A name of the model is found as uchar's case reader finds it ({@link #sameName}), and a descriptor that validates
+ * goes on in the declared spelling of its names ({@link #declared}).
  */
 public final class DescriptorLoader {
 
@@ -51,7 +56,35 @@ public final class DescriptorLoader {
         }
         List<Violation> s = validate(d, model);
         if (!s.isEmpty()) throw new ServiceError("descriptor valideert niet tegen het model", s);
-        return d;
+        return declared(d, model);
+    }
+
+    /** {@code d}, which {@link #validate} accepted against {@code model}, with every object type, attribute,
+     *  characteristic and parameter it names in its declared spelling: the lookups of the model the service goes on
+     *  with compare case-insensitively but take a run of spaces or a tab as written. */
+    static ServiceDescriptor declared(ServiceDescriptor d, RegelSpraakModel model) {
+        List<ServiceDescriptor.Entrypoint> eps = new ArrayList<>();
+        for (ServiceDescriptor.Entrypoint ep : d.entrypoints())
+            eps.add(new ServiceDescriptor.Entrypoint(ep.name(), ep.path(), ep.scope(),
+                    ep.input() == null ? null : ep.input().stream().map(o -> objectType(model, o).name).toList(),
+                    ep.output() == null ? null : ep.output().stream().map(u -> declaredSelector(model, u)).toList(),
+                    ep.inputElements() == null ? null
+                            : ep.inputElements().stream().map(u -> declaredSelector(model, u)).toList(),
+                    ep.scopeCheckOptOut(), ep.vocabulary(), ep.explanation()));
+        java.util.Map<String, JsonNode> parameters = null;
+        if (d.parameters() != null) {
+            parameters = new java.util.LinkedHashMap<>();
+            for (var e : d.parameters().entrySet()) parameters.put(parameter(model, e.getKey()).name(), e.getValue());
+        }
+        return new ServiceDescriptor(d.service(), eps, parameters, d.parameterSets());
+    }
+
+    /** The selector {@code sel}, which {@link #validateOutput} accepted, in the declared spelling of its names. */
+    private static String declaredSelector(RegelSpraakModel model, String sel) {
+        OutputSelector u = OutputSelector.parse(sel);
+        ObjectType ot = objectType(model, u.objectType());
+        return u.characteristic() ? ot.name + ":" + characteristic(ot, u.member()).name()
+                : ot.name + "." + attribute(ot, u.member()).name();
     }
 
     /** Collect every descriptor→model mismatch (no throwing) — the validation core, reused by tests. The rule
@@ -156,7 +189,7 @@ public final class DescriptorLoader {
                 sink.add(Violation.of(Violation.Kind.UNKNOWN_REFERENCE, field,
                         "onbekend kenmerk '" + u.member() + "' op objecttype '" + u.objectType() + "'"));
         } else {
-            if (ot.attribute(u.member()) == null)
+            if (attribute(ot, u.member()) == null)
                 sink.add(Violation.of(Violation.Kind.UNKNOWN_REFERENCE, field,
                         "onbekend attribuut '" + u.member() + "' op objecttype '" + u.objectType() + "'"));
         }
@@ -170,26 +203,34 @@ public final class DescriptorLoader {
     private static void answerable(RegelSpraakModel model, String sel, String field, List<Violation> sink) {
         OutputSelector u = OutputSelector.parse(sel);
         ObjectType ot = u == null ? null : objectType(model, u.objectType());
-        if (ot != null && !u.characteristic() && ot.attribute(u.member()) instanceof Datatype.SumType sum
-                && Markers.of(ot, u.member()) == null)
+        Designatable a = ot == null || u.characteristic() ? null : attribute(ot, u.member());
+        if (a != null && ot.attribute(a.name()) instanceof Datatype.SumType sum && Markers.of(ot, a.name()) == null)
             sink.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "attribuut '" + u.member() + "' op objecttype '"
                     + u.objectType() + "' heeft het sum type '" + sum.domain() + "', dat geen attribuut met markers is;"
                     + " het antwoord van de dienst heeft er geen vorm voor"));
-        if (ot == null || !u.characteristic() || !hasCharacteristic(ot, u.member())) return;
-        if (RequestMapper.isTemporalCharacteristic(ot, u.member()))
+        Designatable k = ot == null || !u.characteristic() ? null : characteristic(ot, u.member());
+        if (k == null) return;
+        if (RequestMapper.isTemporalCharacteristic(ot, k.name()))
             sink.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "kenmerk '" + u.member() + "' op objecttype '"
                     + u.objectType() + "' is tijdsafhankelijk; het antwoord van de dienst geeft een kenmerk als"
                     + " boolean en draagt geen perioden"));
     }
 
-    // ---- model lookups (case-insensitive on names, matching the resolver's own tolerance) ----
+    // ---- model lookups, by the name equality of uchar's case reader ----
+
+    /** Whether the written name {@code written} names the declared name {@code declared}: the name equality of uchar's
+     *  case reader ({@link Namen#norm}: a run of spaces and tabs as one space, A–Z as a–z, every other character as
+     *  written; uchar's IR-SPEC ch. 2.1). */
+    static boolean sameName(String declared, String written) {
+        return declared != null && written != null && Namen.norm(declared).equals(Namen.norm(written));
+    }
 
     static ObjectType objectType(RegelSpraakModel model, String name) {
         if (name == null) return null;
         ObjectType ot = model.objectTypes.get(name);
         if (ot != null) return ot;
         for (ObjectType o : model.objectTypes.values())
-            if (o.name.equalsIgnoreCase(name)) return o;
+            if (sameName(o.name, name)) return o;
         return null;
     }
 
@@ -198,17 +239,33 @@ public final class DescriptorLoader {
         RegelSpraakModel.Parameter p = model.parameters.get(name);
         if (p != null) return p;
         for (RegelSpraakModel.Parameter q : model.parameters.values())
-            if (q.name().equalsIgnoreCase(name)) return q;
+            if (sameName(q.name(), name)) return q;
         return null;
     }
 
-    /** IR-SPEC ch. 2.2: does {@code ot} OR an ancestor declare kenmerk {@code naam}? An inherited kenmerk is a
-     *  kenmerk of the subtype — a rule on the subtype assigns it, the generated bean carries its getter, and a
-     *  request may set it — so the own list alone answers "onbekend kenmerk" for a member that exists. The
-     *  model's own chain walk ({@link Objecttype#characteristicName}) is the authority; it is case-insensitive exactly
-     *  as the old own-list scan was. */
+    /** Attribute {@code name} of {@code ot} or an ancestor (IR-SPEC ch. 2.2) as a declaration, owned by the type that
+     *  declares it, nearest first; null when none does. */
+    static Designatable attribute(ObjectType ot, String name) {
+        if (ot == null || name == null) return null;
+        for (ObjectType t : ot.chain())
+            for (String a : t.attributes.keySet())
+                if (sameName(a, name)) return Designatable.attribute(t.name, a);
+        return null;
+    }
+
+    /** The characteristic twin of {@link #attribute}: an inherited characteristic is a characteristic of the subtype —
+     *  a rule on the subtype assigns it, the generated bean carries its getter, and a request may set it. */
+    static Designatable characteristic(ObjectType ot, String name) {
+        if (ot == null || name == null) return null;
+        for (ObjectType t : ot.chain())
+            for (String k : t.characteristics)
+                if (sameName(k, name)) return Designatable.characteristic(t.name, k);
+        return null;
+    }
+
+    /** Whether {@code ot} or an ancestor declares characteristic {@code name} ({@link #characteristic}). */
     static boolean hasCharacteristic(ObjectType ot, String name) {
-        return ot != null && ot.characteristicName(name) != null;
+        return characteristic(ot, name) != null;
     }
 
     /** The chain-closed kenmerk NAMES of {@code ot}, nearest declaration first — the list-shaped twin of
@@ -216,13 +273,13 @@ public final class DescriptorLoader {
      *  ({@link OpenApiEmitter}). It lives here so service/ walks the kenmerk chain in exactly one place; the
      *  attribuut side needs no twin because the model already ships {@link Objecttype#attributeMembers} (the
      *  kenmerken are a List, not a member-keyed map, so {@code opKetenKaart} does not cover them). A nearer
-     *  declaration wins and a name is listed once, matched case-insensitively like the lookups above. */
+     *  declaration wins and a name is listed once, matched as the lookups above match. */
     static List<String> characteristicMembers(ObjectType ot) {
         List<String> sink = new ArrayList<>();
         if (ot == null) return sink;
         for (ObjectType t : ot.chain())
             for (String k : t.characteristics)
-                if (sink.stream().noneMatch(g -> g.equalsIgnoreCase(k))) sink.add(k);
+                if (sink.stream().noneMatch(g -> sameName(g, k))) sink.add(k);
         return sink;
     }
 

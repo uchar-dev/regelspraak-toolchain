@@ -78,7 +78,8 @@ import java.util.Map;
  * violations.
  *
  * <p>Every name is read by a {@link NameReader}: canonical or a designation in any vocabulary of the model, unless
- * the request pins its input vocabulary. A name that reads as two declarations is a
+ * the request pins its input vocabulary, under the name equality of uchar's case reader, and the case carries the
+ * declared spelling of each object type, attribute, characteristic and role it read. A name that reads as two declarations is a
  * {@link Violation.Kind#AMBIGUOUS_NAME}; two names of one object that read as one declaration are
  * {@link Violation.Kind#MALFORMED}, since the service would otherwise keep one of the two values without saying so.
  * A violation names the field as the request spells it, and a declaration by its canonical name.
@@ -641,9 +642,9 @@ public final class RequestMapper {
 
     // ---- names and values read by the NameReader ----
 
-    /** A name read for the mapping: {@code naam} to go on with — the written name where it reads canonically, the
-     *  declaration's canonical name where only a designation reads it, null where nothing reads it (the caller
-     *  refuses it with its own sentence) — or {@code geweigerd} when its violation has been added. */
+    /** A name read for the mapping: {@code name} to go on with — the declaration's canonical name in its declared
+     *  spelling ({@link NameReader.Found}), null where nothing reads it (the caller refuses it with its own sentence)
+     *  — or {@code refused} when its violation has been added. */
     private record Read(String name, boolean refused) {
         static final Read REFUSED = new Read(null, true);
     }

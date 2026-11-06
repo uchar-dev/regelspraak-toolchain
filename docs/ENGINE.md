@@ -154,7 +154,12 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   and keeps its own spelling.
 - Names and vocabularies (README, "Vocabularies"). `NameReader` reads every name of a request canonically or as a
   designation in any vocabulary of the model (uchar's `RegelSpraakModel.namedElement`), within the scope of its kind,
-  case-insensitively and mixed; a name that reads as two declarations is a 400 `AMBIGUOUS_NAME` naming both
+  mixed, and with the name equality of uchar's case reader (`DescriptorLoader.sameName`, on uchar's `Namen.norm`: a run
+  of spaces and tabs as one space, A–Z as a–z, every other character as written); a role written at an instance by its
+  declared name or declared plural. The case the mapper writes carries the declared spelling of each object type,
+  attribute, characteristic and role, and the descriptor goes on in the declared spelling of its names
+  (`DescriptorLoader.declared`), so the answer names a member of `output` as declared. A name that reads as two
+  declarations is a 400 `AMBIGUOUS_NAME` naming both
   readings, and `?inputVocabulary=<name>` (or `canonical`) pins the vocabulary names are read in. A designation is
   read as the declaration's canonical name, an enumeration value as the declared value it names; the `field` of a
   violation names the field as the request wrote it (`relations[0].roles.AANMELDER`, `relations[0].roles.melder`),

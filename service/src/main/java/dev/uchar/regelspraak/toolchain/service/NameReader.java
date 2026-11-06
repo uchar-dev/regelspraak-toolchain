@@ -17,12 +17,14 @@ import java.util.function.Function;
 /**
  * Reads the names of a request. A name — an object type, an attribute, a characteristic, a fact type, a role, a
  * parameter, an enumeration value — may be its declaration's canonical name or its designation in any vocabulary the
- * model declares (IR-SPEC ch. 2.12), mixed within one request, compared case-insensitively, and it is read within the
+ * model declares (IR-SPEC ch. 2.12), mixed within one request, compared as uchar's case reader compares names
+ * ({@link DescriptorLoader#sameName}: a run of spaces and tabs as one space, A–Z as a–z), and it is read within the
  * scope of its kind, the scopes of uchar's WF-118: the attributes and the characteristics of an object type together
  * with the ones it inherits, the roles of a fact type, the values of the enumeration's domain, the other kinds
  * model-wide. A role written at an instance names no fact type, so it is read among the roles of the fact types the
- * instance's type takes part in. The canonical reading is the one the service always had; a designation is read
- * through uchar's reading entrance ({@link RegelSpraakModel#namedElement}).
+ * instance's type takes part in, by its declared name or its declared plural, as uchar's case reader reads a role key.
+ * A designation is read through uchar's reading entrance ({@link RegelSpraakModel#namedElement}), with the same name
+ * equality.
  *
  * <p>One declaration found is the reading. Two different ones — in two vocabularies, or a designation in one against a
  * canonical name — is {@link Ambiguous}: the service does not guess, and its sentence names both readings and asks
@@ -48,9 +50,10 @@ final class NameReader {
     /** The outcome of reading one name. */
     sealed interface Reading permits Found, Ambiguous, Unknown {}
 
-    /** The name read as {@code declaration}. {@code naam} is the name the service goes on with: the written name where
-     *  it reads canonically, so a canonical request is read exactly as before, and the declaration's canonical name
-     *  where only a designation reads it. */
+    /** The name read as {@code declaration}. {@code name} is the name the service goes on with: the declaration's
+     *  canonical name in its declared spelling (a role read by its declared plural: that plural), except an
+     *  enumeration value read canonically, which keeps its own spelling (the rules compare it as uchar compares
+     *  declared names). */
     record Found(Designatable declaration, String name) implements Reading {}
 
     /** The name reads as more than one declaration; {@code sentence} names each reading and asks for the vocabulary. */
@@ -65,21 +68,21 @@ final class NameReader {
             ObjectType ot = DescriptorLoader.objectType(model, name);
             if (ot != null) t.add(new Hit(Designatable.objectType(ot.name), CANONICAL));
         }
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.OBJECTTYPE, null, name));
+        vocabularies(t, v -> named(v, Designatable.Kind.OBJECTTYPE, null, name));
         return verdict(name, t);
     }
 
     Reading attribute(ObjectType ot, String name) {
         List<Hit> t = new ArrayList<>();
-        if (canonicalRead()) canonical(t, Naming.attributeOf(ot, name));
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ATTRIBUUT, ot.name, name));
+        if (canonicalRead()) canonical(t, DescriptorLoader.attribute(ot, name));
+        vocabularies(t, v -> named(v, Designatable.Kind.ATTRIBUUT, ot.name, name));
         return verdict(name, t);
     }
 
     Reading characteristic(ObjectType ot, String name) {
         List<Hit> t = new ArrayList<>();
-        if (canonicalRead()) canonical(t, Naming.characteristicOf(ot, name));
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.KENMERK, ot.name, name));
+        if (canonicalRead()) canonical(t, DescriptorLoader.characteristic(ot, name));
+        vocabularies(t, v -> named(v, Designatable.Kind.KENMERK, ot.name, name));
         return verdict(name, t);
     }
 
@@ -89,7 +92,7 @@ final class NameReader {
             RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, name);
             if (p != null) t.add(new Hit(Designatable.parameter(p.name()), CANONICAL));
         }
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.PARAMETER, null, name));
+        vocabularies(t, v -> named(v, Designatable.Kind.PARAMETER, null, name));
         return verdict(name, t);
     }
 
@@ -98,10 +101,11 @@ final class NameReader {
         if (canonicalRead()) {
             FactType ft = model.factTypes.get(name);
             if (ft == null)
-                for (FactType f : model.factTypes.values()) if (f.name.equalsIgnoreCase(name)) { ft = f; break; }
+                for (FactType f : model.factTypes.values())
+                    if (DescriptorLoader.sameName(f.name, name)) { ft = f; break; }
             if (ft != null) t.add(new Hit(Designatable.factType(ft.name), CANONICAL));
         }
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.FEITTYPE, null, name));
+        vocabularies(t, v -> named(v, Designatable.Kind.FEITTYPE, null, name));
         return verdict(name, t);
     }
 
@@ -110,25 +114,37 @@ final class NameReader {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead())
             for (Role r : ft.roles)
-                if (r.name().equalsIgnoreCase(name)) t.add(new Hit(Designatable.role(ft.name, r.name()), CANONICAL));
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ROL, ft.name, name));
+                if (DescriptorLoader.sameName(r.name(), name))
+                    t.add(new Hit(Designatable.role(ft.name, r.name()), CANONICAL));
+        vocabularies(t, v -> named(v, Designatable.Kind.ROL, ft.name, name));
         return verdict(name, t);
     }
 
     /** A role written at an instance of {@code ot}: a far role of a fact type {@code ot} takes part in, canonically by
-     *  its name, declared plural or best-effort plural, as uchar reads a written role. */
+     *  its name or its declared plural, as uchar's case reader reads a role key. */
     Reading roleFrom(ObjectType ot, String name) {
         List<Hit> t = new ArrayList<>();
         if (canonicalRead())
             for (FactType ft : model.factTypes.values())
                 for (Role r : ft.roles)
-                    if (RegelSpraakModel.roleNameMatches(r, name) && Naming.reachable(model, ft, r, ot)
-                            && model.objectTypeByName(r.objectTypeName()) != null)
+                    if ((DescriptorLoader.sameName(r.name(), name) || DescriptorLoader.sameName(r.plural(), name))
+                            && Naming.reachable(model, ft, r, ot) && model.objectTypeByName(r.objectTypeName()) != null)
                         t.add(new Hit(Designatable.role(ft.name, r.name()), CANONICAL));
         for (FactType ft : model.factTypes.values())
-            vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ROL, ft.name, name)
+            vocabularies(t, v -> named(v, Designatable.Kind.ROL, ft.name, name)
                     .filter(b -> reachable(ft, b.name(), ot)));
-        return verdict(name, t);
+        return verdict(name, t, b -> roleSpelling(b, name));
+    }
+
+    /** The declared form of role {@code b} that the written {@code name} names: its declared plural where it names that,
+     *  else its name. Two fact types may each declare a role of one name with a plural of its own, and the plural is
+     *  what tells the two apart. */
+    private String roleSpelling(Designatable b, String name) {
+        FactType ft = model.factTypes.get(b.owner());
+        if (ft != null)
+            for (Role r : ft.roles)
+                if (r.name().equals(b.name()) && DescriptorLoader.sameName(r.plural(), name)) return r.plural();
+        return b.name();
     }
 
     /** A value of enumeration {@code e}: canonically compared as uchar compares declared names ({@link Namen#norm}). */
@@ -138,7 +154,7 @@ final class NameReader {
             for (String w : e.values())
                 if (Namen.norm(w).equals(Namen.norm(name)))
                     t.add(new Hit(Designatable.enumerationValue(e.domain(), w), CANONICAL));
-        vocabularies(t, v -> model.namedElement(v, Designatable.Kind.ENUMERATIEWAARDE, e.domain(), name));
+        vocabularies(t, v -> named(v, Designatable.Kind.ENUMERATIEWAARDE, e.domain(), name));
         return verdict(name, t);
     }
 
@@ -178,15 +194,23 @@ final class NameReader {
 
     /** Whether two elements name one declaration: the same kind, owner and name under uchar's name identity. */
     static boolean same(Designatable a, Designatable b) {
-        return a.kind() == b.kind() && a.name().equalsIgnoreCase(b.name())
-                && (a.owner() == null ? b.owner() == null
-                    : b.owner() != null && a.owner().equalsIgnoreCase(b.owner()));
+        return a.kind() == b.kind() && DescriptorLoader.sameName(a.name(), b.name())
+                && (a.owner() == null ? b.owner() == null : DescriptorLoader.sameName(a.owner(), b.owner()));
     }
 
     // ---------------------------------------------------------------- the reading
 
     /** One reading of a name: the declaration and where it was read, {@link #CANONICAL} or a vocabulary. */
     private record Hit(Designatable declaration, String source) {}
+
+    /** The declaration of kind {@code kind} (within {@code owner}) whose effective name in vocabulary {@code v} is
+     *  {@code name} under {@link DescriptorLoader#sameName}. uchar's {@link RegelSpraakModel#namedElement} compares
+     *  case-insensitively and takes whitespace as written, so it is asked with the normalised name and its answer is
+     *  held to the name equality of uchar's case reader. */
+    private Optional<Designatable> named(String v, Designatable.Kind kind, String owner, String name) {
+        return model.namedElement(v, kind, owner, Namen.norm(name))
+                .filter(b -> DescriptorLoader.sameName(model.effectiveName(v, b), name));
+    }
 
     private boolean canonicalRead() {
         return pinned == null || pinned.equals(CANONICAL);
@@ -209,9 +233,15 @@ final class NameReader {
         return false;
     }
 
-    /** The readings of {@code naam} judged. Several canonical readings and nothing else is the refusal uchar's own
-     *  reading of a written role gives (a name two reachable roles answer to names neither), so it stays unknown. */
+    /** The readings of {@code name} judged, a canonical reading going on with the declared spelling of its declaration. */
     private Reading verdict(String name, List<Hit> hits) {
+        return verdict(name, hits, Designatable::name);
+    }
+
+    /** The readings of {@code naam} judged, a canonical reading going on with the declared spelling {@code spelling}
+     *  gives. Several canonical readings and nothing else is the refusal uchar's own reading of a written role gives (a
+     *  name two reachable roles answer to names neither), so it stays unknown. */
+    private Reading verdict(String name, List<Hit> hits, Function<Designatable, String> spelling) {
         List<Designatable> declarations = new ArrayList<>();
         List<List<String>> sources = new ArrayList<>();
         for (Hit t : hits) {
@@ -223,7 +253,8 @@ final class NameReader {
         if (declarations.isEmpty()) return new Unknown();
         if (declarations.size() == 1) {
             Designatable b = declarations.get(0);
-            return new Found(b, sources.get(0).contains(CANONICAL) ? name : b.name());
+            if (!sources.get(0).contains(CANONICAL)) return new Found(b, b.name());
+            return new Found(b, b.kind() == Designatable.Kind.ENUMERATIEWAARDE ? name : spelling.apply(b));
         }
         if (hits.stream().allMatch(t -> t.source().equals(CANONICAL))) return new Unknown();
         List<String> reads = new ArrayList<>();
