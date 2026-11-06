@@ -95,10 +95,12 @@ voorwaarden; de schending noemt de lezer met zijn soort (`objectcreatie`, `verde
   (`logs/c1-toka-without-declarations-DecisionCoreTest.txt`). Met de vijf `inputElements` uit het advies start hij; de
   reactor is groen (`logs/c1-reactor.log`: toolchain 194, service 498, service-quarkus 54 testgevallen, geen skip), met
   de golden-tests van de dienst (`GoldenOverHttpTest`, `GoldenOverQuarkusTest`) en de klassen die de descriptor laden.
-  De gouden TOKA-scenario's: zie (d).
+  De gouden TOKA-scenario's geven dezelfde uitkomsten: de manifestregel van (d) is die van vóór de kaart.
 - (c) `ScopeCompletenessTest.the_opt_outs_hold_for_a_consistency`: met `"inputElements": ["Jutter.bergdag"]` en met
   `"scopeCheckOptOut": true` start dezelfde descriptor. Geen code nodig: beide opt-outs zitten vóór de toets per vorm.
-- (d) `make gates`: zie het slot van deze Result.
+- (d) `make gates` GROEN op 21ade915f, de eindstand van de branch (`uchar-dev/werk/toolchain-cleanup/logs/gates-final.log`,
+  7 stappen in 6m26s): pin; reactor 197/502/57 testgevallen; twins 3 tweelingen, 18 cases; replay 338 goldens (pin 338),
+  968 cases (pin 968); manifest 32 regels, 29 ok, 3 uitgesloten, 0 mismatch; image; kind-smoke H2, H3, H4 PASS.
 
 Docs: `README.md` (de alinea over de scopetoets) en `docs/ENGINE.md` (wat elke soort leest, de lezers per soort, de
 vijf declaraties van de TOKA-descriptor) noemen alle soorten; de zin "The other forms a scope can carry … are not

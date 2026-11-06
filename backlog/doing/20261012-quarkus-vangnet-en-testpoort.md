@@ -48,6 +48,8 @@ Quarkus); `GET /info` evenzo, zoals `ServiceHttp`. De naad voor de test is de pa
   `QuarkusBindException: Port(s) already bound: 8081` (`logs/c3-red-port.log`); met de instelling is de hele reactor
   groen terwijl de poort bezet is (`logs/c3-reactor-port-held.log`: toolchain 197, service 501, service-quarkus 55,
   geen skip). Een bezetter op `*:8081` (IPv6) hinderde de oude instelling niet; de proef bezet daarom 127.0.0.1.
-- (c) `make gates`: zie het slot van deze Result.
+- (c) `make gates` GROEN op 21ade915f, de eindstand van de branch (`uchar-dev/werk/toolchain-cleanup/logs/gates-final.log`,
+  7 stappen in 6m26s): pin; reactor 197/502/57 testgevallen; twins 3 tweelingen, 18 cases; replay 338 goldens (pin 338),
+  968 cases (pin 968); manifest 32 regels, 29 ok, 3 uitgesloten, 0 mismatch; image; kind-smoke H2, H3, H4 PASS.
 
 Docs: `docs/ENGINE.md` noemt de 500 van beide adapters, met de stacktrace in de log.

@@ -54,7 +54,9 @@ gespeelde cases (`EXPECTED_REPLAY_CASES`, een gelijkheid).
   staan niet in REPLAY_EXCLUDED", na de proef herschreven tot deze zin), een case die speelt maar in de lijst staat
   faalt ("… wordt niet uitgesloten"), een golden buiten de set faalt, en een golden naast haar eigen case faalt. De
   tweelingen (`check-twins.sh`, dezelfde driver) blijven groen (`logs/c5-twins.log`).
-- (c) `make gates`: zie het slot van deze Result.
+- (c) `make gates` GROEN op 21ade915f, de eindstand van de branch (`uchar-dev/werk/toolchain-cleanup/logs/gates-final.log`,
+  7 stappen in 6m26s): pin; reactor 197/502/57 testgevallen; twins 3 tweelingen, 18 cases; replay 338 goldens (pin 338),
+  968 cases (pin 968); manifest 32 regels, 29 ok, 3 uitgesloten, 0 mismatch; image; kind-smoke H2, H3, H4 PASS.
 
 Docs: `README.md` (de replay-gate, de pinnen bij een pin-bump, de scalaire waarde: 10 cases van 9 goldens) en
 `CLAUDE.md` (de poortbeschrijving).

@@ -44,7 +44,9 @@ geschreven.
 - (b) `ErrorParityTest.a_role_written_in_capitals_is_the_field_as_written` (`"AANMELDER"`, tweede doel) en
   `…_as_a_designation_of_a_vocabulary_is_the_field_as_written` (`"melder"`): beide adapters geven dezelfde 400 met
   het veld zoals geschreven. De reactor is groen (`logs/c4-reactor.log`: toolchain 197, service 502, service-quarkus 57, geen skip).
-- (c) `make gates`: zie het slot van deze Result.
+- (c) `make gates` GROEN op 21ade915f, de eindstand van de branch (`uchar-dev/werk/toolchain-cleanup/logs/gates-final.log`,
+  7 stappen in 6m26s): pin; reactor 197/502/57 testgevallen; twins 3 tweelingen, 18 cases; replay 338 goldens (pin 338),
+  968 cases (pin 968); manifest 32 regels, 29 ok, 3 uitgesloten, 0 mismatch; image; kind-smoke H2, H3, H4 PASS.
 
 Docs: `docs/ENGINE.md` (namen en vocabulaires) en `README.md` ("Input is liberal") zeggen dat een schending haar veld
 noemt zoals het verzoek het schreef.

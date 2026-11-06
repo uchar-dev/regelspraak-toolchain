@@ -69,7 +69,9 @@ semantiek van uchar en de scenarioroute (uchars replay) veranderen niet.
   gebouwd document met drie Unresolved-knopen) speelt niet meer door de dienst. `service_replay.py` meldt een start
   die op een onopgeloste naam weigert als `EXCLUDE` met de weigering (gemeten: "EXCLUDE de dienst start niet op een
   onopgeloste naam: …"), `REPLAY_EXCLUDED` noemt de golden met reden, `EXPECTED_REPLAY_PLAYED` 338 → 337.
-- (c) `make gates`: zie het slot van deze Result.
+- (c) `make gates` GROEN op 21ade915f, de eindstand van de branch (`uchar-dev/werk/toolchain-cleanup/logs/gates-final.log`,
+  7 stappen in 6m26s): pin; reactor 197/502/57 testgevallen; twins 3 tweelingen, 18 cases; replay 338 goldens (pin 338),
+  968 cases (pin 968); manifest 32 regels, 29 ok, 3 uitgesloten, 0 mismatch; image; kind-smoke H2, H3, H4 PASS.
 
 Een technische keuze, vastgelegd: de dienst toetst de documenten die hij bouwt, dus de scope van elk entrypoint (uit
 bronnen) of het hele document. Een onopgeloste naam in een vorm die geen entrypoint draagt, wordt niet gebouwd en
