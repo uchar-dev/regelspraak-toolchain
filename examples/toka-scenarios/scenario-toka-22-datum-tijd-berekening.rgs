@@ -1,6 +1,6 @@
 // Golden TOKA scenario — toka-22 "Datum-tijd voor het berekenen van de belasting op
-// basis van afstand". Bron: TokaVuurTest.eerste_van_verwachte_en_daadwerkelijke_vertrektijd
-// (de eerste/vroegste van de verwachte en de daadwerkelijke datum-tijd van vertrek).
+// basis van afstand": de eerste/vroegste van de verwachte en de daadwerkelijke datum-tijd
+// van vertrek (de daadwerkelijke komt uit examples/toka-reconciliation/casus-omissies.rgs).
 // daadwerkelijke 09:30 ligt voor de verwachte 10:00 -> 09:30 wint.
 Situatie basis-22:
 een Vlucht V1

@@ -1,10 +1,12 @@
-// Golden marker scenario — de exit-3 MARKER-lezing (docs/SCENARIOTOETSEN.md "Exitcodes":
-// een scope-regel die de transpiler niet lowert is accepted-but-inert en mag NOOIT als PASS
-// lezen; de runner stript het marker-DRL-blok vóór compilatie en de dekking markeert de
-// scope-regel als MARKER -> status MARKER -> exit 3). Zelfstandig (geen TOKA-bestanden nodig):
-// een berekening met "het aantal dagen in de maand dat hij belast is" lowert schoon tot een
-// marker (geen resolve-fout, anders dan toka-23), dus de bundel resolvet OK en de runner
-// bereikt de MARKER-status. Spiegelt ScenarioRunnerTest.marker_scope, als golden-CLI-oefening.
+// Golden marker scenario — de exit-3 MARKER-lezing (README.md, de tabel bij bin/regelspraak,
+// `scenario`: exit 3 op een MARKER): een scope-regel die uchar niet draagt is accepted-but-
+// inert en mag NOOIT als PASS lezen; uchars backend weigert de regel ("transpiler SKIP: regel:
+// heffing markert — …"), het scenario krijgt status MARKER -> exit 3. Zelfstandig (geen
+// TOKA-bestanden nodig): een berekening met "het aantal dagen in de maand dat hij belast is"
+// resolvet zonder fout (anders dan toka-23), maar uchars Drools-tak rekent een dagentelling
+// alleen als de tijdlijn van een tijdsafhankelijk doel. Spiegelt ScenarioRunnerTest.marker_scope
+// (toolchain/src/test/java/dev/uchar/regelspraak/toolchain/engine/ScenarioRunnerTest.java),
+// als golden-CLI-oefening.
 Objecttype de Vlucht (mv: Vluchten)
     de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
     is belast kenmerk (bijvoeglijk) voor elke dag;

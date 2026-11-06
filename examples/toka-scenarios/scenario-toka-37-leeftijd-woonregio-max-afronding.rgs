@@ -1,8 +1,8 @@
 // Golden TOKA scenario — toka-37 "Verdeling treinmiles op basis van leeftijd, woonregio
-// factor, met maximum waarde en afronding". Bron: spec §9.7.5 Tabel 18 +
-// TokaVuurTest.verdeling_op_volgorde_met_maximum_en_afronding_tabel_18: contingent 1800,
-// op volgorde van (jongste) leeftijd, naar rato woonregio factor, met maximum en afronding
-// -> P1 500, P2 500, P3 433, P4 250, P5 91; onverdeelde rest 26.
+// factor, met maximum waarde en afronding". Bron: §9.7.5 Tabel 18 van de RegelSpraak-
+// specificatie: contingent 1800, op volgorde van (jongste) leeftijd, naar rato woonregio
+// factor, met maximum en afronding -> P1 500, P2 500, P3 433, P4 250, P5 91; onverdeelde
+// rest 26.
 Situatie basis-37:
 een Contingent treinmiles C1
 - het totaal aantal treinmiles is 1800

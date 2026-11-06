@@ -1,6 +1,6 @@
 // Golden TOKA scenario — toka-31 "Initialiseer te betalen belasting op initiele
-// belasting". Bron: TokaVuurTest.initialisatie_vult_wanneer_geen_berekening_geladen_is
-// (§9.6 initialisatie: leeg doel krijgt de initiele belasting). Parametergate: 'de
+// belasting" (§9.6 initialisatie: een leeg doel krijgt de initiele belasting; het
+// manifest laadt geen regel die de te betalen belasting berekent). Parametergate: 'de
 // initiele belasting' gezet op 25,00 -> te betalen belasting = 25,00.
 Situatie basis-31:
 een Natuurlijk persoon P1

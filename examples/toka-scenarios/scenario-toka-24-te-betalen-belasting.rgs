@@ -1,8 +1,7 @@
-// Golden TOKA scenario — toka-24 "Te betalen belasting van een passagier".
-// Bron: TokaVuurTest.belastingketen_afstand_naar_te_betalen_belasting (de deelstap
-// toka-24: te betalen = belasting op basis van afstand min de korting, minimaal 0,
-// afgerond op 0 decimalen naar beneden). Gegeven belasting op basis van afstand 60,00
-// en korting 10,00 -> 50,00. Parametergate: 'de korting bij gebruik niet-fossiele
+// Golden TOKA scenario — toka-24 "Te betalen belasting van een passagier" (de deelstap
+// van de belastingketen: te betalen = belasting op basis van afstand min de korting,
+// minimaal 0, afgerond op 0 decimalen naar beneden). Gegeven belasting op basis van
+// afstand 60,00 en korting 10,00 -> 50,00. Parametergate: 'de korting bij gebruik niet-fossiele
 // brandstof' gezet op 10,00 (Bedrag is eenheidloos: Numeriek getal met 2 decimalen).
 Situatie basis-24:
 een Natuurlijk persoon P1

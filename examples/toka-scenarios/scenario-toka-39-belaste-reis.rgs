@@ -1,6 +1,6 @@
 // Golden TOKA scenario — toka-39 "belaste reis".
-// Bron: §12 TOKA-casus / TokaVuurTest.belastingketen (een Vlucht is een belaste reis
-// indien 'bereikbaar per trein' van de vlucht gelijk is aan waar). Zet het Boolean-
+// Bron: §12 TOKA-casus (een Vlucht is een belaste reis indien 'bereikbaar per trein' van
+// de vlucht gelijk is aan waar). Zet het Boolean-
 // attribuut 'bereikbaar per trein' op waar -> belaste reis.
 Situatie basis-39:
 een Vlucht V1

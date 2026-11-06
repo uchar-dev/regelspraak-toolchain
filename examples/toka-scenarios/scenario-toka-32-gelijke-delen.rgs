@@ -1,6 +1,6 @@
 // Golden TOKA scenario — toka-32 "verdeling treinmiles in gelijke delen".
-// Bron: spec §9.7.1 (gelijke delen) + TokaVuurTest.verdeling_gelijke_delen_spec_971:
-// contingent 1000 over 2 rechthebbenden in gelijke delen -> 500 elk.
+// Bron: §9.7.1 van de RegelSpraak-specificatie (gelijke delen): contingent 1000 over
+// 2 rechthebbenden in gelijke delen -> 500 elk.
 Situatie basis-32:
 een Contingent treinmiles C1
 - het totaal aantal treinmiles is 1000

@@ -58,3 +58,40 @@ uitkomst. De 47 fragmenten in `examples/toka/*.rgs` blijven byte-gelijk aan ucha
 
 Klein. May touch: het commentaar in `examples/toka-scenarios/` en `examples/toka-reconciliation/README.md`. Niet:
 `examples/toka/*.rgs` en `uchar/`.
+
+## Result
+
+*Gebouwd op 2026-11-06 in de branch `card/scope-check-and-cleanup`. Logs in `uchar-dev/werk/toolchain-cleanup/logs/`.*
+
+Alleen commentaar en README-tekst in de 13 bestanden (12 in `examples/toka-scenarios/`, `examples/toka-reconciliation/README.md`).
+De verwijzingen wijzen nu naar wat bestaat: `make scenario-test` als stap 5 van `make gates` (README "The gates") en
+`scripts/toka-manifest-exclusions.txt` voor het manifest; de exitcodes van de scenarioroute in de tabel bij
+`bin/regelspraak` (`scenario`) in `README.md`; de scenariolaag in uchar `frontends/regelspraak/grammar/DIVERGENCES.md`,
+"Scenariotoetsen"; de omissies in `docs/historical/grammar-divergences.md`, "TOKA casus omissions"; de klassen die de
+reconciliatie laden met hun pad (`FactModelCliTest`, `TokaSource`, naast `make facts` en het manifest); uchars
+`CasusTest` met zijn pad in de submodule; `ScenarioRunnerTest.marker_scope` met zijn pad. Een "Bron: TokaVuurTest.…"
+werd de beschrijving van de berekening zelf, of de paragraaf van de RegelSpraak-specificatie die er al naast stond
+("main-spec" werd "de RegelSpraak-specificatie").
+
+Zinnen over de vroegere runner beschrijven nu het gemeten gedrag (`uchar-dev/werk/toolchain-cleanup/c6/`):
+`scenario-marker-exit3.rgs` krijgt MARKER met exit 3 omdat uchars backend de regel weigert ("transpiler SKIP: regel:
+heffing markert — een BuiltinCall dayCount …", `marker-exit3-before.log`), niet omdat een runner een DRL-blok stript;
+toka-23 resolvet niet ("date ± date is ill-formed", exit 1, `toka23-before.log`) en is een van de twee fouten die
+uchars `CasusTest` verwacht (naast toka-45; de tekst zei "de enige"); het manifest zegt dat een scope het document van
+het scenario tot de vormen van die scope beperkt (de zin "Alle geladen regels compileren en vuren; de scope bepaalt
+alleen dekking/marker" was de vroegere runner); de model-extensie noemt wat er zonder haar gebeurt, gemeten:
+"het objecttype 'Vlucht' kent geen kenmerk 'in het hoogseizoen'", exit 1 (`toka26-without-extension.log`).
+
+- (a) `grep -nE 'docs/SCENARIOTOETSEN|docs/grammar-divergences|verify-corpus|TokaVuurTest|TokaDekkingTest|main-spec'`
+  over beide mappen: leeg. Elke andere verwijzing in alle bestanden van beide mappen naar een bestand, target of
+  testklasse bestaat (`logs/c6-references.log`): `bin/regelspraak`, `docs/historical/grammar-divergences.md`,
+  `examples/toka`, `examples/toka-reconciliation`, `examples/toka-reconciliation/casus-omissies.rgs`,
+  `examples/toka-scenarios/manifest`, `scripts/toka-manifest-exclusions.txt`,
+  `service/src/test/java/dev/uchar/regelspraak/toolchain/service/TokaSource.java`,
+  `toolchain/src/test/java/dev/uchar/regelspraak/toolchain/cli/FactModelCliTest.java`,
+  `toolchain/src/test/java/dev/uchar/regelspraak/toolchain/engine/ScenarioRunnerTest.java` (met `marker_scope`),
+  `uchar/frontends/regelspraak/grammar/DIVERGENCES.md`, `uchar/toka/src/test/java/dev/uchar/regelspraak/CasusTest.java`,
+  uchars `toka/casus/*.rgs`, en de targets `make facts`, `make gates`, `make scenario-test`. (De vier regels MISSING in
+  dat log zijn vangsten van het meetscript zelf: `X.java` gelezen als methode `java`, en uchars pad zonder `uchar/`.)
+- (b) `cmp` van `examples/toka/*.rgs` met `uchar/toka/casus/*.rgs`: 47 van 47 gelijk (`logs/c6-cmp.log`).
+- (c) `make gates`: zie het slot van deze Result.

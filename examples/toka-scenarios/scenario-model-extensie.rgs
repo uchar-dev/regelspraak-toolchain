@@ -1,10 +1,16 @@
 // Golden-scenario model-extensie — the casus-omission the golden set needs on top of
-// examples/toka-reconciliation/casus-omissies.rgs. Kept SEPARATE from the reconciliatie
-// file so TokaVuurTest / TokaDekkingTest stay byte-identical (they never load this).
+// examples/toka-reconciliation/casus-omissies.rgs, which lists the five omissions of the
+// casus's own rules (docs/historical/grammar-divergences.md, "TOKA casus omissions"). Both
+// are companions of every line of examples/toka-scenarios/manifest and part of the TOKA
+// model foundation that `make facts`, FactModelCliTest
+// (toolchain/src/test/java/dev/uchar/regelspraak/toolchain/cli/FactModelCliTest.java) and
+// the service's TOKA set (service/src/test/java/dev/uchar/regelspraak/toolchain/service/TokaSource.java)
+// load.
 //
 // toka-26 "Hoogseizoen" assigns the kenmerk "in het hoogseizoen" to a Vlucht, but the
 // casus object model (toka-02) never declares it — exactly the kind of undeclared member
 // examples/toka-reconciliation supplies for other rules. Without the declaration the
-// FactModelGenerator bean has no isInHetHoogseizoen field and the lowered DRL cannot bind.
+// scenario of toka-26 does not resolve ("het objecttype 'Vlucht' kent geen kenmerk 'in het
+// hoogseizoen'").
 Extensie van objecttype de Vlucht
     is in het hoogseizoen kenmerk (bijvoeglijk);

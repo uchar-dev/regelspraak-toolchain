@@ -1,7 +1,7 @@
 // Golden TOKA scenario — toka-45 "belasting op basis van afstand" (§4.2 geldig vanaf 2018).
-// Bron: TokaVuurTest.belastingketen_afstand_naar_te_betalen_belasting: X = lage basistarief
-// eerste schijf = 100,00; Y = lage tarief vermindering eerste schijf (0,20) maal afstand in
-// km (200) = 40,00 -> belasting op basis van afstand = X min Y = 60,00. De regel geldt vanaf
+// De eerste stap van de belastingketen: X = lage basistarief eerste schijf = 100,00;
+// Y = lage tarief vermindering eerste schijf (0,20) maal afstand in km (200) = 40,00
+// -> belasting op basis van afstand = X min Y = 60,00. De regel geldt vanaf
 // 2018; peildatum 01-01-2024 opent het venster. Voorwaarden: belaste reis, band-kenmerk
 // (passagier van 25 tot en met 64 jaar), 0 < afstand <= bovengrens (500 km), X-Y >= 0.
 Situatie basis-45:
