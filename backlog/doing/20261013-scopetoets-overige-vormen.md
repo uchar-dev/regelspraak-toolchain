@@ -74,3 +74,32 @@ veranderen alleen de docs.
 
 Klein tot middel. May touch: `service/` (`DecisionCore`, `Violation`, de tests), `service-quarkus/` voor de pariteit,
 `examples/toka/toka.service.json`, `README.md` en `docs/ENGINE.md`. Niet: `examples/toka/*.rgs` en `uchar/`.
+
+## Result
+
+*Gebouwd op 2026-11-06 in de branch `card/scope-check-and-cleanup` (van toolchain `main` d2064ab5f, pin uchar
+50f179535). Het besluit is **voorlopig**: optie 1 uit het Fable-advies van 2026-11-06 (`werk/norm-advice-2026-11-06/ADVIES.md`,
+vraag B); de eigenaar kan het omdraaien. Logs in `uchar-dev/werk/toolchain-cleanup/logs/`.*
+
+`DecisionCore.scopeCompleteness` toetst nu elke soort die `ProducerConsumer.forms` geeft, onder dezelfde drie
+voorwaarden; de schending noemt de lezer met zijn soort (`objectcreatie`, `verdeling`, `consistentie`, `uniciteit`,
+`feitcreatie`, naast `regel` en `defaults-groep`). De zinnen voor regels en groepen zijn ongewijzigd.
+
+- (a) Rood eerst: `ScopeCompletenessTest.a_consistency_reading_what_only_a_rule_outside_the_scope_writes_refuses_start`
+  (de vorm van x01d: de consistentie `bergdagcontrole` leest `bergdag`, alleen de regel `bepaal bergdag` buiten de scope
+  schrijft het). Op de oude code: "Expected ServiceError to be thrown, but nothing was thrown", de dienst start
+  (`logs/c1-red.log`). Erna: één `INCOMPLETE_SCOPE`, "consistentie 'bergdagcontrole' in entrypoint 'bergdagcontrole' leest
+  attribuut 'bergdag' … [bepaal bergdag] …" (`logs/c1-green-without-descriptor.log`).
+- (b) Zonder declaraties weigert de TOKA-descriptor de start met precies zeven schendingen in vijf entrypoints, alle bij
+  een verdeling: `woonregio factor` op alle vijf, `leeftijd` op de twee die op leeftijd ordenen
+  (`logs/c1-toka-without-declarations-DecisionCoreTest.txt`). Met de vijf `inputElements` uit het advies start hij; de
+  reactor is groen (`logs/c1-reactor.log`: toolchain 194, service 498, service-quarkus 54 testgevallen, geen skip), met
+  de golden-tests van de dienst (`GoldenOverHttpTest`, `GoldenOverQuarkusTest`) en de klassen die de descriptor laden.
+  De gouden TOKA-scenario's: zie (d).
+- (c) `ScopeCompletenessTest.the_opt_outs_hold_for_a_consistency`: met `"inputElements": ["Jutter.bergdag"]` en met
+  `"scopeCheckOptOut": true` start dezelfde descriptor. Geen code nodig: beide opt-outs zitten vóór de toets per vorm.
+- (d) `make gates`: zie het slot van deze Result.
+
+Docs: `README.md` (de alinea over de scopetoets) en `docs/ENGINE.md` (wat elke soort leest, de lezers per soort, de
+vijf declaraties van de TOKA-descriptor) noemen alle soorten; de zin "The other forms a scope can carry … are not
+checked" en het TOKA-commentaar in `DecisionCore` zijn weg. `examples/toka/*.rgs` zijn niet aangeraakt.

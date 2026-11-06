@@ -427,8 +427,9 @@ golden TOKA scenarios (listed with their reasons in `scripts/toka-manifest-exclu
 The decision service serves a descriptor over `.rgs` sources or over one `uchar-ir-v1` document; `docs/ENGINE.md`
 describes its routes, its MARKER answer and the dev-only playground. A scope that names a base rule also carries the
 groups uchar makes of the own exceptions of its subtypes (`<basis> voor <subtype>`), and a scope that names such a group
-carries its base. It checks every scope at the start: a rule or a defaults group in the scope that reads an attribute or
-characteristic only forms outside the scope write refuses the start, naming the reader (for a group the default that
+carries its base. It checks every scope at the start: a form in the scope (a rule, a defaults group, an object creation,
+an allocation, a consistency, a uniqueness or a fact creation) that reads an attribute or characteristic only forms
+outside the scope write refuses the start, naming the reader by its kind and name (for a group also the default that
 reads, by its text and path), unless the entry point declares that element in `inputElements` or sets
 `scopeCheckOptOut`.
 

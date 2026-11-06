@@ -91,21 +91,24 @@ start.
 
 At the start the core also checks that each scope uchar carries is complete. It reads the forms of the entry point's
 KieBase as uchar's rule graph reads them (`ProducerConsumer.forms`): of a rule its condition and value, of a defaults
-group the justification and consequence of every default, nested exceptions included, over roles as well. An attribute
-or characteristic a rule or a defaults group of the scope reads, which forms outside the scope write and none inside,
-refuses the start (`INCOMPLETE_SCOPE`, exit 1). The violation names the reader — a rule, the group of the rule a tree
-of exceptions hangs on (or of a member of an `Uitzonderingen ongeordend` block), or a group uchar generates by its
-name (`opgave boven berekening X` for the opgave marker, `X voor S` for the own exceptions of a subtype S) — the
-element and its writers. For a group it also names each default that reads the element, from uchar's walk per default
+group the justification and consequence of every default, nested exceptions included, of an object creation its
+condition and assigned values, of an allocation its source, its ratio, maximum and ordering attributes and its
+condition, of a consistency its assertion, of a uniqueness its key attributes and of a fact creation its condition,
+over roles as well. An attribute or characteristic a form of the scope reads (a rule, a defaults group, an object
+creation, an allocation, a consistency, a uniqueness or a fact creation), which forms outside the scope write and none
+inside, refuses the start (`INCOMPLETE_SCOPE`, exit 1). The violation names the reader by its kind and name — a rule,
+the group of the rule a tree of exceptions hangs on (or of a member of an `Uitzonderingen ongeordend` block), a group
+uchar generates (`opgave boven berekening X` for the opgave marker, `X voor S` for the own exceptions of a subtype S),
+an `objectcreatie`, a `verdeling`, a `consistentie`, a `uniciteit` or a `feitcreatie` — the element and its writers. For a group it also names each default that reads the element, from uchar's walk per default
 (`ProducerConsumer.readings`): the part that reads with its source text and the default's path in the group, as in
 "in de rechtvaardiging 'zijn bergdag later is dan 01-06-2026' van default [0]" ([0] the highest default, [i, g, j] the
 j-th default of exception group g of default i). An element no form writes is request input. A cell of a dimensioned
 attribute is an element of its own, as uchar's rule graph keys it (`vondstgewicht[najaar]`, `ProducerConsumer.cellOf`).
 Two opt-outs per entry point: `inputElements`
 declares an element the caller supplies, a dimensioned attribute each of its cells, and `scopeCheckOptOut: true`
-waives the check (the replay gate sets it). The
-other forms a scope can carry (object creations, allocations, consistencies, uniquenesses, fact creations) are not
-checked.
+waives the check (the replay gate sets it). The five allocation entry points of `examples/toka/toka.service.json`
+declare `Natuurlijk persoon.woonregio factor`, and the two that order by age also `Natuurlijk persoon.leeftijd`: the
+TOKA scenarios supply both as input.
 
 ```
 bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json> [--allow-markers] [--detail] [--host H]

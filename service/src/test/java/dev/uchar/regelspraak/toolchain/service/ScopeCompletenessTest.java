@@ -120,4 +120,49 @@ class ScopeCompletenessTest {
                 Map.of("cel.rgs", source), CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
         assertTrue(core.entrypoint("jaargewicht") != null);
     }
+
+    /** A consistency reads as a rule does: with the writer of 'bergdag' outside the scope, the scoped build would
+     *  check an empty 'bergdag' and report every Jutter inconsistent, where the full source reports none. */
+    private static final String CONSISTENCY_SOURCE = """
+        Objecttype de Jutter (mv: Jutters) (bezield)
+            de vinddatum Datum in dagen;
+            de aanmelddatum Datum in dagen;
+            de bergdag Datum in dagen;
+        Regel bepaal bergdag
+        geldig altijd
+        De bergdag van een Jutter moet berekend worden als de vinddatum van de Jutter plus 2 dagen.
+        Regel bergdagcontrole
+        geldig altijd
+        De bergdag van een Jutter moet later of gelijk zijn aan de aanmelddatum van de Jutter.
+        """;
+
+    private static String consistencyDescriptor(String extra) {
+        return """
+            { "service": {"name":"consistentie","version":"1"},
+              "entrypoints": [ { "name":"bergdagcontrole","path":"bergdagcontrole",
+                "scope": {"ruleNames": ["bergdagcontrole"]},
+                "input": ["Jutter"], "output": []%s } ],
+              "parameters": {} }""".formatted(extra);
+    }
+
+    private static DecisionCore consistencyCore(String extra) {
+        return DecisionCore.assemble(consistencyDescriptor(extra), Map.of("consistentie.rgs", CONSISTENCY_SOURCE),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+    }
+
+    @Test
+    void a_consistency_reading_what_only_a_rule_outside_the_scope_writes_refuses_start() {
+        ServiceError f = assertThrows(ServiceError.class, () -> consistencyCore(""));
+        assertTrue(f.violations().size() == 1 && f.violations().get(0).kind() == Violation.Kind.INCOMPLETE_SCOPE,
+                f.violations().toString());
+        String message = f.violations().get(0).message();
+        assertTrue(message.startsWith("consistentie 'bergdagcontrole' in entrypoint 'bergdagcontrole' leest attribuut"
+                + " 'bergdag'") && message.contains("[bepaal bergdag]"), message);
+    }
+
+    @Test
+    void the_opt_outs_hold_for_a_consistency() {
+        assertTrue(consistencyCore(", \"inputElements\": [\"Jutter.bergdag\"]").entrypoint("bergdagcontrole") != null);
+        assertTrue(consistencyCore(", \"scopeCheckOptOut\": true").entrypoint("bergdagcontrole") != null);
+    }
 }

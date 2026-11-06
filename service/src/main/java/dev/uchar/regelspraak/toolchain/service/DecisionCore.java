@@ -483,8 +483,11 @@ public final class DecisionCore {
     /**
      * The scope-completeness violations for one entry point (decision: fail-fast, opt-out per entrypoint). It reads
      * the forms the entry point's KieBase carries — {@code scoped}, the model of its scope — as uchar's rule graph
-     * reads them: of a rule the kenmerken/attributen its voorwaarde and value read, of a defaults group those the
-     * justification and consequence of every default read, nested exception groups included. A read element is a
+     * reads them, every kind alike: of a rule the kenmerken/attributen its voorwaarde and value read, of a defaults
+     * group those the justification and consequence of every default read, nested exception groups included, and of
+     * an object creation, an allocation, a consistency, a uniqueness and a fact creation what {@link
+     * ProducerConsumer#forms} gives as its reads (an allocation its source, its ratio, maximum and ordering
+     * attributes and its condition, a consistency its assertion). A read element is a
      * violation iff (a) some form in {@code producers} WRITES it, (b) NONE of those producers is in this entry
      * point's scope, and (c) the element is not a declared {@code inputElements} (the caller then supplies the
      * value, so the missing producer is intentional). Elements with no producer at all are genuine request inputs,
@@ -534,11 +537,12 @@ public final class DecisionCore {
                 case DEFAULTS_GROUP -> written.contains(CaseEmitter.norm(v.name()))
                         ? "defaults-groep van regel '" + v.name() + "'"
                         : "gegenereerde defaults-groep '" + v.name() + "'";
-                // The other forms read as well, but are not held to it: five entry points of
-                // examples/toka/toka.service.json scope an allocation without the writers of what it reads.
-                case OBJECT_CREATION, ALLOCATION, CONSISTENCY, UNIQUENESS, FACT_CREATION -> null;
+                case OBJECT_CREATION -> "objectcreatie '" + v.name() + "'";
+                case ALLOCATION -> "verdeling '" + v.name() + "'";
+                case CONSISTENCY -> "consistentie '" + v.name() + "'";
+                case UNIQUENESS -> "uniciteit '" + v.name() + "'";
+                case FACT_CREATION -> "feitcreatie '" + v.name() + "'";
             };
-            if (reader == null) continue;
             List<ProducerConsumer.DefaultRead> reads = null;
             for (ElementKey consumed : v.reads()) {
                 java.util.Set<String> writers = producers.get(consumed);
