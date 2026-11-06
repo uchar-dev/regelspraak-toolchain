@@ -76,3 +76,8 @@ semantiek van uchar en de scenarioroute (uchars replay) veranderen niet.
 Een technische keuze, vastgelegd: de dienst toetst de documenten die hij bouwt, dus de scope van elk entrypoint (uit
 bronnen) of het hele document. Een onopgeloste naam in een vorm die geen entrypoint draagt, wordt niet gebouwd en
 weigert de start niet; een verzoek kan die vorm niet bereiken, en `check` toetst de hele bron.
+
+### Landing (hoofdsessie, 2026-11-06)
+
+Geland na `make gates` op `21ade915f` (7 stappen groen). De technische keuze hierboven (de dienst toetst de documenten
+die hij bouwt) is aanvaard: een vorm buiten elke scope kan geen verzoek bereiken, en `check` toetst de hele bron.

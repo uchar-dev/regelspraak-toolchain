@@ -105,3 +105,8 @@ voorwaarden; de schending noemt de lezer met zijn soort (`objectcreatie`, `verde
 Docs: `README.md` (de alinea over de scopetoets) en `docs/ENGINE.md` (wat elke soort leest, de lezers per soort, de
 vijf declaraties van de TOKA-descriptor) noemen alle soorten; de zin "The other forms a scope can carry … are not
 checked" en het TOKA-commentaar in `DecisionCore` zijn weg. `examples/toka/*.rgs` zijn niet aangeraakt.
+
+### Landing (hoofdsessie, 2026-11-06)
+
+Geland na `make gates` op `21ade915f` (7 stappen groen), met het voorlopige besluit optie 1 (Fable-advies
+2026-11-06); de eigenaar kan het omdraaien.
