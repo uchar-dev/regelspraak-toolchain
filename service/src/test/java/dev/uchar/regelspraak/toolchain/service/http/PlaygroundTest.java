@@ -162,6 +162,24 @@ class PlaygroundTest {
         assertFalse(a.has("coverage"), a.toString());
     }
 
+    @Test
+    void a_name_bound_to_no_declaration_is_not_executable_and_named() {
+        // resolves with a warning and an Unresolved node in the document, which the build refuses as the service does
+        ObjectNode a = Playground.analyze("""
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+                is kind kenmerk;
+            Regel bijvoeglijk
+                geldig altijd
+                    Een passagier is kind indien hij een minderjarig is.
+            """);
+        assertTrue(a.get("resolver").get("ok").asBoolean() && a.has("ir"), a.toString());
+        assertFalse(a.get("executable").asBoolean(), a.toString());
+        assertEquals("onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk', bronregel 6",
+                a.get("refusal").asText(), a.toString());
+        assertEquals(a.get("refusal").asText(), a.get("drlError").asText(), a.toString());
+    }
+
     // ---------------- shape 4: scenario outcome ----------------
 
     @Test

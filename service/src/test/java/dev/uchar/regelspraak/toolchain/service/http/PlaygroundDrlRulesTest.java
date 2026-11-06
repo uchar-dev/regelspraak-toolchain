@@ -544,7 +544,8 @@ class PlaygroundDrlRulesTest {
             DroolsBackend.Build build;
             try {
                 build = UcharBuild.assemble(ir, DroolsBackend.Branch.DRL_TEXT);
-            } catch (UcharBuild.NotCarried n) {
+            } catch (UcharBuild.NotCarried | UcharBuild.UnresolvedName n) {
+                // the distribution builds neither a refusal of uchar nor a document with an Unresolved node
                 continue;
             }
             built++;
@@ -851,7 +852,8 @@ class PlaygroundDrlRulesTest {
             DroolsBackend.Build build;
             try {
                 build = UcharBuild.assemble(ir, DroolsBackend.Branch.DRL_TEXT);
-            } catch (UcharBuild.NotCarried n) {
+            } catch (UcharBuild.NotCarried | UcharBuild.UnresolvedName n) {
+                // the distribution builds neither a refusal of uchar nor a document with an Unresolved node
                 continue;
             }
             built++;

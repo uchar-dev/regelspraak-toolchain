@@ -8,7 +8,6 @@ import dev.uchar.regelspraak.engine.ScenarioResult.ExpectationResult;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
-import dev.uchar.regelspraak.transpiler.tms.ComputeFault;
 import org.junit.jupiter.api.Test;
 import org.kie.api.runtime.KieSession;
 
@@ -1598,10 +1597,9 @@ class ScenarioOracleTest {
     /** FACET kenmerktoekenning (zelfstandig kenmerk uit een ander zelfstandig kenmerk). Lifted from
      *  DroolsExecutionTest.membership_eenvorm_kenmerkcheck_bindt_alleen_een_zelfstandig_kenmerk (L4988): student → kind.
      *  The Java-API leg builds the model without the een-form over the bijvoeglijk kenmerk (rule bijvoeglijk), and the
-     *  scenario, scoped to zelfstandig, carries only its own rule. Until uchar b536bbc9 the exec-model branch refused
-     *  rule bijvoeglijk, which the test asserted. The truth-maintenance branch lowers its unresolved condition to a
-     *  rule whose evaluation faults (WF-044), and the last leg asserts that fault on the whole model, in the Java-API
-     *  leg and in uchar's replay of the same input. */
+     *  scenario, scoped to zelfstandig, carries only its own rule. On the whole model, with rule bijvoeglijk, the
+     *  Java-API leg is refused at the build for its unresolved condition ({@link UcharBuild.UnresolvedName}), and
+     *  uchar's replay of the same input faults at the evaluation (WF-044). */
     @Test void characteristic_nominal_from_characteristic() throws Exception {
         String declarations = """
             Objecttype de Passagier
@@ -1637,14 +1635,12 @@ class ScenarioOracleTest {
         assertTrue(ground, "scenario == java-api");
 
         // rule bijvoeglijk, the een-form over the bijvoeglijk kenmerk: the written name binds no characteristic and no
-        // role of the subject, so the resolver leaves the condition unresolved, with a warning, and the truth-maintenance
-        // branch lowers it to a rule whose evaluation faults (WF-044) where the old branch refused the rule. The whole
-        // model builds, and the Java-API leg gives the fault uchar's replay gives on the same input.
-        World complete = world(model);
-        Object minderjarige = complete.newInstance("Passagier");
-        complete.characteristic(minderjarige, "setStudent", false); complete.characteristic(minderjarige, "setMinderjarig", true);
-        ComputeFault error = assertThrows(ComputeFault.class, () -> fire(complete, minderjarige));
-        assertEquals("fout in de regel \"bijvoeglijk\": Unresolved condition reached in evaluation", error.getMessage());
+        // role of the subject, so the resolver leaves the condition unresolved, with a warning. The Java-API leg builds
+        // through UcharBuild, which refuses the document with that Unresolved node and names it; uchar's replay builds
+        // the rule and faults when its evaluation reaches the condition (WF-044).
+        UcharBuild.UnresolvedName refused = assertThrows(UcharBuild.UnresolvedName.class, () -> world(model));
+        assertEquals("onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk', bronregel 10",
+                refused.getMessage());
 
         ScenarioResult rb = één(model + """
             Situatie bijvoeglijk:
@@ -1657,7 +1653,9 @@ class ScenarioOracleTest {
             - P2 is kind
             """);
         assertEquals(Status.FAIL, rb.status(), () -> "verwacht FAIL: " + rb.diagnostic());
-        assertTrue(rb.diagnostic().contains("ComputeFault: " + error.getMessage()), () -> "uchars replay: " + rb.diagnostic());
+        assertTrue(rb.diagnostic().contains(
+                        "ComputeFault: fout in de regel \"bijvoeglijk\": Unresolved condition reached in evaluation"),
+                () -> "uchars replay: " + rb.diagnostic());
     }
 
     /** FACET kenmerktoekenning (bezittelijk positief met lidwoord, subjectvorm). Lifted from

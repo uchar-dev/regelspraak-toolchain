@@ -116,11 +116,13 @@ public final class RegelSpraakCli {
     }
 
     /** CLI: resolve one or more .rgs files as one model (concatenated in order), print a model summary and any
-     *  diagnostics, then build it on uchar's exec-model branch; exit 1 on a resolver error, 3 when uchar does not
-     *  carry the model (a construct the branch does not lower among them: accepted input with inert output must never
-     *  look like success), else 0.
+     *  diagnostics, then build it on uchar's exec-model branch; exit 1 on a resolver error or on a name the resolver
+     *  bound to no declaration (an {@code Unresolved} node in the document, {@link UcharBuild.UnresolvedName}), 3
+     *  when uchar does not carry the model (a construct the branch does not lower among them: accepted input with
+     *  inert output must never look like success), else 0.
      *  With --drl, print the DRL text of uchar's DRL-text branch instead of the summary, or exit 3 with uchar's
      *  refusal; that branch builds no document with a construct it does not lower, so there is no DRL with markers.
+     *  An {@code Unresolved} node is exit 1 there as well.
      *  A DRL text the Drools compiler rejects is a fault of uchar's rendering: exit 1 with uchar's sentence.
      *  With --facts &lt;outdir&gt;, generate the implied fact-model beans (§13.3) into &lt;outdir&gt;
      *  and exit 0. --facts is model-level: it builds no KieBase and does NOT apply the exit-3 marker discipline
@@ -156,6 +158,9 @@ public final class RegelSpraakCli {
             if (!m.isOk()) System.exit(1);
             try {
                 System.out.print(UcharBuild.assemble(m, DroolsBackend.Branch.DRL_TEXT).drl());
+            } catch (UcharBuild.UnresolvedName e) {
+                e.diagnostics().forEach(d -> System.err.println("  " + chain.message(d)));
+                System.exit(1);
             } catch (UcharBuild.NotCarried e) {
                 System.err.println("  niet uitvoerbaar in uchar (exit 3): " + e.getMessage());
                 System.exit(3);
@@ -180,6 +185,10 @@ public final class RegelSpraakCli {
         // "does my model resolve AND run?" — the build on the exec-model branch the engine and the service fire
         try {
             UcharBuild.assemble(m, DroolsBackend.Branch.EXEC_MODEL);
+        } catch (UcharBuild.UnresolvedName e) {
+            // a name bound to no declaration is a fault in the source, as a resolver error is
+            e.diagnostics().forEach(d -> System.out.println("  " + chain.message(d)));
+            System.exit(1);
         } catch (UcharBuild.NotCarried e) {
             System.out.println("  niet uitvoerbaar in uchar (exit 3): " + e.getMessage());
             System.exit(3);

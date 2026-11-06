@@ -10,7 +10,8 @@ elk attribuut en kenmerk teruggeeft dat een verwachting leest.
 
 Uitvoer: per golden één regel "<golden>\\t<STATUS>\\t<detail>" in de volgorde van de invoer, met STATUS
   PLAYED   alle cases gaven de gepinde verwachtingen (detail: het aantal cases);
-  EXCLUDE  een case-vorm die het verzoek of het antwoord van de dienst niet uitdrukt (detail: de vorm);
+  EXCLUDE  een case-vorm die het verzoek of het antwoord van de dienst niet uitdrukt, of een document met een
+           onopgeloste naam, waarop de dienst niet start (detail: de vorm of de weigering);
   FAIL     een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is (detail: wat).
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
@@ -40,6 +41,7 @@ import urllib.request
 
 REGELSPRAAK = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "bin", "regelspraak")
 STARTUP_SECONDS = 120  # seconden; een dienst die dan nog geen poort noemt, is een FAIL
+UNRESOLVED_START = "dienst start niet: de bron draagt een onopgeloste naam"  # DecisionCore.unresolvedName
 FORM_LISTS = ("rules", "objectCreations", "allocations", "consistencies", "uniquenesses", "factCreations",
                "prioritizedDefaults")
 
@@ -384,6 +386,10 @@ class Service:
                 with open(self.error_path) as f:
                     message = " ".join(r.strip() for r in f.read().splitlines()
                                        if r.strip() and not r.startswith("SLF4J"))
+                # a document with an Unresolved node: the service refuses it as a fault in the source, where uchar's
+                # replay faults only when the evaluation reaches the node (WF-044)
+                if UNRESOLVED_START in message:
+                    raise NotExpressible(f"de dienst start niet op een onopgeloste naam: {message[:600]}")
                 raise Deviation(f"de dienst start niet (exit {self.process.returncode}): {message[:600]}")
             time.sleep(0.05)
         raise Deviation(f"de dienst noemt na {STARTUP_SECONDS} s geen poort")

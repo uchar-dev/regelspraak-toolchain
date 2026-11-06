@@ -228,6 +228,7 @@ public final class DecisionCore {
         Map<String, Entrypoint> perPath = new LinkedHashMap<>();
         List<Violation> markerErrors = new ArrayList<>();
         List<Violation> scopeErrors = new ArrayList<>();
+        java.util.Set<String> unresolved = new java.util.LinkedHashSet<>();
         // the producer index is model-wide (every form that WRITES a kenmerk/attribuut), computed once.
         Map<ElementKey, java.util.Set<String>> producers =
                 ProducerConsumer.producerIndex(model, model.prioritizedDefaults);
@@ -254,6 +255,10 @@ public final class DecisionCore {
                     explained = Verbaliser.Document.of(IrLoader.loadWithPositions(tree))
                             .withOutside(outsideScope(model, scoped));
                 }
+            } catch (UcharBuild.UnresolvedName u) {
+                // a fault in the source, not a form uchar does not carry: no marker, so allowMarkers does not start it
+                for (UcharBuild.Site site : u.sites()) unresolved.add(site.sentence());
+                continue;
             } catch (UcharBuild.NotCarried ng) {
                 marker(ep, ng.construct(), ng.getMessage(), defaults, config, perPath, markerErrors);
                 continue;
@@ -264,6 +269,7 @@ public final class DecisionCore {
                 scopeErrors.addAll(scopeCompleteness(ep, model, scoped, producers));
             perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null, explanationBuild, explained));
         }
+        if (!unresolved.isEmpty()) throw unresolvedName(unresolved);
         if (!scopeErrors.isEmpty())
             throw new ServiceError("dienst start niet: onvolledige regel-scope (buiten-scope kenmerk-producent)",
                     scopeErrors);
@@ -351,6 +357,8 @@ public final class DecisionCore {
                 explanationBuild = UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL, true);
                 explained = Verbaliser.Document.of(IrLoader.loadWithPositions(document));
             }
+        } catch (UcharBuild.UnresolvedName u) {
+            throw unresolvedName(u.sites().stream().map(UcharBuild.Site::sentence).toList());
         } catch (UcharBuild.NotCarried ng) {
             refusal = ng;
         }
@@ -381,6 +389,14 @@ public final class DecisionCore {
         List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
         return new DecisionCore(descriptor, model, perPath, sets, periodWarnings(model, sets), config.detail(),
                 forms, documentJson);
+    }
+
+    /** The start refused for names the resolver bound to no declaration ({@link UcharBuild.UnresolvedName}), one
+     *  violation per name: uchar would fault on each only when a request reaches it, so the service does not start
+     *  on them, with markers allowed or not. */
+    private static ServiceError unresolvedName(java.util.Collection<String> sentences) {
+        return new ServiceError("dienst start niet: de bron draagt een onopgeloste naam", sentences.stream()
+                .map(sentence -> Violation.of(Violation.Kind.MALFORMED, "source", sentence)).toList());
     }
 
     private static ServiceDescriptor readDescriptor(String descriptorJson) {

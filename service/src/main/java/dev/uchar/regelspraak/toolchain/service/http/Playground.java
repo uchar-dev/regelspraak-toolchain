@@ -219,6 +219,9 @@ public final class Playground {
                 dn.put("verdict", d.verdict().name());
             }
             root.set("generated", generated(build, ir, model, naming));
+        } catch (UcharBuild.UnresolvedName e) {
+            root.put("executable", false);
+            root.put("refusal", e.getMessage());
         } catch (UcharBuild.NotCarried e) {
             root.put("executable", false);
             root.put("refusal", locale == null ? e.getMessage() : e.message(locale));
@@ -231,7 +234,7 @@ public final class Playground {
         DroolsBackend.Build drlBuild = null;
         try {
             drlBuild = UcharBuild.assemble(model, DroolsBackend.Branch.DRL_TEXT);
-        } catch (UcharBuild.NotCarried | IllegalStateException e) {
+        } catch (UcharBuild.NotCarried | UcharBuild.UnresolvedName | IllegalStateException e) {
             root.put("drl", "");
             root.putArray("drlRules");
             root.put("drlError", e.getMessage());

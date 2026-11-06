@@ -358,9 +358,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
   case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (347). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 338); every golden that does not play is listed by name with
-  its reason (9, each with a scalar on a time-dependent attribute, which the request does not carry); a deviation always
-  fails, and the list fails when it goes stale in either direction. Every golden that plays is asked with
+  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 337); every golden that does not play is listed by name with
+  its reason (10: 9 with a scalar on a time-dependent attribute, which the request does not carry, and 1 whose document
+  holds an `Unresolved` node, on which the service does not start); a deviation always fails, and the list fails when
+  it goes stale in either direction. Every golden that plays is asked with
   `?explanation=true` as well, and an explanation the service does not give fails it. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
@@ -378,14 +379,14 @@ English, and the playground of the service does so per request for an `Accept-La
 
 | Command | What it does |
 |---------|--------------|
-| `check <source.rgs...>` | parse and resolve: the model summary and the diagnostics (in a chain of files as `file:line`), exit 1 on an error; then the build on uchar's exec-model branch, exit 3 when uchar does not carry the model |
+| `check <source.rgs...>` | parse and resolve: the model summary and the diagnostics (in a chain of files as `file:line`), exit 1 on an error; then the build on uchar's exec-model branch, exit 1 on a name the resolver bound to no declaration (an `Unresolved` node in the document: `ERROR (line 7): onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk'`), exit 3 when uchar does not carry the model |
 | `ir <out.json> <source.rgs...>` | the `uchar-ir-v1` document of the model (uchar's emitter) |
 | `cases <dir> <source.rgs...>` | the scenarios of a test document lowered to uchar case files in `<dir>`, beside the IR document they run against (`<dir>/ir.json`): the layout of uchar's corpus |
 | `tokens <out.json> <source.rgs...>` | the semantic tokens of the sources (uchar's `Resolver.tokens`), for a consumer that colours the rules: per file, named as given, the spans that cover its text, each with a kind (`keyword`, `objectType`, `attribute`, `parameter`, `unresolved`, …), a position (line from 1 in that file, column from 0 in UTF-16 code units) and for a reference the place of its declaration, also in another file; and the diagnostics with code, file and line. Written also when the model has an error or a syntax error, with exit 0; the diagnostics go to stderr as well. Sources that carry a block of the scenario layer (`Situatie`, `Parameterset`, `Scenario`) are a test document and are read as `cases` reads them, with its diagnostics and the kinds `label`, `situation`, `parameterSet` and `scenario`. The form, the kinds and their LSP token types: uchar's `frontends/regelspraak/grammar/DIVERGENCES.md`, "Semantic tokens" |
 | `scenario [--trace] [--explanation] [--vocabulary <name>] <source.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL, 3 on a MARKER; `--vocabulary` names the rules of the trace and the declarations of the explanation in a vocabulary of the model |
 | `scenario --manifest <manifest> [--exclusions <list>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
 | `serve <descriptor.service.json> <source.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--port N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?coverage` and `?fixpoint`, and the workbench's `?via=service` |
-| `drl <source.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering) |
+| `drl <source.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering), and on a name the resolver bound to no declaration, as `check` |
 | `graph [--mmd] <out> <source.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
 | `facts <outdir> <source.rgs...>` | the fact beans uchar's generator writes for the model |
 | `jar` | the path of the jar the commands run from, after the rebuild below when it is due; the service gates call it once before they start their services side by side |

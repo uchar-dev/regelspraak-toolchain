@@ -157,6 +157,24 @@ class RegelSpraakEngineTest {
                 () -> "de weigering hoort de regel te noemen: " + e.diagnostics());
     }
 
+    @Test void an_unresolved_name_refuses_at_compiling() {
+        // the een-form over an adjectival characteristic binds no characteristic and no role: the resolver leaves an
+        // Unresolved node with a warning, and a build of it would fault at every request that reaches the rule
+        String src = """
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+                is kind kenmerk;
+            Regel bijvoeglijk
+                geldig altijd
+                    Een passagier is kind indien hij een minderjarig is.
+            """;
+        RegelSpraakCompileException e = assertThrows(RegelSpraakCompileException.class,
+                () -> RegelSpraakEngine.compile(src));
+        assertTrue(e.diagnostics().stream().anyMatch(d -> d.isError()
+                        && d.message().contains("onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk'")),
+                () -> "de weigering hoort de naam en de regel te noemen: " + e.diagnostics());
+    }
+
     @Test void cycle_reference_refuses_at_compiling() {
         // A read-write dependency cycle (leeftijd = uitkomst+1; uitkomst = leeftijd+1) never reaches a
         // fixpoint. uchar's frontend refuses it under WF-045 before a KieBase is built, so no session

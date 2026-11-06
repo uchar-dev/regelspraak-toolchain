@@ -55,7 +55,8 @@ public final class RegelSpraakEngine {
     }
 
     /** Resolve {@code regelSpraakSource}, emit it and build its {@link KieBase}. Throws
-     *  {@link RegelSpraakCompileException} if the source has resolver errors, and also when uchar refuses the model
+     *  {@link RegelSpraakCompileException} if the source has resolver errors or a name the resolver bound to no
+     *  declaration ({@link UcharBuild.UnresolvedName}), and also when uchar refuses the model
      *  (a construct its exec-model branch does not lower among them): an engine without that construct would answer
      *  as if it did not exist. */
     public static RegelSpraakEngine compile(String regelSpraakSource) {
@@ -63,6 +64,8 @@ public final class RegelSpraakEngine {
         if (!model.errors().isEmpty()) throw new RegelSpraakCompileException(model.errors());
         try {
             return new RegelSpraakEngine(model, UcharBuild.assemble(model, DroolsBackend.Branch.EXEC_MODEL));
+        } catch (UcharBuild.UnresolvedName e) {
+            throw new RegelSpraakCompileException(e.diagnostics());
         } catch (UcharBuild.NotCarried e) {
             throw new RegelSpraakCompileException(List.of(new Diagnostic(Severity.ERROR,
                     "niet uitvoerbaar in uchar: " + e.getMessage(), 0)));

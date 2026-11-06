@@ -198,12 +198,17 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # invoer leeg laten), jutterswet-creatie-per-dag (de bij de objectcreatie toegekende waarde als invoer van het
 # gemaakte object per dag) en jutterswet-afwezigheidsmarkers-initialisatie (een initialisatie op een marker); Drools
 # weigerde ze eerder (DROOLS-118, DROOLS-103). Alle drie spelen ook door de dienst, met uitleg.
-EXPECTED_REPLAY_PLAYED=338
+# 2026-11-06, kaart onopgeloste-naam-weigeren: 337 — de dienst start niet op een document met een Unresolved-knoop
+# (een fout in de bron, ook met --allow-markers), dus unresolved-behind-a-failing-condition speelt niet meer door de
+# dienst en staat hieronder.
+EXPECTED_REPLAY_PLAYED=337
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt een
 # tijdsafhankelijke parameter en een tijdsafhankelijk attribuut als tijdlijn en een tijdsafhankelijk kenmerk als zijn
 # perioden, maar geen scalaire waarde op een tijdsafhankelijk attribuut: uchars replay legt die in de periode van de
-# rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de dienst weigert haar met een 400 UNSUPPORTED.
+# rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de dienst weigert haar met een 400 UNSUPPORTED. Op een document met een
+# Unresolved-knoop start de dienst niet: hij weigert een onopgeloste naam als fout in de bron, waar uchar pas faalt als
+# de evaluatie de knoop bereikt (WF-044).
 REPLAY_EXCLUDED=(
   "jutterswet-gevolg-buiten-de-beurt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-gevolg-buiten-de-beurt-som|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
@@ -214,6 +219,7 @@ REPLAY_EXCLUDED=(
   "jutterswet-tempototaal|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-vast-startpunt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-voorwaarde-buiten-de-beurt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "unresolved-behind-a-failing-condition|een Unresolved-knoop in het document: de dienst start niet op een onopgeloste naam"
 )
 
 # Kaart explanation-from-readings: de leg van de uitleg. Elk verzoek gaat ook met ?explanation=true; het antwoord

@@ -57,7 +57,12 @@ parameter (`voor elke maand`) is no vintage: uchar's branch reads it whole, from
 (`Period.OPEN_FROM`, `Period.OPEN_TO` for an open bound), which `Session.setGlobal` takes, and the parameter-set
 loader refuses one by name. A global the rule base declares takes its value or the session fails with Drools'
 sentence; one it does not declare is not set. `compile` throws
-`RegelSpraakCompileException` for resolver errors and for a model uchar refuses. `bin/regelspraak facts <outdir>
+`RegelSpraakCompileException` for resolver errors, for a name the resolver bound to no declaration and for a model
+uchar refuses. Such a name stays in uchar's document as an `Unresolved` node, with a warning, and uchar's executors
+fault on it only when an evaluation reaches it (WF-044); `UcharBuild` builds no document that holds one
+(`UcharBuild.UnresolvedName`, each node by its snippet, its rule and the line of the warning that quotes it, or else
+its JSON pointer), so `compile`, `bin/regelspraak check` and `drl` (exit 1) and the service refuse it as a fault in
+the source. `bin/regelspraak facts <outdir>
 <source.rgs...>` (or `make facts` for the TOKA casus) writes the beans a model implies as source, for a consumer that
 wants to see them.
 
@@ -324,6 +329,11 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `explanationParts`, `trace`, `coverage` and `fixpoint`; `Answer` has the fields they add, `EvaluationFault` those of
   the detail, with the components `ExplanationPart` (recursive through `parts`), `Trace`, `Coverage` and `Fixpoint`. The 422 is one of `EvaluationFault` and `NoFixpoint`. The documents are written by the emitter's API
   (`write`, file `<service>.<vocabulary>.json`); the service serves no route for them.
+- A name the resolver bound to no declaration, an `Unresolved` node in the document an entry point builds or in the
+  document the service is given, refuses the start, also with `--allow-markers` (exit 1, a `MALFORMED` violation on
+  `source` per node: `onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk', bronregel 6`): it is a fault
+  in the source, not a form uchar does not carry, and a request that reached it would get a 422. A form that no entry
+  point carries is not built, and the service does not check it; `bin/regelspraak check` checks the whole source.
 - What uchar does not carry — a refusal of its emitter, loader or backend (a construct the exec-model branch does
   not lower among them), or a scoped rule name that yields no form in uchar's model — makes the entry point a
   marker. Strict, the service refuses to start (exit 3, `MARKER: …` with uchar's sentence). With `--allow-markers`

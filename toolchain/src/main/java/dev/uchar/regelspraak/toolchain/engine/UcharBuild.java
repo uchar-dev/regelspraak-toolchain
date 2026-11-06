@@ -28,6 +28,11 @@ import java.util.regex.Pattern;
  * lower, among others). An allocation whose method the frontend could not decide is refused here as well: the
  * emitter leaves it out of the document and only says so in a warning, so a KieBase built from that document would
  * lack it without anyone being told.
+ *
+ * <p>A document that holds an {@code Unresolved} node — a name the resolver bound to no declaration — is not built
+ * either, and that refusal is {@link UnresolvedName}, not {@link NotCarried}: uchar carries such a rule and its
+ * executors fault on it only when a request reaches it (WF-044), so it is a fault in the source, which this
+ * distribution reports before a request does.
  */
 public final class UcharBuild {
 
@@ -66,6 +71,80 @@ public final class UcharBuild {
         }
     }
 
+    /** A document that holds one or more {@code Unresolved} nodes (IR-SPEC ch. 4, the expression and the condition
+     *  marker), each named by its {@link Site}. */
+    public static final class UnresolvedName extends RuntimeException {
+        private final List<Site> sites;
+
+        UnresolvedName(List<Site> sites) {
+            super(String.join("; ", sites.stream().map(Site::sentence).toList()));
+            this.sites = List.copyOf(sites);
+        }
+
+        public List<Site> sites() { return sites; }
+
+        /** Each site as an ERROR at its source line, as the resolver reports an error. */
+        public List<Diagnostic> diagnostics() {
+            return sites.stream().map(Site::diagnostic).toList();
+        }
+    }
+
+    /**
+     * One {@code Unresolved} node: {@code name} is its source snippet, {@code form} the name of the form of the rule
+     * layer it stands in (null outside one), {@code pointer} its place in the document (RFC 6901), {@code line} the
+     * source line of the diagnostic that accounts for it (WF-113 (b): a diagnostic whose message quotes the snippet),
+     * or 0 when no diagnostic with a line quotes it or diagnostics on more than one line do.
+     */
+    public record Site(String name, String form, String pointer, int line) {
+        /** Without the line, which a caller that reads several files maps to its file. */
+        String text() {
+            return "onopgeloste naam '" + name + "'" + (form == null ? "" : " in de regel '" + form + "'")
+                    + (line > 0 ? "" : " op " + pointer);
+        }
+
+        public String sentence() { return text() + (line > 0 ? ", bronregel " + line : ""); }
+
+        public Diagnostic diagnostic() {
+            return new Diagnostic(dev.uchar.regelspraak.model.RegelSpraakModel.Severity.ERROR, text(), line);
+        }
+    }
+
+    /** The {@code Unresolved} nodes of {@code document}, in document order. */
+    public static List<Site> unresolved(JsonNode document) {
+        List<Site> sites = new java.util.ArrayList<>();
+        collect(document, "", null, sites);
+        return sites.stream().map(site -> {
+            java.util.Set<Integer> quoting = new java.util.TreeSet<>();
+            for (JsonNode d : document.path("diagnostics"))
+                if (d.path("line").asInt(0) > 0 && d.path("message").asText("").contains(site.name()))
+                    quoting.add(d.path("line").asInt());
+            return quoting.size() == 1
+                    ? new Site(site.name(), site.form(), site.pointer(), quoting.iterator().next()) : site;
+        }).toList();
+    }
+
+    /** {@code form} is the name of the element of a list under {@code /rules} that {@code node} lies in. */
+    private static void collect(JsonNode node, String pointer, String form, List<Site> sink) {
+        if (node.isObject()) {
+            if ("Unresolved".equals(node.path("node").asText(null)))
+                sink.add(new Site(node.path("source").path("snippet").asText(""), form, pointer, 0));
+            var fields = node.fields();
+            while (fields.hasNext()) {
+                var f = fields.next();
+                collect(f.getValue(), pointer + "/" + escape(f.getKey()), form, sink);
+            }
+        } else if (node.isArray()) {
+            boolean formList = pointer.startsWith("/rules/") && pointer.indexOf('/', "/rules/".length()) < 0;
+            for (int i = 0; i < node.size(); i++) {
+                JsonNode element = node.get(i);
+                String name = formList && element.path("name").isTextual() ? element.path("name").asText() : form;
+                collect(element, pointer + "/" + i, name, sink);
+            }
+        }
+    }
+
+    private static String escape(String key) { return key.replace("~", "~0").replace("/", "~1"); }
+
     /** Emit {@code model} and build it on {@code branch}. The model must resolve without errors: an emitter writes no
      *  document for a model that carries an ERROR, so the caller reports those first. */
     public static DroolsBackend.Build assemble(RegelSpraakModel model, DroolsBackend.Branch branch) {
@@ -96,7 +175,8 @@ public final class UcharBuild {
     }
 
     /** Build {@code document}, a {@code uchar-ir-v1} document, on {@code branch} through uchar's facade. Every refusal
-     *  of the facade — the loader's, a malformed document, the backend's — is {@link NotCarried}. */
+     *  of the facade — the loader's, a malformed document, the backend's — is {@link NotCarried}; a document with an
+     *  {@code Unresolved} node is {@link UnresolvedName}, before the facade sees it. */
     public static DroolsBackend.Build assemble(JsonNode document, DroolsBackend.Branch branch) {
         return assemble(document, branch, false);
     }
@@ -105,6 +185,8 @@ public final class UcharBuild {
      *  ({@link DroolsBackend#build(JsonNode, DroolsBackend.Branch, boolean)}), whose sessions
      *  {@link DroolsBackend#readingsOf} reads for the explanation; an answer is given from the build without. */
     public static DroolsBackend.Build assemble(JsonNode document, DroolsBackend.Branch branch, boolean readings) {
+        List<Site> unresolved = unresolved(document);
+        if (!unresolved.isEmpty()) throw new UnresolvedName(unresolved);
         try {
             return DroolsBackend.build(document, branch, readings);
         } catch (IrLoader.Refusal e) {
