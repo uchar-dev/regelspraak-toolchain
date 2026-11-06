@@ -443,8 +443,8 @@ rules are written and computed in the canonical names. The distribution uses the
 - **Input is liberal.** A request may write every name — object type, attribute, characteristic, fact type, role,
   parameter, enumeration value — canonically or as its designation in any vocabulary, mixed within one request,
   case-insensitively, within the scope of the name (the members of an object type with the inherited ones, the roles
-  of a fact type, the values of a domain, the rest model-wide). A name that reads as two different declarations is a
-  400 `AMBIGUOUS_NAME` whose sentence names both readings; the query parameter `inputVocabulary=<name>` pins
+  of a fact type, the values of a domain, the rest model-wide). A violation names its field as the request wrote it.
+  A name that reads as two different declarations is a 400 `AMBIGUOUS_NAME` whose sentence names both readings; the query parameter `inputVocabulary=<name>` pins
   the vocabulary the names are read in (`canonical` for the canonical names), which resolves it.
 - **Output is chosen.** `vocabulary=<name>` names the declarations of the answer, its inconsistencies and its
   explanation in that vocabulary; without it the entry point's `vocabulary` from the descriptor applies, else the

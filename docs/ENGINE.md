@@ -153,8 +153,10 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   designation in any vocabulary of the model (uchar's `RegelSpraakModel.namedElement`), within the scope of its kind,
   case-insensitively and mixed; a name that reads as two declarations is a 400 `AMBIGUOUS_NAME` naming both
   readings, and `?inputVocabulary=<name>` (or `canonical`) pins the vocabulary names are read in. A designation is
-  read as the declaration's canonical name, an enumeration value as the declared value it names. Two names of one
-  object that read as one declaration are a 400 `MALFORMED`. `?vocabulary=<name>` chooses the names of the answer,
+  read as the declaration's canonical name, an enumeration value as the declared value it names; the `field` of a
+  violation names the field as the request wrote it (`relations[0].roles.AANMELDER`, `relations[0].roles.melder`),
+  and its sentence may name the declaration. Two names of one object that read as one declaration are a 400
+  `MALFORMED`. `?vocabulary=<name>` chooses the names of the answer,
   its `inconsistencies` and its `explanation` (`Naming`), else the entry point's `vocabulary` from the descriptor,
   else the canonical names; an unknown vocabulary is a 400 `UNKNOWN_VOCABULARY`, and a descriptor naming one does
   not start. A declaration without a designation in the chosen vocabulary keeps its canonical name. The Quarkus

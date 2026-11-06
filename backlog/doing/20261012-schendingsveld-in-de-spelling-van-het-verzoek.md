@@ -26,3 +26,25 @@ Een schending noemt het veld zoals het verzoek het schreef. Het canonieke veld m
 ## Omvang
 
 Klein. May touch: `service/` (de mapper en de schendingen), `service-quarkus/` alleen voor de pariteit, en de tests.
+
+## Result
+
+*Gebouwd op 2026-11-06 in de branch `card/scope-check-and-cleanup`. Logs in `uchar-dev/werk/toolchain-cleanup/logs/`.*
+
+`RequestMapper.rolesRead` houdt per gedeclareerde rolnaam de sleutel bij die het verzoek schreef, en elke schending
+in `relations[i].roles` noemt het veld met die sleutel: de `UNKNOWN_FIELD` van een onbekend id, de `WRONG_TYPE` van
+een id dat de rol niet vult en de `WRONG_TYPE` van een tweede doel van een to-one rol (via het veld dat de link
+schreef). De zin van de schending mag de gedeclareerde rol noemen. De inline `roles` noemden hun veld al zoals
+geschreven.
+
+- (a) Rood eerst (`logs/c4-red.log`): `RelationsTest.a_violation_names_the_role_field_as_the_request_wrote_it` met
+  `"PASSAGIER"` (TOKA, onbekend id: het veld was `relations[0].roles.passagier`) en met `"melder"`, de benaming van
+  de rol aanmelder in het vocabulaire `handboek` van uchars golden `jutterswet-vocabulaires` (een Vondst op de rol:
+  het veld was `relations[0].roles.aanmelder`). Groen (`logs/c4-green.log`).
+- (b) `ErrorParityTest.a_role_written_in_capitals_is_the_field_as_written` (`"AANMELDER"`, tweede doel) en
+  `…_as_a_designation_of_a_vocabulary_is_the_field_as_written` (`"melder"`): beide adapters geven dezelfde 400 met
+  het veld zoals geschreven. De reactor is groen (`logs/c4-reactor.log`: toolchain 197, service 502, service-quarkus 57, geen skip).
+- (c) `make gates`: zie het slot van deze Result.
+
+Docs: `docs/ENGINE.md` (namen en vocabulaires) en `README.md` ("Input is liberal") zeggen dat een schending haar veld
+noemt zoals het verzoek het schreef.

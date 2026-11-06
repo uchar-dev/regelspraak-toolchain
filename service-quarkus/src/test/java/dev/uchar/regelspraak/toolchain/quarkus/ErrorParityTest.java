@@ -35,7 +35,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * {@code veld}, {@code soort} and message), the 400 of an empty or malformed body, the 404 of an unknown path, the
  * 503 MARKER answer of an entry point uchar does not carry, the 422 of a request on which the rules give an
  * evaluation fault, the 422 LIMIT of a value uchar's Drools branch cannot hold, and the 500 of a fault the core never
- * throws on purpose, without its message. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
+ * throws on purpose, without its message. A violation on a role of {@code relations} names the field as the request
+ * wrote it, in capitals or as a designation of a vocabulary. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
  * 422s include a fault at the fixpoint of another type than the four uchar's README names, {@code OTHER}, alone and
  * beside a read of the rekenjaar without an evaluation date. {@link DecideResource} builds the first bodies by hand, as {@code ServiceHttp}'s builders
  * are package-private in the service module, and the 422 body with the service core's builder, as {@code ServiceHttp}
@@ -230,6 +231,7 @@ class ErrorParityTest {
     private static DecisionCore aanmelding;
     private static DecisionCore filling;
     private static DecisionCore limit;
+    private static DecisionCore vocabularies;
     private static ServiceHttp tokaService;
     private static ServiceHttp markerService;
     private static ServiceHttp roleService;
@@ -237,6 +239,7 @@ class ErrorParityTest {
     private static ServiceHttp submissionService;
     private static ServiceHttp fillingService;
     private static ServiceHttp limitService;
+    private static ServiceHttp vocabularyService;
 
     @BeforeAll
     static void assemble() throws Exception {
@@ -252,6 +255,12 @@ class ErrorParityTest {
                 cl);
         filling = DecisionCore.assemble(FILLING_DESCRIPTOR, Map.of("vulling.rgs", FILLING_SOURCE), CoreConfig.strict(), cl);
         limit = DecisionCore.assemble(LIMIT_DESCRIPTOR, Map.of("haven.rgs", LIMIT_SOURCE), CoreConfig.strict(), cl);
+        // uchar's golden with two vocabularies, under the descriptor the service's vocabulary tests serve it with
+        vocabularies = DecisionCore.assemble(
+                Files.readString(TokaSource.REPO.resolve(
+                        "service/src/test/resources/vocabularies/jutterswet-vocabulaires.service.json")),
+                Map.of("bron.rgs", Files.readString(TokaSource.REPO.resolve(
+                        "uchar/corpus/golden/jutterswet-vocabulaires/source.rgs"))), CoreConfig.strict(), cl);
         tokaService = ServiceHttp.bind(toka, "127.0.0.1", 0).start();
         markerService = ServiceHttp.bind(marker, "127.0.0.1", 0).start();
         roleService = ServiceHttp.bind(role, "127.0.0.1", 0).start();
@@ -259,6 +268,7 @@ class ErrorParityTest {
         submissionService = ServiceHttp.bind(aanmelding, "127.0.0.1", 0).start();
         fillingService = ServiceHttp.bind(filling, "127.0.0.1", 0).start();
         limitService = ServiceHttp.bind(limit, "127.0.0.1", 0).start();
+        vocabularyService = ServiceHttp.bind(vocabularies, "127.0.0.1", 0).start();
     }
 
     @AfterAll
@@ -270,6 +280,7 @@ class ErrorParityTest {
         if (submissionService != null) submissionService.stop(0);
         if (fillingService != null) fillingService.stop(0);
         if (limitService != null) limitService.stop(0);
+        if (vocabularyService != null) vocabularyService.stop(0);
     }
 
     @Test
@@ -295,6 +306,26 @@ class ErrorParityTest {
              "relations":[{"factType":"aanmelding","roles":{"aanmelder":"J2","vondst":"V1"}}]}""", 400);
         assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText(), body.toString());
         assertEquals("relations[0].roles.aanmelder", body.at("/violations/0/field").asText(), body.toString());
+    }
+
+    @Test
+    void a_role_written_in_capitals_is_the_field_as_written() throws Exception {
+        JsonNode body = compare(aanmelding, submissionService, "zware-vondsten", """
+            {"instances":[{"type":"Jutter","id":"J1"},{"type":"Jutter","id":"J2"},
+              {"type":"Vondst","id":"V1","attributes":{"gewicht":10,"deelnemers":2},"roles":{"aanmelder":"J1"}}],
+             "relations":[{"factType":"aanmelding","roles":{"AANMELDER":"J2","vondst":"V1"}}]}""", 400);
+        assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText(), body.toString());
+        assertEquals("relations[0].roles.AANMELDER", body.at("/violations/0/field").asText(), body.toString());
+    }
+
+    @Test
+    void a_role_written_as_a_designation_of_a_vocabulary_is_the_field_as_written() throws Exception {
+        // 'melder' is the 'handboek' designation of the role aanmelder; V1 is a Vondst, not a Jutter
+        JsonNode body = compare(vocabularies, vocabularyService, "premie", """
+            {"instances":[{"type":"Jutter","id":"J1"},{"type":"Vondst","id":"V1"}],
+             "relations":[{"factType":"vondstaanmelding","roles":{"melder":"V1","vondst":"V1"}}]}""", 400);
+        assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText(), body.toString());
+        assertEquals("relations[0].roles.melder", body.at("/violations/0/field").asText(), body.toString());
     }
 
     @Test

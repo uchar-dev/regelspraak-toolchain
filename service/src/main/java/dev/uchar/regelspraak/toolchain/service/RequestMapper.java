@@ -798,8 +798,11 @@ public final class RequestMapper {
                 s.add(Violation.of(Violation.Kind.MALFORMED, path + ".roles", "roles ontbreekt of is geen object"));
                 continue;
             }
-            rolesN = rolesRead(ft, rolesN, path + ".roles", s);
+            // a violation names a role's field as the request wrote it: the declared name a role is read as -> the key
+            Map<String, String> written = new java.util.HashMap<>();
+            rolesN = rolesRead(ft, rolesN, path + ".roles", written, s);
             if (rolesN == null) continue;
+            java.util.function.UnaryOperator<String> field = role -> path + ".roles." + written.getOrDefault(role, role);
             // resolve each named role to its id. A binary feittype has two roles; a §13.3.9.2 WEDERKERIG feittype
             // relates an objecttype to itself through ONE role entry — the request then names that one role TWICE
             // (two ids under the same role name in a JSON array), or gives an array value.
@@ -821,25 +824,28 @@ public final class RequestMapper {
             String roleA = endPoints.get(0)[0], idA = endPoints.get(0)[1];
             String roleB = endPoints.get(1)[0], idB = endPoints.get(1)[1];
             ObjectType otA = typePerLabel.get(idA), otB = typePerLabel.get(idB);
-            if (otA == null) { s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, path + ".roles." + roleA, "onbekend id '" + idA + "'")); continue; }
-            if (otB == null) { s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, path + ".roles." + roleB, "onbekend id '" + idB + "'")); continue; }
+            if (otA == null) { s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, field.apply(roleA), "onbekend id '" + idA + "'")); continue; }
+            if (otB == null) { s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, field.apply(roleB), "onbekend id '" + idB + "'")); continue; }
             // the input step falls back on the type pair: an id that does not fill its role would be written into
             // another relation between the two types, as on an inline rol
-            boolean fillsA = fillsRole(ft, roleA, idA, otA, path, s), fillsB = fillsRole(ft, roleB, idB, otB, path, s);
+            boolean fillsA = fillsRole(ft, roleA, idA, otA, field.apply(roleA), s),
+                    fillsB = fillsRole(ft, roleB, idB, otB, field.apply(roleB), s);
             if (!fillsA || !fillsB) continue;
             // the link goes where its field is: A holds B in a to-one field named after B's role, or else B holds A.
             // The role NAME disambiguates when the same objecttype pair is joined by more than one feittype.
             if (!model.toManyRole(otA, otB, roleB) || model.toManyRole(otB, otA, roleA))
-                writeLink(instances, paths, idA, roleB, idB, path + ".roles." + roleB);
+                writeLink(instances, paths, idA, roleB, idB, field.apply(roleB));
             else
-                writeLink(instances, paths, idB, roleA, idA, path + ".roles." + roleA);
+                writeLink(instances, paths, idB, roleA, idA, field.apply(roleA));
         }
     }
 
     /** The roles of a relation keyed by their declared names, which {@link #endPoints} looks them up by: each written
-     *  name read as a role of {@code ft}. A name no role of {@code ft} answers to stays as written, so the endpoint
-     *  count refuses the relation as before; null after adding the violation of an ambiguous or a repeated role. */
-    private JsonNode rolesRead(FactType ft, JsonNode rolesN, String path, List<Violation> s) {
+     *  name read as a role of {@code ft}, and in {@code written} the key the request wrote for that declared name. A
+     *  name no role of {@code ft} answers to stays as written, so the endpoint count refuses the relation; null after
+     *  adding the violation of an ambiguous or a repeated role. */
+    private JsonNode rolesRead(FactType ft, JsonNode rolesN, String path, Map<String, String> written,
+                               List<Violation> s) {
         com.fasterxml.jackson.databind.node.ObjectNode wasRead =
                 com.fasterxml.jackson.databind.node.JsonNodeFactory.instance.objectNode();
         Duplicate duplicate = new Duplicate("de relatie");
@@ -848,19 +854,21 @@ public final class RequestMapper {
             var e = it.next();
             NameReader.Reading reading = reader.roleIn(ft, e.getKey());
             if (read(reading, e.getKey(), path + "." + e.getKey(), duplicate, s).refused()) { error = true; continue; }
-            wasRead.set(reading instanceof NameReader.Found g ? g.declaration().name() : e.getKey(), e.getValue());
+            String declared = reading instanceof NameReader.Found g ? g.declaration().name() : e.getKey();
+            wasRead.set(declared, e.getValue());
+            written.put(declared, e.getKey());
         }
         return error ? null : wasRead;
     }
 
     /** Whether {@code id} (of objecttype {@code type}) fills the role {@code role} of {@code ft}, its declared type or a
-     *  subtype of it; if not, a {@link Violation.Kind#WRONG_TYPE} on that role's field. */
-    private boolean fillsRole(FactType ft, String role, String id, ObjectType type, String path, List<Violation> s) {
+     *  subtype of it; if not, a {@link Violation.Kind#WRONG_TYPE} on {@code field}, that role's field. */
+    private boolean fillsRole(FactType ft, String role, String id, ObjectType type, String field, List<Violation> s) {
         for (Role r : ft.roles) {
             if (!r.name().equals(role)) continue;
             ObjectType targetType = model.objectTypeByName(r.objectTypeName());
             if (targetType == null || type.isA(targetType)) return true;
-            s.add(wrongType(path + ".roles." + role, role, targetType, id, type));
+            s.add(wrongType(field, role, targetType, id, type));
             return false;
         }
         return true;

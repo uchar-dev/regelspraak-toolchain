@@ -9,8 +9,12 @@ import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.List;
+
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -99,6 +103,27 @@ class RelationsTest {
                               "roles": { "reis": "V1", "passagier": "PX" } } ] }""");
         assertTrue(r.violations().stream().anyMatch(s ->
                 s.kind() == Violation.Kind.UNKNOWN_FIELD && s.message().contains("PX")), r.violations().toString());
+    }
+
+    /** A role name is read regardless of case and as a designation in any vocabulary; a violation names its field
+     *  as the request wrote it, so a consumer that points at the field finds it. */
+    @Test
+    void a_violation_names_the_role_field_as_the_request_wrote_it() {
+        var r = map("""
+            { "instances": [ { "type": "Vlucht", "id": "V1" } ],
+              "relations": [ { "factType": "Vlucht van natuurlijke personen",
+                              "roles": { "reis": "V1", "PASSAGIER": "PX" } } ] }""");
+        assertEquals(List.of("relations[0].roles.PASSAGIER"), r.violations().stream().map(Violation::field).toList(),
+                r.violations().toString());
+
+        // 'melder' is the designation of the role aanmelder in the vocabulary 'handboek'; V1 is a Vondst, not a Jutter
+        DecisionCore core = VocabularySource.core();
+        ServiceError f = assertThrows(ServiceError.class, () -> core.process("premie", VocabularySource.json("""
+            { "instances": [ { "type": "Jutter", "id": "J1" }, { "type": "Vondst", "id": "V1" } ],
+              "relations": [ { "factType": "vondstaanmelding", "roles": { "melder": "V1", "vondst": "V1" } } ] }""")));
+        assertEquals(List.of("relations[0].roles.melder"), f.violations().stream().map(Violation::field).toList(),
+                f.violations().toString());
+        assertEquals(Violation.Kind.WRONG_TYPE, f.violations().get(0).kind(), f.violations().toString());
     }
 
     @Test
