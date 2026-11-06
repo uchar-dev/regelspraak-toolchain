@@ -8,11 +8,16 @@ waarde, een enumeratie op genormaliseerde naam, een inconsistentie op regel en o
 script zelf, of neemt hem aan (--descriptor): één entrypoint 'replay' dat alle vormen van het document draagt en
 elk attribuut en kenmerk teruggeeft dat een verwachting leest.
 
-Uitvoer: per golden één regel "<golden>\\t<STATUS>\\t<detail>" in de volgorde van de invoer, met STATUS
-  PLAYED   alle cases gaven de gepinde verwachtingen (detail: het aantal cases);
-  EXCLUDE  een case-vorm die het verzoek of het antwoord van de dienst niet uitdrukt, of een document met een
-           onopgeloste naam, waarop de dienst niet start (detail: de vorm of de weigering);
-  FAIL     een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is (detail: wat).
+Uitvoer: regels "<sleutel>\\t<STATUS>\\t<detail>" in de volgorde van de invoer, per golden:
+  EXCLUDE  met sleutel "<golden>/<case>": een case-vorm die het verzoek of het antwoord van de dienst niet uitdrukt
+           (detail: de vorm); de andere cases van de golden spelen door;
+  PLAYED   met sleutel "<golden>": elke case die de dienst draagt gaf de gepinde verwachtingen, en minstens één
+           speelde (detail: het aantal gespeelde cases);
+  EXCLUDE  met sleutel "<golden>": een golden zonder casebestand of vorm, of een document met een onopgeloste naam,
+           waarop de dienst niet start (detail: de weigering);
+  FAIL     met sleutel "<golden>": een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is
+           (detail: wat).
+Een golden waarvan geen case speelt, heeft alleen haar EXCLUDE-regels.
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
 haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vijf velden erbij: het
@@ -607,7 +612,10 @@ def computed(roots):
 
 
 def play(golden, map_, descriptor_path=None, explanation=False):
-    """De uitkomstregel van één golden."""
+    """De uitkomstregels van één golden: per case die de dienst niet draagt een EXCLUDE-regel "<golden>/<case>", en
+    een PLAYED-regel van de golden als elke case die hij draagt speelt; een golden waarop de dienst niet start of
+    zonder casebestand is één EXCLUDE-regel, een afwijking één FAIL-regel."""
+    excluded = []
     try:
         document = json.load(open(os.path.join(map_, "ir.json")))
         cases = []
@@ -616,16 +624,25 @@ def play(golden, map_, descriptor_path=None, explanation=False):
             if "expectedFault" not in c:
                 cases.append((os.path.basename(path), c))
         if not cases:
-            return golden, "EXCLUDE", "geen casebestand"
-        requests = [(name, request_body(c), c) for name, c in cases]
+            return [(golden, "EXCLUDE", "geen casebestand")]
+        # a case form the request does not express excludes that case, not the golden
+        requests = []
+        for name, c in cases:
+            try:
+                requests.append((name, request_body(c), c))
+            except NotExpressible as n:
+                excluded.append((f"{golden}/{name}", "EXCLUDE", str(n)))
+        if not requests:
+            return excluded
         source = os.path.join(map_, "source.rgs")
         if not os.path.exists(source):
             source = os.path.join(map_, "ir.json")
+        played = 0
         with tempfile.TemporaryDirectory(prefix="dienst-replay-") as workdir:
             if descriptor_path is None:
                 descriptor_path = os.path.join(workdir, "replay.service.json")
                 with open(descriptor_path, "w") as f:
-                    json.dump(descriptor(golden, document, [c for _, c in cases]), f, indent=1)
+                    json.dump(descriptor(golden, document, [c for _, _, c in requests]), f, indent=1)
                 path = "/replay"
             else:
                 path = "/" + json.load(open(descriptor_path))["entrypoints"][0]["path"]
@@ -639,7 +656,8 @@ def play(golden, map_, descriptor_path=None, explanation=False):
                         # a request form the service does not carry: every violation says UNSUPPORTED
                         violations = json.loads(text_).get("violations", [])
                         if violations and all(s.get("kind") == "UNSUPPORTED" for s in violations):
-                            raise NotExpressible(violations[0]["error"])
+                            excluded.append((f"{golden}/{name}", "EXCLUDE", violations[0]["error"]))
+                            continue
                         raise Deviation(f"{name}: 400 {text_[:500]}")
                     if status != 200:
                         raise Deviation(f"{name}: {status} {text_[:500]}")
@@ -647,16 +665,22 @@ def play(golden, map_, descriptor_path=None, explanation=False):
                         compare(c, read_json(text_))
                     except Deviation as a:
                         raise Deviation(f"{name}: {a}")
+                    except NotExpressible as n:
+                        excluded.append((f"{golden}/{name}", "EXCLUDE", str(n)))
+                        continue
                     if explanation:
                         for k, n in enumerate(explained(service, path, v, read_json(text_), name, document, scope)):
                             totals[k] += n
+                    played += 1
+        if not played:
+            return excluded
         if explanation:
-            return golden, "PLAYED", "\t".join(str(n) for n in [len(cases)] + totals)
-        return golden, "PLAYED", str(len(cases))
+            return excluded + [(golden, "PLAYED", "\t".join(str(n) for n in [played] + totals))]
+        return excluded + [(golden, "PLAYED", str(played))]
     except NotExpressible as n:
-        return golden, "EXCLUDE", str(n)
+        return [(golden, "EXCLUDE", str(n))]
     except Deviation as a:
-        return golden, "FAIL", str(a)
+        return [(golden, "FAIL", str(a))]
 
 
 def main():
@@ -672,9 +696,9 @@ def main():
     with concurrent.futures.ThreadPoolExecutor(max_workers=a.workers) as pool:
         tasks = [pool.submit(play, g, os.path.join(a.corpus, g), own.get(g), a.explanation) for g in a.goldens]
         for t in tasks:
-            golden, status, detail = t.result()
-            fields = detail.split("\t") if status == "PLAYED" else [detail]
-            print("\t".join([golden, status] + [" ".join(f.split()) for f in fields]), flush=True)
+            for key, status, detail in t.result():
+                fields = detail.split("\t") if status == "PLAYED" else [detail]
+                print("\t".join([key, status] + [" ".join(f.split()) for f in fields]), flush=True)
 
 
 if __name__ == "__main__":

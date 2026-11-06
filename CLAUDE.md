@@ -59,8 +59,9 @@ lower bounds: growth needs no bump; a deliberate removal lowers the floor in the
 The service gates (`scripts/check-twins.sh`, `scripts/check-service-replay.sh`) start the JDK service
 themselves, each instance on a free port, from the jar `bin/regelspraak jar` names (it builds the jar only when a
 source is newer, so neither gate rewrites it while the other gates read it), and replay uchar's case files over
-HTTP; the replay takes its set from uchar's gate 12 and pins the number that plays (an equality) beside a
-reason-carrying list of the goldens that do not, which fails when stale.
+HTTP; the replay takes its set from uchar's gate 12 and pins the numbers of goldens and cases that play
+(equalities) beside a reason-carrying list of the cases that do not play and the goldens the service does not start
+on, which fails when stale.
 `make scenario-test` runs the golden TOKA manifest; the scenarios uchar's scenario resolver refuses are listed with
 a fragment of the refusal in `scripts/toka-manifest-exclusions.txt`.
 

@@ -9,14 +9,16 @@
 # verwachting geven (scripts/service_replay.py). Zo toont de poort dat verzoekmapping, vuren en antwoord van de dienst
 # zeggen wat uchars replay zegt.
 #
-# Kanalen, zoals gate 12 ze telt:
-#   PLAYED   de standaard: elke golden die hier niet staat, moet spelen;
-#   EXCLUDE  een vorm die het verzoek of het antwoord van de dienst niet uitdrukt, bij naam in REPLAY_EXCLUDED
-#            met de reden; een golden die daar staat en toch speelt, of die niet (meer) in de set zit, faalt de
-#            poort (verouderd), en een golden die niet speelt en er niet staat, faalt ook;
+# Kanalen, zoals gate 12 ze telt, maar per case:
+#   PLAYED   de standaard: een golden speelt als elke case die de dienst draagt speelt, en minstens één;
+#   EXCLUDE  een case met een vorm die het verzoek of het antwoord van de dienst niet uitdrukt, bij naam
+#            ("<golden>/<case>") in REPLAY_EXCLUDED met de reden, of een golden waarop de dienst niet start, bij naam
+#            van de golden; een sleutel die daar staat en niet (meer) wordt uitgesloten, of waarvan de golden niet
+#            (meer) in de set zit, faalt de poort (verouderd), en een uitsluiting die er niet staat, faalt ook;
 #   FAIL     een afwijking of een dienst die niet start: faalt altijd.
-# EXPECTED_REPLAY_PLAYED pint het aantal spelers (een gelijkheid, zoals gate 12 EXPECTED_PLAYED pint): een nieuwe
-# golden die speelt, is voor een lijst die alleen niet-spelers noemt onzichtbaar. Een lege set faalt.
+# EXPECTED_REPLAY_PLAYED pint het aantal gespeelde goldens en EXPECTED_REPLAY_CASES het aantal gespeelde cases (beide
+# een gelijkheid, zoals gate 12 EXPECTED_PLAYED pint): een nieuwe golden of case die speelt, is voor een lijst die
+# alleen niet-spelers noemt onzichtbaar. Een lege set faalt.
 #
 # REPLAY_WORKERS (standaard 4) is het aantal diensten dat tegelijk draait.
 set -u
@@ -201,24 +203,31 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # 2026-11-06, kaart onopgeloste-naam-weigeren: 337 — de dienst start niet op een document met een Unresolved-knoop
 # (een fout in de bron, ook met --allow-markers), dus unresolved-behind-a-failing-condition speelt niet meer door de
 # dienst en staat hieronder.
-EXPECTED_REPLAY_PLAYED=337
+# 2026-11-06, kaart dienst-replay-per-case: 338 — de replay sluit een case uit, niet de golden; van de negen goldens
+# met een scalaire waarde op een tijdsafhankelijk attribuut speelt jutterswet-vast-startpunt nu met vijf van haar
+# zeven cases, de acht andere hebben die vorm in hun enige case.
+EXPECTED_REPLAY_PLAYED=338
+# Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
+# dienst-replay-per-case (pin uchar 50f17953).
+EXPECTED_REPLAY_CASES=968
 
-# De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt een
-# tijdsafhankelijke parameter en een tijdsafhankelijk attribuut als tijdlijn en een tijdsafhankelijk kenmerk als zijn
-# perioden, maar geen scalaire waarde op een tijdsafhankelijk attribuut: uchars replay legt die in de periode van de
-# rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de dienst weigert haar met een 400 UNSUPPORTED. Op een document met een
-# Unresolved-knoop start de dienst niet: hij weigert een onopgeloste naam als fout in de bron, waar uchar pas faalt als
-# de evaluatie de knoop bereikt (WF-044).
+# De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
+# start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
+# attribuut als tijdlijn en een tijdsafhankelijk kenmerk als zijn perioden, maar geen scalaire waarde op een
+# tijdsafhankelijk attribuut: uchars replay legt die in de periode van de rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de
+# dienst weigert haar met een 400 UNSUPPORTED. Op een document met een Unresolved-knoop start de dienst niet: hij
+# weigert een onopgeloste naam als fout in de bron, waar uchar pas faalt als de evaluatie de knoop bereikt (WF-044).
 REPLAY_EXCLUDED=(
-  "jutterswet-gevolg-buiten-de-beurt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-gevolg-buiten-de-beurt-som|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-kadetarief|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-keurlast|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-muntbewaring|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-penningjaar|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-tempototaal|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-vast-startpunt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-voorwaarde-buiten-de-beurt|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-gevolg-buiten-de-beurt/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-gevolg-buiten-de-beurt-som/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-kadetarief/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-keurlast/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-muntbewaring/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-penningjaar/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-tempototaal/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-vast-startpunt/case5-geklemde-maand.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-vast-startpunt/case7-week-en-kwartaal.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-voorwaarde-buiten-de-beurt/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "unresolved-behind-a-failing-condition|een Unresolved-knoop in het document: de dienst start niet op een onopgeloste naam"
 )
 
@@ -258,13 +267,22 @@ is_undetermined_listed() {
 
 is_excluded() { local e; for e in "${REPLAY_EXCLUDED[@]}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1; }
 
-# Elke regel een golden en een reden, en geen golden twee keer.
-seen=""
+# De golden van een sleutel: een case-sleutel eindigt op haar casebestand ("<golden>/case….json"), een
+# golden-sleutel is de golden.
+golden_of() { case "$1" in */case*.json) printf '%s' "${1%/*}" ;; *) printf '%s' "$1" ;; esac; }
+
+# Elke regel een sleutel en een reden, geen sleutel twee keer, en geen golden met een sleutel van zichzelf en een van
+# een case.
+seen=$'\n'
 for e in "${REPLAY_EXCLUDED[@]}"; do
-  g="${e%%|*}"; r="${e#*|}"
+  k="${e%%|*}"; r="${e#*|}"
   [ -n "$r" ] && [ "$r" != "$e" ] || fail "uitsluiting zonder reden: '$e'"
-  case " $seen " in *" $g "*) fail "'$g' staat twee keer in REPLAY_EXCLUDED" ;; esac
-  seen="$seen $g"
+  case "$seen" in *$'\n'"$k"$'\n'*) fail "'$k' staat twee keer in REPLAY_EXCLUDED" ;; esac
+  seen="$seen$k"$'\n'
+done
+for e in "${REPLAY_EXCLUDED[@]}"; do
+  k="${e%%|*}"; g=$(golden_of "$k")
+  [ "$k" = "$g" ] || ! is_excluded "$g" || fail "'$g' staat in REPLAY_EXCLUDED als golden en met de case '$k'"
 done
 
 # --- de set van gate 12 -------------------------------------------------------------------------------------
@@ -296,8 +314,8 @@ output=$(python3 scripts/service_replay.py --corpus uchar/corpus/golden --explan
     --workers "${REPLAY_WORKERS:-4}" "${set_goldens[@]}") || fail "de replay-driver faalde"
 duration=$(( $(date +%s) - begin ))
 
-played=0; excl=0; cases=0; sentences=0; conditions=0; computations=0; links=0
-deviations=(); unnamed=(); outdated=(); undetermined=(); explained_goldens=()
+played=0; excl=0; excl_cases=0; cases=0; sentences=0; conditions=0; computations=0; links=0
+deviations=(); unnamed=(); outdated=(); undetermined=(); explained_goldens=(); excluded_keys=$'\n'
 while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined g_computations g_links; do
   [ -n "$g" ] || continue
   case "$status" in
@@ -317,13 +335,21 @@ while IFS=$'\t' read -r g status detail g_sentences g_conditions g_undetermined 
       played=$((played + 1)); cases=$((cases + detail)) ;;
     EXCLUDE)
       is_excluded "$g" || unnamed+=("$g :: $detail")
-      excl=$((excl + 1)) ;;
+      excluded_keys="$excluded_keys$g"$'\n'
+      if [ "$(golden_of "$g")" = "$g" ]; then excl=$((excl + 1)); else excl_cases=$((excl_cases + 1)); fi ;;
     *) deviations+=("$g :: $status $detail") ;;
   esac
 done <<< "$output"
 for e in "${REPLAY_EXCLUDED[@]}"; do
-  g="${e%%|*}"
-  printf '%s\n' "${set_goldens[@]}" | grep -qxF "$g" || outdated+=("$g staat in REPLAY_EXCLUDED maar niet in de set van gate 12")
+  k="${e%%|*}"; g=$(golden_of "$k")
+  if ! printf '%s\n' "${set_goldens[@]}" | grep -qxF "$g"; then
+    outdated+=("$k staat in REPLAY_EXCLUDED maar $g zit niet in de set van gate 12")
+  else
+    case "$excluded_keys" in
+      *$'\n'"$k"$'\n'*) ;;
+      *) outdated+=("$k staat in REPLAY_EXCLUDED maar wordt niet uitgesloten") ;;
+    esac
+  fi
 done
 
 for e in "${EXPLANATION_UNDETERMINED[@]+"${EXPLANATION_UNDETERMINED[@]}"}"; do
@@ -337,7 +363,7 @@ if [ ${#deviations[@]} -gt 0 ]; then
   printf '    %s\n' "${deviations[@]}" >&2; exit 1
 fi
 if [ ${#unnamed[@]} -gt 0 ]; then
-  echo "check-service-replay: FAIL — ${#unnamed[@]} golden(s) spelen niet en staan niet in REPLAY_EXCLUDED:" >&2
+  echo "check-service-replay: FAIL — ${#unnamed[@]} uitsluiting(en) van een golden of case staan niet in REPLAY_EXCLUDED:" >&2
   printf '    %s\n' "${unnamed[@]}" >&2; exit 1
 fi
 if [ ${#outdated[@]} -gt 0 ]; then
@@ -358,10 +384,12 @@ fi
   || fail "de uitleg koppelde $links gelezen waarden aan hun zin, de vloer EXPECTED_MIN_READ_LINKS is $EXPECTED_MIN_READ_LINKS"
 [ "$played" -eq "$EXPECTED_REPLAY_PLAYED" ] \
   || fail "$played goldens speelden, EXPECTED_REPLAY_PLAYED pint $EXPECTED_REPLAY_PLAYED (een nieuwe speler: zet het getal bij)"
+[ "$cases" -eq "$EXPECTED_REPLAY_CASES" ] \
+  || fail "$cases cases speelden, EXPECTED_REPLAY_CASES pint $EXPECTED_REPLAY_CASES (een nieuwe case die speelt: zet het getal bij)"
 
 echo "check-service-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
-echo "  gespeeld door de dienst: $played goldens, $cases cases (pin $EXPECTED_REPLAY_PLAYED)"
-echo "  uitgesloten: $excl, bij naam met reden"
+echo "  gespeeld door de dienst: $played goldens (pin $EXPECTED_REPLAY_PLAYED), $cases cases (pin $EXPECTED_REPLAY_CASES)"
+echo "  uitgesloten: $excl goldens en $excl_cases cases, bij naam met reden"
 echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), $computations berekende waarden (vloer $EXPECTED_MIN_EXPLAINED_COMPUTATIONS), $links gelezen waarden aan hun zin gekoppeld (vloer $EXPECTED_MIN_READ_LINKS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
 echo "  duur: ${duration}s met ${REPLAY_WORKERS:-4} diensten tegelijk"

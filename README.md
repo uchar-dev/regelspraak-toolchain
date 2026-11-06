@@ -307,8 +307,9 @@ make gates-no-docker
 git add uchar
 ```
 
-A pin that changes uchar's corpus can move a count the gates pin (the replay's `EXPECTED_REPLAY_PLAYED`, the case
-counts of the twins); such a count is set deliberately, with its reason in the script.
+A pin that changes uchar's corpus can move a count the gates pin (the replay's `EXPECTED_REPLAY_PLAYED` and
+`EXPECTED_REPLAY_CASES`, the case counts of the twins); such a count is set deliberately, with its reason in the
+script.
 
 ## The gates
 
@@ -358,10 +359,12 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
   case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (347). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
-  number that plays is pinned (`EXPECTED_REPLAY_PLAYED`, 337); every golden that does not play is listed by name with
-  its reason (10: 9 with a scalar on a time-dependent attribute, which the request does not carry, and 1 whose document
-  holds an `Unresolved` node, on which the service does not start); a deviation always fails, and the list fails when
-  it goes stale in either direction. Every golden that plays is asked with
+  replay excludes a case, not a golden: a golden plays when every case the service carries plays. The numbers of
+  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 338; `EXPECTED_REPLAY_CASES`, 968); every case
+  that does not play is listed by golden and case file with its reason (10 cases of 9 goldens, each with a scalar on a
+  time-dependent attribute, which the request does not carry), and every golden the service does not start on by name
+  (1, whose document holds an `Unresolved` node); a deviation always fails, and the list fails when it goes stale in
+  either direction. Every golden that plays is asked with
   `?explanation=true` as well, and an explanation the service does not give fails it. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
@@ -512,7 +515,7 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   time-dependent parameter and of a time-dependent attribute and the periods of a time-dependent characteristic, but
   no scalar on a time-dependent attribute (uchar's replay places one in the period of the evaluation date, the
   asOfDate-bucket convention); the service refuses it as `UNSUPPORTED`. The answer gives no time-dependent
-  characteristic. 9 of the goldens gate 12 plays need a scalar there; the replay gate lists them.
+  characteristic. 10 cases of 9 goldens gate 12 plays need a scalar there; the replay gate lists them per case.
 - **The other variants of a period.** The sentence of a period of a defaults group on a time-dependent attribute
   names the variant that decided, the conflict or the input that stood (`DroolsBackend.periodDecisionsOf`), and not the
   variants before or after it in that period: uchar reads each default once per object, not per period.
