@@ -843,7 +843,7 @@ public final class Verbaliser {
             int offset = c == null ? 0 : document.positions().subtree(c).size();
             Object found = read(v.pointer(), bean, label, value, offset).of(value).value();
             if (found == null) b.text("gaf geen waarde");
-            else value(b, render(found, type.attribute(member)), false);
+            else value(b, render(found, type.attribute(member)), false, found);
         }
 
         /** Een variant die aan de beurt was en niet besliste, als groep met de "; " ervoor: haar naam en de reden. */
@@ -919,7 +919,7 @@ public final class Verbaliser {
             b.text("heeft als ");
             attributeName(b, type, member, new On(label));
             b.text(" ");
-            value(b, render(decision, type.attribute(member)), decision == null);
+            value(b, render(decision, type.attribute(member)), decision == null, decision);
         }
 
         /** Wat het doel houdt waar de groep niets schreef: het kenmerk zoals de invoer het gaf, de invoerwaarde of
@@ -1347,7 +1347,7 @@ public final class Verbaliser {
                 b.text("heeft als ");
                 targetName(b, member, cell);
                 b.text(" ");
-                value(b, written(wrote.get(0), member), false);
+                value(b, written(wrote.get(0), member), false, writtenValue(wrote.get(0)));
                 for (int i = 0; i < wrote.size(); i++) {
                     b.text(i == 0 ? " volgens " : ", en volgens ");
                     decider(b, wrote.get(i), member, false, false, false);
@@ -1456,6 +1456,11 @@ public final class Verbaliser {
             return unit == null ? number : number + " " + unit;
         }
 
+        /** De waarde die regel {@code w} schreef, zoals de motor haar las: die van {@link #written}, als waarde. */
+        private Object writtenValue(Writer w) {
+            return valueRead(w).of(w.rule().value()).value();
+        }
+
         /** Wat tijdsafhankelijk attribuut {@code member} houdt waar geen regel een dag besliste: leeg, of de invoer,
          *  van de bean gelezen als haar perioden. Geeft of er een invoerwaarde staat. */
         private boolean timelineStanding(Sentence.Builder b, String member) {
@@ -1484,7 +1489,7 @@ public final class Verbaliser {
             cellName(b, type, member, cell, new On(label));
             if (v != null) {
                 b.text(" " + standingValue(bean) + " ");
-                value(b, render(v, type.attribute(member)), false);
+                value(b, render(v, type.attribute(member)), false, v);
             }
             return v != null;
         }
@@ -1662,10 +1667,10 @@ public final class Verbaliser {
                 if (!read.has(n) || !read.reached(n)) continue;
                 if (n instanceof Expr.Rounding r) {
                     b.text("; vóór de afronding ");
-                    value(b, unrounded(r.base(), read), read.of(r.base()).value() == null);
+                    value(b, unrounded(r.base(), read), read.of(r.base()).value() == null, read.of(r.base()).value());
                 } else if (n instanceof Expr.Clamp c) {
                     b.text("; vóór de begrenzing ");
-                    value(b, unrounded(c.base(), read), read.of(c.base()).value() == null);
+                    value(b, unrounded(c.base(), read), read.of(c.base()).value() == null, read.of(c.base()).value());
                 }
             }
             b.close(Part.Kind.COMPUTATION);
@@ -1714,7 +1719,7 @@ public final class Verbaliser {
             else describe(b, e, ucharText, readOn(e, read));
             if (!read.reached(e)) return;
             ConditionReading.NodeReading n = read.of(e);
-            reading(b, renderOperand(e, read), n.value() == null);
+            reading(b, renderOperand(e, read), n.value() == null, n.value());
             if (fold != null) contributors(b, fold, n);
         }
 
@@ -1843,7 +1848,7 @@ public final class Verbaliser {
                     Map.Entry<String, Object> member = members.get(i);
                     b.leaf(Part.Kind.SUBJECT, member.getKey());
                     if (count) continue;
-                    reading(b, renderRead(f, member.getValue(), n.unit()), member.getValue() == null);
+                    reading(b, renderRead(f, member.getValue(), n.unit()), member.getValue() == null, member.getValue());
                 }
                 if (m > 5) b.text(" en nog " + (m - 5));
                 b.text(m == 1 ? ", het enige lid" : " (" + m + " leden)");
@@ -2064,15 +2069,27 @@ public final class Verbaliser {
         b.leaf(Part.Kind.NAME, naming.attribute(holder, member), declaration(Naming.attributeOf(holder, member), on));
     }
 
-    /** Een waarde in de opmaak van de zin; {@code empty} bij een lege. */
-    private static void value(Sentence.Builder b, String text, boolean empty) {
-        b.leaf(Part.Kind.VALUE, text, empty ? Part.meta("empty", true) : Map.of());
+    /** Een waarde in de opmaak van de zin; {@code empty} bij een lege, en {@code marker} waar {@code raw}, de waarde
+     *  zoals de motor haar gaf, een afwezigheidsmarker is: de tekst alleen onderscheidt een marker niet van een
+     *  enumeratiewaarde of een literal met dezelfde spelling. */
+    private static void value(Sentence.Builder b, String text, boolean empty, Object raw) {
+        Map<String, Object> meta = empty ? Part.meta("empty", true) : new LinkedHashMap<>();
+        String marker = markerOf(raw);
+        if (marker != null) meta.put("marker", marker);
+        b.leaf(Part.Kind.VALUE, text, meta);
     }
 
-    /** De waarde die de motor las voor wat er direct voor staat, tussen haakjes, als groep: " (", de waarde, ")". */
-    private static void reading(Sentence.Builder b, String text, boolean empty) {
+    /** De naam van de afwezigheidsmarker die {@code raw} is, in de gedeclareerde spelling: een constructorwaarde zonder
+     *  payload (uchars RUNTIME-SEMANTICS ch. 9.5); null voor elke andere waarde, ook de waarde {@code waarde(…)}. */
+    private static String markerOf(Object raw) {
+        return raw instanceof ConstructorValue c && c.payload() == null ? c.constructor() : null;
+    }
+
+    /** De waarde die de motor las voor wat er direct voor staat, tussen haakjes, als groep: " (", de waarde, ")";
+     *  {@code raw} zoals bij {@link #value}. */
+    private static void reading(Sentence.Builder b, String text, boolean empty, Object raw) {
         b.open(Part.Kind.READING, Map.of()).text(" (");
-        value(b, text, empty);
+        value(b, text, empty, raw);
         b.text(")").close(Part.Kind.READING);
     }
 
@@ -2089,7 +2106,7 @@ public final class Verbaliser {
         b.text("houdt als ");
         attributeName(b, type, member, new On(label));
         b.text(" " + standingValue(bean) + " ");
-        value(b, render(v, type.attribute(member)), false);
+        value(b, render(v, type.attribute(member)), false, v);
         return true;
     }
 
@@ -2584,7 +2601,7 @@ public final class Verbaliser {
     private static boolean heldInPeriods(Sentence.Builder b, Condition c, Read read) {
         if (!(read.has(c) && read.reached(c) && read.of(c).value() instanceof List<?> periods)) return false;
         b.leaf(Part.Kind.QUOTE, summary(c));
-        reading(b, renderPeriods(periods, null, null), false);
+        reading(b, renderPeriods(periods, null, null), false, null);
         return true;
     }
 
@@ -2658,11 +2675,11 @@ public final class Verbaliser {
             return;
         }
         if (e instanceof Expr.Literal || e instanceof Expr.Construct c && c.argument() == null) {
-            value(b, renderOperand(e, read), read.of(e).value() == null);
+            value(b, renderOperand(e, read), read.of(e).value() == null, read.of(e).value());
             return;
         }
         describe(b, e, ucharText, readOn(e, read));
-        reading(b, renderOperand(e, read), read.of(e).value() == null);
+        reading(b, renderOperand(e, read), read.of(e).value() == null, read.of(e).value());
     }
 
     /** Een Java-waarde in helder Nederlands: getallen met punt-duizend/komma-decimaal en de eenheid uit het type;

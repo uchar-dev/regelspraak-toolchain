@@ -28,7 +28,8 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         /** Rule text as written, with the three keys of {@link #NAME} where the operand reads one declaration, and
          *  {@code object} as on {@link #NAME}. */
         QUOTE,
-        /** A value as the engine read it, with its unit; {@code empty: true} for an empty one, and
+        /** A value as the engine read it, with its unit; {@code empty: true} for an empty one,
+         *  {@code marker}, the name of an absence marker in its declared spelling, for a marker, and
          *  {@code timeline: true} for the value of a timeline target, its periods with their values as RegelSpraak
          *  writes a period, and for the periods of a time-dependent characteristic. */
         VALUE,

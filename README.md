@@ -228,7 +228,10 @@ model declares) and the sentences of the messages, which keep their text. The ol
   give the attribute in the same form, where they gave the text of uchar's value (`"waarde(300)"`, `"onbekend"`). The
   explanation writes the value as its payload (`"V1 heeft als taxatie 300,00 volgens …"`) and a marker by its name,
   also per period; the test whether such an attribute holds a value reads `"zijn taxatie (niet van toepassing) een
-  waarde heeft"`, and a marker in a comparison stands once (`"is gelijk aan onbekend"`). In the OpenAPI document such
+  waarde heeft"`, and a marker in a comparison stands once (`"is gelijk aan onbekend"`). In `explanationParts` the
+  `VALUE` of a marker carries `marker`, its name (card `marker-on-value-part`): in the head of a sentence, as a value
+  read and as the literal of a comparison, so a consumer tells it from an enumeration value spelled the same; a
+  timeline is one `VALUE` with all its periods and carries none. In the OpenAPI document such
   an attribute is `oneOf` the schema of its datatype and the marker object, with an `enum` of the markers it declares.
   An attribute of another sum type, which only an IR document of another producer declares, refuses the start in
   `output` (`UNSUPPORTED`).

@@ -742,7 +742,8 @@ public final class OpenApiEmitter {
                 + " een rol, de tekst en het filter van een vouw over een verzameling (per lid gelezen; de leden staan"
                 + " in MEMBERS) en een lezing die de motor niet bereikte; QUOTE regeltekst zoals geschreven, met"
                 + " dezelfde drie waar het operand één declaratie leest, en object zoals bij NAME; VALUE een"
-                + " waarde met haar eenheid, met empty: true bij een lege en timeline: true bij de waarde van een"
+                + " waarde met haar eenheid, met empty: true bij een lege, marker, de naam van een afwezigheidsmarker"
+                + " in de gedeclareerde spelling, bij een marker, en timeline: true bij de waarde van een"
                 + " tijdlijn-doel, haar perioden met hun waarden, en bij de perioden van een tijdsafhankelijk kenmerk;"
                 + " RULE de naam van een regel of van een variant"
                 + " van een defaults-groep; CONNECTIVE een woord dat de logica tussen de delen draagt (omdat, want,"
@@ -787,7 +788,7 @@ public final class OpenApiEmitter {
         parts.put("type", "array");
         parts.putObject("items").put("$ref", "#/components/schemas/ExplanationPart");
         for (String key : new String[]{"declaration", "canonical", "quantifier", "bwb", "article", "paragraph", "part",
-                "rule", "pointer", "variant", "follows"})
+                "rule", "pointer", "variant", "follows", "marker"})
             props.putObject(key).put("type", "string");
         ObjectNode between = props.putObject("between");
         between.put("type", "array");
