@@ -34,6 +34,26 @@ Een van drie:
 3. De toets blijft bij regels en defaultsgroepen; `README.md` en `docs/ENGINE.md` zeggen welke soorten hij niet toetst
    en waarom.
 
+## Voorlopig besluit (Fable-advies 2026-11-06)
+
+*Voorlopig: het aanbevolen antwoord van een Fable-advies, gebouwd en geland; de eigenaar kan het omdraaien. Het volledige
+advies: `uchar-dev/werk/norm-advice-2026-11-06/ADVIES.md`, vraag B.*
+
+Optie 1. De scopetoets geldt voor elke vorm die een scope draagt, onder dezelfde drie voorwaarden, en de schending noemt
+de lezer met zijn soort (`objectcreatie`, `verdeling`, `consistentie`, `uniciteit`, `feitcreatie`, naast `regel` en
+`defaults-groep`). Een verdeling leest haar volgorde-, verhoudings- en maximumattributen zoals een regel haar operanden
+(`ProducerConsumer.forms` geeft voor elke soort dezelfde `reads`); met de schrijver buiten de scope verdeelt de
+gescopete build op een leeg attribuut, dezelfde klasse als x01d. De vijf verdelings-entrypoints van
+`examples/toka/toka.service.json` declareren wat de TOKA-scenario's daar al als invoer geven:
+`"inputElements": ["Natuurlijk persoon.woonregio factor"]` op `verdeling treinmiles op basis van woonregio factor`, `…
+en met maximum waarde` en `… met afronding`; `["Natuurlijk persoon.leeftijd", "Natuurlijk persoon.woonregio factor"]`
+op `Verdeling treinmiles op basis van leeftijd en woonregio factor` en `… leeftijd, woonregio factor, met maximum waarde
+en afronding`. Controle: zonder die declaraties start de dienst niet en noemen de zeven schendingen precies deze
+elementen. Docs: `README.md` (r. ~430–433) en `docs/ENGINE.md` (r. ~92–108) noemen alle soorten, de slotzin "The other
+forms a scope can carry … are not checked" en het TOKA-commentaar op r. ~537–538 van `DecisionCore.java` vervallen.
+Niet veranderen: `examples/toka/*.rgs`, de uitkomsten van de TOKA-scenario's en van de golden-tests van de dienst, de
+bestaande schendingszinnen voor regels en groepen.
+
 ## Wat er gebeurt
 
 Bij 1 of 2 toetst `scopeCompleteness` de gekozen soorten onder dezelfde drie voorwaarden als een regel: er is een
