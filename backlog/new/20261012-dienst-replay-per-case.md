@@ -22,7 +22,7 @@ hij niet draagt, staan per case met hun reden in de lijst. De pin telt cases naa
 
 - (a) Meet eerst hoeveel cases erbij komen. Elke case die dan speelt, geeft uchars verwachtingen.
 - (b) De lijst faalt als hij in een van beide richtingen verouderd is, zoals nu.
-- (c) `make poorten` groen.
+- (c) `make gates` groen.
 
 ## Omvang
 

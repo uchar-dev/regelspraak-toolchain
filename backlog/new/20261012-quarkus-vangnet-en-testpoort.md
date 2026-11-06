@@ -7,7 +7,7 @@ van stap 1 en de nulmeting van die kaart.*
 
 1. **Geen vangnet.** `DecideResource` (`service-quarkus`) vangt `UnknownPath`, `NonExecutable`, `ServiceError` en sinds
    die kaart `EvaluationFault`. Een andere exceptie, zoals een sessie die het plafond haalt (`Firing.noFixpoint()`), gaat
-   naar de standaardafhandeling van Quarkus. De JDK-dienst geeft dan `500 {"fout":"interne fout"}` en logt de
+   naar de standaardafhandeling van Quarkus. De JDK-dienst geeft dan `500 {"error":"interne fout"}` en logt de
    stacktrace (`ServiceHttp`). `ErrorParityTest` toetst de 500 niet. Dit bestond al vóór die kaart.
 2. **Vaste testpoort.** De Quarkus-tests binden standaard poort 8081. Op 2026-10-12 hield een preview-server van een
    werkbanksessie die poort bezet, en faalde `mvn -B -o verify` op `HealthTest`:
@@ -23,7 +23,7 @@ van stap 1 en de nulmeting van die kaart.*
 
 - (a) Rood eerst: een getuige voor de 500 in beide adapters.
 - (b) `mvn -B -o verify` groen terwijl poort 8081 bezet is.
-- (c) `make poorten` groen.
+- (c) `make gates` groen.
 
 ## Omvang
 
