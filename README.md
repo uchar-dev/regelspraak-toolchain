@@ -290,6 +290,12 @@ model declares) and the sentences of the messages, which keep their text. The ol
   is (van 01-03-2025 tot 01-06-2025)"`, where it was `"; de regel 'standaardstormloon' gaf geen waarde en besliste
   niets"`. A writer that held on some empty day and gave leeg there still gave no value. Over uchar's goldens 30 of
   5145 sentences change, all of the first kind; the answer is unchanged.
+- **A second filling has its own kind** (uchar's card `tweede-vulling-als-eigen-fouttype`): a fact creation that gives
+  a to-one role a second, different filling (EF-017, uchar's `SecondFillingFault`) is a fault of the kind
+  `SECOND_FILLING_FAULT` in the 422, where it was `OTHER`, and uchar's sentence names the object by its id (`de
+  naar-één-rol "haven" van "J1" heeft twee verschillende vullingen; …`), where it named its type (`van een Jutter`).
+  The kind `OTHER` is gone: uchar's branch puts no fault at the fixpoint outside the types its README names
+  (`Fault.KINDS`), and each has its own kind.
 
 ## The pin
 

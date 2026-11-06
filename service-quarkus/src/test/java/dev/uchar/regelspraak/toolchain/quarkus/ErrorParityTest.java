@@ -37,8 +37,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * evaluation fault, the 422 LIMIT of a value uchar's Drools branch cannot hold, and the 500 of a fault the core never
  * throws on purpose, without its message. A violation on a role of {@code relations} names the field as the request
  * wrote it, in capitals or as a designation of a vocabulary. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
- * 422s include a fault at the fixpoint of another type than the four uchar's README names, {@code OTHER}, alone and
- * beside a read of the rekenjaar without an evaluation date. {@link DecideResource} builds the first bodies by hand, as {@code ServiceHttp}'s builders
+ * 422s include the second filling of a to-one role, {@code SECOND_FILLING_FAULT}, alone and beside a read of the
+ * rekenjaar without an evaluation date. {@link DecideResource} builds the first bodies by hand, as {@code ServiceHttp}'s builders
  * are package-private in the service module, and the 422 body with the service core's builder, as {@code ServiceHttp}
  * does; this test catches a drift in either adapter, as {@link InfoParityTest} does for {@code /info}.
  *
@@ -153,9 +153,9 @@ class ErrorParityTest {
             "input": ["Jutter"], "output": ["Jutter.zware vondsten"] } ],
           "parameters": {} }""";
 
-    /** Own material for a fault at the fixpoint of another type than the four uchar's README names: the model of
-     *  uchar's witness of a second filling ({@code TmsCreationWitnessTest}, document D), in which a fact creation gives
-     *  a to-one role two different fillers, with a read of the rekenjaar without an evaluation date beside it. */
+    /** Own material for the second filling of a to-one role at the fixpoint: the model of uchar's witness of a second
+     *  filling ({@code TmsCreationWitnessTest}, document D), in which a fact creation gives a to-one role two different
+     *  fillers, with a read of the rekenjaar without an evaluation date beside it. */
     private static final String FILLING_SOURCE = """
         Objecttype de Kustwacht (mv: Kustwachten)
 
@@ -364,12 +364,12 @@ class ErrorParityTest {
     }
 
     @Test
-    void second_filling_from_a_to_a_role_422_other() throws Exception {
+    void second_filling_of_a_to_one_role_422_second_filling_fault() throws Exception {
         JsonNode body = compare(filling, fillingService, "vulling", """
             {"instances":[{"type":"Kustwacht","id":"K1",
               "roles":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
               {"type":"Haven","id":"H1"},{"type":"Haven","id":"H2"},{"type":"Jutter","id":"J1"}]}""", 422);
-        assertEquals(List.of("OTHER"), kinds(body), body.toString());
+        assertEquals(List.of("SECOND_FILLING_FAULT"), kinds(body), body.toString());
     }
 
     @Test
@@ -379,7 +379,7 @@ class ErrorParityTest {
               "roles":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
               {"type":"Haven","id":"H1","attributes":{"ligplaatsen":0}},
               {"type":"Haven","id":"H2","attributes":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""", 422);
-        assertEquals(List.of("OTHER", "COMPUTE_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("SECOND_FILLING_FAULT", "COMPUTE_FAULT"), kinds(body), body.toString());
     }
 
     @Test

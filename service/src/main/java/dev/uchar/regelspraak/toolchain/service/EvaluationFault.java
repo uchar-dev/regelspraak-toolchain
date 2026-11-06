@@ -9,6 +9,7 @@ import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.InputFormFault;
 import dev.uchar.regelspraak.transpiler.tms.ComputeFault;
 import dev.uchar.regelspraak.transpiler.tms.OpenSegmentFault;
+import dev.uchar.regelspraak.transpiler.tms.SecondFillingFault;
 import dev.uchar.regelspraak.transpiler.tms.WriteBoundaryFault;
 import dev.uchar.regelspraak.transpiler.tms.WritersConflict;
 
@@ -19,12 +20,12 @@ import java.util.Map;
 /**
  * The evaluation faults that stand at the fixpoint of a request's session, as uchar's entry reads them
  * ({@code DroolsBackend.fixpointOf(…).fouten()}): the rules give no answer on this input. A fault there is an evaluation
- * fault by its place at the fixpoint, whatever the type of its exception, so each one is an element: it keeps uchar's
- * sentence and gets the kind of its exception, one of the five types uchar's README names ("Faults"), one of the two
- * faults of a timeline over all time ({@code OpenSegmentFault}, EF-036, and {@code CharacteristicPeriodsFault}, EF-023,
- * uchar's RUNTIME-SEMANTICS ch. 3.6 and 3.11), or {@link Kind#OTHER} for any other, such as the
- * {@code IllegalStateException} of a fact creation that gives a to-one role a second filling. Both adapters answer it
- * with a 422 ({@link AnswerBuilder#evaluationFault}).
+ * fault by its place at the fixpoint, so each one is an element: it keeps uchar's sentence and gets the kind of its
+ * exception, one per type that uchar's README names ("Faults") and that uchar's branch allows at the fixpoint
+ * ({@code Fault.KINDS}): among them the two faults of a timeline over all time ({@code OpenSegmentFault}, EF-036, and
+ * {@code CharacteristicPeriodsFault}, EF-023, uchar's RUNTIME-SEMANTICS ch. 3.6 and 3.11) and the second filling of a
+ * to-one role by a fact creation ({@code SecondFillingFault}, EF-017, ch. 5.5). Both adapters answer it with a 422
+ * ({@link AnswerBuilder#evaluationFault}).
  *
  * <p>It carries the {@link Fixpoint} the faults stand at, with the values the creation assigned read at the same moment
  * ({@code CaseSession.making}), and, when the request asked to see its session
@@ -46,7 +47,7 @@ public final class EvaluationFault extends RuntimeException {
     /** The kind of a fault, by the type of uchar's exception ({@link #CELL_FAULT}: {@code CaseInput.CellFault}). */
     public enum Kind {
         DIVISION_BY_ZERO, COMPUTE_FAULT, WRITERS_CONFLICT, INPUT_FORM_FAULT, WRITE_BOUNDARY_FAULT, INPUT_PRECISION_FAULT,
-        CELL_FAULT, OPEN_SEGMENT_FAULT, CHARACTERISTIC_PERIODS_FAULT, OTHER
+        CELL_FAULT, OPEN_SEGMENT_FAULT, CHARACTERISTIC_PERIODS_FAULT, SECOND_FILLING_FAULT
     }
 
     /** One fault: its kind and uchar's sentence. */
@@ -94,7 +95,8 @@ public final class EvaluationFault extends RuntimeException {
         return new EvaluationFault(errors, (RuntimeException) getCause(), fixpoint, making, detail);
     }
 
-    /** The kind of uchar's fault {@code f}. */
+    /** The kind of uchar's fault {@code f}. uchar's branch puts no other type at the fixpoint ({@code Fault.KINDS}), so
+     *  another type is a broken contract and fails here, naming its type. */
     public static Kind kind(RuntimeException f) {
         return switch (f) {
             case Breuk.DelingDoorNul d -> Kind.DIVISION_BY_ZERO;
@@ -105,7 +107,9 @@ public final class EvaluationFault extends RuntimeException {
             case CaseRunner.InputPrecisionFault p -> Kind.INPUT_PRECISION_FAULT;
             case OpenSegmentFault o -> Kind.OPEN_SEGMENT_FAULT;
             case CharacteristicPeriodsFault c -> Kind.CHARACTERISTIC_PERIODS_FAULT;
-            default -> Kind.OTHER;
+            case SecondFillingFault s -> Kind.SECOND_FILLING_FAULT;
+            default -> throw new IllegalStateException("geen evaluatiefout die uchars tak aan het fixpunt zet"
+                    + " (Fault.KINDS): " + f.getClass().getName() + ": " + f.getMessage(), f);
         };
     }
 

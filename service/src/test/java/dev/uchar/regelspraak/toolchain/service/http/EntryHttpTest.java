@@ -52,7 +52,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * material: one model of finds with an entry point per rule set, so each request meets the fault it is about and no
  * other, one of a fold over a to-many role, whose fault names the member the order of the list puts first, as in
  * uchar's replay, the model of uchar's witness of a fact creation that gives a to-one role a second filling, a fault of
- * another type, that of a reciprocal role written on a subtype of its filler, and an allocation whose share does not
+ * its own type, that of a reciprocal role written on a subtype of its filler, and an allocation whose share does not
  * fit its target.
  */
 class EntryHttpTest {
@@ -662,21 +662,21 @@ class EntryHttpTest {
         assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
     }
 
-    // ---------------- a fault at the fixpoint of another type: OTHER ----------------
+    // ---------------- the second filling of a to-one role: SECOND_FILLING_FAULT ----------------
 
     /** uchar's case D2 ({@code TmsCreationWitnessTest.a_second_filling_of_a_to_one_role_is_a_fault}): the fact
-     *  creation gives J1 two havens, and uchar puts that fault at the fixpoint with a plain
-     *  {@code IllegalStateException}, outside the five types its README names. It is an evaluation fault by its place
-     *  there, so the 422 gives it as OTHER, with the sentence uchar's replay gives on the same input. */
+     *  creation gives J1 two havens, and uchar puts that fault at the fixpoint as a {@code SecondFillingFault}
+     *  (EF-017), so the 422 gives it as SECOND_FILLING_FAULT, with the sentence uchar's replay gives on the same
+     *  input. */
     @Test
-    void a_second_filling_from_a_to_a_role_is_422_other(@TempDir Path map) throws Exception {
+    void a_second_filling_of_a_to_one_role_is_422_second_filling_fault(@TempDir Path map) throws Exception {
         List<String> replay = replayFaults(map, FILLING_SOURCE, FILLING);
         assertEquals(1, replay.size(), replay::toString);
         assertTrue(replay.get(0).startsWith("de naar-één-rol \"haven\" van \"J1\" heeft twee verschillende"
                 + " vullingen"), replay::toString);
         JsonNode body = evaluationFault(post(fillingService, "/vulling", FILLING));
         assertEquals("de regels geven op deze invoer een evaluatiefout", body.get("error").asText(), body.toString());
-        assertEquals(List.of("OTHER"), kinds(body), body.toString());
+        assertEquals(List.of("SECOND_FILLING_FAULT"), kinds(body), body.toString());
         assertEquals(replay, sentences(body), body.toString());
     }
 
@@ -690,7 +690,7 @@ class EntryHttpTest {
         assertEquals(2, replay.size(), replay::toString);
         JsonNode body = evaluationFault(post(fillingService, "/mengsel", MENGSEL));
         assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("error").asText(), body.toString());
-        assertEquals(List.of("OTHER", "COMPUTE_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("SECOND_FILLING_FAULT", "COMPUTE_FAULT"), kinds(body), body.toString());
         assertEquals(replay, sentences(body), body.toString());
     }
 

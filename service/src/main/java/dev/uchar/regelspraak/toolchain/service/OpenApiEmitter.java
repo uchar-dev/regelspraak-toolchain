@@ -957,9 +957,8 @@ public final class OpenApiEmitter {
                 + " van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd;"
                 + " OPEN_SEGMENT_FAULT: een totaal over een segment met een open grens dat niet 0 is;"
                 + " CHARACTERISTIC_PERIODS_FAULT: de perioden waarin een tijdsafhankelijk kenmerk geldt, met een open"
-                + " grens; OTHER:"
-                + " een fout van een ander type die aan het fixpunt"
-                + " staat, zoals een feitcreatie die een naar-één-rol een tweede vulling geeft.");
+                + " grens; SECOND_FILLING_FAULT: een feitcreatie die een naar-één-rol een tweede, andere vulling"
+                + " geeft.");
         ObjectNode sentence = itemProps.putObject("error");
         sentence.put("type", "string");
         sentence.put("description", "uchars zin; een object van het verzoek heet daarin naar zijn id.");

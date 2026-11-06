@@ -43,9 +43,10 @@ or a characteristic set without one, so the next `fire()` fires nothing, and `re
 fixpoint (uchar's `backends/drools/README.md`, "What a consumer can forget"). `fire()` returns the number of firings
 and throws with uchar's sentence when a run reaches no fixpoint;
 `restore()` throws every evaluation fault that stands at the fixpoint as uchar's own exception, two or more as
-`EvaluationFaults`: one of the five types uchar's README names (`Breuk.DelingDoorNul`, `ComputeFault`,
-`WritersConflict`, `InputFormFault`, `WriteBoundaryFault`) or another, such as the `IllegalStateException` of a fact
-creation that gives a to-one role a second filling. A fault is an evaluation fault by its place at the fixpoint, not
+`EvaluationFaults`: one of the types uchar's README names ("Faults", `Fault.KINDS`: `Breuk.DelingDoorNul`,
+`ComputeFault`, `WritersConflict`, `InputFormFault`, `WriteBoundaryFault`, `OpenSegmentFault`,
+`CharacteristicPeriodsFault` and `SecondFillingFault`, the fault of a fact creation that gives a to-one role a second
+filling). A fault is an evaluation fault by its place at the fixpoint, not
 by its type: `read().faults()` gives each as data, which tells it from an exception of the entry itself. `facts(…)`
 reads the working memory, the `Inconsistentie` facts among them.
 
@@ -245,10 +246,11 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `WRITE_BOUNDARY_FAULT` (a value that does not fit the declared decimals of its target, EF-006),
   `INPUT_PRECISION_FAULT` (below), `CELL_FAULT` (below), `OPEN_SEGMENT_FAULT` (a temporal total over a segment with an
   open bound that is not 0, EF-036, uchar's `OpenSegmentFault`), `CHARACTERISTIC_PERIODS_FAULT` (the periods in which
-  a time-dependent characteristic holds have an open bound, EF-023, uchar's `CharacteristicPeriodsFault`) or `OTHER`
-  (a fault of another type, such as a fact creation that gives a to-one role a second filling). Where uchar's sentence names
-  an object, it names an object of the request by its id; a sentence about a kind of object (the second filling: "a
-  Jutter") names none. No stacktrace enters the answer. The Quarkus adapter answers the same, and the
+  a time-dependent characteristic holds have an open bound, EF-023, uchar's `CharacteristicPeriodsFault`) or
+  `SECOND_FILLING_FAULT` (a fact creation that gives a to-one role a second, different filling, EF-017, uchar's
+  `SecondFillingFault`); uchar puts no fault of another type at the fixpoint (`Fault.KINDS`). Where uchar's sentence
+  names an object of the request, it names it by its id, and an object a creation made by its type ("een aangemaakte
+  Vondst"). No stacktrace enters the answer. The Quarkus adapter answers the same, and the
   OpenAPI contract describes the body of the 422 (schema `EvaluationFault`, with `kind` as an enumeration of these
   kinds).
 - A request that validates but holds a number its declaration does not hold, an attribute or a parameter with more
