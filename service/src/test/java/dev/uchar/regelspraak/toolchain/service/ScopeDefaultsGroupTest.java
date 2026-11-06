@@ -539,7 +539,7 @@ class ScopeDefaultsGroupTest {
         ServiceError f = assertThrows(ServiceError.class, () -> assemble(source, vondstdescriptor()));
         assertTrue(f.violations().stream().allMatch(s -> s.kind() == Violation.Kind.MARKER),
                 () -> "verwacht een marker: " + f.violations());
-        assertTrue(f.violations().get(0).message().contains("navigeert via 'haven'"), () -> "" + f.violations());
+        assertTrue(f.violations().get(0).message().contains("navigates via 'haven'"), () -> "" + f.violations());
     }
 
     // ---------------- a subtype's own exceptions go with their base (RUNTIME-SEMANTICS ch. 7.10) ----------------

@@ -672,7 +672,7 @@ class EntryHttpTest {
     void a_second_filling_from_a_to_a_role_is_422_other(@TempDir Path map) throws Exception {
         List<String> replay = replayFaults(map, FILLING_SOURCE, FILLING);
         assertEquals(1, replay.size(), replay::toString);
-        assertTrue(replay.get(0).startsWith("de naar-één-rol \"haven\" van een Jutter heeft twee verschillende"
+        assertTrue(replay.get(0).startsWith("de naar-één-rol \"haven\" van \"J1\" heeft twee verschillende"
                 + " vullingen"), replay::toString);
         JsonNode body = evaluationFault(post(fillingService, "/vulling", FILLING));
         assertEquals("de regels geven op deze invoer een evaluatiefout", body.get("error").asText(), body.toString());
@@ -755,7 +755,7 @@ class EntryHttpTest {
         assertEquals(1, body.path("violations").size(), resp.body());
         assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText(), resp.body());
         assertEquals("relations[0].roles.aanmelder", body.at("/violations/0/field").asText(), resp.body());
-        assertEquals("to-one rol 'aanmelder' krijgt een tweede, ander doel — ref weigert die case bij het laden (WF-013)",
+        assertEquals("enkelvoudige rol 'aanmelder' krijgt een tweede, ander doel — ref weigert die case bij het laden (WF-013)",
                 body.at("/violations/0/error").asText(), resp.body());
     }
 

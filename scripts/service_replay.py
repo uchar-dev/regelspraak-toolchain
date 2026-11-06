@@ -137,6 +137,25 @@ def cells_of(node, place):
                       for c in node["cells"]]}
 
 
+def whitespace_as_declared(case):
+    """Een NotExpressible bij de eerste naam van de case met witruimte die een gedeclareerde naam niet heeft: een tab,
+    twee spaties, of een spatie vooraan of achteraan. uchars caselezer vouwt die witruimte (Namen.norm, IR-SPEC ch.
+    2.1: een gedeclareerde naam is witruimte-gevouwen); de dienst leest een naam van het verzoek alleen
+    hoofdletterongevoelig, en weigert zo'n naam met UNKNOWN_FIELD, of start niet als een uitvoerselector haar
+    draagt."""
+    inp = case["input"]
+    names = list((inp.get("parameters") or {}).keys())
+    for i in inp["instances"]:
+        names.append(i["objectType"])
+        names += list((i.get("attributes") or {}).keys()) + list(i.get("characteristics") or [])
+        names += list((i.get("characteristicTimelines") or {}).keys()) + list((i.get("roles") or {}).keys())
+    names += [e[k] for e in case["expected"] for k in ("attribute", "characteristic") if k in e]
+    for name in names:
+        if " ".join(w for w in re.split(r"[ \t]+", name) if w) != name:
+            raise NotExpressible(f"een naam met witruimte die geen gedeclareerde naam heeft ({name!r}): uchars"
+                                 " caselezer vouwt haar, de dienst niet")
+
+
 def request_body(case):
     """Het verzoek van een casebestand."""
     v = {}
@@ -629,6 +648,7 @@ def play(golden, map_, descriptor_path=None, explanation=False):
         requests = []
         for name, c in cases:
             try:
+                whitespace_as_declared(c)
                 requests.append((name, request_body(c), c))
             except NotExpressible as n:
                 excluded.append((f"{golden}/{name}", "EXCLUDE", str(n)))
