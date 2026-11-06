@@ -122,4 +122,60 @@ class DocumentSourceTest {
         assertEquals("V2", detail.get("subject").asText(), answer.toString());
         assertEquals(answer.get("inconsistencies").get(0).asText(), detail.get("rule").asText());
     }
+
+    /** The berging of uchar's golden jutterswet-muntketen relates boten and vondsten, both roles to-many: uchar's input
+     *  step reads such a relation as one link of the fact type, from whichever end the case writes it. Written from the
+     *  Boot (the golden's case), from the Vondst and through {@code relations}, the request gives the golden's values. */
+    @Test
+    void a_relation_of_two_to_many_roles_is_input_from_either_end_and_through_relations() throws IOException {
+        DecisionCore core = DecisionCore.buildFromDocument(
+                descriptor("\"laagste muntgewicht\", \"totaal muntgewicht\"", "\"Jutter\"",
+                        "\"Jutter.laagste muntgewicht\", \"Jutter.totaal muntgewicht\""),
+                document("jutterswet-muntketen"), CoreConfig.strict(), getClass().getClassLoader(), null);
+        String crews = """
+                { "type": "Jutter", "id": "J1", "roles": { "gevoerde boten": ["B1", "B2"] } },
+                { "type": "Jutter", "id": "J2", "roles": { "gevoerde boten": ["B3"] } },
+                { "type": "Jutter", "id": "J3", "roles": { "gevoerde boten": ["B4", "B5"] } },""";
+        String finds = """
+                { "type": "Vondst", "id": "V1", "attributes": { "gewicht": 1.00 }%s },
+                { "type": "Vondst", "id": "V2", "attributes": { "gewicht": 9.00 }%s },
+                { "type": "Vondst", "id": "V3", "attributes": { "gewicht": 4.00 }%s },
+                { "type": "Vondst", "id": "V4", "attributes": { "gewicht": 2.00 }%s },
+                { "type": "Munt", "id": "M1", "attributes": { "gewicht": 7.00, "jaartal": 1650 }%s },
+                { "type": "Munt", "id": "M2", "attributes": { "gewicht": 5.00, "jaartal": 1702 }%s },
+                { "type": "Munt", "id": "M3", "attributes": { "gewicht": 3.00, "jaartal": 1799 }%s }""";
+        String noRoles = finds.formatted("", "", "", "", "", "", "");
+        ObjectNode fromTheBoot = core.process("e", request("{ \"instances\": [" + crews + """
+                { "type": "Boot", "id": "B1", "roles": { "geborgen vondsten": ["V1", "M1"] } },
+                { "type": "Boot", "id": "B2", "roles": { "geborgen vondsten": ["M2", "V2"] } },
+                { "type": "Boot", "id": "B3", "roles": { "geborgen vondsten": ["V3"] } },
+                { "type": "Boot", "id": "B4", "roles": { "geborgen vondsten": ["M3"] } },
+                { "type": "Boot", "id": "B5", "roles": { "geborgen vondsten": ["M3", "V4"] } },""" + noRoles + "] }"));
+        ObjectNode fromTheFind = core.process("e", request("{ \"instances\": [" + crews + """
+                { "type": "Boot", "id": "B1" }, { "type": "Boot", "id": "B2" }, { "type": "Boot", "id": "B3" },
+                { "type": "Boot", "id": "B4" }, { "type": "Boot", "id": "B5" },""" + finds.formatted(
+                ", \"roles\": { \"bergende boten\": [\"B1\"] }", ", \"roles\": { \"bergende boten\": [\"B2\"] }",
+                ", \"roles\": { \"bergende boten\": [\"B3\"] }", ", \"roles\": { \"bergende boten\": [\"B5\"] }",
+                ", \"roles\": { \"bergende boten\": [\"B1\"] }", ", \"roles\": { \"bergende boten\": [\"B2\"] }",
+                ", \"roles\": { \"bergende boten\": [\"B4\", \"B5\"] }") + "] }"));
+        StringBuilder relations = new StringBuilder();
+        for (String[] link : new String[][] {{"B1", "V1"}, {"B1", "M1"}, {"B2", "M2"}, {"B2", "V2"}, {"B3", "V3"},
+                {"B4", "M3"}, {"B5", "M3"}, {"B5", "V4"}})
+            relations.append(relations.isEmpty() ? "" : ", ").append("{ \"factType\": \"berging\", \"roles\": {"
+                    + " \"bergende boot\": \"" + link[0] + "\", \"geborgen vondst\": \"" + link[1] + "\" } }");
+        ObjectNode throughRelations = core.process("e", request("{ \"instances\": [" + crews + """
+                { "type": "Boot", "id": "B1" }, { "type": "Boot", "id": "B2" }, { "type": "Boot", "id": "B3" },
+                { "type": "Boot", "id": "B4" }, { "type": "Boot", "id": "B5" },""" + noRoles + "], \"relations\": ["
+                + relations + "] }"));
+
+        JsonNode j1 = instance(fromTheBoot, "J1").get("attributes");
+        assertEquals(0, new java.math.BigDecimal("5.00").compareTo(j1.get("laagste muntgewicht").decimalValue()),
+                fromTheBoot.toString());
+        assertEquals(0, new java.math.BigDecimal("12.00").compareTo(j1.get("totaal muntgewicht").decimalValue()),
+                fromTheBoot.toString());
+        assertTrue(instance(fromTheBoot, "J2").get("attributes").get("laagste muntgewicht").isNull(),
+                fromTheBoot.toString());
+        assertEquals(fromTheBoot, fromTheFind);
+        assertEquals(fromTheBoot, throughRelations);
+    }
 }

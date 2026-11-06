@@ -772,7 +772,8 @@ public final class RequestMapper {
     /** Each relation as one role link of the case, on the end whose role toward the other end is to-one, keyed by the
      *  role the other end fills: the link a case writes on that instance. uchar's input step establishes the relation
      *  both ways from it (RUNTIME-SEMANTICS ch. 5.7a): the far field of a 1:1 relation, the reverse leg of a reciprocal
-     *  one. Where neither direction is to-one the link goes on the first end, and the input step refuses it. */
+     *  one. Where neither direction is to-one the link goes on the first end, and the input step reads it as one link
+     *  of the fact type, from whichever end the case writes it ({@code Input.link}). */
     private void setRelations(JsonNode relations, Map<String, ObjectType> typePerLabel, Map<String, ObjectNode> instances,
                              Map<Link, String> paths, List<Violation> s) {
         if (relations == null || relations.isNull()) return;
