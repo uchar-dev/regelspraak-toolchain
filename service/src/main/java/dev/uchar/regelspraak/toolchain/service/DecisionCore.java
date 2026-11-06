@@ -783,7 +783,7 @@ public final class DecisionCore {
      * request its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's
      * {@code observer} recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
      * ({@link DroolsBackend#coverage}: {@code FIRED} or {@code NOT_FIRED}); and {@code fixpunt}, what stands at the
-     * fixpoint with the instances of the request as its input and {@code making} the values of the making of the
+     * fixpoint with the instances of the request as its input and {@code making} the values the creation assigned of the
      * objects its creations made ({@link FixpointGivens}), or {@code fixpointError} with the
      * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no fixpoint
      * (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.

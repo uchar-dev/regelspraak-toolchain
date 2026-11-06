@@ -188,7 +188,7 @@ public final class ScenarioRunner {
     }
 
     /** What the replay handed over of the session of one case: the case labels of its input beans, its fixpoint with
-     *  the values of the making ({@link CaseSession#making}), and the decisions, the decisions per period and the
+     *  the values the creation assigned ({@link CaseSession#making}), and the decisions, the decisions per period and the
      *  readings of a session without a standing fault; or, without a fixpoint, uchar's sentence. */
     private record Handed(Map<String, Object> labels, Fixpoint fixpoint, Map<Object, Map<String, Object>> making,
                           List<DefaultsDecision> decisions, List<PeriodDecisions> periodDecisions,

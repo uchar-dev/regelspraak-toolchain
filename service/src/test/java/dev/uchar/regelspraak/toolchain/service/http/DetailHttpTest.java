@@ -287,13 +287,13 @@ class DetailHttpTest {
         }
     }
 
-    // ---------------- the value of the making on a made object ----------------
+    // ---------------- the value the creation assigned on a made object ----------------
 
     /** uchar's golden {@code jutterswet-invoer-naast-objectcreatie}: the creation gives the melding of J1 and of J2 the
      *  waarde 7, the rule displaces it with the toeslag where that is filled (99 for J2), and decides nothing where it
-     *  is leeg (J1). Beside the derived waarde of J2's melding stands the value of the making it displaced, as the
+     *  is leeg (J1). Beside the derived waarde of J2's melding stands the value the creation assigned, which it displaced, as the
      *  input it displaced stands beside the derived waarde of M1, with {@code inputOrigin} {@code creation}; the
-     *  melding of J1 holds the value of the making. */
+     *  melding of J1 holds the value the creation assigned. */
     @Test
     void beside_a_derived_value_on_a_made_object_the_value_of_the_making() throws Exception {
         String source = Files.readString(
@@ -354,7 +354,7 @@ class DetailHttpTest {
     }
 
     /** A second rule that writes the najaar cell otherwise: the 422 of the conflict gives the fixpoint with the values
-     *  of the making of the made vangst, which nothing wrote back. */
+     *  the creation assigned to the made vangst, which nothing wrote back. */
     @Test
     void a_422_gives_the_value_of_the_making_of_a_made_object() throws Exception {
         ServiceHttp cells = ServiceHttp.bind(DecisionCore.assemble("""

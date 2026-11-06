@@ -30,11 +30,11 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The stack of a timeline target per day through the service (uchar's RUNTIME-SEMANTICS ch. 7.8): the writers decide
- * their days, the input, the request's or on a made object the value of the making, stands on the other days, and the
+ * their days, the input, the request's or on a made object the value the creation assigned, stands on the other days, and the
  * initialisation decides the days that leaves leeg, over all time. uchar's goldens jutterswet-initialisatie-per-dag,
  * jutterswet-creatie-per-dag and jutterswet-afwezigheidsmarkers-initialisatie give their pinned timelines through the
- * service, and the explanation names per period who decided: a rule, the input, the value of the making or the
- * initialisation. The fixpoint of the detail and of the playground gives on a made object the value of the making
+ * service, and the explanation names per period who decided: a rule, the input, the value the creation assigned or the
+ * initialisation. The fixpoint of the detail and of the playground gives on a made object the value the creation assigned
  * beside the derived timeline, as it gives the input of an object of the request, with {@code inputOrigin}
  * {@code creation}. What uchar's Drools branch refuses on a timeline target reaches the service as its refusal: the value
  * of an initialisation that is neither period arithmetic nor the constructor of a literal (DROOLS-316) is a marker, and
@@ -212,8 +212,8 @@ class TimelineStackHttpTest {
         {"instances":[{"type":"Jutter","id":"J1",
           "attributes":{"strandloon":{"timeline":[{"from":"2025-01-01","to":"2025-07-01","value":10}]}}}]}""";
 
-    /** The made melding has no input: where no rule decided a day, the value of the making stands, and the
-     *  initialisation fills the days the making left empty. */
+    /** The made melding has no input: where no rule decided a day, the value the creation assigned stands, and the
+     *  initialisation fills the days the creation left empty. */
     @Test
     void the_explanation_of_a_made_object_names_the_value_of_the_making_per_period() throws Exception {
         HttpResponse<String> r = post(creation, "meldingen", "explanation=true", CREATION_CASE1);
@@ -233,7 +233,7 @@ class TimelineStackHttpTest {
                 sentences.stream().filter(s -> s.startsWith(made)).toList(), r.body());
     }
 
-    // ---------------- the fixpoint: the value of the making beside the derived timeline ----------------
+    // ---------------- the fixpoint: the value the creation assigned beside the derived timeline ----------------
 
     /** What the creation gave the made melding of case1: the meldwaarde, the seizoenswaarde 7 on every day, the
      *  meldloon, the seizoensloon and the aanvulloon J1's strandloon, 10 from January to June. */
@@ -287,7 +287,7 @@ class TimelineStackHttpTest {
     }
 
     /** The playground gives the scenario of case1 the same fixpoint: uchar's replay hands its session over before the
-     *  write-back, where the value of the making is read. */
+     *  write-back, where the value the creation assigned is read. */
     @Test
     void the_playground_gives_the_value_of_the_making_in_the_same_fixpoint() throws Exception {
         String source = Files.readString(CREATION.resolve("source.rgs")) + """

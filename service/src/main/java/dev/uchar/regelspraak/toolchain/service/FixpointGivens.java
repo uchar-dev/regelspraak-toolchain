@@ -41,7 +41,7 @@ import java.util.function.Function;
  * as JSON: the playground gives it per scenario and the decision service per request ({@code ?fixpoint=true}), so both
  * render it here. The input of the session is a list of {@link InputObject}s: the playground makes them of a
  * scenario's situation, the service of the instances of a request ({@link #input}). An object a creation made has no
- * input: in its place stands the value of the making, what the creation put on its bean (rank 2 of uchar's stack,
+ * input: in its place stands the value the creation assigned, what the creation put on its bean (rank 2 of uchar's stack,
  * RUNTIME-SEMANTICS ch. 7.8), read before the write-back ({@code CaseSession.making}), and the fixpoint gives it in the
  * form of an input value with the origin {@code creation}.
  *
@@ -154,9 +154,9 @@ public final class FixpointGivens {
     /**
      * What stands at fixpoint {@code f} of a session with input {@code input}: {@code objects}, every object of the
      * input and every made object, each with its attribute values and characteristics and their {@code origin} (an
-     * input value: {@code input}; on a made object the value of the making, what its creation put on its bean, read
+     * input value: {@code input}; on a made object the value the creation assigned, what its creation put on its bean, read
      * before the write-back and given in {@code making} by the identity of the object: {@code creation}; one a rule, a
-     * default or an allocation derived: {@code derived}, with the input value or the value of the making it replaced
+     * default or an allocation derived: {@code derived}, with the input value or the value the creation assigned, which it replaced
      * beside it as {@code input}, and on a made object {@code inputOrigin} {@code creation});
      * {@code madeObjects} with their creation and subject; the {@code links} the creations laid; the
      * evaluation {@code errors} with their kind and uchar's sentence; and the {@code inconsistencies}.
@@ -301,7 +301,7 @@ public final class FixpointGivens {
 
     /** The attribute values of an object of type {@code ot} at the fixpoint, in declaration order: a derived value
      *  from the fixpoint, with what {@code entered} gives the member beside it as {@code input}, else what
-     *  {@code entered} gives it: the input of an object of the input, the value of the making of a made object
+     *  {@code entered} gives it: the input of an object of the input, the value the creation assigned to a made object
      *  ({@code made}), which has {@code creation} as its origin and as the {@code inputOrigin} beside a derived value.
      *  A member with none of these is no row. A dimensioned attribute has a row per cell, by the same rule, in the order
      *  of {@code model}'s labels ({@link #cellRows}). */
@@ -345,8 +345,8 @@ public final class FixpointGivens {
 
     /** The rows of the dimensioned attribute {@code a}: per cell of the attribute, the first dimension outermost, its
      *  derived value ({@code derived}, by its labels), with the value {@code in} gives the cell beside it, else that
-     *  value ({@code in}, the input node with its {@code cells}: the input, or on a made object the value of the
-     *  making); a cell with none of these is no row. A derived value of a cell the attribute does not have is a broken
+     *  value ({@code in}, the input node with its {@code cells}: the input, or on a made object the value the
+     *  creation assigned); a cell with none of these is no row. A derived value of a cell the attribute does not have is a broken
      *  promise of uchar's. */
     private static void cellRows(ArrayNode sink, ObjectType ot, String a, ObjectNode in,
                                   Map<List<String>, DerivedValue> derived, boolean made, RegelSpraakModel model,
@@ -384,13 +384,13 @@ public final class FixpointGivens {
     }
 
     /** Beside a derived value in row {@code rn}, the value it replaced, {@code given}, as {@code input}: on a made
-     *  object ({@code made}) the value of the making, which {@code inputOrigin} names. */
+     *  object ({@code made}) the value the creation assigned, which {@code inputOrigin} names. */
     private static void beside(ObjectNode rn, JsonNode given, boolean made) {
         rn.set("input", given);
         if (made) rn.put("inputOrigin", "creation");
     }
 
-    /** The value of the making of made object {@code o} per attribute ({@code making}); every made object has an entry,
+    /** The value the creation assigned to made object {@code o} per attribute ({@code making}); every made object has an entry,
      *  empty where its creation gave nothing. */
     private static Function<String, Object> madeValues(Object o, Map<Object, Map<String, Object>> making) {
         Map<String, Object> values = making.get(o);

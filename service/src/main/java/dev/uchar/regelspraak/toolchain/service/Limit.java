@@ -29,7 +29,7 @@ public final class Limit extends RuntimeException {
     private final transient Map<Object, Map<String, Object>> making;
     private final transient ObjectNode detail;
 
-    /** uchar's {@code refusal} at {@code fixpoint}, with {@code making} the values of the making there. */
+    /** uchar's {@code refusal} at {@code fixpoint}, with {@code making} the values the creation assigned there. */
     Limit(CaseRunner.Excluded refusal, Fixpoint fixpoint, Map<Object, Map<String, Object>> making) {
         this(refusal.getMessage(), refusal.code().id(), refusal, fixpoint, making, null);
     }

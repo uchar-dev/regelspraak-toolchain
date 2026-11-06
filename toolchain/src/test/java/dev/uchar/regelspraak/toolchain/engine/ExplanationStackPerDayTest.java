@@ -14,10 +14,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The stack of a target per day (uchar's RUNTIME-SEMANTICS ch. 7.8): the writers decide their days, the input stands on
  * the other days, and the initialisation decides the days that leaves leeg, over all time. On an object a creation
- * made, the place of the input is the value of the making: the member value the creation gave it (rank 2 of the stack),
+ * made, the place of the input is the value the creation assigned: the member value the creation gave it (rank 2 of the stack),
  * a scalar on every day or a timeline per period. uchar names who decided per period
  * ({@code DroolsBackend.periodDecisionsOf}), the initialisation as one of the rules, and the explanation names the
- * initialisation with the days it decided, and on a made object the value of the making by that name, never as an input
+ * initialisation with the days it decided, and on a made object the value the creation assigned by that name, never as an input
  * value: a request gives a made object nothing. Own material after uchar's goldens
  * {@code jutterswet-initialisatie-per-dag} and {@code jutterswet-creatie-per-dag}.
  */
@@ -82,7 +82,7 @@ class ExplanationStackPerDayTest {
 
     /** A creation gives a made melding its seizoensloon, aanvulloon and meldloon from the strandloon of the jutter, 10
      *  from January to June. A rule decides the seizoensloon from March to August, the initialisation the aanvulloon
-     *  on the days the making left empty, and the rule of the meldloon reads an empty toeslag and decides no day. */
+     *  on the days the creation left empty, and the rule of the meldloon reads an empty toeslag and decides no day. */
     private static final String MADE_TIMELINE = """
             Objecttype de Jutter (mv: Jutters) (bezield)
                 het strandloon Numeriek (geheel getal) voor elke maand;
@@ -148,7 +148,7 @@ class ExplanationStackPerDayTest {
 
     /** The same on a target with one value: the creation gives the melding the vangst of the jutter as its
      *  meldwaarde, which a rule that reads an empty toeslag leaves standing, and its opslag, which an initialisation
-     *  fills where the making left it empty. */
+     *  fills where the creation left it empty. */
     private static final String MADE_SCALAR = """
             Objecttype de Jutter (mv: Jutters) (bezield)
                 de vangst Numeriek (geheel getal);
@@ -265,7 +265,7 @@ class ExplanationStackPerDayTest {
 
     /** A defaults group on a made melding: two unordered exceptions on its toelage per month, which the creation gives
      *  the strandloon of the jutter, 20 in January and February and 10 from March to June. The high exception decides
-     *  January and February; from March no exception decides, and the value of the making stands. */
+     *  January and February; from March no exception decides, and the value the creation assigned stands. */
     private static final String MADE_DEFAULTS = """
             Objecttype de Jutter (mv: Jutters) (bezield)
                 het strandloon Numeriek (geheel getal) voor elke maand;
@@ -319,7 +319,7 @@ class ExplanationStackPerDayTest {
     /** The opgave marker on the toelage of a made melding: the stack of the opgave over the computed toelage, with
      *  the initialisation at its bottom. The creation gives the melding a meldwaarde and no toelage, which the opgave
      *  marker forbids it (WF-050); the rule does not hold for a meldwaarde of 10, so the initialisation decides where
-     *  the making left the toelage empty. */
+     *  the creation left the toelage empty. */
     private static final String MADE_STACK_SCALAR = """
             Objecttype de Jutter (mv: Jutters) (bezield)
                 de vangst Numeriek (geheel getal);

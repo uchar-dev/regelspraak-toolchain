@@ -256,7 +256,7 @@ model declares) and the sentences of the messages, which keep their text. The ol
   initialisation, DROOLS-103 for it beside a computing rule, DROOLS-271 for the value of a creation). The explanation names the initialisation per period among the rules (`"… en 5 tot 01-01-2025 en 5
   vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat de voorjaarsloon in de invoer leeg was; de
   invoerwaarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`). An object a creation made has no input, and every
-  sentence names what stands there the value of the making, per period and on a target with one value, in the words
+  sentence names what stands there the value the creation assigned, per period and on a target with one value, in the words
   of the RegelSpraak specification (the construct objectcreatie, each of its members a waardetoekenning): `"; de bij
   de objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`, `"houdt als meldwaarde de bij de
   objectcreatie toegekende waarde 7"`, `"omdat de aanvulloon bij de objectcreatie leeg was"`, where a sentence on an
@@ -265,7 +265,7 @@ model declares) and the sentences of the messages, which keep their text. The ol
   of a literal makes the entry point a marker with uchar's sentence (DROOLS-316); an allocation that names a
   time-dependent attribute refuses the start with the frontend's error (RGS-378), and in a `uchar-ir-v1` document the
   entry point is a marker with uchar's sentence naming WF-128 (DROOLS-315).
-- **The value of the making in the fixpoint** (card `fixpoint-creation-value`): the `fixpoint` of the detail and of the
+- **The value the creation assigned, in the fixpoint** (card `fixpoint-creation-value`): the `fixpoint` of the detail and of the
   playground gives on an object a creation made, beside a value a rule derived, the value the creation put on it as
   `input`, with `inputOrigin: "creation"`, as it gives the input of an instance of the request beside a derived value:
   a scalar, a timeline as its segments and a cell. Where it gave the derived value alone, a made melding of uchar's

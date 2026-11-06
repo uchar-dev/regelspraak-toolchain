@@ -33,7 +33,7 @@ public final class CaseSession {
     private CaseSession() {}
 
     /** The input beans by label, their object types, the firings of the replay's report, and uchar's reading of the
-     *  fixpoint, read before the write-back with the labels of the input beans, with the values of the making
+     *  fixpoint, read before the write-back with the labels of the input beans, with the values the creation assigned
      *  ({@link #making}) read at the same moment. The beans carry the derived values
      *  written back, unless an evaluation fault stands at the fixpoint ({@code fixpoint.faults()} not empty): the
      *  write-back throws it, so the beans then hold the input alone and the fault is in the fixpoint as data.
@@ -46,7 +46,7 @@ public final class CaseSession {
                           List<ConditionReading> readings) {}
 
     /**
-     * The values of the making: per object a creation made ({@link Fixpoint#objects}), by identity, per attribute of its
+     * The values the creation assigned: per object a creation made ({@link Fixpoint#objects}), by identity, per attribute of its
      * type and its supertypes the value the creation put on its bean, in the form the bean field holds it (a timeline as
      * its list of segments, a dimensioned attribute as uchar's map of cells), an attribute without one (null, an empty
      * list or map) left out. A made object has no input, and this value stands in its place (rank 2 of uchar's stack,

@@ -26,7 +26,7 @@ import java.util.Map;
  * {@code IllegalStateException} of a fact creation that gives a to-one role a second filling. Both adapters answer it
  * with a 422 ({@link AnswerBuilder#evaluationFault}).
  *
- * <p>It carries the {@link Fixpoint} the faults stand at, with the values of the making read at the same moment
+ * <p>It carries the {@link Fixpoint} the faults stand at, with the values the creation assigned read at the same moment
  * ({@code CaseSession.making}), and, when the request asked to see its session
  * ({@link RequestOptions#detailFlags()}), the fields the 422 gives beside the faults ({@link #detail()}). Its cause
  * is the exception uchar's write-back throws for these faults: the fault's own for one, uchar's
@@ -71,7 +71,7 @@ public final class EvaluationFault extends RuntimeException {
     }
 
     /** The faults that stand at {@code fixpunt}, one element per fault in the order of its {@code errors}, which is
-     *  uchar's: by the name of the form, then by the sentence; {@code making} the values of the making at that
+     *  uchar's: by the name of the form, then by the sentence; {@code making} the values the creation assigned at that
      *  fixpoint. {@code cause} is what uchar's write-back threw for them. */
     static EvaluationFault of(Fixpoint fixpoint, Map<Object, Map<String, Object>> making, RuntimeException cause) {
         List<Fault> sink = new ArrayList<>();

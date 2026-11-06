@@ -500,7 +500,7 @@ class TimelineHttpTest {
                 De ruwe meldheffing van een Melding moet berekend worden als de havenheffing gedeeld door zijn vlootgrootte.
         """;
 
-    /** The limit on a made object: the 422 gives the fixpoint with the value of the making of the melding. */
+    /** The limit on a made object: the 422 gives the fixpoint with the value the creation assigned to the melding. */
     @Test
     void a_limit_on_a_made_object_gives_the_value_of_the_making_in_the_fixpoint() throws Exception {
         ServiceHttp made = ServiceHttp.bind(DecisionCore.assemble("""

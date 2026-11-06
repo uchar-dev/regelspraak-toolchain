@@ -138,7 +138,7 @@ final class ScenarioData {
      * What stands at the fixpoint of {@code session}, the case of scenario {@code s}, as {@link FixpointGivens#fixpoint}
      * renders it, with the objects of the situation as the input: each by its label, with the values and the
      * characteristics the situation gives it, a time-dependent one with its periods; the objects its creations made
-     * with the values of the making uchar's replay handed over ({@link CaseSession.Outcome#making}).
+     * with the values their creation assigned, as uchar's replay handed them over ({@link CaseSession.Outcome#making}).
      *
      * @throws FixpointGivens.UnrenderableValue a value in a form this view does not show
      */
