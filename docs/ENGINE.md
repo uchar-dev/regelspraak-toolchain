@@ -267,7 +267,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   nothing is read or written back; the service does not judge which of the two it was. With the detail flags (below)
   the 422 carries `trace` and `coverage` of what fired up to the end of the run, and for `?fixpoint=true` `fixpointError`
   with the same sentence. The Quarkus adapter answers the same; the OpenAPI 422 is one of `EvaluationFault` and
-  `NoFixpoint`. Any other exception stays a 500 `interne fout`.
+  `NoFixpoint`. Any other exception is a 500 `{"error": "interne fout"}` in both adapters, its stacktrace in the log
+  and not in the answer.
 - A request on which uchar's Drools branch reaches a limit at the fixpoint, a value of the rules it cannot hold (a
   segment of a timeline of the unbounded form whose value does not terminate, DROOLS-312, a `LIMIT` of uchar's
   register), gets 422 with `{"status": "LIMIT", "error": …, "code": "DROOLS-312", "reason": <uchar's sentence>}`. It is

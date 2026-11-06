@@ -28,3 +28,26 @@ van stap 1 en de nulmeting van die kaart.*
 ## Omvang
 
 Klein. May touch: `service-quarkus/` (main en test), `service/` alleen als de pariteitstest dat vraagt.
+
+## Result
+
+*Gebouwd op 2026-11-06 in de branch `card/scope-check-and-cleanup`. Logs in `uchar-dev/werk/toolchain-cleanup/logs/`.*
+
+`DecideResource` vangt na de bekende soorten elke andere `RuntimeException`: 500 met `{"error":"interne fout"}`,
+zonder bericht of klassenaam, en de stacktrace in de log van Quarkus (`org.jboss.logging.Logger`, al aanwezig via
+Quarkus); `GET /info` evenzo, zoals `ServiceHttp`. De naad voor de test is de pakket-private methode
+`DecideResource.decide`, die `core.process` aanroept. `application.properties` zet `quarkus.http.test-port=0`.
+
+- (a) Rood eerst: `ErrorParityTest.an_unexpected_fault_500_without_its_message` (een `DecideResource` waarvan `decide`
+  een `IllegalStateException("geheim")` gooit, naast `ServiceHttp` met dezelfde fout via de bestaande naad
+  `bindWith`, door de nieuwe testhulp `ExplodingService` in de test-jar van `service`). Op de oude code vloog de
+  exceptie uit de resource (`logs/c3-red.log`); erna geven beide adapters 500 met hetzelfde lichaam
+  `{"error":"interne fout"}` (`logs/c3-green-parity.log`, met de logregel "interne fout bij POST /bepaal-leeftijd").
+  De JDK-adapter had zijn getuige al (`ServiceHttpTest._500_never_leaks_a_stacktrace_or_secret`).
+- (b) Met `python3 -m http.server 8081 --bind 127.0.0.1` als bezetter: zonder de instelling faalt `HealthTest` met
+  `QuarkusBindException: Port(s) already bound: 8081` (`logs/c3-red-port.log`); met de instelling is de hele reactor
+  groen terwijl de poort bezet is (`logs/c3-reactor-port-held.log`: toolchain 197, service 501, service-quarkus 55,
+  geen skip). Een bezetter op `*:8081` (IPv6) hinderde de oude instelling niet; de proef bezet daarom 127.0.0.1.
+- (c) `make gates`: zie het slot van deze Result.
+
+Docs: `docs/ENGINE.md` noemt de 500 van beide adapters, met de stacktrace in de log.

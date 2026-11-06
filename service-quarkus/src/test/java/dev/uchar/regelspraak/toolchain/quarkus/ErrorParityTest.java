@@ -3,10 +3,13 @@ package dev.uchar.regelspraak.toolchain.quarkus;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
+import dev.uchar.regelspraak.toolchain.service.RequestOptions;
 import dev.uchar.regelspraak.toolchain.service.TokaSource;
+import dev.uchar.regelspraak.toolchain.service.http.ExplodingService;
 import dev.uchar.regelspraak.toolchain.service.http.ServiceHttp;
 
 import jakarta.ws.rs.core.Response;
@@ -31,7 +34,8 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * over the SAME {@link DecisionCore}: the 400 of a request that does not validate (each violation with its
  * {@code veld}, {@code soort} and message), the 400 of an empty or malformed body, the 404 of an unknown path, the
  * 503 MARKER answer of an entry point uchar does not carry, the 422 of a request on which the rules give an
- * evaluation fault, and the 422 LIMIT of a value uchar's Drools branch cannot hold. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
+ * evaluation fault, the 422 LIMIT of a value uchar's Drools branch cannot hold, and the 500 of a fault the core never
+ * throws on purpose, without its message. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
  * 422s include a fault at the fixpoint of another type than the four uchar's README names, {@code OTHER}, alone and
  * beside a read of the rekenjaar without an evaluation date. {@link DecideResource} builds the first bodies by hand, as {@code ServiceHttp}'s builders
  * are package-private in the service module, and the 422 body with the service core's builder, as {@code ServiceHttp}
@@ -356,6 +360,26 @@ class ErrorParityTest {
         assertEquals("DROOLS-312", body.path("code").asText(), body.toString());
     }
 
+    @Test
+    void an_unexpected_fault_500_without_its_message() throws Exception {
+        // what the core never throws on purpose: both adapters answer 500 with the same body, without the message
+        RuntimeException fault = new IllegalStateException("geheim");
+        ServiceHttp exploding = ExplodingService.start(toka, fault);
+        try {
+            DecideResource resource = new DecideResource() {
+                @Override
+                ObjectNode decide(String path, JsonNode tree, RequestOptions options) {
+                    throw fault;
+                }
+            };
+            resource.core = toka;
+            JsonNode body = compare(resource, exploding, aPath(toka), "{\"instances\": []}", 500);
+            assertEquals("{\"error\":\"interne fout\"}", body.toString());
+        } finally {
+            exploding.stop(0);
+        }
+    }
+
     private static List<String> kinds(JsonNode body) {
         return body.path("faults").valueStream().map(f -> f.path("kind").asText()).toList();
     }
@@ -370,6 +394,11 @@ class ErrorParityTest {
             throws Exception {
         DecideResource resource = new DecideResource();
         resource.core = core;
+        return compare(resource, service, path, body, expected);
+    }
+
+    private static JsonNode compare(DecideResource resource, ServiceHttp service, String path, String body,
+                                    int expected) throws Exception {
         Response quarkus = resource.process(path, null, body);
 
         HttpResponse<String> jdk = HttpClient.newHttpClient().send(

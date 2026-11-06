@@ -18,6 +18,8 @@ import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
+import org.jboss.logging.Logger;
+
 import dev.uchar.regelspraak.toolchain.service.AnswerBuilder;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.ServiceError;
@@ -34,8 +36,11 @@ import dev.uchar.regelspraak.toolchain.service.RequestOptions;
  *       {@code {"error":…,"violations":[{"field":…,"error":…}]}}; {@link DecisionCore.UnknownPath} → {@code 404};
  *       {@link DecisionCore.NonExecutable} → {@code 503} with the MARKER answer; {@link EvaluationFault},
  *       {@link NoFixpoint} and {@link Limit} → {@code 422} with the answer {@link AnswerBuilder#evaluationFault},
- *       {@link AnswerBuilder#noFixpoint} or {@link AnswerBuilder#limit} builds, as {@code ServiceHttp} sends it.</li>
- *   <li>{@code GET /info} → the SAME manifest {@code ServiceHttp} serves (via {@link InfoBuilder}).</li>
+ *       {@link AnswerBuilder#noFixpoint} or {@link AnswerBuilder#limit} builds, as {@code ServiceHttp} sends it; any
+ *       other exception → {@code 500} {@code {"error":"interne fout"}}, its stacktrace in the log and never in the
+ *       answer.</li>
+ *   <li>{@code GET /info} → the SAME manifest {@code ServiceHttp} serves (via {@link InfoBuilder}), or that
+ *       {@code 500}.</li>
  * </ul>
  * The query parameters are {@code ServiceHttp}'s: {@code explanation}, {@code vocabulaire} (the vocabulary of the answer),
  * {@code inputVocabulary} (the one the request's names are read in), the detail flags {@code trace},
@@ -56,6 +61,8 @@ public class DecideResource {
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);
+
+    private static final Logger LOG = Logger.getLogger(DecideResource.class);
 
     @Inject
     DecisionCore core;
@@ -87,7 +94,7 @@ public class DecideResource {
         try {
             // ?explanation=true (or a bare ?uitleg) opts into the Verbalisator verhaal, and the detail flags read the same
             // way; any other value = no (mirror of ServiceHttp.isRequested)
-            ObjectNode answer = core.process(path, tree, new RequestOptions(isRequested(explanation), vocabulary,
+            ObjectNode answer = decide(path, tree, new RequestOptions(isRequested(explanation), vocabulary,
                     inputVocabulary, isRequested(trace), isRequested(coverage), isRequested(fixpoint),
                     isRequested(explanationParts)));
             return response(200, answer);
@@ -105,7 +112,16 @@ public class DecideResource {
             return response(422, AnswerBuilder.noFixpoint(none));
         } catch (Limit limit) {
             return response(422, AnswerBuilder.limit(limit));
+        } catch (RuntimeException intern) {
+            // never a stacktrace or the exception's message to the client; the log gets both (as ServiceHttp)
+            LOG.error("interne fout bij POST /" + path, intern);
+            return response(500, errorBody("interne fout", null));
         }
+    }
+
+    /** The core's answer to one request; a test overrides it to throw what the core never should. */
+    ObjectNode decide(String path, JsonNode tree, RequestOptions options) {
+        return core.process(path, tree, options);
     }
 
     /** A request that asks no detail of its session: the resource method without the detail flags. */
@@ -129,7 +145,12 @@ public class DecideResource {
     @Path("info")
     @Produces(MediaType.APPLICATION_JSON)
     public Response info() {
-        return response(200, InfoBuilder.assemble(core));
+        try {
+            return response(200, InfoBuilder.assemble(core));
+        } catch (RuntimeException intern) {
+            LOG.error("interne fout bij GET /info", intern);
+            return response(500, errorBody("interne fout", null));
+        }
     }
 
     // ---------------- error bodies (mirror ServiceHttp) ----------------
