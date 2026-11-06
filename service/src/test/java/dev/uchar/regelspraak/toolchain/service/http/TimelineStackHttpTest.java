@@ -222,14 +222,14 @@ class TimelineStackHttpTest {
         List<String> sentences = sentences(r.body());
         assertEquals(List.of(
                 made + " heeft als seizoenswaarde 20 van 01-03-2025 tot 01-09-2025 volgens de regel 'seizoenswaarde',"
-                        + " omdat van dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de waarde bij het"
-                        + " maken 7 tot 01-03-2025 en 7 vanaf 01-09-2025 bleef staan",
+                        + " omdat van dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de bij de"
+                        + " objectcreatie toegekende waarde 7 tot 01-03-2025 en 7 vanaf 01-09-2025 bleef staan",
                 made + " heeft als seizoensloon 20 van 01-03-2025 tot 01-09-2025 volgens de regel 'seizoensloon', omdat"
-                        + " van dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de waarde bij het maken"
-                        + " 10 van 01-01-2025 tot 01-03-2025 bleef staan",
+                        + " van dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de bij de objectcreatie"
+                        + " toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan",
                 made + " heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf 01-07-2025 volgens de regel"
-                        + " 'standaardaanvulloon', omdat de aanvulloon bij het maken leeg was; de waarde bij het maken 10"
-                        + " van 01-01-2025 tot 01-07-2025 bleef staan"),
+                        + " 'standaardaanvulloon', omdat de aanvulloon bij de objectcreatie leeg was; de bij de"
+                        + " objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025 bleef staan"),
                 sentences.stream().filter(s -> s.startsWith(made)).toList(), r.body());
     }
 

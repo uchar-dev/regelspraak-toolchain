@@ -136,13 +136,13 @@ class ExplanationStackPerDayTest {
                 "J1 heeft als seizoensloontotaal 10 van 01-01-2025 tot 01-03-2025 en 20 van 01-03-2025 tot 01-09-2025"
                         + " volgens de regel 'seizoensloontotaal' (onvoorwaardelijk)",
                 made + " heeft als seizoensloon 20 van 01-03-2025 tot 01-09-2025 volgens de regel 'seizoensloon', omdat van"
-                        + " dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de waarde bij het maken 10"
-                        + " van 01-01-2025 tot 01-03-2025 bleef staan",
+                        + " dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de bij de objectcreatie"
+                        + " toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan",
                 made + " heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf 01-07-2025 volgens de regel"
-                        + " 'standaardaanvulloon', omdat de aanvulloon bij het maken leeg was; de waarde bij het maken 10"
-                        + " van 01-01-2025 tot 01-07-2025 bleef staan",
-                made + " houdt als meldloon de waarde bij het maken 10 van 01-01-2025 tot 01-07-2025, want de regel"
-                        + " 'meldloon uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets"),
+                        + " 'standaardaanvulloon', omdat de aanvulloon bij de objectcreatie leeg was; de bij de"
+                        + " objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025 bleef staan",
+                made + " houdt als meldloon de bij de objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025,"
+                        + " want de regel 'meldloon uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets"),
                 sentences);
     }
 
@@ -201,14 +201,16 @@ class ExplanationStackPerDayTest {
                         + " alle meldingen van de Jutter (3): over «\"meld de vangst\"»(J1)#1 (3), het enige lid",
                 "J2 heeft als terug 9 volgens de regel 'terug van een jutter' (onvoorwaardelijk): de som van de opslag van"
                         + " alle meldingen van de Jutter (9): over «\"meld de vangst\"»(J2)#1 (9), het enige lid",
-                "«\"meld de vangst\"»(J1)#1 houdt als meldwaarde de waarde bij het maken 7, want de regel 'meldwaarde"
-                        + " uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets: zijn toeslag (leeg)",
+                "«\"meld de vangst\"»(J1)#1 houdt als meldwaarde de bij de objectcreatie toegekende waarde 7, want de"
+                        + " regel 'meldwaarde uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets: zijn"
+                        + " toeslag (leeg)",
                 "«\"meld de vangst\"»(J1)#1 heeft als opslag 3 volgens de regel 'standaardopslag': 3, omdat de opslag"
-                        + " bij het maken leeg was",
-                "«\"meld de vangst\"»(J2)#1 houdt als meldwaarde de waarde bij het maken 4, want de regel 'meldwaarde"
-                        + " uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets: zijn toeslag (leeg)",
-                "«\"meld de vangst\"»(J2)#1 houdt als opslag de waarde bij het maken 9, want geen regel gold;"
-                        + " verdrongen: de regel 'standaardopslag'"),
+                        + " bij de objectcreatie leeg was",
+                "«\"meld de vangst\"»(J2)#1 houdt als meldwaarde de bij de objectcreatie toegekende waarde 4, want de"
+                        + " regel 'meldwaarde uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets: zijn"
+                        + " toeslag (leeg)",
+                "«\"meld de vangst\"»(J2)#1 houdt als opslag de bij de objectcreatie toegekende waarde 9, want geen"
+                        + " regel gold; verdrongen: de regel 'standaardopslag'"),
                 sentences);
     }
 
@@ -255,9 +257,9 @@ class ExplanationStackPerDayTest {
     @Test
     void on_a_made_object_a_cell_keeps_the_value_of_the_making() {
         String made = "«\"meld de vangst\"»(J1)#1";
-        assertEquals(List.of(made + " houdt als meldwaarde in najaar de waarde bij het maken 7, want de regel"
-                        + " 'najaarswaarde uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets: zijn toeslag"
-                        + " (leeg)"),
+        assertEquals(List.of(made + " houdt als meldwaarde in najaar de bij de objectcreatie toegekende waarde 7, want"
+                        + " de regel 'najaarswaarde uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets: zijn"
+                        + " toeslag (leeg)"),
                 explained(MADE_CELL).explanation().stream().filter(s -> s.startsWith(made)).toList());
     }
 
@@ -309,8 +311,8 @@ class ExplanationStackPerDayTest {
                 made + " heeft als toelage 50 van 01-01-2025 tot 01-03-2025 volgens de regel 'toelage bij hoog meldloon':"
                         + " 50,"
                         + " omdat zijn meldloon groter is dan 15 (van 01-01-2025 tot 01-03-2025)",
-                made + " houdt als toelage de waarde bij het maken 10 van 01-03-2025 tot 01-07-2025, want geen variant"
-                        + " besliste"),
+                made + " houdt als toelage de bij de objectcreatie toegekende waarde 10 van 01-03-2025 tot 01-07-2025,"
+                        + " want geen variant besliste"),
                 sentences);
     }
 
@@ -349,7 +351,7 @@ class ExplanationStackPerDayTest {
                 geldig altijd
                     De terug van een Jutter moet berekend worden als de som van de toelage van alle meldingen van de Jutter.
 
-            Scenario zonder toelage bij het maken
+            Scenario zonder toelage bij de objectcreatie
             Gegeven is de volgende situatie:
             een Jutter J1
             - de vangst is 10
@@ -364,8 +366,8 @@ class ExplanationStackPerDayTest {
                 "J1 heeft als terug 3 volgens de regel 'terug van een jutter' (onvoorwaardelijk): de som van de toelage"
                         + " van alle meldingen van de Jutter (3): over " + made + " (3), het enige lid",
                 made + " heeft geen afwijkende opgave toelage, want niet geldt: zijn opgegeven toelage (leeg) gevuld is",
-                made + " heeft als toelage 3 volgens 'standaardtoelage': 3, omdat de toelage bij het maken leeg was;"
-                        + " 'opgegeven toelage' gaf geen waarde; 'berekende toelage' gaf geen waarde",
+                made + " heeft als toelage 3 volgens 'standaardtoelage': 3, omdat de toelage bij de objectcreatie leeg"
+                        + " was; 'opgegeven toelage' gaf geen waarde; 'berekende toelage' gaf geen waarde",
                 made + " heeft geen berekende toelage, want geen regel gold; de regel 'toelage bij hoge meldwaarde' gold"
                         + " niet, want niet geldt: zijn meldwaarde (10) is groter dan 15"),
                 explained(MADE_STACK_SCALAR).explanation());

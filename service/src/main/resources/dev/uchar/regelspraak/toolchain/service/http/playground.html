@@ -446,7 +446,7 @@ function fixpointHtml(r) {
       if (visible(w.origin) && (whole || matches(w.attribute, w.attributeCanonical)))
         rows.push("<tr><td>" + nameOf(w, "attribute") + (w.labels ? " [" + w.labels.map(esc).join(", ") + "]" : "")
           + "</td><td>" + valueHtml(w)
-          + ("input" in w ? ' <span class="small">(' + (w.inputOrigin === "creation" ? "bij het maken " : "invoer ")
+          + ("input" in w ? ' <span class="small">(' + (w.inputOrigin === "creation" ? "creatie " : "invoer ")
              + (Array.isArray(w.input) ? timelineHtml(w.input) : scalar(w.input)) + ")</span>" : "")
           + '</td><td><span class="origin ' + esc(w.origin) + '">' + esc(w.origin) + "</span></td></tr>");
     for (const k of o.characteristics)

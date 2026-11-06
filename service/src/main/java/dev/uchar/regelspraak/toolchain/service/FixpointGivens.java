@@ -373,8 +373,8 @@ public final class FixpointGivens {
     private static Function<String, Object> madeValues(Object o, Map<Object, Map<String, Object>> making) {
         Map<String, Object> values = making.get(o);
         if (values == null)
-            throw new IllegalStateException("het gemaakte object " + o.getClass().getName() + " heeft geen waarden bij"
-                    + " het maken van vóór de terugzetting");
+            throw new IllegalStateException("het gemaakte object " + o.getClass().getName() + " heeft geen bij de"
+                    + " objectcreatie toegekende waarden van vóór de terugzetting");
         return values::get;
     }
 

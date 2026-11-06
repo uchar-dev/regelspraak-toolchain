@@ -382,7 +382,7 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   its origin, on a made object the value of the making as the service gives it (above, `?fixpoint=true`), read in the
   session uchar's replay hands over before its write-back (`CaseRunner.Handoff`), the made objects, the links, the
   evaluation faults as data and the inconsistencies, each list sorted, or `fixpointError` with the reason there is
-  none. The page writes the `input` of a made object as `(bij het maken …)`, that of an instance as `(invoer …)`.
+  none. The page writes the `input` of a made object as `(creatie …)`, that of an instance as `(invoer …)`.
   `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
   coverage, the explanation, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
   that differs (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
@@ -652,15 +652,17 @@ attribution rule.
 
 **The value of the making** (card `timeline-stack-in-service`). An object a creation made has no input: in the place
 the input has on an object of the request, it holds the member value its creation gave it (rank 2 of uchar's stack,
-RUNTIME-SEMANTICS ch. 7.8), a scalar on every day or a timeline per period. Every sentence names that value `de
-waarde bij het maken` where it names an input value `de invoerwaarde`, on a target with one value, on a cell, per
-period and in the sentence of a defaults group, and an initialisation decided there `omdat de <NAME> bij het maken
-leeg was`: `"«"meld de jutter"»(J1)#1 heeft als seizoensloon 20 van 01-03-2025 tot 01-09-2025 volgens de regel
-'seizoensloon', omdat …; de waarde bij het maken 10 van 01-01-2025 tot 01-03-2025 bleef staan"`, `"«"meld de
-jutter"»(J1)#1 heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf 01-07-2025 volgens de regel 'standaardaanvulloon',
-omdat de aanvulloon bij het maken leeg was; de waarde bij het maken 10 van 01-01-2025 tot 01-07-2025 bleef staan"`,
-`"«"meld de vangst"»(J1)#1 houdt als meldwaarde de waarde bij het maken 7, want de regel 'meldwaarde uit toeslag' gaf
-geen waarde (onvoorwaardelijk) en besliste niets: zijn toeslag (leeg)"`. The sentence names the value of the making on
+RUNTIME-SEMANTICS ch. 7.8), a scalar on every day or a timeline per period. Every sentence names that value `de bij
+de objectcreatie toegekende waarde` where it names an input value `de invoerwaarde`, on a target with one value, on a
+cell, per period and in the sentence of a defaults group, and an initialisation decided there `omdat de <NAME> bij de
+objectcreatie leeg was`. The words are those of the RegelSpraak specification, which calls the construct
+objectcreatie and each of its members a waardetoekenning: `"«"meld de jutter"»(J1)#1 heeft als seizoensloon 20 van
+01-03-2025 tot 01-09-2025 volgens de regel 'seizoensloon', omdat …; de bij de objectcreatie toegekende waarde 10 van
+01-01-2025 tot 01-03-2025 bleef staan"`, `"«"meld de jutter"»(J1)#1 heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf
+01-07-2025 volgens de regel 'standaardaanvulloon', omdat de aanvulloon bij de objectcreatie leeg was; de bij de
+objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025 bleef staan"`, `"«"meld de vangst"»(J1)#1 houdt als
+meldwaarde de bij de objectcreatie toegekende waarde 7, want de regel 'meldwaarde uit toeslag' gaf geen waarde
+(onvoorwaardelijk) en besliste niets: zijn toeslag (leeg)"`. The sentence names the value of the making on
 the days it stood; the `fixpoint` gives it whole, as `input` with `inputOrigin: "creation"` beside the derived value
 ("The decision service", `?fixpoint=true`).
 
@@ -690,7 +692,8 @@ sentence per period, in the order of the days:
   de groep schrijft niets"`);
 - no variant decided and the input stood: `"J4 houdt als strandloon de invoerwaarde 99 van 01-06-2025 tot 01-01-2026,
   want geen variant besliste"`, on a made object the value of the making (above): `"«"meld de jutter"»(J1)#1 houdt
-  als toelage de waarde bij het maken 10 van 01-03-2025 tot 01-07-2025, want geen variant besliste"`.
+  als toelage de bij de objectcreatie toegekende waarde 10 van 01-03-2025 tot 01-07-2025, want geen variant
+  besliste"`.
 
 A period without a decider and without input has no sentence; where no variant decided on any day and no input
 stands, one sentence says so: `"J2 heeft geen toelage, want geen variant besliste"`. The variants that did not decide a

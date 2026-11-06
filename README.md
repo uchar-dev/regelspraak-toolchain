@@ -253,9 +253,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
   initialisation, DROOLS-103 for it beside a computing rule, DROOLS-271 for the value of a creation). The explanation names the initialisation per period among the rules (`"… en 5 tot 01-01-2025 en 5
   vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat de voorjaarsloon in de invoer leeg was; de
   invoerwaarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`). An object a creation made has no input, and every
-  sentence names what stands there the value of the making, per period and on a target with one value: `"; de waarde
-  bij het maken 10 van 01-01-2025 tot 01-03-2025 bleef staan"`, `"houdt als meldwaarde de waarde bij het maken 7"`,
-  `"omdat de aanvulloon bij het maken leeg was"`, where they said `de invoerwaarde` and `in de invoer leeg was`. A
+  sentence names what stands there the value of the making, per period and on a target with one value, in the words
+  of the RegelSpraak specification (the construct objectcreatie, each of its members a waardetoekenning): `"; de bij
+  de objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`, `"houdt als meldwaarde de bij de
+  objectcreatie toegekende waarde 7"`, `"omdat de aanvulloon bij de objectcreatie leeg was"`, where a sentence on an
+  object of the request says `de invoerwaarde` and `in de invoer leeg was`. A
   value of an initialisation or a creation on a timeline target that is neither period arithmetic nor the constructor
   of a literal makes the entry point a marker with uchar's sentence (DROOLS-316); an allocation that names a
   time-dependent attribute refuses the start with the frontend's error (RGS-378), and in a `uchar-ir-v1` document the

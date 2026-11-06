@@ -195,9 +195,9 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # attribuut en staat hieronder.
 # 2026-11-05, uchar's kaart timeline-initialisation-allocation-creation (pin 74119a23): 338 — de set van gate 12 groeit
 # van 344 naar 347 met jutterswet-initialisatie-per-dag (een initialisatie die per dag de dagen vult die regels en
-# invoer leeg laten), jutterswet-creatie-per-dag (de waarde bij het maken als invoer van het gemaakte object per dag) en
-# jutterswet-afwezigheidsmarkers-initialisatie (een initialisatie op een marker); Drools weigerde ze eerder (DROOLS-118,
-# DROOLS-103). Alle drie spelen ook door de dienst, met uitleg.
+# invoer leeg laten), jutterswet-creatie-per-dag (de bij de objectcreatie toegekende waarde als invoer van het
+# gemaakte object per dag) en jutterswet-afwezigheidsmarkers-initialisatie (een initialisatie op een marker); Drools
+# weigerde ze eerder (DROOLS-118, DROOLS-103). Alle drie spelen ook door de dienst, met uitleg.
 EXPECTED_REPLAY_PLAYED=338
 
 # De goldens die gate 12 speelt en de dienst niet: "<golden>|<reden>". Het verzoek van de dienst draagt een

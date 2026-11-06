@@ -139,8 +139,9 @@ import java.util.regex.Pattern;
  * label, een gemaakt object bij deze naam ("«"schrijf een kwitantie"»(«"geef een vangstpenning"»(J1)#1)#1"). Zo'n
  * object krijgt zijn zinnen na de objecten van de invoer, in de volgorde van het fixpunt, en heet zo ook als lid van
  * een kwantorvouw. Het heeft geen invoer: waar een object van de invoer zijn invoerwaarde houdt, houdt het de waarde
- * die de creatie het gaf (uchars RUNTIME-SEMANTICS ch. 7.8), en de zin noemt die "de waarde bij het maken", ook per
- * periode; een initialisatie besliste daar omdat het doel "bij het maken leeg was".
+ * die de creatie het gaf (uchars RUNTIME-SEMANTICS ch. 7.8), en de zin noemt die "de bij de objectcreatie toegekende
+ * waarde", ook per periode; een initialisatie besliste daar omdat het doel "bij de objectcreatie leeg was". De woorden
+ * zijn die van de RegelSpraak-specificatie: het construct heet objectcreatie, en elk lid ervan een waardetoekenning.
  *
  * <p><b>Stukken.</b> Elke zin schrijft de verbalisator op één {@link Sentence.Builder}, als een ondiepe boom van
  * {@link Part}s met een soort: het onderwerp, de namen met hun declaratie, de regeltekst, de waarden, de regelnamen, de
@@ -2100,15 +2101,16 @@ public final class Verbaliser {
 
     /** Hoe de zin de waarde noemt die op {@code bean} staat waar geen schrijver besliste. Een verzoek geeft een gemaakt
      *  object niets: wat daar de plaats van de invoer heeft, is de lidwaarde die de creatie het gaf (uchars
-     *  RUNTIME-SEMANTICS ch. 7.8, rang 2 van de stapel), dus "de waarde bij het maken"; anders "de invoerwaarde". */
+     *  RUNTIME-SEMANTICS ch. 7.8, rang 2 van de stapel), dus "de bij de objectcreatie toegekende waarde"; anders "de
+     *  invoerwaarde". */
     private String standingValue(Object bean) {
-        return madeObject(bean) ? "de waarde bij het maken" : "de invoerwaarde";
+        return madeObject(bean) ? "de bij de objectcreatie toegekende waarde" : "de invoerwaarde";
     }
 
-    /** Waar het doel van een initialisatie op {@code bean} leeg was, met de spatie ervoor: op een gemaakt object bij het
-     *  maken ({@link #standingValue}), anders in de invoer. */
+    /** Waar het doel van een initialisatie op {@code bean} leeg was, met de spatie ervoor: op een gemaakt object bij de
+     *  objectcreatie ({@link #standingValue}), anders in de invoer. */
     private String emptyBefore(Object bean) {
-        return madeObject(bean) ? " bij het maken leeg was" : " in de invoer leeg was";
+        return madeObject(bean) ? " bij de objectcreatie leeg was" : " in de invoer leeg was";
     }
 
     /** De lezing van vorm {@code form} op {@code bean}; faalt luid waar de motor er geen gaf. */
