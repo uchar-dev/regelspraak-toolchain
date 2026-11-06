@@ -451,7 +451,9 @@ function fixpointHtml(r) {
           + '</td><td><span class="origin ' + esc(w.origin) + '">' + esc(w.origin) + "</span></td></tr>");
     for (const k of o.characteristics)
       if (visible(k.origin) && (whole || matches(k.characteristic, k.characteristicCanonical)))
-        rows.push("<tr><td>" + nameOf(k, "characteristic") + "</td><td>waar" + (k.input ? ' <span class="small">(ook invoer)</span>' : "")
+        rows.push("<tr><td>" + nameOf(k, "characteristic") + "</td><td>"
+          + (k.periods ? k.periods.map((p) => "[" + esc(p.from) + ", " + esc(p.to) + ")").join("<br>") : "waar")
+          + (k.input ? ' <span class="small">(ook invoer)</span>' : "")
           + '</td><td><span class="origin ' + esc(k.origin) + '">' + esc(k.origin) + "</span></td></tr>");
     if (!rows.length) continue;
     n++;

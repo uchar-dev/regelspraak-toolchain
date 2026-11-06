@@ -83,10 +83,12 @@ public final class FixpointGivens {
      * it. {@code attributes} holds per attribute the input value as a node with {@code value} (and
      * {@code valueCanonical} for an enumeration value named otherwise), {@code timeline}, or for a dimensioned attribute
      * {@code cells}, a list of nodes with {@code labels} (as uchar keys a cell) and {@code value}, keyed
-     * case-insensitively; {@code characteristics} the characteristics the input set, case-insensitively.
+     * case-insensitively; {@code characteristics} the characteristics the input set, case-insensitively, and
+     * {@code periods} per time-dependent characteristic the input gave periods those periods, as {@code from},
+     * {@code to} nodes ({@link #periodNodes}), keyed case-insensitively.
      */
     public record InputObject(String label, ObjectType type, Object bean, Map<String, ObjectNode> attributes,
-                               Set<String> characteristics) {}
+                               Set<String> characteristics, Map<String, ArrayNode> periods) {}
 
     /**
      * The input objects of a request, read off its beans before the session fires: per instance in the order of
@@ -106,10 +108,15 @@ public final class FixpointGivens {
             Map<String, ObjectNode> attributes = attributes(ot, a -> RegelSpraakRuntime.get(bean, RequestMapper.prop(a)),
                     model, ng);
             Set<String> characteristics = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            Map<String, ArrayNode> periods = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             for (ObjectType t : ot.chain())
-                for (String k : t.characteristics)
-                    if (Boolean.TRUE.equals(RegelSpraakRuntime.get(bean, RequestMapper.prop(k)))) characteristics.add(k);
-            sink.add(new InputObject(e.getKey(), ot, bean, attributes, characteristics));
+                for (String k : t.characteristics) {
+                    Object v = RegelSpraakRuntime.get(bean, RequestMapper.prop(k));
+                    if (Boolean.TRUE.equals(v)) characteristics.add(k);
+                    // a time-dependent characteristic holds its true periods on the bean, as uchar's segments
+                    else if (v instanceof List<?> segments && !segments.isEmpty()) periods.put(k, periodNodes(segments));
+                }
+            sink.add(new InputObject(e.getKey(), ot, bean, attributes, characteristics, periods));
         }
         return sink;
     }
@@ -186,12 +193,26 @@ public final class FixpointGivens {
         // per object and attribute the derived values by the labels of their cell, an attribute without dimensions under
         // no labels
         Map<Object, Map<String, Map<List<String>, DerivedValue>>> values = new IdentityHashMap<>();
-        for (DerivedValue w : f.values())
-            if (values.computeIfAbsent(known(w.object(), type), o -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
+        // a time-dependent characteristic a rule writes within a window stands among the values, under its name, its
+        // true periods as segments without a value (uchar's Fixpoint.DerivedValue)
+        Map<Object, Map<String, ArrayNode>> periods = new IdentityHashMap<>();
+        for (DerivedValue w : f.values()) {
+            Object o = known(w.object(), type);
+            if (declaresCharacteristic(type.get(o), w.attribute())) {
+                if (!(w.value() instanceof List<?> segments))
+                    throw new IllegalStateException("het fixpunt geeft het kenmerk '" + w.attribute() + "' als "
+                            + (w.value() == null ? "leeg" : w.value().getClass().getName()) + ", niet als zijn perioden");
+                if (periods.computeIfAbsent(o, x -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
+                        .put(w.attribute(), periodNodes(segments)) != null)
+                    throw new IllegalStateException("het fixpunt geeft het kenmerk '" + w.attribute() + "' twee keer");
+                continue;
+            }
+            if (values.computeIfAbsent(o, x -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
                     .computeIfAbsent(w.attribute(), a -> new HashMap<>())
                     .put(w.labels() == null ? List.of() : w.labels(), w) != null)
                 throw new IllegalStateException("het fixpunt geeft het attribuut '" + w.attribute() + "'"
                         + (w.labels() == null ? "" : " in de cel " + w.labels()) + " twee keer");
+        }
         Map<Object, Set<String>> characteristics = new IdentityHashMap<>();
         for (DerivedCharacteristic k : f.characteristics())
             characteristics.computeIfAbsent(known(k.object(), type),
@@ -206,7 +227,8 @@ public final class FixpointGivens {
             members.put(o, new ArrayNode[]{
                     valuesOf(type.get(o), given, values.getOrDefault(o, Map.of()), made.containsKey(o), model, ng),
                     characteristicsOf(type.get(o), in == null ? Set.of() : in.characteristics(),
-                            characteristics.getOrDefault(o, Set.of()), ng)});
+                            in == null ? Map.of() : in.periods(), characteristics.getOrDefault(o, Set.of()),
+                            periods.getOrDefault(o, Map.of()), ng)});
         }
         List<Object> madeObjects = new ArrayList<>(made.keySet());
         Map<Object, String> key = new IdentityHashMap<>();
@@ -395,8 +417,12 @@ public final class FixpointGivens {
     }
 
     /** The characteristics of an object of type {@code ot} that hold at the fixpoint, in declaration order: derived
-     *  ({@code derived}, with {@code invoer: true} when the input set it too) or set by the input ({@code input}). */
-    private static ArrayNode characteristicsOf(ObjectType ot, Set<String> entered, Set<String> derived, Naming ng) {
+     *  ({@code derived}, with {@code input: true} when the input set it too) or set by the input ({@code input}). A
+     *  time-dependent characteristic holds in {@code periods}: those a rule wrote ({@code derivedPeriods}), or else
+     *  those of the input ({@code enteredPeriods}); without a period it is no row. uchar gives no input periods on a
+     *  characteristic a rule writes (its CharacteristicPeriodsFault), so a row never has both. */
+    private static ArrayNode characteristicsOf(ObjectType ot, Set<String> entered, Map<String, ArrayNode> enteredPeriods,
+                                               Set<String> derived, Map<String, ArrayNode> derivedPeriods, Naming ng) {
         List<String> declared = new ArrayList<>();
         for (ObjectType t : ot.chain()) declared.addAll(t.characteristics);
         for (String k : derived)
@@ -405,12 +431,45 @@ public final class FixpointGivens {
                         + ot.name + "' niet declareert");
         ArrayNode sink = NF.arrayNode();
         for (String k : declared) {
+            ArrayNode dp = derivedPeriods.get(k), ip = enteredPeriods.get(k);
+            if (dp != null || ip != null) {
+                boolean written = dp != null && !dp.isEmpty();
+                if (written && ip != null)
+                    throw new IllegalStateException("het fixpunt geeft het tijdsafhankelijke kenmerk '" + k + "' van "
+                            + ot.name + " perioden van een regel naast perioden van de invoer");
+                if (!written && (ip == null || ip.isEmpty())) continue;
+                ObjectNode kn = sink.addObject();
+                name(kn, "characteristic", ng.characteristic(ot, k), k);
+                kn.put("origin", written ? "derived" : "input");
+                kn.set("periods", written ? dp : ip);
+                continue;
+            }
             boolean a = derived.contains(k), i = entered.contains(k);
             if (!a && !i) continue;
             ObjectNode kn = sink.addObject();
             name(kn, "characteristic", ng.characteristic(ot, k), k);
             kn.put("origin", a ? "derived" : "input");
             if (a && i) kn.put("input", true);
+        }
+        return sink;
+    }
+
+    /** Whether {@code ot} or a supertype declares characteristic {@code name}. */
+    private static boolean declaresCharacteristic(ObjectType ot, String name) {
+        for (ObjectType t : ot.chain())
+            for (String k : t.characteristics) if (k.equalsIgnoreCase(name)) return true;
+        return false;
+    }
+
+    /** The true periods of a time-dependent characteristic, uchar's segments without a value, as {@code from},
+     *  {@code to} nodes as the request gives them; an open bound is left out, as in a segment ({@link #java}). */
+    public static ArrayNode periodNodes(List<?> segments) {
+        ArrayNode sink = NF.arrayNode();
+        for (Object seg : segments) {
+            ObjectNode p = sink.addObject();
+            Object from = CaseSession.read(seg, "getVan"), to = CaseSession.read(seg, "getTot");
+            if (from != null) p.set("from", scalar(from, null));
+            if (to != null) p.set("to", scalar(to, null));
         }
         return sink;
     }

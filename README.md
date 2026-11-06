@@ -273,6 +273,11 @@ model declares) and the sentences of the messages, which keep their text. The ol
   "derived", "input": [{"value": "7"}], "inputOrigin": "creation"}`. A row without a derived value keeps the origin
   `creation`; the rows of an instance of the request are unchanged. The OpenAPI description of `values` names
   `inputOrigin`.
+- **Periods of a characteristic in the fixpoint** (found in the comparison run of card `marker-on-value-part`): the
+  `fixpoint` of the detail and of the playground gives a time-dependent characteristic with the periods in which it
+  holds, `{"characteristic": "rentedragend", "origin": "derived", "periods": [{"from": "2025-11-16", "to":
+  "2026-03-13"}]}`: those a rule wrote within a window, which uchar gives among the derived values as its true periods,
+  or else those of the input.
 - **A writer that held on no day** (card `writer-holds-on-no-day`): a rule or an initialisation on a timeline target
   whose condition per period holds on no day (uchar's reading `HOLDS` with a condition that reads no period) is named as
   a rule that did not hold, with its condition and the periods the engine read: `"; de regel 'standaardstormloon' gold

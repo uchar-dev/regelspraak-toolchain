@@ -137,8 +137,8 @@ final class ScenarioData {
     /**
      * What stands at the fixpoint of {@code session}, the case of scenario {@code s}, as {@link FixpointGivens#fixpoint}
      * renders it, with the objects of the situation as the input: each by its label, with the values and the
-     * characteristics (those without periods) the situation gives it; the objects its creations made with the values
-     * of the making uchar's replay handed over ({@link CaseSession.Outcome#making}).
+     * characteristics the situation gives it, a time-dependent one with its periods; the objects its creations made
+     * with the values of the making uchar's replay handed over ({@link CaseSession.Outcome#making}).
      *
      * @throws FixpointGivens.UnrenderableValue a value in a form this view does not show
      */
@@ -160,8 +160,17 @@ final class ScenarioData {
                 attributes.put(a.attribute(), an);
             }
             Set<String> characteristics = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
-            for (CharacteristicValue k : i.characteristics()) if (k.periods() == null) characteristics.add(k.characteristic());
-            input.add(new FixpointGivens.InputObject(i.label(), ot, bean, attributes, characteristics));
+            Map<String, ArrayNode> periods = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            for (CharacteristicValue k : i.characteristics()) {
+                if (k.periods() == null) {
+                    characteristics.add(k.characteristic());
+                    continue;
+                }
+                ArrayNode p = NF.arrayNode();
+                for (TimeWindow w : k.periods()) p.addObject().put("from", w.van().toString()).put("to", w.until().toString());
+                periods.put(k.characteristic(), p);
+            }
+            input.add(new FixpointGivens.InputObject(i.label(), ot, bean, attributes, characteristics, periods));
         }
         if (session.beans().size() != input.size())
             throw new IllegalStateException("de sessie van het scenario '" + s.name() + "' heeft de objecten "

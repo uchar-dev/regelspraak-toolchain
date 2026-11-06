@@ -289,6 +289,11 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   the creation gives the seizoenswaarde 7 and a rule writes 20 from March to August, `{"attribute": "seizoenswaarde",
   "timeline": [{"to": "2025-03-01", "value": "7"}, {"from": "2025-03-01", "to": "2025-09-01", "value": "20"}, {"from":
   "2025-09-01", "value": "7"}], "origin": "derived", "input": [{"value": "7"}], "inputOrigin": "creation"}`.
+  A time-dependent characteristic has a row with the periods in which it holds, as the request gives them: those a
+  rule wrote within a window, which uchar's `Fixpoint.DerivedValue` gives as its true periods, with the origin
+  `derived` (`{"characteristic": "rentedragend", "origin": "derived", "periods": [{"from": "2025-11-16", "to":
+  "2026-03-13"}]}` on uchar's golden `jutterswet-verzuimrente-30-360-afgerond`), or else those of the input, with the
+  origin `input`; uchar gives no input periods on a characteristic a rule writes (`CHARACTERISTIC_PERIODS_FAULT`).
   A form and a declaration are named in the vocabulary of the answer; in `fixpoint` the canonical name stands beside a
   name that differs (`objectTypeCanonical`), as in the playground, whose trace and coverage name a form without it. A
   422 gets the asked fields beside its faults, so the faults stand as data in `fixpoint.faults` next to the values. The
