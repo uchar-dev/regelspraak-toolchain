@@ -242,10 +242,13 @@ public final class ScenarioRunner {
         }
     }
 
-    /** The resolver errors of a bundle rendered as "regel N: message" lines (for the CLI diagnostics). */
+    /** The resolver errors of a bundle rendered as "regel N: message" lines (for the CLI diagnostics); the word before
+     *  the number follows the language of uchar's message ({@link MessageLanguage#label}), "line N: message" in
+     *  English. */
     private static List<String> diagnostics(ScenarioBundle bundle) {
         List<String> sink = new ArrayList<>();
-        for (var d : bundle.model().errors()) sink.add("regel " + d.line() + ": " + d.message());
+        String line = MessageLanguage.label("regel", "line");
+        for (var d : bundle.model().errors()) sink.add(line + " " + d.line() + ": " + d.message());
         return sink;
     }
 

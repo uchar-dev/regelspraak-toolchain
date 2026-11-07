@@ -11,6 +11,10 @@ import java.util.Locale;
  * <p>The choice must precede the first uchar class that renders, because a KieBase embeds the fixed sentences of an
  * evaluation fault in the language of the moment it is first loaded; hence every entry point calls {@link #apply}
  * first, and {@link UcharBuild} does as well for the code that reaches it without one.
+ *
+ * <p>The toolchain's own messages are Dutch. A line of a CLI that carries a value or sentence of uchar takes the
+ * words around it from {@link #label}, in the language uchar rendered it in, so that the line reads in one language
+ * (card uchar-text-in-uchar-language).
  */
 public final class MessageLanguage {
     private MessageLanguage() {}
@@ -28,6 +32,14 @@ public final class MessageLanguage {
         } else if (System.getProperty(PROPERTY) == null) {
             System.setProperty(PROPERTY, DEFAULT);
         }
+    }
+
+    /** {@code nl} or {@code en}, after the language of the process: the one {@link #apply} fixed, which uchar renders
+     *  in when a call names none. */
+    public static String label(String nl, String en) {
+        String language = Locale.forLanguageTag(System.getProperty(PROPERTY, DEFAULT)).getLanguage();
+        check(language);
+        return language.equals("en") ? en : nl;
     }
 
     /** The language of a {@code --language} value or an {@code Accept-Language} tag; {@code nl} and {@code en} only,

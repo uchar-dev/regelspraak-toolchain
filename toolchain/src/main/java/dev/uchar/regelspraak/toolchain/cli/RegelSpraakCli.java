@@ -7,6 +7,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
+import dev.uchar.regelspraak.toolchain.engine.MessageLanguage;
 import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 
 /**
@@ -124,6 +125,8 @@ public final class RegelSpraakCli {
      *  refusal; that branch builds no document with a construct it does not lower, so there is no DRL with markers.
      *  An {@code Unresolved} node is exit 1 there as well.
      *  A DRL text the Drools compiler rejects is a fault of uchar's rendering: exit 1 with uchar's sentence.
+     *  The words before uchar's refusal or sentence are in uchar's language ({@link MessageLanguage#label}); the
+     *  summary and the other messages of this CLI are Dutch.
      *  With --facts &lt;outdir&gt;, generate the implied fact-model beans (§13.3) into &lt;outdir&gt;
      *  and exit 0. --facts is model-level: it builds no KieBase and does NOT apply the exit-3 marker discipline
      *  (that discipline is about RULE lowering, orthogonal to the fact-model the beans encode).
@@ -133,7 +136,7 @@ public final class RegelSpraakCli {
      *  With --ir &lt;out.json&gt; over one-or-more source files, delegate to uchar's {@link Resolver#irMode} to emit
      *  the FAITHFUL {@code uchar-ir-v1} JSON dump. The output modes are mutually exclusive. */
     public static void main(String[] args) throws java.io.IOException {
-        dev.uchar.regelspraak.toolchain.engine.MessageLanguage.apply(null);
+        MessageLanguage.apply(null);
         var rest = new java.util.ArrayList<>(java.util.List.of(args));
         boolean drl = rest.remove("--drl");
         if (rest.contains("--allow-markers")) {
@@ -162,12 +165,13 @@ public final class RegelSpraakCli {
                 e.diagnostics().forEach(d -> System.err.println("  " + chain.message(d)));
                 System.exit(1);
             } catch (UcharBuild.NotCarried e) {
-                System.err.println("  niet uitvoerbaar in uchar (exit 3): " + e.getMessage());
+                System.err.println("  " + notExecutable() + e.getMessage());
                 System.exit(3);
             } catch (IllegalStateException e) {
                 // uchar's build of this branch throws this for a DRL text the Drools compiler rejects: a fault of its
                 // rendering, not a form the branch does not carry, so no exit 3; uchar's sentence carries Drools' error
-                System.err.println("  fout van uchar (exit 1): " + e.getMessage());
+                System.err.println("  " + MessageLanguage.label("fout van uchar (exit 1): ",
+                        "fault of uchar (exit 1): ") + e.getMessage());
                 System.exit(1);
             }
             System.exit(0);
@@ -190,10 +194,15 @@ public final class RegelSpraakCli {
             e.diagnostics().forEach(d -> System.out.println("  " + chain.message(d)));
             System.exit(1);
         } catch (UcharBuild.NotCarried e) {
-            System.out.println("  niet uitvoerbaar in uchar (exit 3): " + e.getMessage());
+            System.out.println("  " + notExecutable() + e.getMessage());
             System.exit(3);
         }
         System.exit(0);
+    }
+
+    /** The words before uchar's refusal, in the language uchar wrote it in: the line reads in one language. */
+    private static String notExecutable() {
+        return MessageLanguage.label("niet uitvoerbaar in uchar (exit 3): ", "not executable in uchar (exit 3): ");
     }
 
     private RegelSpraakCli() {}

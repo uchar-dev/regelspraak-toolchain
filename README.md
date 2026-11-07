@@ -394,7 +394,11 @@ to the directory the command is given in.
 
 The messages of uchar are Dutch unless asked otherwise: `bin/regelspraak --language en <command>` renders them in
 English, and the playground of the service does so per request for an `Accept-Language` that names `en`
-(`MessageLanguage`). The messages the service itself writes stay Dutch.
+(`MessageLanguage`). The toolchain's own messages keep their Dutch sentences; a line of `check`, `drl` or `scenario`
+that carries a value or sentence of uchar is labelled in uchar's language, so that under `--language en` a failed
+expectation reads `expectation 1 FAIL: characteristicPresent Z1 zware zending  (expected=present, actual=absent)` and
+a refusal `not executable in uchar (exit 3): transpiler SKIP: …`. The explanation (`--explanation`), the verdict lines
+of `scenario --manifest` and the messages the service itself writes keep their Dutch words.
 
 | Command | What it does |
 |---------|--------------|

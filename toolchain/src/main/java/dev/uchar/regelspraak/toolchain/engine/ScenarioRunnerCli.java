@@ -25,14 +25,16 @@ import java.util.stream.Collectors;
  * }</pre>
  *
  * Multiple files are CONCATENATED in argument order (objectmodel + rules + scenario file). Per scenario one line
- * PASS/FAIL/MARKER; a FAIL prints per expectation its position in the scenario with verwacht/werkelijk, the trace
- * and the coverage lines; {@code --trace} prints the trace even for a PASS; {@code --explanation} prints under each
- * played scenario the explanation of its outcome ({@link ScenarioRunner#runWithExplanation}), or why there is none;
- * {@code --vocabulary} names the rules of the trace and the coverage, and the declarations in the explanation, in a
- * vocabulary the model declares ({@link Naming}; {@code canoniek} for the canonical names), and an unknown one is
- * a wrong invocation. Exit codes: {@code 1} as soon as a scenario FAILS (or the source does not resolve — with the
- * diagnostics); else {@code 3} as soon as a scenario is a MARKER (uchar does not carry its document); else {@code 0}.
- * With no files: exit {@code 2}.
+ * PASS/FAIL/MARKER; a FAIL prints per expectation its position in the scenario with the expected and the actual
+ * value, the trace and the coverage lines. The line of a failed expectation and the {@code FAIL:} and
+ * {@code MARKER:} lines carry uchar's values and sentences, and their words are in uchar's language
+ * ({@link MessageLanguage#label}); the rest of the report is Dutch. {@code --trace} prints the trace even for a PASS;
+ * {@code --explanation} prints under each played scenario the explanation of its outcome
+ * ({@link ScenarioRunner#runWithExplanation}), or why there is none; {@code --vocabulary} names the rules of the trace
+ * and the coverage, and the declarations in the explanation, in a vocabulary the model declares ({@link Naming};
+ * {@code canoniek} for the canonical names), and an unknown one is a wrong invocation. Exit codes: {@code 1} as soon
+ * as a scenario FAILS (or the source does not resolve — with the diagnostics); else {@code 3} as soon as a scenario is
+ * a MARKER (uchar does not carry its document); else {@code 0}. With no files: exit {@code 2}.
  *
  * <p>{@code --manifest} runs every line of a manifest ({@code <verwachte-exit> <scenario.rgs> <companion.rgs...>})
  * and exits {@code 0} when no line mismatches, else {@code 1}. {@code --exclusions} names the scenarios uchar's
@@ -150,6 +152,11 @@ public final class ScenarioRunnerCli {
      *  uchar's report names them). */
     private static int reportAndCode(List<ScenarioResult> results, boolean trace,
                                         List<ScenarioRunner.Explained> explanation, Naming naming) {
+        // these lines carry uchar's values and verdicts, so their words follow its language; MARKER is one word in both
+        String expectation = MessageLanguage.label("verwachting", "expectation"),
+                fail = MessageLanguage.label("FOUT", "FAIL"),
+                expected = MessageLanguage.label("verwacht", "expected"),
+                actual = MessageLanguage.label("werkelijk", "actual");
         boolean anyFail = false, anyMarker = false;
         for (int n = 0; n < results.size(); n++) {
             ScenarioResult r = results.get(n);
@@ -160,10 +167,11 @@ public final class ScenarioRunnerCli {
                 for (ExpectationResult v : r.expectations())
                     if (!v.ok()) {
                         reported = true;
-                        System.out.println("    verwachting " + v.position() + " FOUT: " + v.source().trim()
-                                + "  (verwacht=" + v.expected() + ", werkelijk=" + v.actual() + ")");
+                        System.out.println("    " + expectation + " " + v.position() + " " + fail + ": "
+                                + v.source().trim() + "  (" + expected + "=" + v.expected() + ", " + actual + "="
+                                + v.actual() + ")");
                     }
-                if (!reported) System.out.println("    FOUT: " + r.diagnostic());
+                if (!reported) System.out.println("    " + fail + ": " + r.diagnostic());
                 printTrace(r, naming);
                 printCoverage(r, naming);
             } else if (r.status() == Status.MARKER) {

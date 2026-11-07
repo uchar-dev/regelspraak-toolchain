@@ -11,7 +11,7 @@ usage() {
   cat <<'TEXT'
 usage: bin/regelspraak [--language nl|en] <command> [arguments]
 
-  --language   the language of uchar's messages (nl by default)
+  --language   the language of uchar's messages, and of the words a line puts around one (nl by default)
 
   check <source.rgs...>                 parse and resolve; the diagnostics, then whether uchar carries the model
   ir <out.json> <source.rgs...>         the uchar-ir-v1 document of the model (uchar's emitter)

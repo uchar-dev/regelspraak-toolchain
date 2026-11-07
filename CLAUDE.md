@@ -78,6 +78,9 @@ Beslistabel converter). `make image` and `make kind-smoke` need Docker and run o
   English too: JSON keys, OpenAPI, subcommands and flags, Make targets, environment variables, Helm and Docker configuration. What
   comes from RegelSpraak stays (the kinds of declarations `ATTRIBUUT`, `FEITTYPE`, `ROL`, the predicates, the global `rekendatum`, names
   a model declares). The messages of uchar come from its catalogues (codes `RGS-###`, `DROOLS-###`; Dutch by default, `--language`
-  or `Accept-Language` chooses), and the toolchain's own messages keep their Dutch sentences. A message or OpenAPI description
+  or `Accept-Language` chooses). The toolchain's own messages keep their Dutch sentences; a line of `check`, `drl` or `scenario`
+  that carries a value or sentence of uchar is labelled in uchar's language (`MessageLanguage.label`; card
+  uchar-text-in-uchar-language). The explanation, the verdict lines of `scenario --manifest` and the messages the service itself
+  writes keep their Dutch words. A message or OpenAPI description
   that names a JSON key, query parameter, field or Helm value names the English one the code reads;
   `ContractNamesInMessagesTest` refuses the old names in the literals.
