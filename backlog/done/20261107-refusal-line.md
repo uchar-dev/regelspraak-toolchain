@@ -148,3 +148,9 @@ staat er alleen als de weigering een plaats in de bron heeft:
 
 De zinnen in `refusal` en `drlError` zijn ongewijzigd; `drlError` krijgt geen regelveld. Commit: toolchain
 `476b32bf5` op `card/refusal-line` (de hash op main volgt bij de landing).
+
+### Landing (hoofdsessie, 2026-11-07)
+
+Bij de controle vergeleek `formLine` de naam van een vorm met `equalsIgnoreCase`, terwijl de javadoc uchars
+naamidentiteit noemt; die vouwt alleen A–Z. Het vergelijkt nu met `Namen.norm`, zoals `Markers` (eigen commit).
+`make gates` daarna groen: 7 stappen in 6m24s (`uchar-dev/werk/refusal-line/logs/gates-landing.log`). Geland op main.
