@@ -277,8 +277,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so
   nothing is read or written back; the service does not judge which of the two it was. With the detail flags (below)
   the 422 carries `trace` and `coverage` of what fired up to the end of the run, and for `?fixpoint=true` `fixpointError`
-  with the same sentence. The Quarkus adapter answers the same; the OpenAPI 422 is one of `EvaluationFault` and
-  `NoFixpoint`. Any other exception is a 500 `{"error": "interne fout"}` in both adapters, its stacktrace in the log
+  with the same sentence. The Quarkus adapter answers the same; the OpenAPI 422 is one of `EvaluationFault`,
+  `NoFixpoint` and `Limit`. Any other exception is a 500 `{"error": "interne fout"}` in both adapters, its stacktrace in the log
   and not in the answer.
 - A request on which uchar's Drools branch reaches a limit at the fixpoint, a value of the rules it cannot hold (a
   segment of a timeline of the unbounded form whose value does not terminate, DROOLS-312, a `LIMIT` of uchar's
@@ -339,7 +339,7 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   ["marker"], "additionalProperties": false, "properties": {"marker": {"type": "string", "enum": ["onbekend", "niet van
   toepassing"]}}}`, the `enum` the markers the attribute declares. Every operation documents the flags `explanation`,
   `explanationParts`, `trace`, `coverage` and `fixpoint`; `Answer` has the fields they add, `EvaluationFault` those of
-  the detail, with the components `ExplanationPart` (recursive through `parts`), `Trace`, `Coverage` and `Fixpoint`. The 422 is one of `EvaluationFault` and `NoFixpoint`. The documents are written by the emitter's API
+  the detail, with the components `ExplanationPart` (recursive through `parts`), `Trace`, `Coverage` and `Fixpoint`. The 422 is one of `EvaluationFault`, `NoFixpoint` and `Limit`. The documents are written by the emitter's API
   (`write`, file `<service>.<vocabulary>.json`); the service serves no route for them.
 - A name the resolver bound to no declaration, an `Unresolved` node in the document an entry point builds or in the
   document the service is given, refuses the start, also with `--allow-markers` (exit 1, a `MALFORMED` violation on
