@@ -50,6 +50,9 @@ import java.util.stream.Stream;
  * faults the write-back of the replay throws, so that they are there as data.
  */
 public final class ScenarioRunner {
+    // The replay renders through uchar's CaseRunner, not through UcharBuild, so the language is fixed here as well.
+    static { MessageLanguage.apply(null); }
+
     private ScenarioRunner() {}
 
     private static final ObjectMapper JSON = new ObjectMapper();

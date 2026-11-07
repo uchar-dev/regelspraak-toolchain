@@ -10,7 +10,7 @@ import java.util.Locale;
  *
  * <p>The choice must precede the first uchar class that renders, because a KieBase embeds the fixed sentences of an
  * evaluation fault in the language of the moment it is first loaded; hence every entry point calls {@link #apply}
- * first, and {@link UcharBuild} does as well for the code that reaches it without one.
+ * first, and {@link UcharBuild} and {@link ScenarioRunner} do as well for the code that reaches them without one.
  *
  * <p>The toolchain's own messages are Dutch. A line of a CLI that carries a value or sentence of uchar takes the
  * words around it from {@link #label}, in the language uchar rendered it in, so that the line reads in one language
