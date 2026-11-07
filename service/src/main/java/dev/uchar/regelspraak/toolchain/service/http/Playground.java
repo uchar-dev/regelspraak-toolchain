@@ -587,7 +587,8 @@ public final class Playground {
     private static Integer formLine(String construct, RegelSpraakModel model, ParseResult parseResult) {
         if (construct == null) return null;
         List<Designatable> forms = model.designatable().stream()
-                .filter(b -> b.kind() == Designatable.Kind.VORM && b.name().equalsIgnoreCase(construct)).toList();
+                .filter(b -> b.kind() == Designatable.Kind.VORM && Namen.norm(b.name()).equals(Namen.norm(construct)))
+                .toList();
         if (forms.size() != 1) return null;
         Map<Designatable, Declarations.Declaration> declarations;
         try {
