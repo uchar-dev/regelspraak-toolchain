@@ -26,3 +26,17 @@ oordelen in het Engels tussen Nederlandse tekst.
 
 - `ScenarioMutationRunTest` alleen gedraaid: 11 van 11 groen.
 - `make gates` groen.
+
+## Result (2026-11-07)
+
+`ScenarioRunner` zet de taal vast in een static initializer, `static { MessageLanguage.apply(null); }`, zoals
+`UcharBuild`; de javadoc van `MessageLanguage` noemt beide klassen (`0cb6e95b0`).
+
+- `mvn -o -q -pl toolchain -am test -Dtest=ScenarioMutationRunTest -Dsurefire.failIfNoSpecifiedTests=false`: 11 van 11
+  groen (`TEST-…ScenarioMutationRunTest.xml`: `tests="11"`, `failures="0"`); op `7454b1426` 11 van 11 rood. De build
+  stopt daarna in de skip-pin-stap ("11 testgevallen gemeten, vloer is 120"), zoals elke losse testklasse in deze
+  module.
+- `make gates` op `0cb6e95b0`: groen, 7 stappen in 6m34s; testgevallen per module 201/508/57, replay 353 goldens en
+  1000 cases, manifest 29 ok en 3 uitgesloten, kind-smoke H2–H4 PASS.
+
+Geen nieuwe toets: de afhankelijkheid zat in de volgorde van de testklassen, en de losse run hierboven is de controle.
