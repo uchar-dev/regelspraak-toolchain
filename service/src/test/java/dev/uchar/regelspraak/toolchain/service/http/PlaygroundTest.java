@@ -127,6 +127,7 @@ class PlaygroundTest {
         // the IR document uchar's emitter writes, and the verdict of the branch that fires
         assertEquals("uchar-ir-v1", a.get("ir").get("format").asText(), a.toString());
         assertTrue(a.get("executable").asBoolean(), a.toString());
+        assertFalse(a.has("refusalLine"), a.toString());
         assertEquals(2, a.get("coverage").size(), a.toString());
         for (JsonNode d : a.get("coverage")) assertEquals("LOWERED", d.get("verdict").asText(), d.toString());
         // the graph as nodes and edges beside the Mermaid text: two rule nodes, edges between known ids
@@ -160,6 +161,29 @@ class PlaygroundTest {
         assertFalse(a.get("executable").asBoolean(), a.toString());
         assertTrue(a.get("refusal").asText().contains("heffing markert"), a.toString());
         assertFalse(a.has("coverage"), a.toString());
+        // the refusal names the form, and the line is the one 'Regel heffing markert' stands on
+        assertEquals(4, a.get("refusalLine").asInt(), a.toString());
+    }
+
+    @Test
+    void a_refusal_of_uchar_loader_has_no_line() {
+        // uchar's loader refuses a whole-period test over a parameter (DROOLS-028) under the name of a wire field,
+        // not of a form, so the refusal has no place in the source
+        ObjectNode a = Playground.analyze("""
+            Parameter de havenheffing : Numeriek (geheel getal) voor elke maand;
+
+            Objecttype de Schuit (mv: Schuiten)
+                de leegtoeslag Numeriek (geheel getal);
+
+            Regel leegtoeslag van een schuit
+                geldig altijd
+                    De leegtoeslag van een Schuit moet berekend worden als 10
+                    indien de havenheffing gedurende het gehele jaar leeg is.
+            """);
+        assertTrue(a.get("resolver").get("ok").asBoolean(), a.toString());
+        assertFalse(a.get("executable").asBoolean(), a.toString());
+        assertTrue(a.get("refusal").asText().startsWith("loader: "), a.toString());
+        assertFalse(a.has("refusalLine"), a.toString());
     }
 
     @Test
@@ -177,7 +201,78 @@ class PlaygroundTest {
         assertFalse(a.get("executable").asBoolean(), a.toString());
         assertEquals("onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk', bronregel 6",
                 a.get("refusal").asText(), a.toString());
+        assertEquals(6, a.get("refusalLine").asInt(), a.toString());
         assertEquals(a.get("refusal").asText(), a.get("drlError").asText(), a.toString());
+    }
+
+    @Test
+    void an_unresolved_name_in_joined_sources_has_the_line_of_the_join() {
+        // a workbench posts its files joined; the name stands on line 4 of the second file, line 8 of what it posts
+        String first = """
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+                is kind kenmerk;
+
+            """;
+        String second = """
+            // het tweede bestand
+            Regel bijvoeglijk
+                geldig altijd
+                    Een passagier is kind indien hij een minderjarig is.
+            """;
+        ObjectNode a = Playground.analyze(first + second);
+        assertFalse(a.get("executable").asBoolean(), a.toString());
+        assertEquals("onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk', bronregel 8",
+                a.get("refusal").asText(), a.toString());
+        assertEquals(8, a.get("refusalLine").asInt(), a.toString());
+    }
+
+    @Test
+    void an_unresolved_name_without_a_line_has_no_refusal_line() {
+        // the name is quoted on two lines, so neither site has a line of its own and the sentence names the pointers
+        ObjectNode a = Playground.analyze("""
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+                is kind kenmerk;
+                is klein kenmerk;
+            Regel bijvoeglijk
+                geldig altijd
+                    Een passagier is kind indien hij een minderjarig is.
+            Regel tweede
+                geldig altijd
+                    Een passagier is klein indien hij een minderjarig is.
+            """);
+        assertFalse(a.get("executable").asBoolean(), a.toString());
+        assertEquals("onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk' op"
+                + " /rules/rules/0/versions/0/condition; onopgeloste naam 'hij een minderjarig is' in de regel 'tweede'"
+                + " op /rules/rules/1/versions/0/condition", a.get("refusal").asText(), a.toString());
+        assertFalse(a.has("refusalLine"), a.toString());
+    }
+
+    @Test
+    void the_refusal_line_is_that_of_the_first_site_with_a_line() {
+        // the first site has no line (its name is quoted on two lines), the second has one: the field points there
+        ObjectNode a = Playground.analyze("""
+            Objecttype de Passagier
+                is minderjarig kenmerk (bijvoeglijk);
+                is kind kenmerk;
+                is klein kenmerk;
+                is oud kenmerk;
+            Regel bijvoeglijk
+                geldig altijd
+                    Een passagier is kind indien hij een minderjarig is.
+            Regel tweede
+                geldig altijd
+                    Een passagier is klein indien hij een minderjarig is.
+            Regel derde
+                geldig altijd
+                    Een passagier is oud indien hij een bejaarde is.
+            """);
+        assertFalse(a.get("executable").asBoolean(), a.toString());
+        assertTrue(a.get("refusal").asText().startsWith("onopgeloste naam 'hij een minderjarig is' in de regel"
+                + " 'bijvoeglijk' op /rules/"), a.toString());
+        assertTrue(a.get("refusal").asText().endsWith("in de regel 'derde', bronregel 14"), a.toString());
+        assertEquals(14, a.get("refusalLine").asInt(), a.toString());
     }
 
     // ---------------- shape 4: scenario outcome ----------------

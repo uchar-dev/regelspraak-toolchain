@@ -361,11 +361,12 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   which refuses it (DROOLS-315, a `contract` of its register), and the entry point is a marker with that sentence.
 - `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`). A source with a
   parse or resolver error gets its diagnostics and nothing else. A clean source gets the `uchar-ir-v1` document, the
-  exec-model verdict (`executable` with the `coverage` and `generated`, or uchar's `refusal`), the DRL of the
+  exec-model verdict (`executable` with the `coverage` and `generated`, or uchar's `refusal`, with `refusalLine`
+  beside it where the refusal has a place in the source, below), the DRL of the
   DRL-text branch as a view (not the verdict: `drl`, or `drlError` with uchar's sentence and `drl` empty) with
   `drlRules` beside it (below), uchar's rule graph of the document its loader reads back, as Mermaid
   (`graph`) and as `graphJson` (`{nodes:[{id,label,kind,endOutput}], edges:[{from,to}]}`), the `vocabularies` of the
-  source (the declared ones, the chosen one, and per declaration its designation in each, with its source line `rule`
+  source (the declared ones, the chosen one, and per declaration its designation in each, with its source line `line`
   and the `comment` directly above it, read from uchar's parse; the list `elements` is always filled, also without
   a declared vocabulary, and a declaration uchar's frontend wrote itself has no line; `declarationError` names an
   element that does not couple to one declaration). An element uchar's frontend made itself, under a name no
@@ -401,7 +402,7 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   the exec-model branch, not from the DRL. Nothing is read off a name (the label `default 0.0.1.0.0` of a rule) or
   off the order of the DRL text: all of it comes from uchar's tables (`RegelSpraakModel.generated`,
   `TmsTranspiler.generated`, `TmsTranspiler.stacks`). Per scenario it gets uchar's report with its
-  `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`rule`,
+  `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`line`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in; a dimensioned
   attribute in `objects[].attributes[]` as `cells`, `[{labels, value}]`, as a request gives it; a value of an attribute
@@ -416,6 +417,18 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
   coverage, the explanation, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
   that differs (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
+- `refusalLine` stands beside `refusal` only where the refusal has a place in the source: a whole number that counts
+  from 1 in the source as the playground received it, as `line` in `parse.errors` and `resolver.errors` does, so a
+  workbench that posts its files joined maps it to a file and a line in that file as it maps those. For a name the
+  resolver bound to no declaration (`onopgeloste naam …`) it is the line of the first site, in the order of the
+  sentence, that has one; a site has a line when diagnostics with a line quote its name and all of them stand on the
+  same line, and the sentence then ends that site with `, bronregel <n>` instead of its pointer. For a form the
+  exec-model branch does not lower (`transpiler SKIP: regel: <naam> — …`, or `MARKER`) it is the line `Regel <naam>`
+  stands on, the `line` `vocabularies` gives that form, when the model has exactly one form of that name and that form
+  has a declaration in the source. There is no `refusalLine` for a refusal of the emitter or the loader, a document
+  error, a refusal of the build that names no form (a cycle, two rules of one name), a form uchar's frontend made
+  itself, and declarations that do not couple (`declarationError`): uchar's refusal names a form and no place, and a
+  line that is not certain is left out. `refusal` keeps uchar's sentence; `drlError` has no line beside it.
 - `drlRules` (card `drl-rule-provenance`) has one entry per rule of `drl`, in the order of its headers: `name`, the
   rule's name, unescaped (the header `rule "…"` spells it as a DRL string literal, with `\\`, `\"`, `\n` and `\r`), and
   what uchar says the rule lowers (`TmsTranspiler.originOf`), in the keys of the decider of a ground (below, "The

@@ -78,7 +78,9 @@ import java.util.Set;
  *   <li><b>uitvoerbaar</b> — uchar's verdict on the exec-model branch, the branch that fires: {@code true} with the
  *       {@code dekking} per form and {@code generated}, the names of that coverage that name no element of
  *       {@code vocabularies} with the element uchar made them from and, for a stack, the type it runs for and its
- *       composition ({@link #generated}), or {@code false} with uchar's {@code weigering};</li>
+ *       composition ({@link #generated}), or {@code false} with uchar's {@code weigering} and, where the refusal has a
+ *       place in the source, {@code refusalLine}: the first line an unresolved name has, or the line of
+ *       {@code Regel <naam>} of the form uchar does not lower ({@link #formLine});</li>
  *   <li><b>drl</b> — the DRL text of uchar's DRL-text branch, a view and no verdict (that branch renders the
  *       analysis the exec-model branch fires as DRL text); {@code drlError} carries its refusal, or uchar's sentence
  *       for a DRL text the Drools compiler rejects, with {@code drl} empty. Beside it {@code drlRules}: per rule of
@@ -222,9 +224,16 @@ public final class Playground {
         } catch (UcharBuild.UnresolvedName e) {
             root.put("executable", false);
             root.put("refusal", e.getMessage());
+            e.sites().stream().filter(s -> s.line() > 0).findFirst()
+                    .ifPresent(s -> root.put("refusalLine", s.line()));
         } catch (UcharBuild.NotCarried e) {
             root.put("executable", false);
             root.put("refusal", locale == null ? e.getMessage() : e.message(locale));
+            // only a refusal of the branch names a form it does not lower; the emitter's names an allocation that is
+            // no form of the model
+            Integer line = e.getCause() instanceof CaseRunner.Excluded
+                    ? formLine(e.construct(), model, parseResult) : null;
+            if (line != null) root.put("refusalLine", line);
         }
 
         // 4. DRL — a view of the DRL-text branch, never the verdict. uchar's build of that branch throws an
@@ -565,6 +574,29 @@ public final class Playground {
         }
         if (declarationError != null) n.put("declarationError", declarationError);
         return n;
+    }
+
+    /**
+     * The source line of {@code Regel <naam>} for the form {@code construct} names (the
+     * {@link UcharBuild.NotCarried#construct()} of a refusal of the exec-model branch), as {@link #vocabularies} gives
+     * it for that form. Null when {@code construct} is null, when the model has no form of that name or more than one
+     * under uchar's name identity, when that form has no declaration in the source (uchar's frontend made it), and when
+     * the declarations do not couple, which {@link #vocabularies} reports as {@code declarationError}. uchar's refusal
+     * carries a name and no place, so a line that is not certain is left out rather than guessed.
+     */
+    private static Integer formLine(String construct, RegelSpraakModel model, ParseResult parseResult) {
+        if (construct == null) return null;
+        List<Designatable> forms = model.designatable().stream()
+                .filter(b -> b.kind() == Designatable.Kind.VORM && b.name().equalsIgnoreCase(construct)).toList();
+        if (forms.size() != 1) return null;
+        Map<Designatable, Declarations.Declaration> declarations;
+        try {
+            declarations = Declarations.of(parseResult.document(), parseResult.tokens(), model);
+        } catch (Declarations.Unlinkable o) {
+            return null;
+        }
+        Declarations.Declaration d = declarations.get(forms.get(0));
+        return d == null ? null : d.line();
     }
 
     /** Where an element uchar made comes from, as {@code {soort, eigenaar, naam, vorm}}: the kind, owner and name of the
