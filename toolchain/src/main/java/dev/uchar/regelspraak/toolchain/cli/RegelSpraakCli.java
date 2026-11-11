@@ -120,10 +120,11 @@ public final class RegelSpraakCli {
      *  diagnostics, then build it on uchar's exec-model branch; exit 1 on a resolver error or on a name the resolver
      *  bound to no declaration (an {@code Unresolved} node in the document, {@link UcharBuild.UnresolvedName}), 3
      *  when uchar does not carry the model (a construct the branch does not lower among them: accepted input with
-     *  inert output must never look like success), else 0.
+     *  inert output must never look like success), also when every {@code Unresolved} node is a form without a norm
+     *  (the name is resolved, the IR has no form for it), else 0.
      *  With --drl, print the DRL text of uchar's DRL-text branch instead of the summary, or exit 3 with uchar's
      *  refusal; that branch builds no document with a construct it does not lower, so there is no DRL with markers.
-     *  An {@code Unresolved} node is exit 1 there as well.
+     *  An {@code Unresolved} node is exit 1 there as well, or 3 when every one is a form without a norm.
      *  A DRL text the Drools compiler rejects is a fault of uchar's rendering: exit 1 with uchar's sentence.
      *  The words before uchar's refusal or sentence are in uchar's language ({@link MessageLanguage#label}); the
      *  summary and the other messages of this CLI are Dutch.
@@ -163,7 +164,7 @@ public final class RegelSpraakCli {
                 System.out.print(UcharBuild.assemble(m, DroolsBackend.Branch.DRL_TEXT).drl());
             } catch (UcharBuild.UnresolvedName e) {
                 e.diagnostics().forEach(d -> System.err.println("  " + chain.message(d)));
-                System.exit(1);
+                System.exit(e.onlyFormsWithoutNorm() ? 3 : 1);
             } catch (UcharBuild.NotCarried e) {
                 System.err.println("  " + notExecutable() + e.getMessage());
                 System.exit(3);
@@ -190,9 +191,10 @@ public final class RegelSpraakCli {
         try {
             UcharBuild.assemble(m, DroolsBackend.Branch.EXEC_MODEL);
         } catch (UcharBuild.UnresolvedName e) {
-            // a name bound to no declaration is a fault in the source, as a resolver error is
+            // a name bound to no declaration is a fault in the source, as a resolver error is; a form without a norm
+            // is valid RegelSpraak that uchar does not carry
             e.diagnostics().forEach(d -> System.out.println("  " + chain.message(d)));
-            System.exit(1);
+            System.exit(e.onlyFormsWithoutNorm() ? 3 : 1);
         } catch (UcharBuild.NotCarried e) {
             System.out.println("  " + notExecutable() + e.getMessage());
             System.exit(3);

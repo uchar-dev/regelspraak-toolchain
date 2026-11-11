@@ -230,6 +230,7 @@ public final class DecisionCore {
         List<Violation> markerErrors = new ArrayList<>();
         List<Violation> scopeErrors = new ArrayList<>();
         java.util.Set<String> unresolved = new java.util.LinkedHashSet<>();
+        boolean onlyFormsWithoutNorm = true;
         // the producer index is model-wide (every form that WRITES a kenmerk/attribuut), computed once.
         Map<ElementKey, java.util.Set<String>> producers =
                 ProducerConsumer.producerIndex(model, model.prioritizedDefaults);
@@ -259,6 +260,7 @@ public final class DecisionCore {
             } catch (UcharBuild.UnresolvedName u) {
                 // a fault in the source, not a form uchar does not carry: no marker, so allowMarkers does not start it
                 for (UcharBuild.Site site : u.sites()) unresolved.add(site.sentence());
+                onlyFormsWithoutNorm &= u.onlyFormsWithoutNorm();
                 continue;
             } catch (UcharBuild.NotCarried ng) {
                 marker(ep, ng.construct(), ng.getMessage(), defaults, config, perPath, markerErrors);
@@ -270,7 +272,7 @@ public final class DecisionCore {
                 scopeErrors.addAll(scopeCompleteness(ep, model, scoped, producers));
             perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null, explanationBuild, explained));
         }
-        if (!unresolved.isEmpty()) throw unresolvedName(unresolved);
+        if (!unresolved.isEmpty()) throw unresolvedName(unresolved, onlyFormsWithoutNorm);
         if (!scopeErrors.isEmpty())
             throw new ServiceError("dienst start niet: onvolledige regel-scope (buiten-scope kenmerk-producent)",
                     scopeErrors);
@@ -360,7 +362,7 @@ public final class DecisionCore {
                 explained = Verbaliser.Document.of(IrLoader.loadWithPositions(document));
             }
         } catch (UcharBuild.UnresolvedName u) {
-            throw unresolvedName(u.sites().stream().map(UcharBuild.Site::sentence).toList());
+            throw unresolvedName(u.sites().stream().map(UcharBuild.Site::sentence).toList(), u.onlyFormsWithoutNorm());
         } catch (UcharBuild.NotCarried ng) {
             refusal = ng;
         }
@@ -395,9 +397,10 @@ public final class DecisionCore {
 
     /** The start refused for names the resolver bound to no declaration ({@link UcharBuild.UnresolvedName}), one
      *  violation per name: uchar would fault on each only when a request reaches it, so the service does not start
-     *  on them, with markers allowed or not. */
-    private static ServiceError unresolvedName(java.util.Collection<String> sentences) {
-        return new ServiceError("dienst start niet: de bron draagt een onopgeloste naam", sentences.stream()
+     *  on them, with markers allowed or not. A form without a norm is refused the same way, under its own header. */
+    private static ServiceError unresolvedName(java.util.Collection<String> sentences, boolean onlyFormsWithoutNorm) {
+        return new ServiceError(onlyFormsWithoutNorm ? "dienst start niet: de bron draagt een vorm zonder norm"
+                : "dienst start niet: de bron draagt een onopgeloste naam", sentences.stream()
                 .map(sentence -> Violation.of(Violation.Kind.MALFORMED, "source", sentence)).toList());
     }
 

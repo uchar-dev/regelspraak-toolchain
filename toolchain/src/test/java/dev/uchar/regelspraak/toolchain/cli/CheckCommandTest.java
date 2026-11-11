@@ -23,7 +23,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * {@code bin/regelspraak check} and {@code drl} on a source with a name the resolver binds to no declaration: uchar
  * leaves an {@code Unresolved} node in the document with a warning, and its executors fault on it only when a
  * request reaches the rule (WF-044). The distribution refuses the source before that, as it refuses a resolver
- * error: exit 1, with the name, the rule and the line. The test runs the script on {@code REGELSPRAAK_JAR}, a jar
+ * error: exit 1, with the name, the rule and the line. A form the IR carries without a norm reaches the document as
+ * the same node, with RGS-092; there {@code check} names the form and exits 3. The test runs the script on {@code REGELSPRAAK_JAR}, a jar
  * whose manifest carries this module's test class path, as {@link TokensCommandTest} does.
  */
 class CheckCommandTest {
@@ -62,6 +63,64 @@ class CheckCommandTest {
         Run r = run("drl", "bron.rgs");
         assertEquals(1, r.exit(), () -> "drl: " + r);
         assertTrue(r.stderr().contains(REFUSAL) && r.stdout().isEmpty(), () -> "drl: " + r);
+    }
+
+    /** A model for the three forms the IR carries without a norm; the rule under test starts on line 11, its sentence
+     *  stands on line 13. */
+    private static final String FORMS_WITHOUT_NORM = """
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                de naam Tekst;
+                het vondstmoment Datum en tijd in millisecondes;
+                de uitkomst Numeriek (geheel getal);
+                is waardevol kenmerk (bijvoeglijk);
+
+            Regel controle uitkomst
+                geldig altijd
+                    De uitkomst van een Jutter moet groter zijn dan 0.
+
+            """;
+
+    /** uchar writes an {@code Unresolved} node with RGS-092 for these forms; the name is resolved, so the refusal
+     *  names the form and its reason, and {@code check} exits 3: uchar does not carry the model. */
+    private void refusesFormWithoutNorm(String rule, String expected) throws Exception {
+        Files.writeString(dir.resolve("bron.rgs"), FORMS_WITHOUT_NORM + rule);
+        Run r = run("check", "bron.rgs");
+        assertEquals(3, r.exit(), () -> "check: " + r);
+        assertTrue(r.stdout().contains(expected), () -> "check: " + r);
+        assertTrue(!r.stdout().contains("onopgeloste naam"), () -> "check: " + r);
+    }
+
+    @Test
+    void check_refuses_the_eleven_test_as_a_form_without_norm() throws Exception {
+        refusesFormWithoutNorm("""
+                Regel waardevolle naam
+                    geldig altijd
+                        Een Jutter is waardevol indien zijn naam aan de elfproef voldoet.
+                """, "ERROR (line 13): vorm zonder norm: het IR draagt de elfproef ('voldoet aan de elfproef') niet:"
+                + " de vorm heeft geen norm (RUNTIME-SEMANTICS geeft hem geen betekenis)"
+                + " — 'zijn naam aan de elfproef voldoet'");
+    }
+
+    @Test
+    void check_refuses_a_time_of_day_part_as_a_form_without_norm() throws Exception {
+        refusesFormWithoutNorm("""
+                Regel uur van de vondst
+                    geldig altijd
+                        De uitkomst van een Jutter moet gesteld worden op het uur uit zijn vondstmoment.
+                """, "ERROR (line 13): vorm zonder norm: het IR draagt het uur, de minuut, de seconde of de"
+                + " milliseconde van een datum-tijd niet: de vorm heeft geen norm (RUNTIME-SEMANTICS geeft hem geen"
+                + " betekenis) — 'het uur uit zijn vondstmoment'");
+    }
+
+    @Test
+    void check_refuses_a_fired_rule_version_as_a_form_without_norm() throws Exception {
+        refusesFormWithoutNorm("""
+                Regel waardevolle uitkomst
+                    geldig altijd
+                        Een Jutter is waardevol indien regelversie controle uitkomst is gevuurd.
+                """, "ERROR (line 13): vorm zonder norm: het IR draagt 'regelversie X is gevuurd' niet: de vorm"
+                + " heeft geen norm (RUNTIME-SEMANTICS geeft hem geen betekenis); van de regelstatuscontroles draagt"
+                + " het IR alleen 'regelversie X is inconsistent' — 'regelversie controle uitkomst is gevuurd'");
     }
 
     /** {@code bin/regelspraak} with {@code args}, in {@link #dir}, on a jar that carries this JVM's class path. */

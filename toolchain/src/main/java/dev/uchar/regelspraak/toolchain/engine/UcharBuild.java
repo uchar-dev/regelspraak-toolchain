@@ -9,6 +9,7 @@ import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.graph.ProducerConsumer;
 import dev.uchar.regelspraak.loader.IrLoader;
+import dev.uchar.regelspraak.message.Msg;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 
@@ -32,7 +33,9 @@ import java.util.regex.Pattern;
  * <p>A document that holds an {@code Unresolved} node — a name the resolver bound to no declaration — is not built
  * either, and that refusal is {@link UnresolvedName}, not {@link NotCarried}: uchar carries such a rule and its
  * executors fault on it only when a request reaches it (WF-044), so it is a fault in the source, which this
- * distribution reports before a request does.
+ * distribution reports before a request does. The frontend writes the same node for a form RegelSpraak has and the
+ * IR carries without a norm (the eleven test, a time-of-day part of a date-time, "regelversie X is gevuurd"); there
+ * the name is resolved and the form is what is missing, so such a {@link Site} says so ({@link Site#reason()}).
  */
 public final class UcharBuild {
 
@@ -44,6 +47,14 @@ public final class UcharBuild {
      *  it; a change of that sentence in uchar fails the marker tests of this repository. */
     private static final Pattern NOT_LOWERED =
             Pattern.compile("^transpiler (?:MARKER|SKIP): [^:]+: (.*?)(?: — .*)?$", Pattern.DOTALL);
+
+    /** The reasons of RGS-092 for a form the IR does not carry because no norm gives it a meaning. The wire carries no
+     *  code (IR-SPEC ch. 2 {@code diagnostics}), so a site recognises its reason by the reason's text, rendered from
+     *  uchar's catalogue in each language the frontend writes. */
+    private static final List<String> FORMS_WITHOUT_NORM =
+            List.of("RGS-092.eleven-test", "RGS-092.time-of-day-part", "RGS-092.rule-fired");
+    private static final List<java.util.Locale> FRONTEND_LANGUAGES =
+            List.of(java.util.Locale.forLanguageTag("nl"), java.util.Locale.forLanguageTag("en"));
 
     static { MessageLanguage.apply(null); }
 
@@ -72,7 +83,8 @@ public final class UcharBuild {
     }
 
     /** A document that holds one or more {@code Unresolved} nodes (IR-SPEC ch. 4, the expression and the condition
-     *  marker), each named by its {@link Site}. */
+     *  marker), each named by its {@link Site}: a name the resolver bound to no declaration, or a form without a
+     *  norm. */
     public static final class UnresolvedName extends RuntimeException {
         private final List<Site> sites;
 
@@ -82,6 +94,9 @@ public final class UcharBuild {
         }
 
         public List<Site> sites() { return sites; }
+
+        /** Every site is a form without a norm: the source names nothing unresolved, the IR does not carry it. */
+        public boolean onlyFormsWithoutNorm() { return sites.stream().allMatch(s -> s.reason() != null); }
 
         /** Each site as an ERROR at its source line, as the resolver reports an error. */
         public List<Diagnostic> diagnostics() {
@@ -93,11 +108,15 @@ public final class UcharBuild {
      * One {@code Unresolved} node: {@code name} is its source snippet, {@code form} the name of the form of the rule
      * layer it stands in (null outside one), {@code pointer} its place in the document (RFC 6901), {@code line} the
      * source line of the diagnostic that accounts for it (WF-113 (b): a diagnostic whose message quotes the snippet),
-     * or 0 when no diagnostic with a line quotes it or diagnostics on more than one line do.
+     * or 0 when no diagnostic with a line quotes it or diagnostics on more than one line do. {@code reason} is the
+     * key of the RGS-092 reason when the quoting diagnostic marks a form without a norm, else null.
      */
-    public record Site(String name, String form, String pointer, int line) {
+    public record Site(String name, String form, String pointer, int line, String reason) {
         /** Without the line, which a caller that reads several files maps to its file. */
         String text() {
+            if (reason != null)
+                return "vorm zonder norm: " + Msg.frontend(reason).text() + " — '" + name + "'"
+                        + (line > 0 ? "" : " op " + pointer);
             return "onopgeloste naam '" + name + "'" + (form == null ? "" : " in de regel '" + form + "'")
                     + (line > 0 ? "" : " op " + pointer);
         }
@@ -115,11 +134,18 @@ public final class UcharBuild {
         collect(document, "", null, sites);
         return sites.stream().map(site -> {
             java.util.Set<Integer> quoting = new java.util.TreeSet<>();
-            for (JsonNode d : document.path("diagnostics"))
-                if (d.path("line").asInt(0) > 0 && d.path("message").asText("").contains(site.name()))
-                    quoting.add(d.path("line").asInt());
-            return quoting.size() == 1
-                    ? new Site(site.name(), site.form(), site.pointer(), quoting.iterator().next()) : site;
+            java.util.Set<String> reasons = new java.util.TreeSet<>();
+            for (JsonNode d : document.path("diagnostics")) {
+                String message = d.path("message").asText("");
+                if (!message.contains(site.name())) continue;
+                if (d.path("line").asInt(0) > 0) quoting.add(d.path("line").asInt());
+                for (String key : FORMS_WITHOUT_NORM)
+                    for (java.util.Locale language : FRONTEND_LANGUAGES)
+                        if (message.contains(Msg.frontend(key).text(language))) reasons.add(key);
+            }
+            return new Site(site.name(), site.form(), site.pointer(),
+                    quoting.size() == 1 ? quoting.iterator().next() : 0,
+                    reasons.size() == 1 ? reasons.iterator().next() : null);
         }).toList();
     }
 
@@ -127,7 +153,7 @@ public final class UcharBuild {
     private static void collect(JsonNode node, String pointer, String form, List<Site> sink) {
         if (node.isObject()) {
             if ("Unresolved".equals(node.path("node").asText(null)))
-                sink.add(new Site(node.path("source").path("snippet").asText(""), form, pointer, 0));
+                sink.add(new Site(node.path("source").path("snippet").asText(""), form, pointer, 0, null));
             var fields = node.fields();
             while (fields.hasNext()) {
                 var f = fields.next();

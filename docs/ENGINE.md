@@ -63,7 +63,9 @@ uchar refuses. Such a name stays in uchar's document as an `Unresolved` node, wi
 fault on it only when an evaluation reaches it (WF-044); `UcharBuild` builds no document that holds one
 (`UcharBuild.UnresolvedName`, each node by its snippet, its rule and the line of the warning that quotes it, or else
 its JSON pointer), so `compile`, `bin/regelspraak check` and `drl` (exit 1) and the service refuse it as a fault in
-the source. `bin/regelspraak facts <outdir>
+the source. The frontend writes the same node for a form the IR carries without a norm (RGS-092: the eleven test, a
+time-of-day part of a date-time, `regelversie X is gevuurd`); such a node reads `vorm zonder norm: <reason> —
+'<snippet>'`, and `check` and `drl` exit 3 when every node is one. `bin/regelspraak facts <outdir>
 <source.rgs...>` (or `make facts` for the TOKA casus) writes the beans a model implies as source, for a consumer that
 wants to see them.
 

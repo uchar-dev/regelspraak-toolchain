@@ -34,8 +34,9 @@ import java.util.List;
  * interpreter's loader): at least one segment, {@code from} before {@code to}, the segments in order and apart, only the
  * first open at its start and only the last open at its end, and every bound that is there a wall of the member's grid
  * ({@link FixedStartPoint#opWand}). The calendar's week and quarter grids carry no case timeline in uchar, so a member on
- * one is refused by name; and a segment of uchar's branch holds a number, or on an attribute with absence markers a
- * constructor value of a marker or of a number, so a segment value of another datatype is refused by name as well. A number its declaration does not hold is uchar's EF-004, which uchar's input fence raises
+ * one is refused by name; and a segment of uchar's branch holds a number or a text, or on an attribute with absence
+ * markers a constructor value of a marker or of a number, so a segment value of another datatype is refused by name as
+ * well. A number its declaration does not hold is uchar's EF-004, which uchar's input fence raises
  * per segment ({@link CaseRunner#inputFits}), as for a scalar.
  *
  * <p>A time-dependent characteristic takes the periods in which it holds, {@code {"periods": [{"from": <datum>, "to":
@@ -51,8 +52,8 @@ final class TimelineInput {
      *  {@code attribuut 'strandloon'}), with its datatype. */
     record Grid(String member, Granularity granularity, String fixedStartPoint, Datatype datatype) {}
 
-    /** One segment of a timeline that passed the checks: its bounds, null where it is open, and its value, a number or,
-     *  on an attribute with absence markers, uchar's constructor value of a marker or of a number. */
+    /** One segment of a timeline that passed the checks: its bounds, null where it is open, and its value, a number, a
+     *  text or, on an attribute with absence markers, uchar's constructor value of a marker or of a number. */
     record Segment(LocalDate from, LocalDate to, Object value) {}
 
     /** One period of a characteristic that passed the checks. */
@@ -182,10 +183,11 @@ final class TimelineInput {
             }
             Object v = segmentValue.decode(s.get("value"), at + ".value", sink);
             if (v == null) continue;
-            if (!(v instanceof BigDecimal || v instanceof ConstructorValue c
+            if (!(v instanceof BigDecimal || v instanceof String || v instanceof ConstructorValue c
                     && (c.payload() == null || c.payload() instanceof BigDecimal))) {
                 sink.add(Violation.of(Violation.Kind.UNSUPPORTED, at + ".value", "uchars tak houdt een segment van een"
-                        + " tijdlijn als getal; " + grid.member() + " heeft het datatype " + grid.datatype().name()));
+                        + " tijdlijn als getal of tekst; " + grid.member() + " heeft het datatype "
+                        + grid.datatype().name()));
                 continue;
             }
             out.add(new Segment(from, to, v));

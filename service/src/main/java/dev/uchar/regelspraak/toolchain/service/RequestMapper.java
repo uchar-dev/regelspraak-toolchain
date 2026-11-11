@@ -448,9 +448,10 @@ public final class RequestMapper {
         return markers == null ? r.value() : new ConstructorValue(RegelSpraakModel.VALUE_CONSTRUCTOR, r.value());
     }
 
-    /** The case value of a segment value {@link TimelineInput#segments} let through: a number, or uchar's constructor
-     *  value of a marker or of a number. */
+    /** The case value of a segment value {@link TimelineInput#segments} let through: a number, a text, or uchar's
+     *  constructor value of a marker or of a number. */
     private static JsonNode segmentCaseValue(Object v) {
+        if (v instanceof String t) return NF.objectNode().put("text", t);
         if (!(v instanceof ConstructorValue c)) return NF.objectNode().put("number", v.toString());
         ObjectNode n = NF.objectNode().put("constructor", c.constructor());
         if (c.payload() != null) n.set("payload", NF.objectNode().put("number", c.payload().toString()));
