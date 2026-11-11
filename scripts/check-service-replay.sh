@@ -216,14 +216,20 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # jutterswet-meldplicht-catala en jutterswet-meldplicht-flogic (uchars kaart meldplicht-drie-talen), en
 # jutterswet-let-keuze-in-laatste en let-bound-period-arithmetic-total (uchars kaart review-candidates-triage).
 # Alle vijf spelen ook door de dienst.
-EXPECTED_REPLAY_PLAYED=358
+# 2026-11-11, pin uchar 1db2a783e: 364 — de set van gate 12 groeit van 367 naar 373 met
+# jutterswet-rangmaximering-maximum-in-centen, jutterswet-rangmaximering-in-centen, jutterswet-leeg-deeltal,
+# jutterswet-wrakbasis-vervangen-basis-regel, jutterswet-wrakbasis-vervangen-basis-groep en
+# jutterswet-bakenmeester-let; alle zes spelen ook door de dienst. jutterswet-rolnaam-in-twee-feittypen kwam ook in
+# uchar, maar Drools weigert hem (EXPECTED_CHANNEL van gate 12), dus hij zit niet in de set.
+EXPECTED_REPLAY_PLAYED=364
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
 # 1000: de dienst leest een naam zoals uchars caselezer (Namen.norm: spaties en tabs als één spatie, A-Z gevouwen), dus
 # jutterswet-keurunie/case2-spelling.json, met namen met een tab, twee spaties en een spatie vooraan, speelt.
 # 1006 (pin uchar 3f2da0db): de cases van de vijf nieuwe goldens hierboven.
-EXPECTED_REPLAY_CASES=1006
+# 1014 (pin uchar 1db2a783e): de acht cases van de zes nieuwe goldens hierboven, drie daarvan van jutterswet-leeg-deeltal.
+EXPECTED_REPLAY_CASES=1014
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
