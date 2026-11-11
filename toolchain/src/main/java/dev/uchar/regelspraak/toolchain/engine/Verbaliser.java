@@ -2958,14 +2958,22 @@ public final class Verbaliser {
         return Boolean.TRUE.equals(readRaw(bean, Namen.getter(characteristic)));
     }
 
-    /** Een getter-read op een bean; probeert getX en isX (kenmerken lezen soms als isX). null bij afwezigheid. */
-    private static Object readRaw(Object bean, String getter) {
+    /** Een getter-read op een bean; probeert getX en isX (kenmerken lezen soms als isX). Null alleen als de getter
+     *  null geeft, een afwezige waarde; een bean zonder de getter of een getter die faalt is een fout. */
+    static Object readRaw(Object bean, String getter) {
+        Class<?> type = bean.getClass();
         for (String m : new String[]{ getter, "is" + getter.substring(3) }) {
-            try { return bean.getClass().getMethod(m).invoke(bean); }
-            catch (NoSuchMethodException ignore) { /* probeer de andere vorm */ }
-            catch (ReflectiveOperationException e) { return null; }
+            java.lang.reflect.Method method;
+            try { method = type.getMethod(m); }
+            catch (NoSuchMethodException ignore) { continue; }
+            try { return method.invoke(bean); }
+            catch (ReflectiveOperationException e) {
+                throw new IllegalStateException("de uitleg kon " + m + " van " + type.getName() + " niet lezen: "
+                        + (e.getCause() != null ? e.getCause() : e), e);
+            }
         }
-        return null;
+        throw new IllegalStateException("de bean " + type.getName() + " heeft geen getter " + getter + " of is"
+                + getter.substring(3) + ": de uitleg leest een lid dat het fact-model niet draagt");
     }
 
     /** De bronverwijzing van een regel: haar niet-lege {@code // Bron:}-annotaties in bronvolgorde, getrimd; de zin

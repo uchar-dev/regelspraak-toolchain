@@ -54,4 +54,28 @@ class VerbaliserTest {
                         + " is groter dan 100 km"),
                 explanationForVlucht(50));
     }
+
+    public static final class Bean {
+        public Object getHeld() { return "x"; }
+        public Object getEmpty() { return null; }
+        public Boolean isMarked() { return true; }
+        public Object getBroken() { throw new IllegalStateException("kapot"); }
+    }
+
+    /** A getter that returns null reads as an absent value; a getter that throws, or a member the bean has no
+     *  getter for, is an error naming the getter and the bean's class, never a silent absent value. */
+    @Test void failed_reflective_read_is_an_error_not_an_absent_value() {
+        Bean bean = new Bean();
+        assertEquals("x", Verbaliser.readRaw(bean, "getHeld"));
+        assertNull(Verbaliser.readRaw(bean, "getEmpty"));
+        assertEquals(Boolean.TRUE, Verbaliser.readRaw(bean, "getMarked"));
+        IllegalStateException thrown = assertThrows(IllegalStateException.class,
+                () -> Verbaliser.readRaw(bean, "getBroken"));
+        assertTrue(thrown.getMessage().contains("getBroken") && thrown.getMessage().contains(Bean.class.getName()),
+                thrown.getMessage());
+        IllegalStateException missing = assertThrows(IllegalStateException.class,
+                () -> Verbaliser.readRaw(bean, "getAbsent"));
+        assertTrue(missing.getMessage().contains("getAbsent") && missing.getMessage().contains(Bean.class.getName()),
+                missing.getMessage());
+    }
 }
