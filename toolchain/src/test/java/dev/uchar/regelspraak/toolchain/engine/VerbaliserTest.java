@@ -1,5 +1,6 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
+import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import org.junit.jupiter.api.Test;
@@ -92,6 +93,15 @@ class VerbaliserTest {
                 "V1 is rustig, omdat niet de afstand tot bestemming van de Vlucht (200 km) is groter dan 1.000 km"
                         + " en niet de bezetting van de Vlucht (5) is groter dan 10"),
                 compoundsForVlucht(200, 5));
+    }
+
+    /** A negative value that rounds to zero at the declared scale is written as zero, without a sign: "-0,00" is no
+     *  number the engine holds. A negative value that stays negative keeps its sign. */
+    @Test void negative_value_rounding_to_zero_has_no_sign() {
+        Datatype twoDecimals = new Datatype.Numeric(false, 2, Datatype.Sign.ONBEPAALD, null);
+        assertEquals("0,00", Verbaliser.nlNumber(new BigDecimal("-0.004"), twoDecimals));
+        assertEquals("-0,01", Verbaliser.nlNumber(new BigDecimal("-0.005"), twoDecimals));
+        assertEquals("-1.234,50", Verbaliser.nlNumber(new BigDecimal("-1234.5"), twoDecimals));
     }
 
     public static final class Bean {

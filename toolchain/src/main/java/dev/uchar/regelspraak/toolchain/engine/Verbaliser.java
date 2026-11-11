@@ -2754,7 +2754,7 @@ public final class Verbaliser {
     /** Getal in NL-notatie: punt als duizendtal-scheider, komma als decimaalteken. Percentages en getallen met
      *  vaste decimalen behouden hun schaal; anders, ook in de onbegrensde vorm ({@code getal}, die geen decimalen
      *  declareert), wordt de natuurlijke schaal van de waarde getoond. */
-    private static String nlNumber(BigDecimal b, Datatype type) {
+    static String nlNumber(BigDecimal b, Datatype type) {
         BigDecimal w = b;
         int decimals = -1;
         if (type != null && type.unbounded()) decimals = -1;
@@ -2772,7 +2772,8 @@ public final class Verbaliser {
             if (i > 0 && (n - i) % 3 == 0) grouped.append('.');
             grouped.append(whole.charAt(i));
         }
-        String sign = b.signum() < 0 ? "-" : "";
+        // het teken van de afgeronde waarde: wat op nul afrondt, is geen negatief getal
+        String sign = w.signum() < 0 ? "-" : "";
         return sign + grouped + (fraction.isEmpty() ? "" : "," + fraction);
     }
 
