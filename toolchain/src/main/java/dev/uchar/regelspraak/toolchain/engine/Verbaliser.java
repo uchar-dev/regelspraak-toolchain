@@ -408,11 +408,14 @@ public final class Verbaliser {
     /** Een variant van een stapel: een default van een groep van het document, of een gewone regel die de stapel van
      *  een subtype als basis opneemt (ch. 7.10). {@code holder} is de default die haar in een uitzonderingsgroep
      *  draagt, null aan de wortel; {@code member} de index van die uitzonderingsgroep, {@code place} haar index in haar
-     *  keten. */
+     *  keten. {@code replaced}: een vorm-a-basis die de eigen basis van een subtype verving en in diens stapel alleen
+     *  met haar uitzonderingsgroepen staat ({@link DefaultsExplanation#rootChain}). */
     private record Variant(String pointer, Default d, ResolvedRule rule, PrioritizedDefaults group, Variant holder,
-                           int member, int place) {
+                           int member, int place, boolean replaced) {
 
-        boolean hasOwnContent() { return rule != null || d.hasOwnContent(); }
+        boolean hasOwnContent() { return rule != null || !replaced && d.hasOwnContent(); }
+
+        Variant asReplaced() { return new Variant(pointer, d, rule, group, holder, member, place, true); }
 
         /** De varianten die deze default in zijn uitzonderingsgroepen draagt, per groep, in de volgorde van de
          *  draad. */
@@ -425,7 +428,7 @@ public final class Verbaliser {
                 List<Default> defaults = groups.get(m).defaults();
                 for (int l = 0; l < defaults.size(); l++)
                     chain.add(new Variant(pointer + "/exceptions/members/" + m + "/defaults/" + l, defaults.get(l),
-                            null, group, this, m, l));
+                            null, group, this, m, l, false));
                 sink.add(chain);
             }
             return sink;
@@ -461,7 +464,7 @@ public final class Verbaliser {
             if (j >= g.defaults().size()) throw unresolved(pointer, "de groep '" + g.name() + "' heeft "
                     + g.defaults().size() + " default(s)");
             Variant v = new Variant("/rules/prioritizedDefaults/" + i + "/defaults/" + j, g.defaults().get(j), null,
-                    g, null, -1, j);
+                    g, null, -1, j, false);
             Matcher step = NESTED_STEP.matcher(dm.group(3));
             while (step.find()) {
                 int m = Integer.parseInt(step.group(1)), l = Integer.parseInt(step.group(2));
@@ -492,7 +495,7 @@ public final class Verbaliser {
             if (previous != null && nextVersion(previous, r.name())) w++;
             else { k++; w = 0; }
             previous = r.name();
-            if (k == form && w == version) return new Variant(pointer, null, r, null, null, -1, 0);
+            if (k == form && w == version) return new Variant(pointer, null, r, null, null, -1, 0, false);
             if (k > form) break;
         }
         throw unresolved(pointer, "het document heeft geen vorm " + form + " met een versie " + version);
@@ -680,7 +683,7 @@ public final class Verbaliser {
 
         private Sentence decided(DefaultsDecision d) {
             List<List<Variant>> chains = new ArrayList<>();
-            for (List<String> chain : d.rootChains()) chains.add(chain.stream().map(this::variant).toList());
+            for (List<String> chain : d.rootChains()) chains.add(rootChain(chain));
             String pointer = d.decider().pointer();
             List<Turn> turns = new ArrayList<>();
             walkRoot(chains, pointer, turns);
@@ -753,8 +756,7 @@ public final class Verbaliser {
         private Sentence undecided(DefaultsDecision d) {
             List<Turn> turns = new ArrayList<>();
             for (List<String> chain : d.rootChains())
-                for (String pointer : chain) {
-                    Variant v = variant(pointer);
+                for (Variant v : rootChain(chain)) {
                     requireTarget(v, d.member());
                     all(v, Role.BEFORE, turns);
                 }
@@ -1131,6 +1133,32 @@ public final class Verbaliser {
         /** De variant op {@code pointer} in het document ({@link #variantAt}). */
         private Variant variant(String pointer) {
             return variantAt(document, pointer);
+        }
+
+        /** De varianten van een keten aan de wortel van een stapel. Vervangt de eigen basis van een subtype een geërfde
+         *  vorm-a-basis, dan blijven diens uitzonderingsgroepen als groep-default boven de eigen basis staan, zonder
+         *  eigen voorwaarde en gevolg (ch. 7.10, blok 3), en de motor noemt die groep-default met de pointer van de
+         *  vervangen basis. Een basis staat in haar keten anders alleen boven initialisaties, dus een basis met een
+         *  andere variant dan een initialisatie onder zich is zo'n groep-default. */
+        private List<Variant> rootChain(List<String> chain) {
+            List<Variant> out = new ArrayList<>();
+            for (String pointer : chain) out.add(variant(pointer));
+            for (int i = 0; i < out.size(); i++) {
+                Variant v = out.get(i);
+                if (v.rule() == null && v.d().exceptions() != null && v.d() == baseOf(v.group())
+                        && out.subList(i + 1, out.size()).stream().anyMatch(x -> !isInitialisation(x)))
+                    out.set(i, v.asReplaced());
+            }
+            return out;
+        }
+
+        /** De basis van groep {@code g} in het document (ch. 7.10): de laatste default die geen initialisatie is, als
+         *  hij zelf iets beslist; een ongeordende groep heeft er geen. */
+        private Default baseOf(PrioritizedDefaults g) {
+            if (g.unordered()) return null;
+            Default last = null;
+            for (Default x : g.defaults()) if (!x.initialisation()) last = x;
+            return last != null && last.hasOwnContent() ? last : null;
         }
 
         private void requireTarget(Variant v, String member) {
