@@ -55,6 +55,45 @@ class VerbaliserTest {
                 explanationForVlucht(50));
     }
 
+    static final String COMPOUNDS = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de afstand tot bestemming Numeriek (positief geheel getal) met eenheid km;
+                de bezetting Numeriek (positief geheel getal);
+                is lang kenmerk (bijvoeglijk);
+                is rustig kenmerk (bijvoeglijk);
+            Regel lang
+            geldig altijd
+            Een Vlucht is lang
+            indien hij aan alle volgende voorwaarden voldoet:
+            - de afstand tot bestemming van de Vlucht is groter dan 100 km
+            - de bezetting van de Vlucht is kleiner dan 10.
+            Regel rustig
+            geldig altijd
+            Een Vlucht is rustig
+            indien hij aan geen van de volgende voorwaarden voldoet:
+            - de afstand tot bestemming van de Vlucht is groter dan 1000 km
+            - de bezetting van de Vlucht is groter dan 10.
+            """;
+
+    private static List<String> compoundsForVlucht(int afstand, int bezetting) throws Exception {
+        ExplanationSession engine = ExplanationSession.of(COMPOUNDS);
+        Object v1 = engine.newInstance("Vlucht");
+        RegelSpraakRuntime.set(v1, Namen.ident("afstand tot bestemming", false), new BigDecimal(afstand));
+        RegelSpraakRuntime.set(v1, Namen.ident("bezetting", false), new BigDecimal(bezetting));
+        return engine.explain(Naming.CANONICAL, "Vlucht", Map.of("V1", v1));
+    }
+
+    /** "geen van de volgende voorwaarden" holds because no member holds, so every member is stated negated, joined
+     *  as "alle" joins its members: "niet A en niet B", never "A en niet B", which says A holds. */
+    @Test void compound_with_none_negates_every_member() throws Exception {
+        assertEquals(List.of(
+                "V1 is lang, omdat de afstand tot bestemming van de Vlucht (200 km) is groter dan 100 km"
+                        + " en de bezetting van de Vlucht (5) is kleiner dan 10",
+                "V1 is rustig, omdat niet de afstand tot bestemming van de Vlucht (200 km) is groter dan 1.000 km"
+                        + " en niet de bezetting van de Vlucht (5) is groter dan 10"),
+                compoundsForVlucht(200, 5));
+    }
+
     public static final class Bean {
         public Object getHeld() { return "x"; }
         public Object getEmpty() { return null; }

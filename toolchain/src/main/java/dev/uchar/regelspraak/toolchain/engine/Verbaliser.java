@@ -2250,6 +2250,8 @@ public final class Verbaliser {
             for (Condition d : s.components())
                 if (read.reached(d)) {
                     if (!first) b.text(" ").leaf(Part.Kind.CONNECTIVE, conjunction).text(" ");
+                    // "geen van de volgende" ontkent elk lid, ook het eerste: "niet A en niet B"
+                    else if (s.quantifier() == Condition.Quantifier.GEEN) b.leaf(Part.Kind.CONNECTIVE, "niet").text(" ");
                     first = false;
                     verbaliseCondition(b, d, read, subject, ucharText);
                 }
