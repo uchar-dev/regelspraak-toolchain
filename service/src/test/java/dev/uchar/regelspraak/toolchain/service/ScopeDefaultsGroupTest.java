@@ -525,10 +525,10 @@ class ScopeDefaultsGroupTest {
     }
 
     @Test
-    void a_read_that_uchar_does_not_carry_is_a_marker_and_no_stack_trace() {
-        // A check two roles away that names only its last role: uchar's emitter refuses it, and its rule-graph walk
-        // throws on it. The check runs after the build, so the entry point is a marker with uchar's sentence, as it
-        // is for a group with this condition; it used to be an IllegalStateException from the walk.
+    void a_read_that_uchar_does_not_carry_is_a_resolve_error_and_no_stack_trace() {
+        // A check two roles away that names only its last role: uchar's emitter refuses it, and uchar's frontend
+        // carries that refusal as an error of the model (RGS-394), so the service reports it as a resolve error with
+        // uchar's sentence, before any build.
         String source = VONDST + """
 
             Regel premie van een vondst
@@ -537,8 +537,8 @@ class ScopeDefaultsGroupTest {
                     indien de haven van zijn jutter gesloten is.
             """;
         ServiceError f = assertThrows(ServiceError.class, () -> assemble(source, vondstdescriptor()));
-        assertTrue(f.violations().stream().allMatch(s -> s.kind() == Violation.Kind.MARKER),
-                () -> "verwacht een marker: " + f.violations());
+        assertTrue(f.violations().stream().allMatch(s -> s.kind() == Violation.Kind.MALFORMED),
+                () -> "verwacht een resolve-fout: " + f.violations());
         assertTrue(f.violations().get(0).message().contains("navigates via 'haven'"), () -> "" + f.violations());
     }
 
