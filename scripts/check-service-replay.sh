@@ -235,7 +235,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar 970286134: 369 — jutterswet-leeg-deeltal-per-periode speelt door de dienst.
 # Pin uchar 1b42bea65: 370 — jutterswet-verdeling-voorwaarde-op-bron (een voorwaarde op de bron van een verdeling)
 # speelt door de dienst.
-EXPECTED_REPLAY_PLAYED=370
+# Pin uchar 72df0d028: 372 — fractional-power-negative-base (een negatieve basis onder een gebroken exponent is leeg
+# met een §9.5-feit EF-044, geen evaluatiefout meer; de rode map werd een golden) en
+# jutterswet-percentage-plus-percentage spelen door de dienst.
+EXPECTED_REPLAY_PLAYED=372
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -246,7 +249,9 @@ EXPECTED_REPLAY_PLAYED=370
 # 1034 (pin uchar cee0c1a98): de 20 cases van de vier nieuwe goldens hierboven.
 # 1037 (pin uchar 970286134): de drie cases van jutterswet-leeg-deeltal-per-periode.
 # 1038 (pin uchar 1b42bea65): de case van jutterswet-verdeling-voorwaarde-op-bron.
-EXPECTED_REPLAY_CASES=1038
+# 1041 (pin uchar 72df0d028): de twee cases van fractional-power-negative-base en de case van
+# jutterswet-percentage-plus-percentage.
+EXPECTED_REPLAY_CASES=1041
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
@@ -323,8 +328,10 @@ RED_REFUSED=(
 )
 # Het aantal rode cases dat door de dienst zijn foutsoort geeft (een gelijkheid). Gemeten bij de pin van uchar
 # 2663bd6c8: 70 van de 83 cases van de 59 rode mappen waarop gate 8 de Drools-tak laat falen (64 bij 1b42bea65; de
-# zes rode mappen van EF-041 tot en met EF-046 kwamen erbij en geven elk hun foutsoort).
-EXPECTED_RED_FAULTS=70
+# zes rode mappen van EF-041 tot en met EF-046 kwamen erbij en geven elk hun foutsoort). Pin uchar 72df0d028: 69 — de
+# rode map fractional-power-negative-base (EF-044) werd een golden: een negatieve basis onder een gebroken exponent is
+# leeg met een §9.5-feit, geen evaluatiefout.
+EXPECTED_RED_FAULTS=69
 
 is_red_refused() {
   local e; for e in "${RED_REFUSED[@]+"${RED_REFUSED[@]}"}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1

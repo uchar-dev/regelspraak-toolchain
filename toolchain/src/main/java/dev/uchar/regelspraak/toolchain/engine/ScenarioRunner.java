@@ -12,7 +12,6 @@ import dev.uchar.regelspraak.engine.ScenarioResult;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
@@ -105,10 +104,6 @@ public final class ScenarioRunner {
         // One document lowers to one IR document, so every scenario carries the scope of the first; the resolver
         // refuses a document whose scenarios differ in scope.
         RegelSpraakModel irModel = CaseEmitter.withScope(bundle.model(), scenarios.get(0).scope());
-        // An allocation without a method is left out of the IR document and named only in a warning; replaying the
-        // document would test the scenarios without it.
-        List<Diagnostic> unwritten = IrEmitter.unwrittenAllocations(irModel);
-        if (!unwritten.isEmpty()) return markers(scenarios, "emitter: " + unwritten.get(0).message());
         String document;
         try {
             document = IrEmitter.emit(irModel);

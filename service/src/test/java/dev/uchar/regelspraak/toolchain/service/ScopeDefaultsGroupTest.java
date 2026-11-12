@@ -526,9 +526,8 @@ class ScopeDefaultsGroupTest {
 
     @Test
     void a_read_that_uchar_does_not_carry_is_a_resolve_error_and_no_stack_trace() {
-        // A check two roles away that names only its last role: uchar's emitter refuses it, and uchar's frontend
-        // carries that refusal as an error of the model (RGS-394), so the service reports it as a resolve error with
-        // uchar's sentence, before any build.
+        // A check two roles away that names only its last role: uchar's resolver refuses it as an error of the model
+        // (RGS-440), so the service reports it as a resolve error with uchar's sentence, before any build.
         String source = VONDST + """
 
             Regel premie van een vondst
@@ -539,7 +538,8 @@ class ScopeDefaultsGroupTest {
         ServiceError f = assertThrows(ServiceError.class, () -> assemble(source, vondstdescriptor()));
         assertTrue(f.violations().stream().allMatch(s -> s.kind() == Violation.Kind.MALFORMED),
                 () -> "verwacht een resolve-fout: " + f.violations());
-        assertTrue(f.violations().get(0).message().contains("navigates via 'haven'"), () -> "" + f.violations());
+        assertTrue(f.violations().get(0).message().contains("volgt een rol vanaf Jutter, maar zij wordt gelezen op"
+                + " Vondst"), () -> "" + f.violations());
     }
 
     // ---------------- a subtype's own exceptions go with their base (RUNTIME-SEMANTICS ch. 7.10) ----------------

@@ -160,21 +160,21 @@ class PlaygroundDeclarationsTest {
         }
     }
 
-    /** uchar resolves an attribute declared twice in one head, and says not which declaration the model carries: the
-     *  view names the element and both lines, and no element carries a line. */
+    /** uchar refuses an attribute declared twice in one head (RGS-431): the playground gives uchar's error and no
+     *  vocabularies, since there is no model to name. */
     @Test
-    void a_duplicate_member_gives_declaration_error() {
+    void a_duplicate_member_is_uchars_resolve_error() {
         String source = """
                 Objecttype de Berging (mv: Bergingen)
                     de opbrengst Numeriek (geheel getal);
                     de opbrengst Numeriek (geheel getal);
                 """;
-        JsonNode voc = Playground.analyze(source).get("vocabularies");
-        assertNotNull(voc, "uchar resolvet de bron");
-        assertEquals("Het attribuut 'opbrengst' van 'Berging' heeft declaraties op de regels [2, 3], en uchar geeft"
-                + " niet aan welke daarvan het model draagt", voc.get("declarationError").asText());
-        assertEquals(2, voc.get("elements").size());
-        for (JsonNode e : voc.get("elements")) assertFalse(e.has("line"), e.toString());
+        JsonNode analysis = Playground.analyze(source);
+        assertFalse(analysis.at("/resolver/ok").asBoolean(), analysis.toString());
+        assertEquals(3, analysis.at("/resolver/errors/0/line").asInt(), analysis.toString());
+        assertTrue(analysis.at("/resolver/errors/0/message").asText().contains("het attribuut 'opbrengst' is in deze"
+                + " declaratie al gedeclareerd"), analysis.toString());
+        assertNull(analysis.get("vocabularies"), analysis.toString());
     }
 
     /** A scenario source goes through the scenario entry rule of uchar's parser: uchar's golden

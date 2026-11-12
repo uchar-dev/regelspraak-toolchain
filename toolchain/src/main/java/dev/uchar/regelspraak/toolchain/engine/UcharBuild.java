@@ -185,14 +185,11 @@ public final class UcharBuild {
     }
 
     /** The {@code uchar-ir-v1} document uchar's emitter writes for {@code model}, which must resolve without
-     *  errors. A refusal of the emitter, and an allocation it leaves out, is {@link NotCarried}. */
+     *  errors. A refusal of the emitter is {@link NotCarried}. */
     public static String document(RegelSpraakModel model) {
         if (!model.isOk())
             throw new IllegalArgumentException("UcharBouw: het model draagt resolverfouten " + model.errors()
                     + "; meld die voordat er gebouwd wordt");
-        List<Diagnostic> unwritten = IrEmitter.unwrittenAllocations(model);
-        if (!unwritten.isEmpty())
-            throw new NotCarried("emitter: " + unwritten.get(0).message(), allocationName(model), null);
         try {
             return IrEmitter.emit(model);
         } catch (IllegalStateException | UnsupportedOperationException e) {
@@ -229,11 +226,5 @@ public final class UcharBuild {
         if (message == null) return null;
         Matcher m = NOT_LOWERED.matcher(message);
         return m.matches() ? ProducerConsumer.baseName(m.group(1)) : null;
-    }
-
-    private static String allocationName(RegelSpraakModel model) {
-        return model.allocations.stream()
-                .filter(v -> v.method() == dev.uchar.regelspraak.ir.ResolvedAllocation.Method.COMPLEX)
-                .map(v -> ProducerConsumer.baseName(v.name())).findFirst().orElseThrow();
     }
 }
