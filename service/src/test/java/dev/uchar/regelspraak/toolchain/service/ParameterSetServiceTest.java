@@ -330,6 +330,44 @@ class ParameterSetServiceTest {
                 error.violations().stream().map(Violation::field).toList(), error.violations().toString());
     }
 
+    /** A value in a parameter set is read as the same value as a descriptor default: an enumeration value in another
+     *  case, or by its designation in a vocabulary of the model, is the declared value. */
+    @Test
+    void a_set_reads_an_enumeration_value_as_a_default_does() {
+        String source = """
+            Vocabulaire handboek (taal: nl)
+
+            Domein Soort is van het type Enumeratie
+                'wrakhout' (handboek: hout van een wrak)
+                'barnsteen' (handboek: amber)
+
+            Parameter de premiesoort : Soort
+
+            Objecttype de Vondst (mv: Vondsten)
+                de soort Soort;
+                is premiewaardig kenmerk (bijvoeglijk);
+
+            Regel premiewaardig
+                geldig altijd
+                    Een Vondst is premiewaardig indien zijn soort gelijk is aan de premiesoort.
+            """;
+        String descriptor = """
+            { "service": {"name":"soort","version":"1"},
+              "entrypoints": [ { "name":"p","path":"p","scope": {"ruleNames": ["premiewaardig"]},
+                "input": ["Vondst"], "output": ["Vondst:premiewaardig"] } ],
+              "parameterSets": "soort.parameters.json" }""";
+        for (String written : List.of("amber", "Barnsteen", "barnsteen")) {
+            DecisionCore core = assemble(descriptor, source, """
+                { "parameterSets": [ { "name": "s", "values": { "premiesoort": [ { "value": "%s" } ] } } ] }"""
+                    .formatted(written));
+            ObjectNode a = core.process("p", parse("""
+                { "instances": [ { "type": "Vondst", "id": "P1", "attributes": { "soort": "barnsteen" } } ] }"""));
+            JsonNode premiewaardig = find(a, "P1", "characteristics", "premiewaardig");
+            assertNotNull(premiewaardig, a::toString);
+            assertTrue(premiewaardig.asBoolean(), written + ": " + a);
+        }
+    }
+
     // ---- helpers ----
 
     private static BigDecimal bound(ObjectNode answer) { return value(answer, "grens"); }

@@ -140,6 +140,20 @@ public final class RequestMapper {
         return out;
     }
 
+    /** The value {@code node} of parameter {@code p} in a parameter set, on {@code field}, read as {@link #defaults}
+     *  reads a descriptor default: in the form its declaration takes, an enumeration value by the {@link NameReader},
+     *  decoded by {@link ValueCoder}; null after adding its violations, and null for null. */
+    static Object parameterSetValue(RegelSpraakModel model, RegelSpraakModel.Parameter p, JsonNode node, String field,
+                                    List<Violation> s) {
+        if (node == null || node.isNull()) return null;
+        Violation form = TimelineInput.formViolation(p, node, field);
+        if (form != null) {
+            s.add(form);
+            return null;
+        }
+        return new RequestMapper(model, null, new NameReader(model, null), true).decoded(node, p.datatype(), field, s);
+    }
+
     /** The value {@code w} of a parameter set, decoded for datatype {@code dt}, in the form of {@code uchar-case-v0};
      *  null for null, which binds nothing. A value the case form cannot carry adds its violation on {@code field}. */
     static JsonNode setValue(Object w, Datatype dt, String field, List<Violation> s) {

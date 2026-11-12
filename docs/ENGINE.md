@@ -131,7 +131,9 @@ refuse the start as well.
   and keeps its own spelling. A date-time is read as ISO `yyyy-MM-ddTHH:mm[:ss[.SSS]]`, without an offset, and leaves
   the service in the case lexeme (`ValueCoder.dateTimeLexeme`): the seconds always written, a fraction of whole
   milliseconds where there is one (`2026-07-01T08:29:00`, `2026-07-01T08:29:00.500`), in the answer, the fixpoint,
-  `/info` and the playground alike; the OpenAPI document states that pattern.
+  `/info` and the playground alike; the OpenAPI document states that pattern. A value of a parameter set is read as a
+  descriptor default is: its name by `DescriptorLoader.parameter`, an enumeration value by the `NameReader`, the value
+  by `ValueCoder` (`RequestMapper.parameterSetValue`).
 - Names and vocabularies (README, "Vocabularies"). `NameReader` reads every name of a request canonically or as a
   designation in any vocabulary of the model (uchar's `RegelSpraakModel.namedElement`), within the scope of its kind,
   mixed, and with the name equality of uchar's case reader (`DescriptorLoader.sameName`, on uchar's `Namen.norm`: a run

@@ -1,6 +1,6 @@
-package dev.uchar.regelspraak.toolchain.engine;
+package dev.uchar.regelspraak.toolchain.service;
 
-import dev.uchar.regelspraak.toolchain.engine.ParameterSetLoader.ParameterSetError;
+import dev.uchar.regelspraak.toolchain.service.ParameterSetLoader.ParameterSetError;
 import dev.uchar.regelspraak.model.ParameterSet;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;

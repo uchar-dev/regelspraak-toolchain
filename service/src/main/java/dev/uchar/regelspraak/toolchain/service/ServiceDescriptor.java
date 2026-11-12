@@ -23,7 +23,7 @@ import java.util.Map;
  * @param parameters    service-wide parameter defaults (name → JSON value); a request may override each
  * @param parametersets OPTIONAL (fase 5, card {@code 20260705-15:18-geldigheid-parametersets-peildatum.md}):
  *                      the file name of the validity-versioned parameterset sidecar (a
- *                      {@code <naam>.parameters.json} in the {@link dev.uchar.regelspraak.toolchain.engine.ParameterSetLoader}
+ *                      {@code <naam>.parameters.json} in the {@link ParameterSetLoader}
  *                      shape), resolved RELATIVE to this descriptor file. When present, {@link DecisionCore}
  *                      loads it against the resolved model at startup and resolves each parameter's VINTAGE per
  *                      request against the one date authority (the peildatum, which IS the rekendatum global).
