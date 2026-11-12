@@ -339,6 +339,12 @@ class ErrorParityTest {
     }
 
     @Test
+    void duplicate_key_400() throws Exception {
+        JsonNode body = compare(toka, tokaService, aPath(toka), "{\"instances\": [], \"instances\": []}", 400);
+        assertEquals("body", body.get("field").asText(), body.toString());
+    }
+
+    @Test
     void json_null_400() throws Exception {
         compare(toka, tokaService, aPath(toka), "null", 400);
     }

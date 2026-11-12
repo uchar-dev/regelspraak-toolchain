@@ -1,5 +1,6 @@
 package dev.uchar.regelspraak.toolchain.service.http;
 
+import com.fasterxml.jackson.core.JsonParser;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
@@ -99,10 +100,12 @@ import java.util.concurrent.TimeoutException;
  */
 public final class ServiceHttp {
 
-    /** BigDecimal-for-floats: a request/response number is never a double (the exact-render discipline). Both adapters
-     *  read and write with it. */
+    /** BigDecimal-for-floats: a request/response number is never a double (the exact-render discipline). A key written
+     *  twice in one object is a parse error, where the parser would keep the last value without saying so. Both
+     *  adapters read and write with it. */
     public static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true)
+            .configure(JsonParser.Feature.STRICT_DUPLICATE_DETECTION, true)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);

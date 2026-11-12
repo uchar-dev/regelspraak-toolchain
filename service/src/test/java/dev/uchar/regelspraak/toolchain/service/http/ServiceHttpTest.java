@@ -423,6 +423,20 @@ class ServiceHttpTest {
         assertEquals("body", body.get("field").asText(), resp.body());
     }
 
+    /** A key written twice in one object is refused: the parser would otherwise keep the last value without saying
+     *  so. */
+    @Test
+    void _400_at_a_duplicate_key() throws Exception {
+        serveer(tokaCore());
+        HttpResponse<String> resp = post("/bepaal-leeftijd", """
+            { "instances": [ { "type": "Vlucht", "id": "V1",
+                "attributes": { "vluchtdatum": "2024-06-15", "vluchtdatum": "2024-06-16" } } ] }""");
+        assertEquals(400, resp.statusCode(), resp.body());
+        JsonNode body = tree(resp.body());
+        assertEquals("body", body.get("field").asText(), resp.body());
+        assertTrue(body.get("error").asText().contains("vluchtdatum"), resp.body());
+    }
+
     @Test
     void _400_at_empty_body() throws Exception {
         serveer(tokaCore());

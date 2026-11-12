@@ -166,7 +166,8 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   read as the declaration's canonical name, an enumeration value as the declared value it names; the `field` of a
   violation names the field as the request wrote it (`relations[0].roles.AANMELDER`, `relations[0].roles.melder`),
   and its sentence may name the declaration. Two names of one object that read as one declaration are a 400
-  `MALFORMED`. `?vocabulary=<name>` chooses the names of the answer,
+  `MALFORMED`, and a key written twice in one object of the body is a 400 on `body`: both adapters read the body with
+  strict duplicate detection, where a parser would keep the last value without saying so. `?vocabulary=<name>` chooses the names of the answer,
   its `inconsistencies` and its `explanation` (`Naming`), else the entry point's `vocabulary` from the descriptor,
   else the canonical names; an unknown vocabulary is a 400 `UNKNOWN_VOCABULARY`, and a descriptor naming one does
   not start. A declaration without a designation in the chosen vocabulary keeps its canonical name. The Quarkus
