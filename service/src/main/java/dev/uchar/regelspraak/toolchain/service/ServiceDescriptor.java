@@ -1,6 +1,5 @@
 package dev.uchar.regelspraak.toolchain.service;
 
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.JsonNode;
 
@@ -33,7 +32,6 @@ import java.util.Map;
  *                      (defaults) AND the sets is a startup error — ambiguous authority, {@link DecisionCore}
  *                      refuses start naming the parameter.
  */
-@JsonIgnoreProperties(ignoreUnknown = true)
 public record ServiceDescriptor(
         @JsonProperty("service") Service service,
         @JsonProperty("entrypoints") List<Entrypoint> entrypoints,
@@ -41,8 +39,7 @@ public record ServiceDescriptor(
         @JsonProperty("parameterSets") String parameterSets) {
 
     /** The service identity block. */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Service(@JsonProperty("name") String name, @JsonProperty("version") String version) {}
+        public record Service(@JsonProperty("name") String name, @JsonProperty("version") String version) {}
 
     /**
      * One entry point: a name, its URL path (fase 3), the rule scope it fires, the objecttypen it accepts
@@ -70,8 +67,7 @@ public record ServiceDescriptor(
      *        descriptor's own names (scope, invoer, uitvoer, inputElements, parameters) are canonical names.
      * @param explanation OPTIONAL whether the entry point explains its answers ({@link #explains}); absent = true.
      */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Entrypoint(
+        public record Entrypoint(
             @JsonProperty("name") String name,
             @JsonProperty("path") String path,
             @JsonProperty("scope") Scope scope,
@@ -95,8 +91,7 @@ public record ServiceDescriptor(
      * ({@code ruleGroups}). At least one must be non-empty; the loader validates every name against the
      * model and refuses an unknown reference.
      */
-    @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Scope(
+        public record Scope(
             @JsonProperty("ruleNames") List<String> ruleNames,
             @JsonProperty("ruleGroups") List<String> ruleGroups) {
 

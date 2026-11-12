@@ -6,7 +6,9 @@ import dev.uchar.regelspraak.resolver.Resolver;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
@@ -112,6 +114,44 @@ class DescriptorLoaderTest {
         // 4 distinct unknown references collected together (regel, invoer-type, uitvoer-type, parameter)
         assertTrue(s.size() >= 4, "verwacht >= 4 verzamelde schendingen, kreeg " + s);
         assertFalse(s.isEmpty());
+    }
+
+    /** A key the descriptor form does not have, at any level, refuses the start with its path: an entry point with
+     *  {@code outputs} for {@code output} would otherwise start and answer nothing. */
+    @Test
+    void an_unknown_key_refuses_the_start_with_its_path() {
+        String template = """
+            { %s"service": {"name":"t","version":"1"%s},
+              "entrypoints": [ { %s"name":"x","path":"x",
+                "scope": {"ruleNames": ["bepaal leeftijd"]%s}, "input": [], "output": [] } ] }""";
+        Map<String, String> cases = new LinkedHashMap<>();
+        cases.put(template.formatted("\"dienst\": {}, ", "", "", ""), "dienst");
+        cases.put(template.formatted("", ", \"versie\": \"1\"", "", ""), "service.versie");
+        cases.put(template.formatted("", "", "\"outputs\": [], ", ""), "entrypoints[0].outputs");
+        cases.put(template.formatted("", "", "", ", \"regelnamen\": []"), "entrypoints[0].scope.regelnamen");
+        cases.forEach((json, field) -> {
+            ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL), json);
+            assertEquals(List.of(field), f.violations().stream().map(Violation::field).toList(), f.getMessage());
+            assertEquals(Violation.Kind.MALFORMED, f.violations().get(0).kind(), f.getMessage());
+        });
+    }
+
+    /** A path is one segment of the URL that no other route has: not twice, not {@code info} or {@code playground},
+     *  no slash. */
+    @Test
+    void a_path_twice_a_reserved_path_and_a_slash_refuse_the_start() {
+        String json = """
+            { "service": {"name":"t","version":"1"},
+              "entrypoints": [
+                { "name":"a","path":"x", "scope": {"ruleNames": ["bepaal leeftijd"]}, "input": [], "output": [] },
+                { "name":"b","path":"x", "scope": {"ruleNames": ["bepaal leeftijd"]}, "input": [], "output": [] },
+                { "name":"c","path":"info", "scope": {"ruleNames": ["bepaal leeftijd"]}, "input": [], "output": [] },
+                { "name":"d","path":"playground", "scope": {"ruleNames": ["bepaal leeftijd"]}, "input": [], "output": [] },
+                { "name":"e","path":"/y", "scope": {"ruleNames": ["bepaal leeftijd"]}, "input": [], "output": [] } ] }""";
+        ServiceError f = assertThrows(ServiceError.class, () -> DescriptorLoader.load(json, MODEL));
+        assertEquals(List.of("entrypoints[1].path", "entrypoints[2].path", "entrypoints[3].path", "entrypoints[4].path"),
+                f.violations().stream().map(Violation::field).toList(), f.getMessage());
+        assertTrue(f.violations().stream().allMatch(v -> v.kind() == Violation.Kind.MALFORMED), f.getMessage());
     }
 
     @Test

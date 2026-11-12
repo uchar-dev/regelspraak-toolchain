@@ -123,6 +123,12 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
                       [--port N]
 ```
 
+The descriptor is bound to its form strictly (`DescriptorLoader.read`): a key the form does not have, at any level,
+refuses the start with a `MALFORMED` violation on its path (`entrypoints[0].outputs`, `service.versie`), where the
+entry point would otherwise start and answer nothing. An entry point's `path` is one segment of the URL of its own:
+a path an earlier entry point has, `info` and `playground` (the routes of the service itself) and a path with a `/`
+refuse the start as well.
+
 - `POST /<path>` per entry point; `?explanation=true` adds the verbaliser's sentences to the answer. An entry point that
   explains (the descriptor's `explanation`, absent or true) has, beside the build that answers, uchar's build with
   readings of the same document, made at startup; a request with `?explanation=true` is mapped, fired and answered there,

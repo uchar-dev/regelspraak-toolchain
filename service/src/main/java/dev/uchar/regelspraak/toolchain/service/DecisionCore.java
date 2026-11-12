@@ -215,7 +215,7 @@ public final class DecisionCore {
                     "resolve-fout: " + d.message()));
 
         // 2. descriptor validation against the shared model (collect all)
-        ServiceDescriptor descriptor = readDescriptor(descriptorJson);
+        ServiceDescriptor descriptor = DescriptorLoader.read(descriptorJson);
         // only validate the descriptor against a well-formed model — a resolve failure already dominates
         FormIndex forms = FormIndex.of(model, model.prioritizedDefaults);
         if (startErrors.isEmpty()) startErrors.addAll(DescriptorLoader.validate(descriptor, model, forms));
@@ -342,7 +342,7 @@ public final class DecisionCore {
                             : "document: ") + e.getMessage())));
         }
         RegelSpraakModel model = loaded.model();
-        ServiceDescriptor descriptor = readDescriptor(descriptorJson);
+        ServiceDescriptor descriptor = DescriptorLoader.read(descriptorJson);
         FormIndex forms = FormIndex.of(model, loaded.prioritizedDefaults());
         List<Violation> startErrors = DescriptorLoader.validate(descriptor, model, forms);
         if (!startErrors.isEmpty())
@@ -402,15 +402,6 @@ public final class DecisionCore {
         return new ServiceError(onlyFormsWithoutNorm ? "dienst start niet: de bron draagt een vorm zonder norm"
                 : "dienst start niet: de bron draagt een onopgeloste naam", sentences.stream()
                 .map(sentence -> Violation.of(Violation.Kind.MALFORMED, "source", sentence)).toList());
-    }
-
-    private static ServiceDescriptor readDescriptor(String descriptorJson) {
-        try {
-            return DescriptorLoader.MAPPER.readValue(descriptorJson, ServiceDescriptor.class);
-        } catch (IOException e) {
-            throw new ServiceError("descriptor is geen geldige JSON", List.of(
-                    Violation.of(Violation.Kind.MALFORMED, "", e.getMessage())));
-        }
     }
 
     /** Record that uchar does not carry entry point {@code ep}: {@code construct} is the construct uchar's refusal

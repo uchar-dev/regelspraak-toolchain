@@ -1,8 +1,10 @@
 package dev.uchar.regelspraak.toolchain.service;
 
 import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonMappingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 
 import dev.uchar.regelspraak.model.Datatype;
@@ -25,20 +27,25 @@ import java.util.Set;
  * offending value. ALL violations are collected first, then thrown together as a single {@link ServiceError},
  * so a malformed descriptor surfaces its complete diagnostic set in one round trip (decision 1).
  *
- * <p>The parse is a Jackson bind to {@link ServiceDescriptor} (unknown fields ignored, so a descriptor may
- * carry doc-only keys); the numeric values under {@code parameters} are kept as raw {@link JsonNode}s and
- * decoded per-parameter datatype later by the request mapper — never as {@code double}.
+ * <p>The parse is a Jackson bind to {@link ServiceDescriptor} that refuses a key the form does not have
+ * ({@link #read}); the numeric values under {@code parameters} are kept as raw {@link JsonNode}s and decoded
+ * per-parameter datatype later — never as {@code double}.
  *
  * <p>A name of the model is found as uchar's case reader finds it ({@link #sameName}), and a descriptor that validates
  * goes on in the declared spelling of its names ({@link #declared}).
  */
 public final class DescriptorLoader {
 
-    /** A shared, thread-safe ObjectMapper: BigDecimal-for-floats so no descriptor number is ever a double. */
+    /** A shared, thread-safe ObjectMapper: BigDecimal-for-floats so no descriptor number is ever a double, and a key
+     *  the descriptor form does not have is an error ({@link #read}). */
     static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true)
             .setNodeFactory(JsonNodeFactory.withExactBigDecimals(true))
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
+
+    /** The paths of the routes beside the entry points ({@code GET /info}, the playground's): no entry point takes
+     *  one. */
+    private static final List<String> RESERVED_PATHS = List.of("info", "playground");
 
     private DescriptorLoader() {}
 
@@ -49,16 +56,32 @@ public final class DescriptorLoader {
 
     /** Parse + validate a descriptor from its JSON text against {@code model}. */
     public static ServiceDescriptor load(String json, RegelSpraakModel model) {
-        ServiceDescriptor d;
+        ServiceDescriptor d = read(json);
+        List<Violation> s = validate(d, model);
+        if (!s.isEmpty()) throw new ServiceError("descriptor valideert niet tegen het model", s);
+        return declared(d, model);
+    }
+
+    /** The descriptor in {@code json}, bound to {@link ServiceDescriptor}. A key the descriptor form does not have, at
+     *  any level, is a {@link Violation.Kind#MALFORMED} on its path ({@code entrypoints[0].outputs}): an entry point
+     *  with a misspelt key would otherwise start and answer nothing, an old name ({@code uitvoer}) included.
+     *
+     *  @throws ServiceError a text that is no JSON, or a key the form does not have */
+    static ServiceDescriptor read(String json) {
         try {
-            d = MAPPER.readValue(json, ServiceDescriptor.class);
+            return MAPPER.readValue(json, ServiceDescriptor.class);
+        } catch (UnrecognizedPropertyException e) {
+            StringBuilder path = new StringBuilder();
+            for (JsonMappingException.Reference r : e.getPath())
+                if (r.getFieldName() != null) path.append(path.isEmpty() ? "" : ".").append(r.getFieldName());
+                else path.append('[').append(r.getIndex()).append(']');
+            throw new ServiceError("descriptor valideert niet", List.of(Violation.of(Violation.Kind.MALFORMED,
+                    path.toString(), "onbekende sleutel '" + e.getPropertyName() + "' in de descriptor; de sleutels"
+                            + " hier zijn " + e.getKnownPropertyIds())));
         } catch (IOException e) {
             throw new ServiceError("descriptor is geen geldige JSON", List.of(
                     Violation.of(Violation.Kind.MALFORMED, "", e.getMessage())));
         }
-        List<Violation> s = validate(d, model);
-        if (!s.isEmpty()) throw new ServiceError("descriptor valideert niet tegen het model", s);
-        return declared(d, model);
     }
 
     /** {@code d}, which {@link #validate} accepted against {@code model}, with every object type, attribute,
@@ -124,6 +147,8 @@ public final class DescriptorLoader {
                 sink.add(Violation.of(Violation.Kind.MALFORMED, path + ".name", "entrypoint-naam ontbreekt"));
             if (ep.path() == null || ep.path().isBlank())
                 sink.add(Violation.of(Violation.Kind.MALFORMED, path + ".path", "entrypoint-pad ontbreekt"));
+            else
+                pathTaken(eps, i, sink);
             if (ep.vocabulary() != null && reserved == null) {
                 try {
                     Naming.of(model, ep.vocabulary());
@@ -170,6 +195,30 @@ public final class DescriptorLoader {
                 validateOutput(model, invEl.get(j), path + ".inputElements[" + j + "]", sink);
         }
         return sink;
+    }
+
+    /** Adds the violation of the path of entry point {@code i} when it is not one segment of the URL of its own: one
+     *  with a slash, one of {@link #RESERVED_PATHS}, or the path of an earlier entry point, which would leave one of the
+     *  two without a route. */
+    private static void pathTaken(List<ServiceDescriptor.Entrypoint> eps, int i, List<Violation> sink) {
+        String p = eps.get(i).path();
+        String field = "entrypoints[" + i + "].path";
+        if (p.contains("/")) {
+            sink.add(Violation.of(Violation.Kind.MALFORMED, field, "het pad '" + p + "' is één segment van de URL,"
+                    + " zonder '/'"));
+            return;
+        }
+        if (RESERVED_PATHS.contains(p)) {
+            sink.add(Violation.of(Violation.Kind.MALFORMED, field, "het pad '" + p + "' is de route van de dienst zelf;"
+                    + " een entrypoint neemt geen " + String.join(" of ", RESERVED_PATHS)));
+            return;
+        }
+        for (int j = 0; j < i; j++)
+            if (p.equals(eps.get(j).path())) {
+                sink.add(Violation.of(Violation.Kind.MALFORMED, field, "het pad '" + p + "' is al het pad van"
+                        + " entrypoints[" + j + "]"));
+                return;
+            }
     }
 
     /** Validate one {@code "Objecttype.attribute"} / {@code "Objecttype:kenmerk"} selector. */

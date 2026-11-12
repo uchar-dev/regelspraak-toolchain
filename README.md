@@ -54,7 +54,8 @@ described in `docs/ENGINE.md`.
 Since the card `engelse-namen` (2026-10-18) everything a caller sees is English, except what comes from RegelSpraak
 (the kinds of declarations `ATTRIBUUT`, `FEITTYPE`, `ROL` ..., the predicates, the global `rekendatum`, the names a
 model declares) and the sentences of the messages, which keep their text. The old names no longer work; a request
-that writes one at the top, in an instance or in a relation gets a 400 `MALFORMED` on that key:
+that writes one at the top, in an instance or in a relation gets a 400 `MALFORMED` on that key, and a descriptor that
+writes one does not start:
 
 - **JSON** of the requests, the answers, `/info`, the playground and the OpenAPI document: `instanties`, `attributen`,
   `kenmerken`, `rollen`, `relaties`, `feittype`, `peildatum` are `instances`, `attributes`, `characteristics`, `roles`,
@@ -456,7 +457,9 @@ carries its base. It checks every scope at the start: a form in the scope (a rul
 an allocation, a consistency, a uniqueness or a fact creation) that reads an attribute or characteristic only forms
 outside the scope write refuses the start, naming the reader by its kind and name (for a group also the default that
 reads, by its text and path), unless the entry point declares that element in `inputElements` or sets
-`scopeCheckOptOut`.
+`scopeCheckOptOut`. A descriptor with a key its form does not have, at any level, does not start (a `MALFORMED`
+violation on the key's path, `entrypoints[0].outputs`), nor one whose entry point paths are not each one segment of
+the URL of its own: a path twice, `info`, `playground` or a path with a `/`.
 
 ## Vocabularies
 
