@@ -43,7 +43,8 @@ import java.util.List;
  *
  * <p>The datatype→schema mapping follows the service's own typing surface (the {@link ValueCoder} rules):
  * Numeriek geheel → integer, Numeriek/Percentage niet-geheel → number, Tekst → string, Booleaan → boolean,
- * DatumInDagen → {string, date}, DatumTijd → {string, date-time}, Enumeratie → {string, enum:[all waarden]}.
+ * DatumInDagen → {string, date}, DatumTijd → {string, pattern} with the case lexeme ({@link #DATE_TIME_PATTERN}),
+ * Enumeratie → {string, enum:[all waarden]}.
  * An eenheid-bearing attribuut documents its unit as {@code x-eenheid} PLUS a mention in the property
  * description. Kenmerken are boolean properties on the same schema (the description says which are kenmerken).
  * A time-dependent attribuut is a property of its timeline ({@link #timelineSchema}), a time-dependent kenmerk one of the
@@ -557,7 +558,7 @@ public final class OpenApiEmitter {
             case Datatype.Text t -> s.put("type", "string");
             case Datatype.BooleanType b -> s.put("type", "boolean");
             case Datatype.DateInDays d -> { s.put("type", "string"); s.put("format", "date"); }
-            case Datatype.DateTime d -> { s.put("type", "string"); s.put("format", "date-time"); }
+            case Datatype.DateTime d -> { s.put("type", "string"); s.put("pattern", DATE_TIME_PATTERN); }
             case Datatype.Enumeration e -> {
                 s.put("type", "string");
                 ArrayNode enumArray = s.putArray("enum");
@@ -902,6 +903,11 @@ public final class OpenApiEmitter {
         item.put("type", "object");
         return item;
     }
+
+    /** The lexeme of a date-time the service reads and writes ({@link ValueCoder#dateTimeLexeme}), that of
+     *  {@code uchar-case-v0}: seconds always, a fraction of whole milliseconds where there is one, no offset. RFC 3339's
+     *  {@code date-time} demands an offset, which the service refuses. */
+    static final String DATE_TIME_PATTERN = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3})?$";
 
     /** The error schema returned as a 4xx/5xx body: {error, field?, violations?}. */
     private static ObjectNode errorSchema() {

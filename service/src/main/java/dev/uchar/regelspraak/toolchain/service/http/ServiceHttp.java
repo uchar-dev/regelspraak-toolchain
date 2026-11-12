@@ -23,6 +23,7 @@ import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
 import dev.uchar.regelspraak.toolchain.service.Limit;
 import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
 import dev.uchar.regelspraak.toolchain.service.Violation;
+import dev.uchar.regelspraak.toolchain.service.ValueCoder;
 import dev.uchar.regelspraak.toolchain.service.RequestOptions;
 import dev.uchar.regelspraak.toolchain.service.Completeness;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
@@ -494,14 +495,15 @@ public final class ServiceHttp {
     }
 
     /** Render a parameterset value as an EXACT JSON node for /info (ValueCoder-symmetric with
-     *  {@code AnswerBuilder.rend}): BigDecimal as a number (never a double), date/datetime as an ISO string,
+     *  {@code AnswerBuilder.rend}): BigDecimal as a number (never a double), a date as an ISO string, a date-time in its case lexeme
+     *  ({@link ValueCoder#dateTimeLexeme}),
      *  boolean as boolean, tekst/enum as string, explicit leegwaarde as JSON null. */
     private static JsonNode renderValue(Object v) {
         if (v == null) return NF.nullNode();
         if (v instanceof BigDecimal b) return NF.numberNode(b);
         if (v instanceof Boolean b) return NF.booleanNode(b);
         if (v instanceof LocalDate d) return NF.textNode(d.toString());
-        if (v instanceof LocalDateTime d) return NF.textNode(d.toString());
+        if (v instanceof LocalDateTime d) return NF.textNode(ValueCoder.dateTimeLexeme(d));
         if (v instanceof String s) return NF.textNode(s);
         return NF.textNode(v.toString());
     }

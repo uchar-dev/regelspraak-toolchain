@@ -19,7 +19,6 @@ import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -97,9 +96,6 @@ public final class RequestMapper {
             "relations");
     private static final List<String> INSTANCE_KEYS = List.of("type", "id", "attributes", "characteristics", "roles");
     private static final List<String> RELATION_KEYS = List.of("factType", "roles");
-    /** The {@code dateTime} lexeme of {@code uchar-case-v0}: the seconds always written, a fraction of whole
-     *  milliseconds only where there is one. */
-    private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss");
 
     private final RegelSpraakModel model;
     private final DroolsBackend.Build build;
@@ -403,9 +399,7 @@ public final class RequestMapper {
                 return null;
             }
             if (!inCaseForm(dt2.getYear())) refusals.add(new CaseRefusal(field));
-            String lexeme = DATE_TIME.format(dt2);
-            if (dt2.getNano() != 0) lexeme += String.format(".%03d", dt2.getNano() / 1_000_000);
-            return n.put("dateTime", lexeme);
+            return n.put("dateTime", ValueCoder.dateTimeLexeme(dt2));
         }
         throw new IllegalStateException("WaardeCoder gaf voor '" + field + "' een " + w.getClass().getSimpleName()
                 + ", waarvoor de case geen vorm heeft");

@@ -576,7 +576,7 @@ public final class FixpointGivens {
             return c.payload() != null ? scalar(c.payload(), dt) : NF.objectNode().put(Markers.KEY, c.constructor());
         if (v instanceof BigDecimal b) return NF.textNode(b.toPlainString());
         if (v instanceof LocalDate d) return NF.textNode(d.toString());
-        if (v instanceof LocalDateTime d) return NF.textNode(d.toString());
+        if (v instanceof LocalDateTime d) return NF.textNode(ValueCoder.dateTimeLexeme(d));
         if (v instanceof Boolean b) return NF.booleanNode(b);
         if (v instanceof String s) return NF.textNode(s);
         throw new UnrenderableValue("een waarde van de vorm " + v.getClass().getName() + " ("

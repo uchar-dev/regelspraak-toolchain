@@ -126,7 +126,7 @@ class DecisionCoreTest {
         JsonNode dt = find(answer, "V1", "attributes",
                 "datum-tijd voor het berekenen van de belasting op basis van afstand");
         assertNotNull(dt, "antwoord: " + answer);
-        assertEquals("2024-06-15T09:30", dt.asText(), "antwoord: " + answer);
+        assertEquals("2024-06-15T09:30:00", dt.asText(), "antwoord: " + answer);
     }
 
     @Test
@@ -140,7 +140,7 @@ class DecisionCoreTest {
         ObjectNode answer = CORE.process("verwachte-datum-tijd-van-aankomst-van-een-vlucht", parse(request));
         JsonNode dt = find(answer, "V1", "attributes", "verwachte datum-tijd van aankomst");
         assertNotNull(dt, "antwoord: " + answer);
-        assertEquals("2024-06-15T11:30", dt.asText(), "antwoord: " + answer);
+        assertEquals("2024-06-15T11:30:00", dt.asText(), "antwoord: " + answer);
     }
 
     @Test

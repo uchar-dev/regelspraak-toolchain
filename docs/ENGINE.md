@@ -128,7 +128,10 @@ refuse the start as well.
   exponent in its text (`"1.25E1"`), one whose value has a negative scale (a JSON number `1E+3`) and one whose digits
   written out exceed the 1000 characters the parser reads of a number (a JSON number `1E-20000000`) are a 400
   `WRONG_TYPE`. An enumeration value names a declared value as uchar compares declared names (case and spacing aside),
-  and keeps its own spelling.
+  and keeps its own spelling. A date-time is read as ISO `yyyy-MM-ddTHH:mm[:ss[.SSS]]`, without an offset, and leaves
+  the service in the case lexeme (`ValueCoder.dateTimeLexeme`): the seconds always written, a fraction of whole
+  milliseconds where there is one (`2026-07-01T08:29:00`, `2026-07-01T08:29:00.500`), in the answer, the fixpoint,
+  `/info` and the playground alike; the OpenAPI document states that pattern.
 - Names and vocabularies (README, "Vocabularies"). `NameReader` reads every name of a request canonically or as a
   designation in any vocabulary of the model (uchar's `RegelSpraakModel.namedElement`), within the scope of its kind,
   mixed, and with the name equality of uchar's case reader (`DescriptorLoader.sameName`, on uchar's `Namen.norm`: a run

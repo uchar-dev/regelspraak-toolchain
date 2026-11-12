@@ -137,6 +137,36 @@ class OpenApiEmitterTest {
         assertEquals("string", error.at("/properties/error/type").asText(), s::toString);
     }
 
+    /** A date-time is the lexeme the service reads and writes, {@code uchar-case-v0}'s: seconds always, a fraction of
+     *  whole milliseconds where there is one, no offset. RFC 3339's {@code date-time} demands an offset the service
+     *  refuses. */
+    @Test
+    void a_date_time_is_the_case_lexeme_without_an_offset() throws IOException {
+        RegelSpraakModel model = dev.uchar.regelspraak.resolver.Resolver.resolve("""
+                Objecttype de Vondst (mv: Vondsten)
+                    de afgiftestip Datum en tijd in millisecondes;
+                    is tijdig kenmerk (bijvoeglijk);
+                Regel Kenmerktoekenning tijdig
+                    geldig altijd
+                        Een Vondst is tijdig
+                        indien zijn afgiftestip eerder is dan 01-07-2026 08:30:00.000.
+                """);
+        assertEquals(java.util.List.of(), model.errors());
+        ServiceDescriptor descriptor = DescriptorLoader.MAPPER.readValue("""
+                { "service": {"name":"stip","version":"1"},
+                  "entrypoints": [ { "name":"stip","path":"stip",
+                    "scope": {"ruleNames": ["Kenmerktoekenning tijdig"]},
+                    "input": ["Vondst"], "output": ["Vondst:tijdig"] } ],
+                  "parameters": {} }""", ServiceDescriptor.class);
+        JsonNode property = property(OpenApiEmitter.emit(descriptor, model)
+                .at("/components/schemas/Vondst/properties"), "afgiftestip");
+        assertNotNull(property);
+        assertEquals("string", property.path("type").asText(), property::toString);
+        assertFalse(property.has("format"), property::toString);
+        assertEquals("^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3})?$",
+                property.path("pattern").asText(), property::toString);
+    }
+
     private static java.util.List<String> fields(JsonNode n) {
         java.util.List<String> sink = new java.util.ArrayList<>();
         n.fieldNames().forEachRemaining(sink::add);

@@ -10,6 +10,7 @@ import dev.uchar.regelspraak.transpiler.core.Namen;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.time.format.DateTimeFormatter;
 import java.time.format.DateTimeParseException;
 import java.util.List;
 
@@ -35,11 +36,25 @@ import java.util.List;
  *   <li><b>Datum-in-dagen</b> → {@link LocalDate} (ISO-8601 {@code yyyy-MM-dd}).</li>
  *   <li><b>Datum-en-tijd</b> → {@link LocalDateTime} (ISO-8601 {@code yyyy-MM-ddThh:mm:ss[.SSS]}).</li>
  * </ul>
- * A JSON {@code null} decodes to a Java {@code null} (an explicit leegwaarde) for any datatype.
+ * A JSON {@code null} decodes to a Java {@code null} (an explicit leegwaarde) for any datatype. A date-time leaves the
+ * service in one lexeme, in a case and in an answer alike ({@link #dateTimeLexeme}).
  */
 public final class ValueCoder {
 
     private ValueCoder() {}
+
+    private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss");
+
+    /** The {@code dateTime} lexeme of {@code uchar-case-v0} for {@code t}: the seconds always written, a fraction of
+     *  whole milliseconds only where there is one. {@link LocalDateTime#toString} leaves out zero seconds, which the
+     *  case schema and the OpenAPI pattern of the service demand. A fraction finer than a millisecond has no lexeme. */
+    public static String dateTimeLexeme(LocalDateTime t) {
+        if (t.getNano() % 1_000_000 != 0)
+            throw new IllegalArgumentException("'" + t + "' heeft een fractie van een seconde fijner dan een"
+                    + " milliseconde, die het lexeme niet draagt");
+        String lexeme = DATE_TIME.format(t);
+        return t.getNano() == 0 ? lexeme : lexeme + String.format(".%03d", t.getNano() / 1_000_000);
+    }
 
     /** The decoded value plus the violations produced while decoding (empty on success). A failed decode
      *  returns {@code waarde == null} AND a non-empty {@link #violations}. */

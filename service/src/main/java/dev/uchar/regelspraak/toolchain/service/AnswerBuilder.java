@@ -247,7 +247,7 @@ public final class AnswerBuilder {
         if (v instanceof BigDecimal b) return NF.numberNode(b);          // EXACT (no double)
         if (v instanceof Boolean b) return NF.booleanNode(b);
         if (v instanceof LocalDate d) return NF.textNode(d.toString());
-        if (v instanceof LocalDateTime d) return NF.textNode(d.toString());
+        if (v instanceof LocalDateTime d) return NF.textNode(ValueCoder.dateTimeLexeme(d));
         if (v instanceof String s) return NF.textNode(dt instanceof Datatype.Enumeration e ? naming.value(e, s) : s);
         return NF.textNode(v.toString());
     }

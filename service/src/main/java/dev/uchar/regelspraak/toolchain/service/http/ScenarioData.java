@@ -23,6 +23,7 @@ import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
 import dev.uchar.regelspraak.toolchain.service.Markers;
+import dev.uchar.regelspraak.toolchain.service.ValueCoder;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -182,7 +183,7 @@ final class ScenarioData {
     private static void value(ObjectNode n, ScenarioValue w, Datatype dt, Naming ng) {
         if (w.number() != null) n.put("value", w.number());
         else if (w.date() != null) n.put("value", w.date().toString());
-        else if (w.dateTime() != null) n.put("value", w.dateTime().toString());
+        else if (w.dateTime() != null) n.put("value", ValueCoder.dateTimeLexeme(w.dateTime()));
         else if (w.bool() != null) n.put("value", w.bool());
         else if (w.text() != null) n.put("value", w.text());
         else if (w.enumValue() != null) enumValue(n, w.enumValue(), dt, ng);
