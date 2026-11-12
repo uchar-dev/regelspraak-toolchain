@@ -166,6 +166,7 @@ case "$command" in
     [ ${#rest[@]} -ge 1 ] || fail "graph: geen uitvoerbestand opgegeven"
     out=${rest[0]}
     case "$out" in -*) fail "graph: onbekende optie $out" ;; esac
+    check_out_dir graph "$out"
     check_sources graph "${rest[@]:1}"
     start "$CLI" "$mode" "$out" "${rest[@]:1}" ;;
   facts)

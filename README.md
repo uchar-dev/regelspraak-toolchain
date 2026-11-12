@@ -435,7 +435,8 @@ of `scenario --manifest` and the messages the service itself writes keep their D
 | `facts <outdir> <source.rgs...>` | the fact beans uchar's generator writes for the model |
 | `jar` | the path of the jar the commands run from, after the rebuild below when it is due; the service gates call it once before they start their services side by side |
 
-Exit 2 is a wrong invocation, a source that cannot be read included. Every command runs from one jar the reactor builds. In a checkout `bin/regelspraak`
+Exit 2 is a wrong invocation, a source that cannot be read included, and an output file in a directory that does not
+exist. Every command runs from one jar the reactor builds. In a checkout `bin/regelspraak`
 first rebuilds that jar when it is missing or older than one of its sources (the poms, the own main sources, uchar's
 frontend and backend), with Maven offline and without tests, and says so on stderr; the first build on a machine
 needs the network once (see Building). `JAVA_OPTS` reach the JVM; `REGELSPRAAK_JAR` names a prebuilt jar, which is

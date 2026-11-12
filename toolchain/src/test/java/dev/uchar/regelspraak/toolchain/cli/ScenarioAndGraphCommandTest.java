@@ -17,12 +17,14 @@ import java.util.jar.Manifest;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The exit codes of {@code bin/regelspraak scenario} where there is nothing to run: a source without a
+ * The exit codes of {@code bin/regelspraak scenario} and {@code graph} where there is nothing to run: a source without a
  * Scenario block tests nothing and is an error (exit 1), as {@code cases} refuses it, also on a manifest line; a source
- * that cannot be read is a wrong invocation (exit 2), as for the other commands. The test runs the
+ * that cannot be read is a wrong invocation (exit 2), as for the other commands; and {@code graph} refuses an output
+ * file in a directory that does not exist before uchar runs, as {@code ir} and {@code tokens} do. The test runs the
  * script on {@code REGELSPRAAK_JAR}, a jar whose manifest carries this module's test class path, as
  * {@link TokensCommandTest} does.
  */
@@ -66,6 +68,15 @@ class ScenarioAndGraphCommandTest {
         Run r = run("scenario", "ontbreekt.rgs");
         assertEquals(2, r.exit(), r::toString);
         assertTrue(r.stderr().contains("ontbreekt.rgs"), r::toString);
+    }
+
+    @Test
+    void graph_into_a_directory_that_does_not_exist_is_exit_2() throws Exception {
+        Files.writeString(dir.resolve("model.rgs"), MODEL);
+        Run r = run("graph", "geen-map/graaf.html", "model.rgs");
+        assertEquals(2, r.exit(), r::toString);
+        assertTrue(r.stderr().contains("de map bestaat niet: geen-map"), r::toString);
+        assertFalse(r.stderr().contains("Exception"), r::toString);
     }
 
     /** {@code bin/regelspraak} with {@code args}, in {@link #dir}, on a jar that carries this JVM's class path. */
