@@ -34,8 +34,8 @@ import java.util.stream.Collectors;
  * and the coverage, and the declarations in the explanation, in a vocabulary the model declares ({@link Naming};
  * {@code canonical} for the canonical names), and an unknown one is a wrong invocation. Exit codes: {@code 1} as soon
  * as a scenario FAILS (or the source does not resolve — with the diagnostics — or carries no Scenario block); else
- * {@code 3} as soon as a scenario is a MARKER (uchar does not carry its document); else {@code 0}. With no files:
- * exit {@code 2}.
+ * {@code 3} as soon as a scenario is a MARKER (uchar does not carry its document); else {@code 0}. With no files, or a
+ * file it cannot read: exit {@code 2}.
  *
  * <p>{@code --manifest} runs every line of a manifest ({@code <verwachte-exit> <scenario.rgs> <companion.rgs...>})
  * and exits {@code 0} when no line mismatches, else {@code 1}. {@code --exclusions} names the scenarios uchar's
@@ -109,12 +109,10 @@ public final class ScenarioRunnerCli {
 
         String source;
         try {
-            source = files.stream()
-                    .map(p -> { try { return Files.readString(p); } catch (IOException e) { throw new UncheckedIOException(e); } })
-                    .collect(Collectors.joining("\n"));
+            source = readSource(files);
         } catch (UncheckedIOException e) {
             System.err.println("kon een bestand niet lezen: " + e.getCause().getMessage());
-            return 1;
+            return 2;
         }
 
         List<ScenarioRunner.Explained> results;
@@ -322,17 +320,15 @@ public final class ScenarioRunnerCli {
 
     /** Run ONE manifest line's concatenated sources and return its exit code (1 FAIL, resolve error or no scenario,
      *  3 MARKER, else 0) WITHOUT the per-scenario stdout noise — the single-JVM analog of forking the CLI over
-     *  {@code paths}. A read/resolve failure and a source without a scenario are exit 1, mirroring the single-file
-     *  path. */
+     *  {@code paths}, with the single-file path's codes: a resolve error and a source without a scenario 1, a source
+     *  it cannot read 2. */
     private static int runLine(List<Path> paths, boolean trace) {
         String source;
         try {
-            source = paths.stream()
-                    .map(p -> { try { return Files.readString(p); } catch (IOException e) { throw new UncheckedIOException(e); } })
-                    .collect(Collectors.joining("\n"));
+            source = readSource(paths);
         } catch (UncheckedIOException e) {
             System.err.println("kon een bestand niet lezen: " + e.getCause().getMessage());
-            return 1;
+            return 2;
         }
         List<ScenarioResult> results;
         try {

@@ -20,8 +20,9 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The exit codes of {@code bin/regelspraak scenario} where there is nothing to run: a source without a Scenario block
- * tests nothing and is an error (exit 1), as {@code cases} refuses it, also on a manifest line. The test runs the
+ * The exit codes of {@code bin/regelspraak scenario} where there is nothing to run: a source without a
+ * Scenario block tests nothing and is an error (exit 1), as {@code cases} refuses it, also on a manifest line; a source
+ * that cannot be read is a wrong invocation (exit 2), as for the other commands. The test runs the
  * script on {@code REGELSPRAAK_JAR}, a jar whose manifest carries this module's test class path, as
  * {@link TokensCommandTest} does.
  */
@@ -58,6 +59,13 @@ class ScenarioAndGraphCommandTest {
         Run r = run("scenario", "--manifest", "manifest.txt");
         assertEquals(0, r.exit(), r::toString);
         assertTrue(r.stdout().contains("OK (exit 1)  model.rgs"), r::toString);
+    }
+
+    @Test
+    void scenario_on_a_source_it_cannot_read_is_exit_2() throws Exception {
+        Run r = run("scenario", "ontbreekt.rgs");
+        assertEquals(2, r.exit(), r::toString);
+        assertTrue(r.stderr().contains("ontbreekt.rgs"), r::toString);
     }
 
     /** {@code bin/regelspraak} with {@code args}, in {@link #dir}, on a jar that carries this JVM's class path. */
