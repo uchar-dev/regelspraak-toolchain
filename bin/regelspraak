@@ -35,8 +35,8 @@ usage: bin/regelspraak [--language nl|en] <command> [arguments]
   jar                                   the path of the jar the commands run from, built first when a source is newer
 
 Several sources are read as one model, concatenated in the order given; paths are relative to the directory the
-command is given in. Exit codes: 0 done, 1 an error in the model or a failed scenario, 2 a wrong invocation, 3 the
-model resolves but uchar does not carry it (a marker).
+command is given in. Exit codes: 0 done, 1 an error in the model, a failed scenario or no scenario to run, 2 a wrong
+invocation, 3 the model resolves but uchar does not carry it (a marker).
 TEXT
 }
 

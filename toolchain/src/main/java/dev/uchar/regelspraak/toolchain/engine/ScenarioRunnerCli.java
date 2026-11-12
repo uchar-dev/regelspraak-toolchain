@@ -32,9 +32,10 @@ import java.util.stream.Collectors;
  * {@code --explanation} prints under each played scenario the explanation of its outcome
  * ({@link ScenarioRunner#runWithExplanation}), or why there is none; {@code --vocabulary} names the rules of the trace
  * and the coverage, and the declarations in the explanation, in a vocabulary the model declares ({@link Naming};
- * {@code canoniek} for the canonical names), and an unknown one is a wrong invocation. Exit codes: {@code 1} as soon
- * as a scenario FAILS (or the source does not resolve — with the diagnostics); else {@code 3} as soon as a scenario is
- * a MARKER (uchar does not carry its document); else {@code 0}. With no files: exit {@code 2}.
+ * {@code canonical} for the canonical names), and an unknown one is a wrong invocation. Exit codes: {@code 1} as soon
+ * as a scenario FAILS (or the source does not resolve — with the diagnostics — or carries no Scenario block); else
+ * {@code 3} as soon as a scenario is a MARKER (uchar does not carry its document); else {@code 0}. With no files:
+ * exit {@code 2}.
  *
  * <p>{@code --manifest} runs every line of a manifest ({@code <verwachte-exit> <scenario.rgs> <companion.rgs...>})
  * and exits {@code 0} when no line mismatches, else {@code 1}. {@code --exclusions} names the scenarios uchar's
@@ -48,6 +49,8 @@ import java.util.stream.Collectors;
  */
 public final class ScenarioRunnerCli {
     private ScenarioRunnerCli() {}
+
+    private static final String NO_SCENARIO = "geen scenario: de bron draagt geen Scenario-blok, er is niets te toetsen";
 
     public static void main(String[] args) {
         MessageLanguage.apply(null);
@@ -133,6 +136,11 @@ public final class ScenarioRunnerCli {
         } catch (ScenarioRunner.ResolveError f) {
             System.err.println("de bron resolvet niet — " + f.diagnostics().size() + " diagnose(s):");
             for (String d : f.diagnostics()) System.err.println("  " + d);
+            return 1;
+        }
+        // a run that tests nothing is no PASS: cases refuses the same source
+        if (results.isEmpty()) {
+            System.err.println(NO_SCENARIO);
             return 1;
         }
 
@@ -312,9 +320,10 @@ public final class ScenarioRunnerCli {
                 .collect(Collectors.joining("\n"));
     }
 
-    /** Run ONE manifest line's concatenated sources and return its exit code (1 FAIL/resolve-fout, 3 MARKER, else
-     *  0) WITHOUT the per-scenario stdout noise — the single-JVM analog of forking the CLI over {@code paths}. A
-     *  read/resolve failure is exit 1, mirroring the single-file path's ResolveError→1 / read-error→1. */
+    /** Run ONE manifest line's concatenated sources and return its exit code (1 FAIL, resolve error or no scenario,
+     *  3 MARKER, else 0) WITHOUT the per-scenario stdout noise — the single-JVM analog of forking the CLI over
+     *  {@code paths}. A read/resolve failure and a source without a scenario are exit 1, mirroring the single-file
+     *  path. */
     private static int runLine(List<Path> paths, boolean trace) {
         String source;
         try {
@@ -331,6 +340,7 @@ public final class ScenarioRunnerCli {
         } catch (ScenarioRunner.ResolveError f) {
             return 1;
         }
+        if (results.isEmpty()) return 1;
         // Reuse the exact per-run exit contract; suppress the per-scenario detail unless --trace (the shell loop
         // printed only OK/MISMATCH per line).
         return trace ? reportAndCode(results, trace) : silentCode(results);
