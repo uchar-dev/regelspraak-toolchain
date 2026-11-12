@@ -17,7 +17,6 @@ import dev.uchar.regelspraak.transpiler.core.Namen;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Set;
 
 /**
  * Reads a {@code <naam>.service.json} descriptor and validates it against the RESOLVED model — every regel,
@@ -124,9 +123,6 @@ public final class DescriptorLoader {
         String reserved = Naming.reserved(model);
         if (reserved != null) sink.add(Violation.of(Violation.Kind.MALFORMED, "vocabularies", reserved));
 
-        Set<String> groupNames = new java.util.LinkedHashSet<>();
-        for (var g : model.ruleGroups) groupNames.add(g.name());
-
         // parameters block
         if (d.parameters() != null)
             for (String p : d.parameters().keySet())
@@ -164,8 +160,9 @@ public final class DescriptorLoader {
                         sink.add(Violation.of(Violation.Kind.UNKNOWN_REFERENCE,
                                 path + ".scope.ruleNames[" + j + "]", "onbekende regel '" + rn.get(j) + "'"));
                 List<String> rg = ep.scope().ruleGroupsOrEmpty();
+                List<String> unknownGroups = forms.scope(ep.scope()).unknownGroups();
                 for (int j = 0; j < rg.size(); j++)
-                    if (!groupNames.contains(rg.get(j)))
+                    if (unknownGroups.contains(rg.get(j)))
                         sink.add(Violation.of(Violation.Kind.UNKNOWN_REFERENCE,
                                 path + ".scope.ruleGroups[" + j + "]", "onbekende regelgroep '" + rg.get(j) + "'"));
             }

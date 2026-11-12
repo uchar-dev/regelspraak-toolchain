@@ -41,12 +41,11 @@ mvn -B -o verify -Dmaven.test.skip.exec=true -pl toolchain -am   # only the tool
 descriptor over the same core (`DecisionCore`). Its source is a set of `.rgs` files, resolved together into one
 model, or one `uchar-ir-v1` document (a `.json` file) that uchar's loader reads. Per entry point the core keeps the
 forms its scope names — the rules, decision-table rows, defaults groups and other forms of its rule names and rule
-groups (`FormIndex`, then `CaseEmitter.withScope`, the lowering of uchar's scenario layer) — and builds that document
-through uchar, so each entry point has its own KieBase and bean class loader and a form outside its scope does not
-decide whether it runs. A defaults group without a base of its own, which uchar makes of the own exceptions of a
-subtype (`<basis> voor <subtype>`), goes with the groups of the base it inherits, since RUNTIME-SEMANTICS ch. 7.10
-composes one stack per concrete type from them: a scope that names either carries all of them, as uchar's
-scenario layer does as well since uchar `2a0c6d60` (`ScenarioResolver`). A `uchar-ir-v1` document is served whole: a scope drops forms by rebuilding the model it
+groups, as uchar's scenario layer reads a scope (`FormIndex` through `ScenarioResolver.scopeForms`, then
+`CaseEmitter.withScope`) — and builds that document through uchar, so each entry point has its own KieBase and bean
+class loader and a form outside its scope does not decide whether it runs. Rule names and rule groups compare
+case-insensitively; a rule name carries the forms of that name or the rows of the decision table of that name, and a
+defaults group comes with the groups RUNTIME-SEMANTICS ch. 7.10 composes one stack per concrete type from. A `uchar-ir-v1` document is served whole: a scope drops forms by rebuilding the model it
 came from, which a document without its source does not have, so a scope that does not carry every form refuses the
 start. A descriptor without entry points (an empty `entrypoints` or none) starts, so that a descriptor can grow an
 entry point at a time: the service decides nothing, `/info` lists no entry point, and both adapters write

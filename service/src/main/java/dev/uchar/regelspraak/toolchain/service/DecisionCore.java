@@ -27,6 +27,7 @@ import dev.uchar.regelspraak.graph.ProducerConsumer.ElementKey;
 import dev.uchar.regelspraak.model.ParameterSet;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
+import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.transpiler.core.Coverage;
 import dev.uchar.regelspraak.transpiler.core.PeriodCoverage;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
@@ -237,7 +238,7 @@ public final class DecisionCore {
                 ProducerConsumer.producerIndex(model, model.prioritizedDefaults);
         ObjectNode defaults = defaultParameters(descriptor, model);
         for (ServiceDescriptor.Entrypoint ep : descriptor.entrypoints()) {
-            FormIndex.Choice choice = forms.scope(ep.scope());
+            ScenarioResolver.ScopeForms choice = forms.scope(ep.scope());
             if (!choice.withoutForm().isEmpty()) {
                 String name = choice.withoutForm().get(0);
                 List<String> uchar = forms.warningsAbout(name);
