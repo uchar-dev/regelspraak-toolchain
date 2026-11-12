@@ -95,6 +95,44 @@ class VerbaliserTest {
                 compoundsForVlucht(200, 5));
     }
 
+    static final String COUNTS = """
+            Objecttype de Vlucht (mv: Vluchten)
+                de afstand tot bestemming Numeriek (positief geheel getal) met eenheid km;
+                de bezetting Numeriek (positief geheel getal);
+                is ruim kenmerk (bijvoeglijk);
+                is bescheiden kenmerk (bijvoeglijk);
+            Regel ruim
+            geldig altijd
+            Een Vlucht is ruim
+            indien hij aan ten minste twee van de volgende voorwaarden voldoet:
+            - de afstand tot bestemming van de Vlucht is groter dan 1000 km
+            - de afstand tot bestemming van de Vlucht is groter dan 100 km
+            - de bezetting van de Vlucht is kleiner dan 10.
+            Regel bescheiden
+            geldig altijd
+            Een Vlucht is bescheiden
+            indien hij aan ten hoogste één van de volgende voorwaarden voldoet:
+            - de afstand tot bestemming van de Vlucht is groter dan 1000 km
+            - de bezetting van de Vlucht is kleiner dan 10.
+            """;
+
+    private static List<String> countsForVlucht(int afstand, int bezetting) throws Exception {
+        ExplanationSession engine = ExplanationSession.of(COUNTS);
+        Object v1 = engine.newInstance("Vlucht");
+        RegelSpraakRuntime.set(v1, Namen.ident("afstand tot bestemming", false), new BigDecimal(afstand));
+        RegelSpraakRuntime.set(v1, Namen.ident("bezetting", false), new BigDecimal(bezetting));
+        return engine.explain(Naming.CANONICAL, "Vlucht", Map.of("V1", v1));
+    }
+
+    /** "ten hoogste één van de volgende" holds after its first member already: that member does not hold, so the one
+     *  member left cannot exceed the threshold (RUNTIME-SEMANTICS ch. 5.10). The reading states the threshold and the
+     *  member read with its own verdict, "niet A", never "A" as if it held. */
+    @Test void compound_at_most_states_its_threshold_and_member_verdicts() throws Exception {
+        assertEquals("V1 is bescheiden, omdat ten hoogste 1 van de 2 voorwaarden geldt: niet de afstand tot"
+                        + " bestemming van de Vlucht (200 km) is groter dan 1.000 km",
+                countsForVlucht(200, 5).get(1));
+    }
+
     /** A negative value that rounds to zero at the declared scale is written as zero, without a sign: "-0,00" is no
      *  number the engine holds. A negative value that stays negative keeps its sign. */
     @Test void negative_value_rounding_to_zero_has_no_sign() {

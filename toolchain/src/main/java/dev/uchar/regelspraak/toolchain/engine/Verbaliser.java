@@ -2239,6 +2239,10 @@ public final class Verbaliser {
      *  de voorwaarde gelezen wordt; {@code ucharText} of uchar de regel schreef. Elke voorwaarde is een groep
      *  ({@link #conditionMeta}). */
     private void verbaliseCondition(Sentence.Builder b, Condition c, Read read, ObjectType subject, boolean ucharText) {
+        if (c instanceof Condition.Compound s && counting(s)) {
+            countingCompound(b, s, read, subject, ucharText);
+            return;
+        }
         if (c instanceof Condition.Compound s) {
             String conjunction = switch (s.quantifier()) {
                 case ALLE -> "en";
@@ -2259,6 +2263,43 @@ public final class Verbaliser {
             return;
         }
         verbaliseAtom(b, c, read, subject, ucharText);
+    }
+
+    /** Of samenstelling {@code s} een telling is waarvan de uitleg de drempel noemt. */
+    private static boolean counting(Condition.Compound s) {
+        return s.quantifier() == Condition.Quantifier.TEN_HOOGSTE;
+    }
+
+    /**
+     * Een samenstelling met een telling: de drempel ("ten hoogste 1 van de 2 voorwaarden geldt") en daarna elk lid dat
+     * de motor bereikte met zijn eigen oordeel, "A" of "niet A", verbonden met "en". Een telling kan gelden op leden die
+     * niet gelden (ten hoogste: de rest kan de drempel niet meer overschrijden, RUNTIME-SEMANTICS ch. 5.10); een lid
+     * zonder "niet" zou zeggen dat het geldt.
+     */
+    private void countingCompound(Sentence.Builder b, Condition.Compound s, Read read, ObjectType subject,
+                                  boolean ucharText) {
+        String phrase = switch (s.quantifier()) {
+            case TEN_HOOGSTE -> "ten hoogste";
+            default -> throw new IllegalStateException("de kwantor " + s.quantifier() + " is geen telling");
+        };
+        b.open(Part.Kind.CONDITION, conditionMeta(s, read));
+        b.leaf(Part.Kind.CONNECTIVE, phrase + " " + s.threshold() + " van de " + s.components().size()
+                + " voorwaarden " + (s.threshold() == 1 ? "geldt" : "gelden"));
+        boolean first = true;
+        for (Condition d : s.components())
+            if (read.reached(d)) {
+                if (!(read.of(d).value() instanceof Boolean holds))
+                    throw new IllegalStateException("de motor gaf voor een lid van de samenstelling \"" + summary(s)
+                            + "\" van " + read.form() + " op " + read.label() + " geen oordeel, maar "
+                            + read.of(d).value());
+                // zonder bereikt lid (ten hoogste d van n met d >= n) staat de drempel alleen
+                b.text(first ? ": " : " ");
+                if (!first) b.leaf(Part.Kind.CONNECTIVE, "en").text(" ");
+                first = false;
+                if (!holds) b.leaf(Part.Kind.CONNECTIVE, "niet").text(" ");
+                verbaliseCondition(b, d, read, subject, ucharText);
+            }
+        b.close(Part.Kind.CONDITION);
     }
 
     /** Wat de groep van voorwaarde {@code c} draagt: {@code holds}, het oordeel van de motor op haar knoop (geen
