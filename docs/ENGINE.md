@@ -201,8 +201,8 @@ refuse the start as well.
   convention, ch. 8.4), a convention of its replay that the request does not take over. A grid of more than one period
   or a timeline with a variable start uchar's case reader does not carry, and neither does the request (400
   `UNSUPPORTED`).
-- An attribute on a timeline in `output` is answered as its segments, in the same form, as uchar's write-back put them
-  on the bean (`"bootheffing": {"timeline": [{"to": "2024-01-01", "value": 5.00}, {"from": "2024-01-01", "value":
+- An attribute on a timeline in `output` is answered as its segments, in the same form, as uchar's end state of the
+  session gives them (`DroolsBackend.endStateOf`, from which the whole answer reads its values) (`"bootheffing": {"timeline": [{"to": "2024-01-01", "value": 5.00}, {"from": "2024-01-01", "value":
   6.00}]}`), an open bound left out, and null where no rule wrote one and the input gave none. A time-dependent
   characteristic in `output` refuses the start (`UNSUPPORTED`): the answer gives a characteristic as a boolean, and
   the bean holds its true periods.

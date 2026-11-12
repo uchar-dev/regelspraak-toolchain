@@ -5,27 +5,33 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.ComputeHelpers;
 import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
  * Builds the response JSON tree from a fired {@link Executor.Outcome}, an entry point's descriptor uitvoer
  * list, and the request's instance→objecttype map. Per uitvoer selector ({@code Objecttype.attribuut} /
- * {@code Objecttype:kenmerk}), it reads the value off every request instance that IS one of that objecttype
+ * {@code Objecttype:kenmerk}), it reads the value of every request instance that IS one of that objecttype
  * (IR-SPEC ch. 2.2 ⊑, see {@link DescriptorLoader#objectMatch} — a subtype instance is served by a selector
- * written against its supertype, exactly as the supertype's rules fire on it) and renders it:
+ * written against its supertype, exactly as the supertype's rules fire on it) in uchar's end state of the session
+ * ({@link Executor.Outcome#endState}, {@code DroolsBackend.endStateOf}): the derived value where a rule derived one,
+ * the input elsewhere, and none where the member is leeg. It renders it:
  * a {@link BigDecimal} as an EXACT JSON number (Jackson renders BigDecimal natively — never a double), a
  * {@code null}/leeg as JSON {@code null}, a kenmerk as a boolean, a date as an ISO string. It also emits the
  * {@code inconsistenties} array — the {@code line} names of every {@code Inconsistentie} fact — because the
@@ -86,12 +92,15 @@ public final class AnswerBuilder {
         ObjectNode root = NF.objectNode();
         ArrayNode instances = root.putArray("instances");
 
+        Map<String, EndState.EndObject> byLabel = new HashMap<>();
+        for (EndState.EndObject o : outcome.endState().objects()) if (o.label() != null) byLabel.put(o.label(), o);
         // group selectors per instance id, preserving instance order
-        for (var e : outcome.beans().entrySet()) {
-            String id = e.getKey();
-            Object bean = e.getValue();
+        for (String id : outcome.beans().keySet()) {
             ObjectType ot = typePerLabel.get(id);
             if (ot == null) continue;
+            EndState.EndObject object = byLabel.get(id);
+            if (object == null)
+                throw new IllegalStateException("uchars eindtoestand noemt het object '" + id + "' van het verzoek niet");
 
             ObjectNode attributes = NF.objectNode();
             ObjectNode characteristics = NF.objectNode();
@@ -99,13 +108,18 @@ public final class AnswerBuilder {
                 OutputSelector u = OutputSelector.parse(sel);
                 if (u == null) continue;
                 if (!DescriptorLoader.objectMatch(model, ot, u.objectType())) continue;
-                Object value = RegelSpraakRuntime.get(bean, RequestMapper.ident(u.member()));
-                if (u.characteristic()) characteristics.set(naming.characteristic(ot, u.member()), renderCharacteristic(value));
-                else if (!ot.dimensionsOf(u.member()).isEmpty())
-                    attributes.set(naming.attribute(ot, u.member()), cells(value, ot, u.member()));
-                else if (RequestMapper.isTemporal(ot, u.member()))
-                    attributes.set(naming.attribute(ot, u.member()), timeline(value, ot, u.member()));
-                else attributes.set(naming.attribute(ot, u.member()), rend(value, ot, u.member()));
+                if (u.characteristic()) {
+                    EndState.Member k = member(object, true, u.member());
+                    characteristics.set(naming.characteristic(ot, u.member()),
+                            NF.booleanNode(k != null && Boolean.TRUE.equals(k.value())));
+                } else if (!ot.dimensionsOf(u.member()).isEmpty())
+                    attributes.set(naming.attribute(ot, u.member()), cells(object, ot, u.member()));
+                else {
+                    EndState.Member a = member(object, false, u.member());
+                    Object value = a == null ? null : a.value();
+                    attributes.set(naming.attribute(ot, u.member()), value instanceof List<?> segments
+                            ? timeline(segments, ot, u.member()) : rend(value, ot, u.member()));
+                }
             }
             if (attributes.isEmpty() && characteristics.isEmpty()) continue;
             ObjectNode inst = NF.objectNode();
@@ -198,12 +212,24 @@ public final class AnswerBuilder {
         return null;
     }
 
+    /** The member {@code name} of {@code object} in the end state, an attribute without a cell or a characteristic
+     *  ({@code characteristic}); null where it holds no value. */
+    private static EndState.Member member(EndState.EndObject object, boolean characteristic, String name) {
+        String key = Namen.norm(name);
+        for (EndState.Member m : object.members())
+            if (m.characteristic() == characteristic && m.cell() == null && Namen.norm(m.name()).equals(key)) return m;
+        return null;
+    }
+
     /** Render a value of attribute {@code attribute} of {@code ot} as {@link #rend(Object, Datatype)} renders a value
-     *  of its datatype. A value of an attribute with absence markers ({@link Markers}) is uchar's constructor value: the
-     *  value {@code waarde(…)} as its payload, a marker as {@code {"marker": <naam>}}, as the request gives them. The
-     *  descriptor refuses another sum type in {@code output} ({@link DescriptorLoader}), so a constructor value on an
-     *  attribute without markers is a broken promise, and fails. */
-    private JsonNode rend(Object v, ObjectType ot, String attribute) {
+     *  of its datatype. The end state holds a derived number of the unbounded form that does not terminate as the
+     *  runtime's exact rational; the answer gives it as the decimal a bean holds ({@link ComputeHelpers#collapse}), the
+     *  form a timeline and the request carry. A value of an attribute with absence markers ({@link Markers}) is uchar's
+     *  constructor value: the value {@code waarde(…)} as its payload, a marker as {@code {"marker": <naam>}}, as the
+     *  request gives them. The descriptor refuses another sum type in {@code output} ({@link DescriptorLoader}), so a
+     *  constructor value on an attribute without markers is a broken promise, and fails. */
+    private JsonNode rend(Object exact, ObjectType ot, String attribute) {
+        Object v = ComputeHelpers.collapse(exact);
         if (!(v instanceof ConstructorValue c)) return rend(v, ot.attribute(attribute));
         Markers markers = Markers.of(ot, attribute);
         if (markers == null)
@@ -229,13 +255,13 @@ public final class AnswerBuilder {
     /** The value of the dimensioned attribute {@code attribute} of {@code ot} as its cells, {@code {"cells":
      *  [{"labels": [...], "value": <waarde|null>}, ...]}}: every cell of the attribute, its labels in their declared
      *  spelling, the first dimension outermost and each in the declared order of its labels, null for an empty cell.
-     *  {@code map} is the bean member, uchar's map of the filled cells by their key ({@link FactModelGenerator#cellKey}),
-     *  or null where the bean has none. */
-    private JsonNode cells(Object map, ObjectType ot, String attribute) {
-        if (map != null && !(map instanceof Map<?, ?>))
-            throw new IllegalStateException("het gedimensioneerde attribuut '" + attribute + "' staat op de bean als "
-                    + map.getClass().getName() + ", niet als uchars kaart van cellen");
-        Map<?, ?> filled = map == null ? Map.of() : (Map<?, ?>) map;
+     *  The end state lists the cells of {@code object} that hold a value, by their key
+     *  ({@link FactModelGenerator#cellKey}); a cell it does not list is empty. */
+    private JsonNode cells(EndState.EndObject object, ObjectType ot, String attribute) {
+        String key = Namen.norm(attribute);
+        Map<List<String>, Object> filled = new HashMap<>();
+        for (EndState.Member m : object.members())
+            if (!m.characteristic() && m.cell() != null && Namen.norm(m.name()).equals(key)) filled.put(m.cell(), m.value());
         ArrayNode cells = NF.arrayNode();
         for (List<String> labels : cellsOf(model, ot.dimensionsOf(attribute))) {
             ObjectNode cell = cells.addObject();
@@ -249,17 +275,13 @@ public final class AnswerBuilder {
     }
 
     /** The value of the attribute {@code attribute} of {@code ot} on a timeline as its segments, {@code {"timeline":
-     *  [{"from": <datum>, "to": <datum>, "value": <waarde|null>}, ...]}} in the order of the bean: the segments uchar's
-     *  write-back put there ({@code Period.beans}), a null bound left out, as uchar's case leaves out an open bound.
-     *  {@code segments} is the bean member, null where no rule wrote one and the input gave none: then null, as for an
-     *  empty value (uchar's RUNTIME-SEMANTICS ch. 3.1: such a timeline reads leeg on every day). */
-    private JsonNode timeline(Object segments, ObjectType ot, String attribute) {
-        if (segments == null) return NF.nullNode();
-        if (!(segments instanceof List<?> list))
-            throw new IllegalStateException("het attribuut '" + attribute + "' op een tijdlijn staat op de bean als "
-                    + segments.getClass().getName() + ", niet als lijst segmenten");
+     *  [{"from": <datum>, "to": <datum>, "value": <waarde|null>}, ...]}} in the order the end state gives them, the
+     *  bean model's segments ({@code Period.beans}), a null bound left out, as uchar's case leaves out an open bound.
+     *  A timeline attribute that holds no value is null, as an empty value (uchar's RUNTIME-SEMANTICS ch. 3.1: such a
+     *  timeline reads leeg on every day). */
+    private JsonNode timeline(List<?> segments, ObjectType ot, String attribute) {
         ArrayNode out = NF.arrayNode();
-        for (Object segment : list) {
+        for (Object segment : segments) {
             ObjectNode sn = out.addObject();
             Object from = RegelSpraakRuntime.get(segment, "van"), to = RegelSpraakRuntime.get(segment, "tot");
             if (from != null) sn.put("from", from.toString());
@@ -290,9 +312,5 @@ public final class AnswerBuilder {
             cells = longer;
         }
         return cells;
-    }
-
-    private JsonNode renderCharacteristic(Object v) {
-        return NF.booleanNode(Boolean.TRUE.equals(v));
     }
 }
