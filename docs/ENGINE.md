@@ -366,7 +366,10 @@ refuse the start as well.
 - A name the resolver bound to no declaration, an `Unresolved` node in the document an entry point builds or in the
   document the service is given, refuses the start, also with `--allow-markers` (exit 1, a `MALFORMED` violation on
   `source` per node: `onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk', bronregel 6`): it is a fault
-  in the source, not a form uchar does not carry, and a request that reached it would get a 422. A form that no entry
+  in the source, not a form uchar does not carry, and a request that reached it would get a 422. A form the IR carries
+  without a norm (RGS-092: the eleven test, a time-of-day part of a date-time, `regelversie X is gevuurd`) is a form
+  uchar does not carry: when every such node of an entry point's document is one, the entry point is a marker (below),
+  with the sentence `vorm zonder norm: <reason> — '<snippet>'`, as `check` gives exit 3 for it. A form that no entry
   point carries is not built, and the service does not check it; `bin/regelspraak check` checks the whole source.
 - What uchar does not carry — a refusal of its emitter, loader or backend (a construct the exec-model branch does
   not lower among them), or a scoped rule name that yields no form in uchar's model — makes the entry point a

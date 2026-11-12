@@ -10,6 +10,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -72,6 +73,49 @@ class StartupResolveTest {
         for (CoreConfig config : List.of(CoreConfig.strict(), CoreConfig.withMarkers()))
             assertUnresolved(assertThrows(ServiceError.class, () -> DecisionCore.buildFromDocument(
                     UNRESOLVED_DESCRIPTOR, document, config, Thread.currentThread().getContextClassLoader(), null)));
+    }
+
+    /** The eleven test is a form the IR carries without a norm (RGS-092): no fault in the source but a form uchar does
+     *  not carry, so the entry point is a marker, as {@code check} gives exit 3 for it — strict a MARKER violation
+     *  (exit 3), with markers allowed a start whose request gets the 503. */
+    private static final String WITHOUT_NORM = """
+        Objecttype de Jutter (mv: Jutters)
+            de naam Tekst;
+            is waardevol kenmerk (bijvoeglijk);
+
+        Regel elf
+            geldig altijd
+                Een Jutter is waardevol indien zijn naam aan de elfproef voldoet.
+        """;
+
+    private static final String WITHOUT_NORM_DESCRIPTOR = """
+        { "service": {"name":"e","version":"1"},
+          "entrypoints": [ { "name":"b","path":"b", "scope": {"ruleNames": ["elf"]},
+            "input": [], "output": ["Jutter:waardevol"] } ] }""";
+
+    @Test
+    void a_form_without_norm_makes_the_entry_point_a_marker() {
+        String document = UcharBuild.document(Resolver.resolve(WITHOUT_NORM));
+        ClassLoader loader = Thread.currentThread().getContextClassLoader();
+        for (boolean fromDocument : List.of(false, true)) {
+            ServiceError f = assertThrows(ServiceError.class, () -> {
+                if (fromDocument)
+                    DecisionCore.buildFromDocument(WITHOUT_NORM_DESCRIPTOR, document, CoreConfig.strict(), loader, null);
+                else
+                    DecisionCore.assemble(WITHOUT_NORM_DESCRIPTOR, Map.of("e.rgs", WITHOUT_NORM), CoreConfig.strict(),
+                            loader);
+            });
+            assertTrue(f.violations().size() == 1 && f.violations().get(0).kind() == Violation.Kind.MARKER
+                    && f.violations().get(0).message().contains("vorm zonder norm"), f.getMessage());
+            DecisionCore core = fromDocument
+                    ? DecisionCore.buildFromDocument(WITHOUT_NORM_DESCRIPTOR, document, CoreConfig.withMarkers(), loader,
+                            null)
+                    : DecisionCore.assemble(WITHOUT_NORM_DESCRIPTOR, Map.of("e.rgs", WITHOUT_NORM),
+                            CoreConfig.withMarkers(), loader);
+            assertFalse(core.entrypoint("b").executable(), fromDocument + "");
+            assertThrows(DecisionCore.NonExecutable.class, () -> core.process("b",
+                    DescriptorLoader.MAPPER.readTree("{\"instances\": []}")));
+        }
     }
 
     private static void assertUnresolved(ServiceError f) {

@@ -230,7 +230,6 @@ public final class DecisionCore {
         List<Violation> markerErrors = new ArrayList<>();
         List<Violation> scopeErrors = new ArrayList<>();
         java.util.Set<String> unresolved = new java.util.LinkedHashSet<>();
-        boolean onlyFormsWithoutNorm = true;
         // the producer index is model-wide (every form that WRITES a kenmerk/attribuut), computed once.
         Map<ElementKey, java.util.Set<String>> producers =
                 ProducerConsumer.producerIndex(model, model.prioritizedDefaults);
@@ -258,9 +257,12 @@ public final class DecisionCore {
                             .withOutside(outsideScope(model, scoped));
                 }
             } catch (UcharBuild.UnresolvedName u) {
-                // a fault in the source, not a form uchar does not carry: no marker, so allowMarkers does not start it
-                for (UcharBuild.Site site : u.sites()) unresolved.add(site.sentence());
-                onlyFormsWithoutNorm &= u.onlyFormsWithoutNorm();
+                // a form without a norm is a form uchar does not carry; any other node a fault in the source, which is
+                // no marker, so allowMarkers does not start it
+                if (u.onlyFormsWithoutNorm())
+                    marker(ep, u.sites().get(0).form(), u.getMessage(), defaults, config, perPath, markerErrors);
+                else
+                    for (UcharBuild.Site site : u.sites()) unresolved.add(site.sentence());
                 continue;
             } catch (UcharBuild.NotCarried ng) {
                 marker(ep, ng.construct(), ng.getMessage(), defaults, config, perPath, markerErrors);
@@ -272,7 +274,7 @@ public final class DecisionCore {
                 scopeErrors.addAll(scopeCompleteness(ep, model, scoped, producers));
             perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null, explanationBuild, explained));
         }
-        if (!unresolved.isEmpty()) throw unresolvedName(unresolved, onlyFormsWithoutNorm);
+        if (!unresolved.isEmpty()) throw unresolvedName(unresolved);
         if (!scopeErrors.isEmpty())
             throw new ServiceError("dienst start niet: onvolledige regel-scope (buiten-scope kenmerk-producent)",
                     scopeErrors);
@@ -354,7 +356,7 @@ public final class DecisionCore {
         DroolsBackend.Build build = null;
         DroolsBackend.Build explanationBuild = null;
         Verbaliser.Document explained = null;
-        UcharBuild.NotCarried refusal = null;
+        String refusal = null, construct = null;
         try {
             build = UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL);
             if (descriptor.entrypoints().stream().anyMatch(ServiceDescriptor.Entrypoint::explains)) {
@@ -362,9 +364,12 @@ public final class DecisionCore {
                 explained = Verbaliser.Document.of(IrLoader.loadWithPositions(document));
             }
         } catch (UcharBuild.UnresolvedName u) {
-            throw unresolvedName(u.sites().stream().map(UcharBuild.Site::sentence).toList(), u.onlyFormsWithoutNorm());
+            if (!u.onlyFormsWithoutNorm()) throw unresolvedName(u.sites().stream().map(UcharBuild.Site::sentence).toList());
+            refusal = u.getMessage();
+            construct = u.sites().get(0).form();
         } catch (UcharBuild.NotCarried ng) {
-            refusal = ng;
+            refusal = ng.getMessage();
+            construct = ng.construct();
         }
         Map<String, Entrypoint> perPath = new LinkedHashMap<>();
         List<Violation> markerErrors = new ArrayList<>();
@@ -380,7 +385,7 @@ public final class DecisionCore {
             }
             Map<String, Object> defaults = defaultGlobals(descriptor, model);
             if (refusal != null) {
-                marker(ep, refusal.construct(), refusal.getMessage(), defaults, config, perPath, markerErrors);
+                marker(ep, construct, refusal, defaults, config, perPath, markerErrors);
                 continue;
             }
             perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null,
@@ -397,10 +402,10 @@ public final class DecisionCore {
 
     /** The start refused for names the resolver bound to no declaration ({@link UcharBuild.UnresolvedName}), one
      *  violation per name: uchar would fault on each only when a request reaches it, so the service does not start
-     *  on them, with markers allowed or not. A form without a norm is refused the same way, under its own header. */
-    private static ServiceError unresolvedName(java.util.Collection<String> sentences, boolean onlyFormsWithoutNorm) {
-        return new ServiceError(onlyFormsWithoutNorm ? "dienst start niet: de bron draagt een vorm zonder norm"
-                : "dienst start niet: de bron draagt een onopgeloste naam", sentences.stream()
+     *  on them, with markers allowed or not. A document whose every such node is a form without a norm is no fault in
+     *  the source but a form uchar does not carry: its entry points are markers, as {@code check} gives exit 3. */
+    private static ServiceError unresolvedName(java.util.Collection<String> sentences) {
+        return new ServiceError("dienst start niet: de bron draagt een onopgeloste naam", sentences.stream()
                 .map(sentence -> Violation.of(Violation.Kind.MALFORMED, "source", sentence)).toList());
     }
 
