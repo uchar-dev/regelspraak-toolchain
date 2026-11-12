@@ -2,7 +2,7 @@
 
 ## What this repository is
 
-A distribution of RegelSpraak tooling — CLI, engine facade, scenario runner, decision service (JDK and Quarkus),
+A distribution of RegelSpraak tooling — CLI, scenario runner, decision service (JDK and Quarkus),
 Docker and Helm — built on **uchar**, which it carries as the git submodule `uchar/`. It succeeds the deprecated
 `yhavinga/regelspraak-java`. It has **no semantics of its own**: parser, resolver, emitter, loader, transpilers,
 runtime, fact-model generator, rule graph and scenario layer are uchar's. A question about what RegelSpraak means

@@ -1,4 +1,4 @@
-# The engine facade and the decision service
+# The build and the decision service
 
 Everything here fires through uchar: a RegelSpraak source is resolved by uchar's frontend, emitted as a
 `uchar-ir-v1` document, and built by uchar's Drools backend on its exec-model branch
@@ -7,67 +7,26 @@ model, compiles them into a class loader of their own, checks the bean contract 
 every side table the loader returns. It refuses a model with a construct the branch does not lower, so no KieBase
 here lacks a rule without saying so.
 
-## Using the engine
+## Firing a model
 
-```java
-RegelSpraakEngine engine = RegelSpraakEngine.compile(regelSpraakSource);   // resolve → emit → uchar's build
-Object persoon = engine.nieuw("Persoon");                                  // a generated fact bean
-RegelSpraakRuntime.set(persoon, "leeftijd", new BigDecimal(16));
-try (RegelSpraakEngine.Session s = engine.newSession()) {
-    s.insert(persoon)
-     .setGlobal("volwassenleeftijd", new BigDecimal(18))
-     .fire();                                  // fires to the fixpoint through uchar's entry
-    s.zetTerug();                              // the derived values onto persoon
-}
-```
+The one session facade is the service's `Executor`: per request a fresh session of the entry point's build, with the
+input and the parameters that uchar's input step read from the case the request mapper wrote (`CaseInput.of`,
+`CaseInput.setGlobals`), filled, fired and read through uchar's entry (`DroolsBackend.insert`, `fire`, `fixpointOf`
+and `setDerivedValues`; uchar's `backends/drools/README.md`, "The entry for consumers"). The scenario runner
+(`bin/regelspraak scenario`) plays a model's scenarios through uchar's report. A consumer in Java that fires a model
+without the service builds it with `UcharBuild` and goes through the same entry and input step, as `Executor` does.
 
-A session fills, fires and reads through uchar's entry (`DroolsBackend.insert`, `fire`, `fixpointOf` and
-`setDerivedValues`; uchar's `backends/drools/README.md`, "The entry for consumers"). `insert` and `insertAll`
-gather the beans until the first `fire()`, which puts them in and fires to the fixpoint; a later `fire()` only fires.
-Two statements go with the beans, before the first `fire()` as well. A consumer that sets an attribute on a timeline as
-the one segment of the period of the peildatum states it with `bucketScalar(bean, attribute)`: without it the branch
-reads a full timeline of one segment, and the subject's own total faults with an `InputFormFault`, while a form that
-needs the full timeline computes over that segment without a fault. `list(holder, role, members)` gives the order of a
-to-many list, which decides only which member a fault of a fold names; without it a list keeps the order of the
-inserts.
-The exec-model branch derives with truth maintenance, so a derived value is a fact of the session and the beans hold
-the input alone until `restore()`: `read()` gives what stands at the fixpoint of the last fire (uchar's `Fixpoint`: the
-derived values and characteristics, the objects and links the creations made, the evaluation faults as data, the
-inconsistencies) without writing anything, and `restore()` puts it on the beans, after which the session does not
-fire again. Between two fires a consumer changes an attribute or a characteristic of a bean of the session and calls
-`update(bean)`; an object that comes or goes, a changed relation or another global asks a fresh session, and
-`setGlobal` belongs before the first `fire()`. uchar's entry refuses each of these by name. A model with an object or
-a fact creation fires once per session: uchar refuses a second `fire()` there, so a change asks a fresh session. In a
-session that may fire again, a forgotten `update` uchar's entry does not refuse: the entry does not see an attribute
-or a characteristic set without one, so the next `fire()` fires nothing, and `read()` and `restore()` give the old
-fixpoint (uchar's `backends/drools/README.md`, "What a consumer can forget"). `fire()` returns the number of firings
-and throws with uchar's sentence when a run reaches no fixpoint;
-`restore()` throws every evaluation fault that stands at the fixpoint as uchar's own exception, two or more as
-`EvaluationFaults`: one of the types uchar's README names ("Faults", `Fault.KINDS`: `Breuk.DelingDoorNul`,
-`ComputeFault`, `WritersConflict`, `InputFormFault`, `WriteBoundaryFault`, `OpenSegmentFault`,
-`CharacteristicPeriodsFault` and `SecondFillingFault`, the fault of a fact creation that gives a to-one role a second
-filling). A fault is an evaluation fault by its place at the fixpoint, not
-by its type: `read().faults()` gives each as data, which tells it from an exception of the entry itself. `facts(…)`
-reads the working memory, the `Inconsistentie` facts among them.
-
-The facts are instances of the generated beans (`nieuw`, `beanLoader()`), in uchar's package
-`dev.uchar.regelspraak.facts`: the KieBase is built against those classes, so an object of a same-named class from
-another class loader never matches a rule. `newSession(asOfDate)` sets the `rekendatum` global;
-`newSession(asOfDate, parameterSets)` also selects each parameter's vintage on that one date. A time-dependent
-parameter (`voor elke maand`) is no vintage: uchar's branch reads it whole, from a global of type `List<Period>`
-(`Period.OPEN_FROM`, `Period.OPEN_TO` for an open bound), which `Session.setGlobal` takes, and the parameter-set
-loader refuses one by name. A global the rule base declares takes its value or the session fails with Drools'
-sentence; one it does not declare is not set. `compile` throws
-`RegelSpraakCompileException` for resolver errors, for a name the resolver bound to no declaration and for a model
-uchar refuses. Such a name stays in uchar's document as an `Unresolved` node, with a warning, and uchar's executors
+The facts are instances of the generated beans, in uchar's package `dev.uchar.regelspraak.facts`, which uchar's build
+compiles into a class loader of its own (`DroolsBackend.Build.beanLoader()`): the KieBase is built against those
+classes, so an object of a same-named class from another class loader never matches a rule. A name the resolver
+bound to no declaration stays in uchar's document as an `Unresolved` node, with a warning, and uchar's executors
 fault on it only when an evaluation reaches it (WF-044); `UcharBuild` builds no document that holds one
 (`UcharBuild.UnresolvedName`, each node by its snippet, its rule and the line of the warning that quotes it, or else
-its JSON pointer), so `compile`, `bin/regelspraak check` and `drl` (exit 1) and the service refuse it as a fault in
-the source. The frontend writes the same node for a form the IR carries without a norm (RGS-092: the eleven test, a
-time-of-day part of a date-time, `regelversie X is gevuurd`); such a node reads `vorm zonder norm: <reason> —
-'<snippet>'`, and `check` and `drl` exit 3 when every node is one. `bin/regelspraak facts <outdir>
-<source.rgs...>` (or `make facts` for the TOKA casus) writes the beans a model implies as source, for a consumer that
-wants to see them.
+its JSON pointer), so `bin/regelspraak check` and `drl` (exit 1) and the service refuse it as a fault in the source.
+The frontend writes the same node for a form the IR carries without a norm (RGS-092: the eleven test, a time-of-day
+part of a date-time, `regelversie X is gevuurd`); such a node reads `vorm zonder norm: <reason> — '<snippet>'`, and
+`check` and `drl` exit 3 when every node is one. `bin/regelspraak facts <outdir> <source.rgs...>` (or `make facts`
+for the TOKA casus) writes the beans a model implies as source, for a consumer that wants to see them.
 
 ## Building
 
@@ -75,12 +34,6 @@ wants to see them.
 make verify          # check-pin, then mvn -B -o verify -Dmaven.test.skip.exec=true over the whole reactor
 mvn -B -o verify -Dmaven.test.skip.exec=true -pl toolchain -am   # only the toolchain core and what it needs from uchar
 ```
-
-`RegelSpraakEngineTest` is the end-to-end proof: a rule compiles, fires over generated beans through uchar's entry
-and writes the derived values back onto them; a session that fires twice with an update in between reads what a fresh
-session reads; a bucket scalar and the order of a list reach uchar's entry with the first fire, and the session then
-gives what uchar's replay gives on the same case; a type error and a construct uchar does not lower both surface as
-`RegelSpraakCompileException`.
 
 ## The decision service
 

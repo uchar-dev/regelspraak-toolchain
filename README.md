@@ -41,7 +41,7 @@ main, and the pin is always a commit of that main ("The pin").
 |--------|------------|
 | `uchar/backends/drools` | uchar's Drools backend, built with uchar's own pom, without its test suite |
 | `uchar-frontend/` | uchar's RegelSpraak frontend compiled from `uchar/frontends/regelspraak`: the parser generated from uchar's grammar, the resolver and the emitters; the main sources only, so no tests |
-| `toolchain/` | the CLI (`RegelSpraakCli`), the engine facade (`RegelSpraakEngine`), the scenario runner and its CLI, the verbaliser and the parameterset loader |
+| `toolchain/` | the CLI (`RegelSpraakCli`), the build through uchar (`UcharBuild`), the scenario runner and its CLI, the verbaliser and the parameterset loader |
 | `service/` | the decision service on the JDK `HttpServer` (`DecisionCore`, `ServiceMain`, OpenAPI emitter, dev-only playground); its build also bundles the distribution into the one jar `bin/regelspraak` runs from |
 | `service-quarkus/` | the Quarkus adapter over the same service core |
 

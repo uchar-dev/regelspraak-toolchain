@@ -32,7 +32,7 @@
                              so the dependencyManagement below does not reach it.
       uchar-frontend         uchar's RegelSpraak frontend (grammar, resolver, emitter) compiled from
                              the submodule's source tree; its main sources only, so it has no tests.
-      toolchain              the own core: CLI, engine facade, scenario runner and its CLI, the
+      toolchain              the own core: CLI, the build through uchar, scenario runner and its CLI, the
                              verbaliser and the parameterset loader (dev.uchar.regelspraak.toolchain.*).
       service                the decision service on the JDK HttpServer.
       service-quarkus        the Quarkus adapter over the same service core.

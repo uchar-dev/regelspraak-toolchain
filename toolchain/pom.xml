@@ -11,10 +11,10 @@
   </parent>
 
   <artifactId>toolchain</artifactId>
-  <name>RegelSpraak toolchain core (CLI, engine facade, scenario runner)</name>
+  <name>RegelSpraak toolchain core (CLI, build through uchar, scenario runner)</name>
 
   <!--
-    The own core of the distribution: the CLI, the engine facade, the scenario runner and its CLI, the
+    The own core of the distribution: the CLI, the build through uchar (UcharBuild), the scenario runner and its CLI, the
     verbaliser and the parameterset loader. It reads only uchar's public API: the frontend (uchar-frontend)
     and the Drools backend, whose DroolsBackend.build(document, branch) is the one way to a KieBase.
 
