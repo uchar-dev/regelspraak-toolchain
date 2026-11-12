@@ -909,7 +909,8 @@ public final class OpenApiEmitter {
      *  {@code date-time} demands an offset, which the service refuses. */
     static final String DATE_TIME_PATTERN = "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}(\\.[0-9]{3})?$";
 
-    /** The error schema returned as a 4xx/5xx body: {error, field?, violations?}. */
+    /** The error schema returned as a 4xx/5xx body: {error, field?, violations?}, each violation as
+     *  {@code ServiceHttp} writes it. */
     private static ObjectNode errorSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
@@ -921,8 +922,17 @@ public final class OpenApiEmitter {
         props.putObject("field").put("type", "string");
         ObjectNode violationsSchema = props.putObject("violations");
         violationsSchema.put("type", "array");
-        violationsSchema.putObject("items").put("type", "object");
-        violationsSchema.put("description", "de verzameling schendingen, elk met kind/field/message.");
+        ObjectNode item = violationsSchema.putObject("items");
+        item.put("type", "object");
+        item.putArray("required").add("field").add("kind").add("error");
+        ObjectNode itemProps = item.putObject("properties");
+        itemProps.putObject("field").put("type", "string");
+        ObjectNode kind = itemProps.putObject("kind");
+        kind.put("type", "string");
+        ArrayNode kinds = kind.putArray("enum");
+        for (Violation.Kind k : Violation.Kind.values()) kinds.add(k.name());
+        itemProps.putObject("error").put("type", "string");
+        violationsSchema.put("description", "de verzameling schendingen, elk met field/kind/error.");
         return s;
     }
 

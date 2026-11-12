@@ -137,6 +137,20 @@ class OpenApiEmitterTest {
         assertEquals("string", error.at("/properties/error/type").asText(), s::toString);
     }
 
+    /** Each violation of a 400 is the object {@code ServiceHttp} writes: the {@code field} it names, its {@code kind}
+     *  and the sentence {@code error}. */
+    @Test
+    void the_error_body_names_each_violation_by_field_kind_and_error() {
+        JsonNode item = DOC.at("/components/schemas/Error/properties/violations/items");
+        assertEquals("[\"field\",\"kind\",\"error\"]", item.path("required").toString(), item::toString);
+        assertEquals(java.util.List.of("field", "kind", "error"), fields(item.path("properties")), item::toString);
+        assertEquals("string", item.at("/properties/field/type").asText(), item::toString);
+        assertEquals("string", item.at("/properties/error/type").asText(), item::toString);
+        java.util.List<String> kinds = new java.util.ArrayList<>();
+        for (JsonNode k : item.at("/properties/kind/enum")) kinds.add(k.asText());
+        assertEquals(Arrays.stream(Violation.Kind.values()).map(Enum::name).toList(), kinds, item::toString);
+    }
+
     /** A date-time is the lexeme the service reads and writes, {@code uchar-case-v0}'s: seconds always, a fraction of
      *  whole milliseconds where there is one, no offset. RFC 3339's {@code date-time} demands an offset the service
      *  refuses. */

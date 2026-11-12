@@ -3695,9 +3695,40 @@
           "violations": {
             "type": "array",
             "items": {
-              "type": "object"
+              "type": "object",
+              "required": [
+                "field",
+                "kind",
+                "error"
+              ],
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "UNKNOWN_REFERENCE",
+                    "MARKER",
+                    "UNKNOWN_FIELD",
+                    "WRONG_TYPE",
+                    "WRONG_UNIT",
+                    "UNKNOWN_ENUM_VALUE",
+                    "UNKNOWN_MARKER",
+                    "AMBIGUOUS_NAME",
+                    "UNKNOWN_VOCABULARY",
+                    "UNSUPPORTED",
+                    "MISSING_INSTANCE",
+                    "INCOMPLETE_SCOPE",
+                    "MALFORMED"
+                  ]
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
             },
-            "description": "de verzameling schendingen, elk met kind/field/message."
+            "description": "de verzameling schendingen, elk met field/kind/error."
           }
         }
       },
