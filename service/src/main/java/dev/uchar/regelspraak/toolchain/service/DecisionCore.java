@@ -720,10 +720,7 @@ public final class DecisionCore {
      * @throws NonExecutable  an entry point uchar does not carry
      */
     public String withoutExplanation(String path) {
-        Entrypoint ep = perPath.get(path);
-        if (ep == null) throw new UnknownPath(path);
-        if (!ep.executable()) throw new NonExecutable(ep);
-        return withoutExplanation(ep);
+        return withoutExplanation(entrypointAt(path));
     }
 
     private static String withoutExplanation(Entrypoint ep) {
@@ -732,10 +729,30 @@ public final class DecisionCore {
                 + " false";
     }
 
-    private Assessment process(String path, JsonNode requestTree, RequestOptions options, JsonNode expectations) {
+    /**
+     * Judges what a request to {@code path} asks beside its body, as {@link #process(String, JsonNode, RequestOptions)}
+     * judges it first: an adapter calls it before it reads the body, so a request that asks what this core does not give
+     * gets that answer whatever its body.
+     *
+     * @throws UnknownPath    a path no entry point has
+     * @throws NonExecutable  an entry point uchar does not carry
+     * @throws ServiceError   a vocabulary the model does not declare, a detail flag of a core without detail, an
+     *                        explanation the entry point does not give
+     */
+    public void admit(String path, RequestOptions options) {
+        admitted(entrypointAt(path), options);
+    }
+
+    private Entrypoint entrypointAt(String path) {
         Entrypoint ep = perPath.get(path);
         if (ep == null) throw new UnknownPath(path);
         if (!ep.executable()) throw new NonExecutable(ep);
+        return ep;
+    }
+
+    /** The naming of the answer {@code options} chooses at {@code ep}, after refusing what it asks that the core does
+     *  not give ({@link #admit}). */
+    private Naming admitted(Entrypoint ep, RequestOptions options) {
         List<Violation> choices = new ArrayList<>();
         Naming output = naming(options.vocabulary() != null ? options.vocabulary()
                 : ep.descriptor().vocabulary(), "vocabulary", choices);
@@ -748,6 +765,12 @@ public final class DecisionCore {
         if (withoutExplanation != null)
             choices.add(Violation.of(Violation.Kind.UNSUPPORTED, "explanation", withoutExplanation));
         if (!choices.isEmpty()) throw new ServiceError("verzoek valideert niet", choices);
+        return output;
+    }
+
+    private Assessment process(String path, JsonNode requestTree, RequestOptions options, JsonNode expectations) {
+        Entrypoint ep = entrypointAt(path);
+        Naming output = admitted(ep, options);
         // an explanation is given from the build with readings, which answers the request as well: one fire
         DroolsBackend.Build fired = options.explanation() ? ep.explanationBuild() : ep.build();
         RequestMapper mapper = new RequestMapper(model, fired, new NameReader(model, options.inputVocabulary()));

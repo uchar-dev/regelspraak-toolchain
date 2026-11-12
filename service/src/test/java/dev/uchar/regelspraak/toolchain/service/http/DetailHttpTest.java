@@ -442,6 +442,17 @@ class DetailHttpTest {
                 .getBytes(StandardCharsets.UTF_8), sink.body().getBytes(StandardCharsets.UTF_8));
     }
 
+    /** The flag is judged before the body is read: a body that is no JSON gets the 400 of the flag, not that of the
+     *  body. */
+    @Test
+    void without_detail_the_flag_before_the_body() throws Exception {
+        HttpResponse<String> r = post(withoutDetail, "berging", "trace=true", "{geen json");
+        assertEquals(400, r.statusCode(), r.body());
+        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).get("violations");
+        assertEquals(List.of("trace"), text(s, "field"), r.body());
+        assertEquals("UNSUPPORTED", s.get(0).get("kind").asText(), r.body());
+    }
+
     /** A request without a flag gets from a service with detail the bytes a service without detail gives, for an
      *  answer and for a 422. */
     @Test

@@ -55,7 +55,7 @@ public class DecideResource {
                 ServiceHttp.isSet(trace), ServiceHttp.isSet(coverage), ServiceHttp.isSet(fixpoint),
                 ServiceHttp.isSet(explanationParts));
         try {
-            ServiceHttp.Answer answer = ServiceHttp.post(this::decide, path, options, body);
+            ServiceHttp.Answer answer = ServiceHttp.post(core, this::decide, path, options, body);
             return response(answer.status(), answer.body());
         } catch (RuntimeException intern) {
             LOG.error("interne fout bij POST /" + path, intern);

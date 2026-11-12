@@ -186,7 +186,7 @@ public final class ServiceHttp {
             }
             String path = ex.getRequestURI().getPath();
             if (path.startsWith("/")) path = path.substring(1);
-            Answer answer = post(processor, path, options(ex.getRequestURI().getRawQuery()),
+            Answer answer = post(core, processor, path, options(ex.getRequestURI().getRawQuery()),
                     new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
             send(ex, answer.status(), answer.body());
         } catch (Exception intern) {
@@ -201,23 +201,26 @@ public final class ServiceHttp {
 
     /**
      * The answer to a {@code POST} of {@code body} to the entry point at {@code path}, asking {@code options}: the
-     * status and body both adapters send. An empty body, one that is no JSON and JSON {@code null} are a 400 on
-     * {@code body}; otherwise {@code processor} answers, and what it throws maps as the class comment says. Any other
-     * exception leaves here, for the adapter to log and answer with a 500.
+     * status and body both adapters send. {@code core} judges the path and the options first
+     * ({@link DecisionCore#admit}), before the body is read; then an empty body, one that is no JSON and JSON
+     * {@code null} are a 400 on {@code body}; otherwise {@code processor} answers. What the two throw maps as the class
+     * comment says; any other exception leaves here, for the adapter to log and answer with a 500.
      */
-    public static Answer post(Processor processor, String path, RequestOptions options, String body) {
-        if (body == null || body.isEmpty())
-            return new Answer(400, errorBody("leeg verzoek-body: verwacht JSON met een 'instances'-array", "body"));
-        JsonNode tree;
+    public static Answer post(DecisionCore core, Processor processor, String path, RequestOptions options,
+                              String body) {
         try {
-            tree = MAPPER.readTree(body);
-        } catch (JsonProcessingException malformed) {
-            return new Answer(400, errorBody("verzoek-body is geen geldige JSON: " + malformed.getOriginalMessage(),
-                    "body"));
-        }
-        if (tree == null || tree.isNull())
-            return new Answer(400, errorBody("verzoek-body is geen geldige JSON (null)", "body"));
-        try {
+            core.admit(path, options);
+            if (body == null || body.isEmpty())
+                return new Answer(400, errorBody("leeg verzoek-body: verwacht JSON met een 'instances'-array", "body"));
+            JsonNode tree;
+            try {
+                tree = MAPPER.readTree(body);
+            } catch (JsonProcessingException malformed) {
+                return new Answer(400, errorBody("verzoek-body is geen geldige JSON: " + malformed.getOriginalMessage(),
+                        "body"));
+            }
+            if (tree == null || tree.isNull())
+                return new Answer(400, errorBody("verzoek-body is geen geldige JSON (null)", "body"));
             return new Answer(200, processor.process(path, tree, options));
         } catch (DecisionCore.UnknownPath unknown) {
             return new Answer(404, errorBody("onbekend pad: '/" + path + "'", null));
