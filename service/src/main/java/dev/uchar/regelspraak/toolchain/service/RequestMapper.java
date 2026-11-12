@@ -193,7 +193,7 @@ public final class RequestMapper {
                         inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.INPUT_PRECISION_FAULT, f));
                         return;
                     }
-                    if (decoded != null) globals.put(globalName(p.name()), decoded);
+                    if (decoded != null) globals.put(ident(p.name()), decoded);
                 });
             }
         }
@@ -988,16 +988,9 @@ public final class RequestMapper {
         return ot.characteristicGranularityOf(name) != null || ot.characteristicTimelineCountOf(name) != null;
     }
 
-    /** The parameter GLOBAL name the exec-model branch registers — {@link Namen#ident}(naam,false), the
-     *  camelCase form (the formula uchar's {@code TmsTranspiler} names a parameter's global with, and the name uchar's
-     *  entry asks a consumer to set; recomputed here because the transpiler keeps that step private). */
-    static String globalName(String name) { return Namen.ident(name, false); }
-
-    /** The bean property name for a RegelSpraak name — {@link Namen#ident}(naam,false), the SAME
-     *  camelCase form {@link FactModelGenerator} names the field/getter/setter with (non-letter/digit runs
-     *  collapsed, so a hyphenated "datum-tijd …" maps to "dateTime…"). Handing this to
-     *  {@link RegelSpraakRuntime#set}/{@link RegelSpraakRuntime#get} (which prepend set/get + PascalCase over
-     *  whitespace-free input) resolves to exactly the generated accessor — reusing the bridge without a naming
-     *  divergence. */
-    static String prop(String name) { return Namen.ident(name, false); }
+    /** The camelCase name uchar gives a RegelSpraak name in Java ({@link Namen#ident}{@code (name, false)}, runs of
+     *  non-letters and non-digits collapsed): the global of a parameter, which uchar's transpiler names so and keeps that
+     *  step private, and the property of a generated bean, which {@link RegelSpraakRuntime#get} reaches through the
+     *  accessor uchar's generator writes. */
+    static String ident(String name) { return Namen.ident(name, false); }
 }

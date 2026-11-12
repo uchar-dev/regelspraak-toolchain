@@ -105,13 +105,13 @@ public final class FixpointGivens {
             if (ot == null)
                 throw new IllegalStateException("het verzoek heeft een object '" + e.getKey() + "' zonder objecttype");
             Object bean = e.getValue();
-            Map<String, ObjectNode> attributes = attributes(ot, a -> RegelSpraakRuntime.get(bean, RequestMapper.prop(a)),
+            Map<String, ObjectNode> attributes = attributes(ot, a -> RegelSpraakRuntime.get(bean, RequestMapper.ident(a)),
                     model, ng);
             Set<String> characteristics = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             Map<String, ArrayNode> periods = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             for (ObjectType t : ot.chain())
                 for (String k : t.characteristics) {
-                    Object v = RegelSpraakRuntime.get(bean, RequestMapper.prop(k));
+                    Object v = RegelSpraakRuntime.get(bean, RequestMapper.ident(k));
                     if (Boolean.TRUE.equals(v)) characteristics.add(k);
                     // a time-dependent characteristic holds its true periods on the bean, as uchar's segments
                     else if (v instanceof List<?> segments && !segments.isEmpty()) periods.put(k, periodNodes(segments));

@@ -612,7 +612,7 @@ public final class DecisionCore {
         return "in de " + part + (text == null ? "" : " '" + text + "'") + " van default " + d.path();
     }
 
-    /** The descriptor parameter defaults, decoded per-parameter datatype to (globalName -> value), a time-dependent
+    /** The descriptor parameter defaults, decoded per-parameter datatype to (global name -> value), a time-dependent
      *  parameter as its timeline ({@link TimelineInput}), as a request gives it. A number its declaration does not
      *  hold is a violation with uchar's sentence of EF-004 ({@code CaseRunner.inputFits}), so the descriptor does not
      *  load, as a request with that value gets the evaluation fault. */
@@ -639,7 +639,7 @@ public final class DecisionCore {
                 errors.add(Violation.of(Violation.Kind.WRONG_TYPE, field, f.getMessage()));
                 continue;
             }
-            if (value != null) globals.put(RequestMapper.globalName(p.name()), value);
+            if (value != null) globals.put(RequestMapper.ident(p.name()), value);
         }
         if (!errors.isEmpty()) throw new ServiceError("descriptor parameter-default ongeldig", errors);
         return globals;
@@ -920,7 +920,7 @@ public final class DecisionCore {
      *   <li><b>datum absent + NOT multi-vintage</b> — the degenerate single-value case: resolve with
      *       {@link LocalDate#EPOCH} (date-independent by construction, mirroring the ScenarioRunner).</li>
      * </ul>
-     * The resolved values are keyed by the engine's camelCase global name ({@link RequestMapper#globalName}),
+     * The resolved values are keyed by the engine's camelCase global name ({@link RequestMapper#ident}),
      * exactly as the descriptor defaults are.
      */
     private Map<String, Object> vintageGlobals(LocalDate date) {
@@ -939,7 +939,7 @@ public final class DecisionCore {
         }
         Map<String, Object> globals = new LinkedHashMap<>();
         for (var e : resolved.entrySet())
-            globals.put(RequestMapper.globalName(e.getKey()), e.getValue());
+            globals.put(RequestMapper.ident(e.getKey()), e.getValue());
         return globals;
     }
 

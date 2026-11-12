@@ -102,7 +102,7 @@ public final class AnswerBuilder {
                 OutputSelector u = OutputSelector.parse(sel);
                 if (u == null) continue;
                 if (!DescriptorLoader.objectMatch(model, ot, u.objectType())) continue;
-                Object value = RegelSpraakRuntime.get(bean, RequestMapper.prop(u.member()));
+                Object value = RegelSpraakRuntime.get(bean, RequestMapper.ident(u.member()));
                 if (u.characteristic()) characteristics.set(naming.characteristic(ot, u.member()), renderCharacteristic(value));
                 else if (!ot.dimensionsOf(u.member()).isEmpty())
                     attributes.set(naming.attribute(ot, u.member()), cells(value, ot, u.member()));
