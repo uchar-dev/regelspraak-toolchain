@@ -605,6 +605,7 @@ public final class OpenApiEmitter {
                 + " en rol-relaties, plus optionele parameter-overrides en rekendatum.");
         ArrayNode req = s.putArray("required");
         req.add("instances");
+        s.put("additionalProperties", false);
         ObjectNode props = s.putObject("properties");
 
         // peildatum: the ONE date authority (fase 5). It IS the rekendatum — a rule reading Rekendatum and the
@@ -636,6 +637,7 @@ public final class OpenApiEmitter {
         inst.put("type", "object");
         ArrayNode instReq = inst.putArray("required");
         instReq.add("type"); instReq.add("id");
+        inst.put("additionalProperties", false);
         ObjectNode instProps = inst.putObject("properties");
         instProps.putObject("type").put("type", "string");
         instProps.putObject("id").put("type", "string");
@@ -655,6 +657,7 @@ public final class OpenApiEmitter {
         rel.put("type", "object");
         ArrayNode relReq = rel.putArray("required");
         relReq.add("factType"); relReq.add("roles");
+        rel.put("additionalProperties", false);
         ObjectNode relProps = rel.putObject("properties");
         relProps.putObject("factType").put("type", "string");
         freeObject(relProps.putObject("roles"), "rolnaam -> id of lijst van ids.");

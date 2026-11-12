@@ -53,7 +53,8 @@ described in `docs/ENGINE.md`.
 
 Since the card `engelse-namen` (2026-10-18) everything a caller sees is English, except what comes from RegelSpraak
 (the kinds of declarations `ATTRIBUUT`, `FEITTYPE`, `ROL` ..., the predicates, the global `rekendatum`, the names a
-model declares) and the sentences of the messages, which keep their text. The old names no longer work:
+model declares) and the sentences of the messages, which keep their text. The old names no longer work; a request
+that writes one at the top, in an instance or in a relation gets a 400 `MALFORMED` on that key:
 
 - **JSON** of the requests, the answers, `/info`, the playground and the OpenAPI document: `instanties`, `attributen`,
   `kenmerken`, `rollen`, `relaties`, `feittype`, `peildatum` are `instances`, `attributes`, `characteristics`, `roles`,

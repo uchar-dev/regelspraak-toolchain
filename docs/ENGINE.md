@@ -136,7 +136,11 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   `?explanationParts=true` asks the explanation as well and adds `explanationParts` right after `explanation`: per
   sentence, in the same order, the array of its parts ("The parts of an explanation", below); the texts of the leaves
   after each other are the sentence, and without the flag the answer is byte for byte what it was. The service makes no
-  bean itself: `RequestMapper` validates the request (names, types, units; a 400 with the field path) and writes it as
+  bean itself: `RequestMapper` validates the request (names, types, units; a 400 with the field path; a key the request
+  form does not have at the top — `asOfDate`, `rekendatum`, `parameters`, `instances`, `relations` — in an instance —
+  `type`, `id`, `attributes`, `characteristics`, `roles` — or in a relation — `factType`, `roles` — a 400 `MALFORMED` on
+  its path, an old name such as `peildatum` or `attributen` included; a role key of a relation that names no role of
+  its fact type a 400 `UNKNOWN_FIELD`) and writes it as
   the input of a `uchar-case-v0` case, `{"asOfDate", "input": {"instances": [...]}}` with the ids of the request as
   labels, the inline `roles` and each relation of `relations` as `roles` (a relation on the end whose role toward the
   other is to-one, or on its first end where both roles are to-many). uchar's input step reads that case

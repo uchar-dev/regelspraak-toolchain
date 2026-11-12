@@ -87,6 +87,11 @@ import java.util.Map;
 public final class RequestMapper {
 
     private static final JsonNodeFactory NF = JsonNodeFactory.instance;
+    /** The keys of the request, of an instance and of a relation; another key is refused with its path. */
+    private static final List<String> REQUEST_KEYS = List.of("asOfDate", "rekendatum", "parameters", "instances",
+            "relations");
+    private static final List<String> INSTANCE_KEYS = List.of("type", "id", "attributes", "characteristics", "roles");
+    private static final List<String> RELATION_KEYS = List.of("factType", "roles");
     /** The {@code dateTime} lexeme of {@code uchar-case-v0}: the seconds always written, a fraction of whole
      *  milliseconds only where there is one. */
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("uuuu-MM-dd'T'HH:mm:ss");
@@ -134,6 +139,7 @@ public final class RequestMapper {
         // the years uchar's input step will refuse, in the order it reads the case: the evaluation date first, then the
         // attributes in the order of the case; it stops at the first
         List<CaseRefusal> refusals = new ArrayList<>();
+        unknownKeys(request.tree(), REQUEST_KEYS, "", s);
 
         // 1. peildatum / rekendatum — ONE date authority (fase 5). 'peildatum' is the preferred name, 'rekendatum'
         //    the existing alias: the two are the SAME notion. Both present and UNEQUAL is a violation naming BOTH
@@ -201,6 +207,7 @@ public final class RequestMapper {
             for (int i = 0; i < insts.size(); i++) {
                 JsonNode in = insts.get(i);
                 String path = "instances[" + i + "]";
+                unknownKeys(in, INSTANCE_KEYS, path, s);
                 JsonNode typeN = in.get("type");
                 JsonNode idN = in.get("id");
                 if (typeN == null || !typeN.isTextual()) {
@@ -284,6 +291,19 @@ public final class RequestMapper {
             throw new IllegalStateException("uchars invoerstap weigerde de link " + f.label() + " -" + f.role() + "-> "
                     + f.target() + ", die het verzoek niet schreef: " + ((RuntimeException) f).getMessage());
         return path;
+    }
+
+    /** Adds a {@link Violation.Kind#MALFORMED} on every key of {@code object} outside {@code known}, on its path below
+     *  {@code path} (empty: the top of the request): the service would otherwise answer as if the key were not
+     *  there, an old name ({@code peildatum}, {@code attributen}) included. */
+    private static void unknownKeys(JsonNode object, List<String> known, String path, List<Violation> s) {
+        if (object == null || !object.isObject()) return;
+        object.fieldNames().forEachRemaining(key -> {
+            if (!known.contains(key))
+                s.add(Violation.of(Violation.Kind.MALFORMED, path.isEmpty() ? key : path + "." + key,
+                        "onbekende sleutel '" + key + "'" + (path.isEmpty() ? " in het verzoek" : " in " + path)
+                                + "; de sleutels zijn " + String.join(", ", known)));
+        });
     }
 
     /** Parse an ISO-datum node (yyyy-MM-dd) into a {@link LocalDate}, or {@code null} when absent/null. A
@@ -783,6 +803,7 @@ public final class RequestMapper {
         for (int i = 0; i < relations.size(); i++) {
             JsonNode rel = relations.get(i);
             String path = "relations[" + i + "]";
+            unknownKeys(rel, RELATION_KEYS, path, s);
             JsonNode ftN = rel.get("factType");
             JsonNode rolesN = rel.get("roles");
             if (ftN == null || !ftN.isTextual()) {
@@ -844,9 +865,8 @@ public final class RequestMapper {
     }
 
     /** The roles of a relation keyed by their declared names, which {@link #endPoints} looks them up by: each written
-     *  name read as a role of {@code ft}, and in {@code written} the key the request wrote for that declared name. A
-     *  name no role of {@code ft} answers to stays as written, so the endpoint count refuses the relation; null after
-     *  adding the violation of an ambiguous or a repeated role. */
+     *  name read as a role of {@code ft}, and in {@code written} the key the request wrote for that declared name; null
+     *  after adding the violation of an ambiguous or a repeated role, or of a name no role of {@code ft} answers to. */
     private JsonNode rolesRead(FactType ft, JsonNode rolesN, String path, Map<String, String> written,
                                List<Violation> s) {
         com.fasterxml.jackson.databind.node.ObjectNode wasRead =
@@ -857,7 +877,13 @@ public final class RequestMapper {
             var e = it.next();
             NameReader.Reading reading = reader.roleIn(ft, e.getKey());
             if (read(reading, e.getKey(), path + "." + e.getKey(), duplicate, s).refused()) { error = true; continue; }
-            String declared = reading instanceof NameReader.Found g ? g.declaration().name() : e.getKey();
+            if (!(reading instanceof NameReader.Found g)) {
+                s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, path + "." + e.getKey(), "onbekende rol '"
+                        + e.getKey() + "' in feittype '" + ft.name + "'" + reader.pinnedClause()));
+                error = true;
+                continue;
+            }
+            String declared = g.declaration().name();
             wasRead.set(declared, e.getValue());
             written.put(declared, e.getKey());
         }
@@ -885,7 +911,6 @@ public final class RequestMapper {
         if (reciprocal && roles.size() == 1) {
             String role = roles.get(0).name();
             JsonNode v = rolesN.get(role);
-            if (v == null) v = rolesN.elements().hasNext() ? rolesN.elements().next() : null;
             if (v != null && v.isArray())
                 v.forEach(n -> sink.add(new String[]{role, n.asText()}));
             else if (v != null) sink.add(new String[]{role, v.asText()});

@@ -9,6 +9,7 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
@@ -182,6 +183,19 @@ class RequestMapperTest {
         Object bean = r.world().beans().get("P1");
         Object v = dev.uchar.regelspraak.runtime.RegelSpraakRuntime.get(bean, "teBetalenBelasting");
         assertTrue(v instanceof BigDecimal, "waarde moet BigDecimal zijn, was " + (v == null ? "null" : v.getClass()));
+    }
+
+    /** A key the request form does not have is refused with its path, at the top, in an instance and in a relation:
+     *  the service would otherwise answer as if it were not there. The old names are such keys. */
+    @Test
+    void an_unknown_key_is_malformed_with_its_path() {
+        var r = map("""
+            { "peildatum": "2024-06-15", "relaties": [],
+              "instances": [ { "type": "Vlucht", "id": "V1", "attributen": { "vluchtdatum": "2024-06-15" } } ],
+              "relations": [] }""");
+        assertEquals(List.of("peildatum", "relaties", "instances[0].attributen"),
+                r.violations().stream().map(Violation::field).toList(), r.violations().toString());
+        assertTrue(r.violations().stream().allMatch(v -> v.kind() == Violation.Kind.MALFORMED), r.violations().toString());
     }
 
     private static JsonNode parse(String json) {

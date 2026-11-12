@@ -526,6 +526,7 @@
         "required": [
           "instances"
         ],
+        "additionalProperties": false,
         "properties": {
           "asOfDate": {
             "type": "string",
@@ -550,6 +551,7 @@
                 "type",
                 "id"
               ],
+              "additionalProperties": false,
               "properties": {
                 "type": {
                   "type": "string"
@@ -583,6 +585,7 @@
                 "factType",
                 "roles"
               ],
+              "additionalProperties": false,
               "properties": {
                 "factType": {
                   "type": "string"

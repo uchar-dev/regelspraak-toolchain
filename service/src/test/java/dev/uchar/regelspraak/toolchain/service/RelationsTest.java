@@ -126,6 +126,22 @@ class RelationsTest {
         assertEquals(Violation.Kind.WRONG_TYPE, f.violations().get(0).kind(), f.violations().toString());
     }
 
+    /** A key of a relation beside factType and roles, and a role key no role of the fact type answers to, are refused
+     *  with their path; the relation is not written. */
+    @Test
+    void an_unknown_key_of_a_relation_is_refused() {
+        var r = map("""
+            { "instances": [ { "type": "Vlucht", "id": "V1" }, { "type": "Natuurlijk persoon", "id": "P1" } ],
+              "relations": [ { "factType": "Vlucht van natuurlijke personen", "sinds": "2020-01-01",
+                              "roles": { "reis": "V1", "passagier": "P1" } },
+                             { "factType": "Vlucht van natuurlijke personen",
+                              "roles": { "reis": "V1", "passagier": "P1", "kapitein": "P1" } } ] }""");
+        assertEquals(List.of("relations[0].sinds", "relations[1].roles.kapitein"),
+                r.violations().stream().map(Violation::field).toList(), r.violations().toString());
+        assertEquals(Violation.Kind.MALFORMED, r.violations().get(0).kind(), r.violations().toString());
+        assertEquals(Violation.Kind.UNKNOWN_FIELD, r.violations().get(1).kind(), r.violations().toString());
+    }
+
     @Test
     void unknown_fact_type_is_reported() {
         var r = map("""
