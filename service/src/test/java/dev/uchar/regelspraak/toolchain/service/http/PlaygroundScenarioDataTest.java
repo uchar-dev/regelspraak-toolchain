@@ -133,7 +133,7 @@ class PlaygroundScenarioDataTest {
         assertEquals("FAIL", s.get("status").asText(), s.toString());
         assertTrue(s.get("explanationError").asText().startsWith("uchars replay speelde de case niet uit: "), s.toString());
         JsonNode error = s.at("/fixpoint/faults/0");
-        assertEquals("WRITERS_CONFLICT", error.get("kind").asText(), s.toString());
+        assertEquals("EF-016", error.get("code").asText(), s.toString());
         assertEquals("helpersdeel van een berging", error.get("rule").asText());
         assertEquals("B", error.get("subject").asText());
         assertTrue(error.get("sentence").asText().contains("helpersdeel bij veel helpers"), error.toString());

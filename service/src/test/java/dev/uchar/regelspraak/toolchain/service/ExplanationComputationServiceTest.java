@@ -674,7 +674,7 @@ class ExplanationComputationServiceTest {
      *  second writer that does not hold (taxatie of V1) and with a validity window (keurwaarde of V1) the input of the
      *  request stands, where the answer was empty; beside a writer that gives 50 the target is 50 (taxatie of V2);
      *  beside a conditional initialisation the initialisation fills an empty target (beoordeling of V1) and an input
-     *  stands (beoordeling of V2); those three were a 422 WRITERS_CONFLICT. The answer gives what stands at the
+     *  stands (beoordeling of V2); those three were a 422 EF-016. The answer gives what stands at the
      *  fixpoint, with and without the explanation. Where the target holds a value the rule did not write, the input or
      *  that of another writer, the explanation says that the rule that gave no value decided nothing; on an empty
      *  target (keurwaarde of V2) it says that the rule gave no value. */

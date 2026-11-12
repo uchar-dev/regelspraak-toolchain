@@ -112,9 +112,10 @@ class OpenApiEmitterTest {
     }
 
     /** The 422 of every entry point names the body {@link AnswerBuilder#evaluationFault} builds, and no other fields:
-     *  {@code status} EVALUATION_FAULT, the sentence {@code fout}, and {@code fouten}, each with its {@code soort}, one of
-     *  the kinds of {@link EvaluationFault.Kind}, and uchar's sentence {@code fout}; and, not required, the detail a
-     *  request may ask ({@code trace}, {@code dekking}, {@code fixpunt} or {@code fixpointError}). */
+     *  {@code status} EVALUATION_FAULT, the sentence {@code error}, and {@code faults}, each with the {@code code} of its
+     *  fault kind (EF-###, nullable), its {@code params} (an object of strings) and uchar's sentence {@code error}; and,
+     *  not required, the detail a request may ask ({@code trace}, {@code coverage}, {@code fixpoint} or
+     *  {@code fixpointError}). */
     @Test
     void the_422_describes_the_body_of_an_evaluation_fault() {
         for (ServiceDescriptor.Entrypoint ep : DESCRIPTOR.entrypoints())
@@ -128,10 +129,11 @@ class OpenApiEmitterTest {
         assertEquals("string", s.at("/properties/error/type").asText(), s::toString);
         assertEquals("array", s.at("/properties/faults/type").asText(), s::toString);
         JsonNode error = s.at("/properties/faults/items");
-        assertEquals("[\"kind\",\"error\"]", error.path("required").toString(), s::toString);
-        assertEquals(java.util.List.of("kind", "error"), fields(error.path("properties")), s::toString);
-        assertEquals(Arrays.stream(EvaluationFault.Kind.values()).map(Enum::name).toList(),
-                error.at("/properties/kind/enum").valueStream().map(JsonNode::asText).toList(), s::toString);
+        assertEquals("[\"code\",\"params\",\"error\"]", error.path("required").toString(), s::toString);
+        assertEquals(java.util.List.of("code", "params", "error"), fields(error.path("properties")), s::toString);
+        assertEquals("^EF-[0-9]{3}$", error.at("/properties/code/pattern").asText(), s::toString);
+        assertTrue(error.at("/properties/code/nullable").asBoolean(), s::toString);
+        assertEquals("string", error.at("/properties/params/additionalProperties/type").asText(), s::toString);
         assertEquals("string", error.at("/properties/error/type").asText(), s::toString);
     }
 

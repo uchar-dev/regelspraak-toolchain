@@ -80,10 +80,10 @@ import java.util.concurrent.TimeoutException;
  *       KieBase, and an answer without the construct would be an answer to another rule set.</li>
  *   <li>{@link EvaluationFault} → {@code 422}: the rules give an evaluation fault on this input, which stands at the
  *       fixpoint ({@link AnswerBuilder#evaluationFault}): {@code {"status": "EVALUATION_FAULT", "error": …, "faults":
- *       [{"kind": …, "error": <uchar's sentence>}, …]}}.</li>
+ *       [{"code": <EF-###>, "params": {…}, "error": <uchar's sentence>}, …]}}.</li>
  *   <li>{@link NoFixpoint} → {@code 422}: the session of the request reached no fixpoint, at uchar's fire cap or its
  *       creation budget ({@link AnswerBuilder#noFixpoint}): {@code {"status": "NO_FIXPOINT", "error": <uchar's
- *       sentence>}}.</li>
+ *       sentence>, "code": <EF-015 or null>, "params": {…}}}.</li>
  *   <li>{@link Limit} → {@code 422}: uchar's Drools branch reaches a limit at the fixpoint, a value it cannot hold
  *       ({@link AnswerBuilder#limit}): {@code {"status": "LIMIT", "error": …, "code": <uchar's register code>,
  *       "reason": <uchar's sentence>}}.</li>

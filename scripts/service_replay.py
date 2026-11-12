@@ -27,6 +27,14 @@ explanation-computed-attributes: "<onderwerp> heeft als ..." met de berekening a
 explanation-defaults-computation ook die over een waarde die een defaults-groep besliste, en het aantal gelezen waarden
 met een schrijver die de zin van hun (object, canonical) vinden (kaart explanation-read-objects-and-displaced). Een
 uitleg die de dienst niet geeft, is een afwijking.
+Met --red speelt het script de rode cases van de opgegeven mappen (casebestanden met expectedFault): per case een
+verzoek, en het antwoord moet een 422 zijn met de foutsoort die de case vastlegt, zoals uchars gate 8 haar aanhoudt:
+een fout (status EVALUATION_FAULT, of NO_FIXPOINT voor het creatiebudget) waarvan code de vastgelegde code is en
+params de vastgelegde parameters bevat (een deelverzameling). Uitvoer per case "<map>/<case>\t<STATUS>\t<detail>":
+  FAULT    de vastgelegde code en parameters staan in de 422 (detail: de code);
+  REFUSED  de dienst weigert het verzoek met een 400, start niet op het document, of het verzoek drukt de case niet uit
+           (detail: de weigering);
+  FAIL     elk ander antwoord (detail: wat).
 Het script oordeelt niet over de hele set: de poortscripts (check-service-replay.sh, check-twins.sh) doen dat.
 """
 import argparse
@@ -690,6 +698,65 @@ def play(golden, map_, descriptor_path=None, explanation=False):
         return [(golden, "FAIL", str(a))]
 
 
+def red_faults(answer):
+    """De fouten van een 422 als (code, params): de elementen van faults, of de 422 zonder fixpunt zelf."""
+    if answer.get("status") == "NO_FIXPOINT":
+        return [(answer.get("code"), answer.get("params") or {})]
+    return [(f.get("code"), f.get("params") or {}) for f in answer.get("faults", [])]
+
+
+def play_red(name, map_):
+    """De uitkomstregels van de rode cases van één map, één per case: FAULT, REFUSED of FAIL."""
+    out = []
+    document = json.load(open(os.path.join(map_, "ir.json")))
+    cases = []
+    for path in sorted(glob.glob(os.path.join(map_, "case*.json"))):
+        c = json.load(open(path))
+        if "expectedFault" in c:
+            cases.append((os.path.basename(path), c))
+    if not cases:
+        return [(name, "FAIL", "geen casebestand met expectedFault")]
+    requests = []
+    for case_name, c in cases:
+        try:
+            requests.append((case_name, request_body(c), c))
+        except NotExpressible as n:
+            out.append((f"{name}/{case_name}", "REFUSED", f"het verzoek drukt de case niet uit: {n}"))
+    if not requests:
+        return out
+    source = os.path.join(map_, "source.rgs")
+    if not os.path.exists(source):
+        source = os.path.join(map_, "ir.json")
+    with tempfile.TemporaryDirectory(prefix="dienst-rood-") as workdir:
+        descriptor_path = os.path.join(workdir, "rood.service.json")
+        try:
+            with open(descriptor_path, "w") as f:
+                json.dump(descriptor(name, document, []), f, indent=1)
+            with Service(descriptor_path, source, workdir) as service:
+                for case_name, v, c in requests:
+                    key = f"{name}/{case_name}"
+                    pinned = c["expectedFault"]
+                    status, text_ = service.ask("POST", "/replay", v)
+                    if status == 400:
+                        violations = json.loads(text_).get("violations", [])
+                        first = violations[0] if violations else {}
+                        out.append((key, "REFUSED", f"400 {first.get('kind')} {first.get('field')}: {first.get('error')}"))
+                        continue
+                    if status != 422:
+                        out.append((key, "FAIL", f"{status} {text_[:400]}"))
+                        continue
+                    faults = red_faults(json.loads(text_))
+                    if any(code == pinned["code"] and all(params.get(k) == w for k, w in pinned["params"].items())
+                           for code, params in faults):
+                        out.append((key, "FAULT", pinned["code"]))
+                    else:
+                        out.append((key, "FAIL", f"422 zonder {pinned['code']} {pinned['params']}: {text_[:400]}"))
+        except (NotExpressible, Deviation) as n:
+            # a document the service does not start on: every case of it is refused
+            return out + [(f"{name}/{case_name}", "REFUSED", f"de dienst start niet: {n}") for case_name, _, _ in requests]
+    return out
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     ap.add_argument("--corpus", required=True, help="de map met de goldens (uchar/corpus/golden)")
@@ -697,11 +764,14 @@ def main():
     ap.add_argument("--descriptor", action="append", default=[], help="<golden>=<path>: een eigen descriptor")
     ap.add_argument("--explanation", action="store_true",
                     help="vraag elk verzoek ook met ?explanation=true&explanationParts=true")
-    ap.add_argument("goldens", nargs="+", help="goldens, als pad relatief aan --corpus")
+    ap.add_argument("--red", action="store_true",
+                    help="speel de rode cases van de mappen (--corpus: uchar/corpus/red) en toets hun foutsoort")
+    ap.add_argument("goldens", nargs="+", help="goldens (of met --red rode mappen), als pad relatief aan --corpus")
     a = ap.parse_args()
     own = dict(d.split("=", 1) for d in a.descriptor)
     with concurrent.futures.ThreadPoolExecutor(max_workers=a.workers) as pool:
-        tasks = [pool.submit(play, g, os.path.join(a.corpus, g), own.get(g), a.explanation) for g in a.goldens]
+        tasks = [pool.submit(play_red, g, os.path.join(a.corpus, g)) if a.red
+                 else pool.submit(play, g, os.path.join(a.corpus, g), own.get(g), a.explanation) for g in a.goldens]
         for t in tasks:
             for key, status, detail in t.result():
                 fields = detail.split("\t") if status == "PLAYED" else [detail]

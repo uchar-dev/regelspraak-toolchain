@@ -20,6 +20,14 @@
 # een gelijkheid, zoals gate 12 EXPECTED_PLAYED pint): een nieuwe golden of case die speelt, is voor een lijst die
 # alleen niet-spelers noemt onzichtbaar. Een lege set faalt.
 #
+# De rode leg: elke rode case van uchar (uchar/corpus/red, een casebestand met expectedFault) waarop uchars gate 8 de
+# Drools-tak laat falen, dus elke rode map die niet in de Drools-lijst van uchar/scripts/check-red.sh staat, gaat als
+# verzoek door de dienst (scripts/service_replay.py --red). Het antwoord is een 422 met een fout waarvan code de
+# vastgelegde code is en params de vastgelegde parameters bevat, de deelverzamelingsregel van gate 8. Een case waarop de
+# dienst het verzoek met een 400 weigert, niet start of die het verzoek niet uitdrukt, staat in RED_REFUSED met de
+# reden; die lijst faalt in beide richtingen op veroudering. EXPECTED_RED_FAULTS pint het aantal cases met hun
+# foutsoort (een gelijkheid). Een lege set faalt.
+#
 # REPLAY_WORKERS (standaard 4) is het aantal diensten dat tegelijk draait.
 set -u
 cd "$(dirname "$0")/.."
@@ -296,6 +304,31 @@ is_undetermined_listed() {
 
 is_excluded() { local e; for e in "${REPLAY_EXCLUDED[@]}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1; }
 
+# De rode cases ("<map>/<case>|<reden>") die de dienst weigert vóór uchar de fout kan geven: een 400 op het verzoek, een
+# document waarop hij niet start, of een case die het verzoek niet uitdrukt. Faalt in beide richtingen op veroudering.
+RED_REFUSED=(
+  "as-of-date-calendar/case1.json|een rekendatum die geen kalenderdag is (EF-003): 400 WRONG_TYPE op rekendatum"
+  "duplicate-instance-label/case1.json|een id dat twee instanties dragen (EF-039): 400 MALFORMED op het id"
+  "ever-unique-temporal-key-bucket-scalar/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
+  "input-date-calendar/case1.json|een datum die geen kalenderdag is (EF-003): 400 WRONG_TYPE op het attribuut"
+  "jutterswet-emmerscalair-gehele-jaar/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
+  "jutterswet-emmerscalair-gevolg/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
+  "jutterswet-emmerscalair-knip/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
+  "jutterswet-emmerscalair-per-periode/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
+  "undeclared-input-name/case1.json|een attribuut dat het document niet declareert (EF-040): 400 UNKNOWN_FIELD op het attribuut"
+  "unknown-role-target-label/case1.json|een rol naar een id dat geen instantie draagt (EF-002): 400 UNKNOWN_FIELD op de rol"
+  "unresolved-behind-a-holding-condition/case1.json|een Unresolved-knoop in het document (EF-019 waar de evaluatie hem bereikt): de dienst start niet op een onopgeloste naam"
+  "wf044-unresolved-guard/case1.json|een Unresolved-knoop in het document (EF-019 waar de evaluatie hem bereikt): de dienst start niet op een onopgeloste naam"
+  "wf044-unresolved-reached/case1.json|een Unresolved-knoop in het document (EF-019 waar de evaluatie hem bereikt): de dienst start niet op een onopgeloste naam"
+)
+# Het aantal rode cases dat door de dienst zijn foutsoort geeft (een gelijkheid). Gemeten bij de pin van uchar
+# 1b42bea65: 64 van de 77 cases van de 53 rode mappen waarop gate 8 de Drools-tak laat falen.
+EXPECTED_RED_FAULTS=64
+
+is_red_refused() {
+  local e; for e in "${RED_REFUSED[@]+"${RED_REFUSED[@]}"}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1
+}
+
 # De golden van een sleutel: een case-sleutel eindigt op haar casebestand ("<golden>/case….json"), een
 # golden-sleutel is de golden.
 golden_of() { case "$1" in */case*.json) printf '%s' "${1%/*}" ;; *) printf '%s' "$1" ;; esac; }
@@ -416,9 +449,58 @@ fi
 [ "$cases" -eq "$EXPECTED_REPLAY_CASES" ] \
   || fail "$cases cases speelden, EXPECTED_REPLAY_CASES pint $EXPECTED_REPLAY_CASES (een nieuwe case die speelt: zet het getal bij)"
 
+# --- de rode leg ----------------------------------------------------------------------------------------------
+RED=uchar/scripts/check-red.sh
+[ -f "$RED" ] || fail "$RED ontbreekt (is de submodule geïnitialiseerd?)"
+red_unplayed=$(awk '/cat > "\$excl" <<.EOF./{f=1;next} f&&/^EOF$/{f=0} f' "$RED" | sed -n 's/^\([^|]*\)|.*/\1/p' | sort)
+[ -n "$red_unplayed" ] || fail "geen regels van de Drools-lijst gelezen uit $RED"
+red_set=()
+while IFS= read -r d; do
+  r=${d#uchar/corpus/red/}
+  printf '%s\n' "$red_unplayed" | grep -qxF "$r" && continue
+  grep -l '"expectedFault"' "$d"/case*.json >/dev/null 2>&1 || continue
+  red_set+=("$r")
+done < <(find uchar/corpus/red -mindepth 1 -maxdepth 1 -type d | sort)
+[ ${#red_set[@]} -gt 0 ] || fail "lege rode set: geen rode map waarop gate 8 de Drools-tak laat falen"
+
+red_output=$(python3 scripts/service_replay.py --red --corpus uchar/corpus/red \
+    --workers "${REPLAY_WORKERS:-4}" "${red_set[@]}") || fail "de replay-driver faalde op de rode leg"
+red_faults=0; red_refused=0; red_deviations=(); red_unnamed=(); red_outdated=(); red_keys=$'\n'
+while IFS=$'\t' read -r k status detail; do
+  [ -n "$k" ] || continue
+  red_keys="$red_keys$k"$'\n'
+  case "$status" in
+    FAULT) is_red_refused "$k" && red_outdated+=("$k geeft zijn foutsoort maar staat in RED_REFUSED")
+           red_faults=$((red_faults + 1)) ;;
+    REFUSED) is_red_refused "$k" || red_unnamed+=("$k :: $detail")
+             red_refused=$((red_refused + 1)) ;;
+    *) red_deviations+=("$k :: $status $detail") ;;
+  esac
+done <<< "$red_output"
+for e in "${RED_REFUSED[@]+"${RED_REFUSED[@]}"}"; do
+  k="${e%%|*}"
+  case "$red_keys" in *$'\n'"$k"$'\n'*) ;; *) red_outdated+=("$k staat in RED_REFUSED maar zit niet in de rode set") ;; esac
+done
+if [ ${#red_deviations[@]} -gt 0 ]; then
+  echo "check-service-replay: FAIL — ${#red_deviations[@]} rode case(s) geven niet hun foutsoort:" >&2
+  printf '    %s\n' "${red_deviations[@]}" >&2; exit 1
+fi
+if [ ${#red_unnamed[@]} -gt 0 ]; then
+  echo "check-service-replay: FAIL — ${#red_unnamed[@]} rode case(s) geweigerd zonder regel in RED_REFUSED:" >&2
+  printf '    %s\n' "${red_unnamed[@]}" >&2; exit 1
+fi
+if [ ${#red_outdated[@]} -gt 0 ]; then
+  echo "check-service-replay: FAIL — RED_REFUSED is verouderd:" >&2
+  printf '    %s\n' "${red_outdated[@]}" >&2; exit 1
+fi
+[ "$red_faults" -gt 0 ] || fail "geen rode case gaf haar foutsoort (een lege leg is een faal)"
+[ "$red_faults" -eq "$EXPECTED_RED_FAULTS" ] \
+  || fail "$red_faults rode cases gaven hun foutsoort, EXPECTED_RED_FAULTS pint $EXPECTED_RED_FAULTS"
+
 echo "check-service-replay: PASS"
 echo "  set van gate 12: ${#set_goldens[@]} goldens (uchars EXPECTED_PLAYED $uchar_played)"
 echo "  gespeeld door de dienst: $played goldens (pin $EXPECTED_REPLAY_PLAYED), $cases cases (pin $EXPECTED_REPLAY_CASES)"
 echo "  uitgesloten: $excl goldens en $excl_cases cases, bij naam met reden"
 echo "  uitleg: $sentences zinnen, elk gelijk aan haar stukken, $conditions uitgelegde voorwaarden (vloer $EXPECTED_MIN_EXPLAINED_CONDITIONS), $computations berekende waarden (vloer $EXPECTED_MIN_EXPLAINED_COMPUTATIONS), $links gelezen waarden aan hun zin gekoppeld (vloer $EXPECTED_MIN_READ_LINKS), \"niet is vast te stellen\" bij ${#EXPLANATION_UNDETERMINED[@]} golden(s) op de lijst"
+echo "  rode leg: ${#red_set[@]} rode mappen; $red_faults cases met hun foutsoort (pin $EXPECTED_RED_FAULTS), $red_refused geweigerd met reden"
 echo "  duur: ${duration}s met ${REPLAY_WORKERS:-4} diensten tegelijk"

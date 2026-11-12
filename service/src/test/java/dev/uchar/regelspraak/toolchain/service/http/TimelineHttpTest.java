@@ -254,7 +254,7 @@ class TimelineHttpTest {
             {"timeline":[{"value":2.505}]}""", 1));
         assertEquals(422, r.statusCode(), r.body());
         JsonNode body = tree(r.body());
-        assertEquals("INPUT_PRECISION_FAULT", body.at("/faults/0/kind").asText(), r.body());
+        assertEquals("EF-004", body.at("/faults/0/code").asText(), r.body());
     }
 
     // ---------------- an attribute as its timeline, a characteristic as its periods ----------------
@@ -349,7 +349,7 @@ class TimelineHttpTest {
             {"instances":[{"type":"Jutter","id":"J1","attributes":{
               "strandloon":{"timeline":[{"from":"2025-01-01","to":"2025-03-01","value":10.5}]}}}]}""");
         assertEquals(422, r.statusCode(), r.body());
-        assertEquals("INPUT_PRECISION_FAULT", tree(r.body()).at("/faults/0/kind").asText(), r.body());
+        assertEquals("EF-004", tree(r.body()).at("/faults/0/code").asText(), r.body());
     }
 
     @Test
@@ -431,7 +431,7 @@ class TimelineHttpTest {
         JsonNode body = tree(r.body());
         assertEquals("EVALUATION_FAULT", body.get("status").asText(), r.body());
         assertEquals(1, body.get("faults").size(), r.body());
-        assertEquals("OPEN_SEGMENT_FAULT", body.at("/faults/0/kind").asText(), r.body());
+        assertEquals("EF-036", body.at("/faults/0/code").asText(), r.body());
         String sentence = body.at("/faults/0/error").asText();
         assertTrue(sentence.contains("bootheffing") && sentence.contains("J1"), sentence);
     }
@@ -442,7 +442,7 @@ class TimelineHttpTest {
             {"asOfDate":"2024-06-15","instances":[{"type":"Jutter","id":"J1"}]}""");
         assertEquals(422, r.statusCode(), r.body());
         JsonNode body = tree(r.body());
-        assertEquals("CHARACTERISTIC_PERIODS_FAULT", body.at("/faults/0/kind").asText(), r.body());
+        assertEquals("EF-023", body.at("/faults/0/code").asText(), r.body());
         String sentence = body.at("/faults/0/error").asText();
         assertTrue(sentence.contains("havenplichtig") && sentence.contains("J1"), sentence);
     }

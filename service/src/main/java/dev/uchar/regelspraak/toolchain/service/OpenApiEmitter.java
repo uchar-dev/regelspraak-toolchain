@@ -240,7 +240,8 @@ public final class OpenApiEmitter {
         answer(responses, "404", "onbekend pad", "#/components/schemas/Error");
         ObjectNode unanswered = responses.putObject("422");
         unanswered.put("description", "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout"
-                + " kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of"
+                + " code, params en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars"
+                + " zin, code en params; of"
                 + " uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin");
         ArrayNode oneOf = unanswered.putObject("content").putObject("application/json").putObject("schema")
                 .putArray("oneOf");
@@ -878,14 +879,11 @@ public final class OpenApiEmitter {
         for (String v : new String[]{"factType", "firstRole", "first", "secondRole", "second"})
             linkProps.putObject(v).put("type", "string");
         ObjectNode errors = list(props, "faults", "de evaluatiefouten die aan het fixpunt staan, elk met de vorm die"
-                + " haar gaf, het object waarover zij gaat, haar kind en uchars zin.");
+                + " haar gaf, het object waarover zij gaat, de code en de parameters van haar foutsoort en uchars zin.");
         ObjectNode faultProps = errors.putObject("properties");
         faultProps.putObject("rule").put("type", "string");
         faultProps.putObject("subject").put("type", "string");
-        ObjectNode kind = faultProps.putObject("kind");
-        kind.put("type", "string");
-        ArrayNode kinds = kind.putArray("enum");
-        for (EvaluationFault.Kind k : EvaluationFault.Kind.values()) kinds.add(k.name());
+        faultKind(faultProps);
         faultProps.putObject("sentence").put("type", "string");
         ObjectNode inc = list(props, "inconsistencies", "de gefaalde consistentietoetsen met hun rule en subject,"
                 + " elk null als er geen is.");
@@ -922,14 +920,29 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    /** The 422 body, honest to {@link AnswerBuilder#evaluationFault}: {status, error, faults[{kind, error}]}, with the
-     *  kinds of {@link EvaluationFault.Kind}. */
+    /** The code and the parameters of a fault kind, as {@link AnswerBuilder#code} writes them, on {@code props}. */
+    private static void faultKind(ObjectNode props) {
+        ObjectNode code = props.putObject("code");
+        code.put("type", "string");
+        code.put("nullable", true);
+        code.put("pattern", "^EF-[0-9]{3}$");
+        code.put("description", "de code van de foutsoort (uchars RUNTIME-SEMANTICS ch. 5.7b), zoals een rode case van"
+                + " uchar haar vastlegt in expectedFault; null waar uchar voor de fout geen soort noemt.");
+        ObjectNode params = props.putObject("params");
+        params.put("type", "object");
+        params.putObject("additionalProperties").put("type", "string");
+        params.put("description", "de parameters van de foutsoort, elk een tekst, met de namen van ch. 5.7b; leeg waar"
+                + " de soort er geen heeft of waar uchar geen soort noemt.");
+    }
+
+    /** The 422 body, honest to {@link AnswerBuilder#evaluationFault}: {status, error, faults[{code, params, error}]}. */
     private static ObjectNode evaluationFaultSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer"
                 + " evaluatiefouten, of een getal van het verzoek past niet in zijn declaratie, of een cel van het"
-                + " verzoek bestaat niet of staat er twee keer in; elke fout met haar kind en uchars zin.");
+                + " verzoek bestaat niet of staat er twee keer in; elke fout met de code en de parameters van haar"
+                + " foutsoort en uchars zin.");
         ArrayNode req = s.putArray("required");
         req.add("status"); req.add("error"); req.add("faults");
         ObjectNode props = s.putObject("properties");
@@ -945,24 +958,9 @@ public final class OpenApiEmitter {
         ObjectNode item = errors.putObject("items");
         item.put("type", "object");
         ArrayNode itemReq = item.putArray("required");
-        itemReq.add("kind"); itemReq.add("error");
+        itemReq.add("code"); itemReq.add("params"); itemReq.add("error");
         ObjectNode itemProps = item.putObject("properties");
-        ObjectNode kind = itemProps.putObject("kind");
-        kind.put("type", "string");
-        ArrayNode kinds = kind.putArray("enum");
-        for (EvaluationFault.Kind k : EvaluationFault.Kind.values()) kinds.add(k.name());
-        kind.put("description", "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een"
-                + " berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die"
-                + " verschillen; INPUT_FORM_FAULT: een tijdlijn van het verzoek waar een regel de waarde in de periode"
-                + " van de rekendatum leest, zoals het eigen totaal van het onderwerp; WRITE_BOUNDARY_FAULT: een waarde die niet in de"
-                + " gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet"
-                + " in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus"
-                + " zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel"
-                + " van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd;"
-                + " OPEN_SEGMENT_FAULT: een totaal over een segment met een open grens dat niet 0 is;"
-                + " CHARACTERISTIC_PERIODS_FAULT: de perioden waarin een tijdsafhankelijk kenmerk geldt, met een open"
-                + " grens; SECOND_FILLING_FAULT: een feitcreatie die een naar-één-rol een tweede, andere vulling"
-                + " geeft.");
+        faultKind(itemProps);
         ObjectNode sentence = itemProps.putObject("error");
         sentence.put("type", "string");
         sentence.put("description", "uchars zin; een object van het verzoek heet daarin naar zijn id.");
@@ -970,15 +968,15 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    /** The 422 body of a session without a fixpoint, honest to {@link AnswerBuilder#noFixpoint}: {status, error}, and
-     *  the detail a request may ask, where the fixpoint gives way to the reason there is none. */
+    /** The 422 body of a session without a fixpoint, honest to {@link AnswerBuilder#noFixpoint}: {status, error, code,
+     *  params}, and the detail a request may ask, where the fixpoint gives way to the reason there is none. */
     private static ObjectNode noFixpointSchema() {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De regels geven op deze invoer geen antwoord: de sessie bereikte geen fixpunt, want uchars"
                 + " vuurplafond of creatiebudget is bereikt. Er staat dan niets om te lezen.");
         ArrayNode req = s.putArray("required");
-        req.add("status"); req.add("error");
+        req.add("status"); req.add("error"); req.add("code"); req.add("params");
         ObjectNode props = s.putObject("properties");
         ObjectNode status = props.putObject("status");
         status.put("type", "string");
@@ -986,6 +984,7 @@ public final class OpenApiEmitter {
         ObjectNode error = props.putObject("error");
         error.put("type", "string");
         error.put("description", "uchars zin: welk plafond of budget bereikt is.");
+        faultKind(props);
         props.putObject("trace").put("$ref", "#/components/schemas/Trace");
         props.putObject("coverage").put("$ref", "#/components/schemas/Coverage");
         ObjectNode fixpointError = props.putObject("fixpointError");

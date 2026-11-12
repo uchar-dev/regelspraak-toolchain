@@ -61,7 +61,9 @@ themselves, each instance on a free port, from the jar `bin/regelspraak jar` nam
 source is newer, so neither gate rewrites it while the other gates read it), and replay uchar's case files over
 HTTP; the replay takes its set from uchar's gate 12 and pins the numbers of goldens and cases that play
 (equalities) beside a reason-carrying list of the cases that do not play and the goldens the service does not start
-on, which fails when stale.
+on, which fails when stale. Its red leg sends every red case of uchar on which uchar's gate 8 lets the Drools branch
+fault through the service and demands the pinned code and parameters in the 422 (`EXPECTED_RED_FAULTS`, an
+equality, beside the reason-carrying `RED_REFUSED`).
 `make scenario-test` runs the golden TOKA manifest; the scenarios uchar's scenario resolver refuses are listed with
 a fragment of the refusal in `scripts/toka-manifest-exclusions.txt`.
 

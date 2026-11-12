@@ -159,7 +159,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout code, params en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin, code en params; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -353,7 +353,7 @@
             }
           },
           "422": {
-            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout kind en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout code, params en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin, code en params; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
             "content": {
               "application/json": {
                 "schema": {
@@ -707,7 +707,7 @@
       },
       "EvaluationFault": {
         "type": "object",
-        "description": "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer evaluatiefouten, of een getal van het verzoek past niet in zijn declaratie, of een cel van het verzoek bestaat niet of staat er twee keer in; elke fout met haar kind en uchars zin.",
+        "description": "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer evaluatiefouten, of een getal van het verzoek past niet in zijn declaratie, of een cel van het verzoek bestaat niet of staat er twee keer in; elke fout met de code en de parameters van haar foutsoort en uchars zin.",
         "required": [
           "status",
           "error",
@@ -730,25 +730,23 @@
             "items": {
               "type": "object",
               "required": [
-                "kind",
+                "code",
+                "params",
                 "error"
               ],
               "properties": {
-                "kind": {
+                "code": {
                   "type": "string",
-                  "enum": [
-                    "DIVISION_BY_ZERO",
-                    "COMPUTE_FAULT",
-                    "WRITERS_CONFLICT",
-                    "INPUT_FORM_FAULT",
-                    "WRITE_BOUNDARY_FAULT",
-                    "INPUT_PRECISION_FAULT",
-                    "CELL_FAULT",
-                    "OPEN_SEGMENT_FAULT",
-                    "CHARACTERISTIC_PERIODS_FAULT",
-                    "SECOND_FILLING_FAULT"
-                  ],
-                  "description": "DIVISION_BY_ZERO: een deling door een numerieke nul; COMPUTE_FAULT: een fout van een berekening of van de rekendatum; WRITERS_CONFLICT: twee schrijvers van één attribuut die verschillen; INPUT_FORM_FAULT: een tijdlijn van het verzoek waar een regel de waarde in de periode van de rekendatum leest, zoals het eigen totaal van het onderwerp; WRITE_BOUNDARY_FAULT: een waarde die niet in de gedeclareerde decimalen van haar doel past; INPUT_PRECISION_FAULT: een getal van het verzoek dat niet in de gedeclareerde decimalen van zijn attribuut, parameter of cel past, geweigerd vóór de sessie, dus zonder trace, coverage en fixpoint; CELL_FAULT: een cel van het verzoek waarvan de labels geen cel van het attribuut noemen, of die het verzoek twee keer geeft, ook vóór de sessie geweigerd; OPEN_SEGMENT_FAULT: een totaal over een segment met een open grens dat niet 0 is; CHARACTERISTIC_PERIODS_FAULT: de perioden waarin een tijdsafhankelijk kenmerk geldt, met een open grens; SECOND_FILLING_FAULT: een feitcreatie die een naar-één-rol een tweede, andere vulling geeft."
+                  "nullable": true,
+                  "pattern": "^EF-[0-9]{3}$",
+                  "description": "de code van de foutsoort (uchars RUNTIME-SEMANTICS ch. 5.7b), zoals een rode case van uchar haar vastlegt in expectedFault; null waar uchar voor de fout geen soort noemt."
+                },
+                "params": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "de parameters van de foutsoort, elk een tekst, met de namen van ch. 5.7b; leeg waar de soort er geen heeft of waar uchar geen soort noemt."
                 },
                 "error": {
                   "type": "string",
@@ -1061,7 +1059,7 @@
           },
           "faults": {
             "type": "array",
-            "description": "de evaluatiefouten die aan het fixpunt staan, elk met de vorm die haar gaf, het object waarover zij gaat, haar kind en uchars zin.",
+            "description": "de evaluatiefouten die aan het fixpunt staan, elk met de vorm die haar gaf, het object waarover zij gaat, de code en de parameters van haar foutsoort en uchars zin.",
             "items": {
               "type": "object",
               "properties": {
@@ -1071,20 +1069,18 @@
                 "subject": {
                   "type": "string"
                 },
-                "kind": {
+                "code": {
                   "type": "string",
-                  "enum": [
-                    "DIVISION_BY_ZERO",
-                    "COMPUTE_FAULT",
-                    "WRITERS_CONFLICT",
-                    "INPUT_FORM_FAULT",
-                    "WRITE_BOUNDARY_FAULT",
-                    "INPUT_PRECISION_FAULT",
-                    "CELL_FAULT",
-                    "OPEN_SEGMENT_FAULT",
-                    "CHARACTERISTIC_PERIODS_FAULT",
-                    "SECOND_FILLING_FAULT"
-                  ]
+                  "nullable": true,
+                  "pattern": "^EF-[0-9]{3}$",
+                  "description": "de code van de foutsoort (uchars RUNTIME-SEMANTICS ch. 5.7b), zoals een rode case van uchar haar vastlegt in expectedFault; null waar uchar voor de fout geen soort noemt."
+                },
+                "params": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "de parameters van de foutsoort, elk een tekst, met de namen van ch. 5.7b; leeg waar de soort er geen heeft of waar uchar geen soort noemt."
                 },
                 "sentence": {
                   "type": "string"
@@ -1116,7 +1112,9 @@
         "description": "De regels geven op deze invoer geen antwoord: de sessie bereikte geen fixpunt, want uchars vuurplafond of creatiebudget is bereikt. Er staat dan niets om te lezen.",
         "required": [
           "status",
-          "error"
+          "error",
+          "code",
+          "params"
         ],
         "properties": {
           "status": {
@@ -1128,6 +1126,19 @@
           "error": {
             "type": "string",
             "description": "uchars zin: welk plafond of budget bereikt is."
+          },
+          "code": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^EF-[0-9]{3}$",
+            "description": "de code van de foutsoort (uchars RUNTIME-SEMANTICS ch. 5.7b), zoals een rode case van uchar haar vastlegt in expectedFault; null waar uchar voor de fout geen soort noemt."
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "de parameters van de foutsoort, elk een tekst, met de namen van ch. 5.7b; leeg waar de soort er geen heeft of waar uchar geen soort noemt."
           },
           "trace": {
             "$ref": "#/components/schemas/Trace"

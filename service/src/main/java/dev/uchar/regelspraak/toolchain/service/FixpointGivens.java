@@ -159,7 +159,8 @@ public final class FixpointGivens {
      * default or an allocation derived: {@code derived}, with the input value or the value the creation assigned, which it replaced
      * beside it as {@code input}, and on a made object {@code inputOrigin} {@code creation});
      * {@code madeObjects} with their creation and subject; the {@code links} the creations laid; the
-     * evaluation {@code errors} with their kind and uchar's sentence; and the {@code inconsistencies}.
+     * evaluation {@code faults} with the code and parameters of their kind and uchar's sentence; and the
+     * {@code inconsistencies}.
      *
      * @throws UnrenderableValue a value in a form this view does not show
      */
@@ -277,7 +278,7 @@ public final class FixpointGivens {
             ObjectNode fn = faultNode.addObject();
             name(fn, "rule", ng.form(x.rule()), x.rule());
             fn.put("subject", refOf(x.subject(), ref));
-            fn.put("kind", EvaluationFault.kind(x.fault()).name());
+            AnswerBuilder.code(fn, EvaluationFault.Fault.of(x.fault(), x.message()));
             fn.put("sentence", x.message());
         }
         List<String[]> inconsistencies = new ArrayList<>();

@@ -208,8 +208,8 @@ refuse the start as well.
   1.50}, {"labels": ["zomer"], "value": null}, {"labels": ["najaar"], "value": 3.00}]}`. A scalar on a dimensioned
   attribute and `cells` on an attribute without dimensions are a 400 `WRONG_TYPE`, a cell without `labels` or `value`
   a 400 `MALFORMED`. Labels that name no cell of the attribute (EF-034) and a cell given twice (EF-035) uchar's input
-  step refuses before any session: the 422 below, kind `CELL_FAULT`; a value its declaration does not hold is EF-004,
-  `INPUT_PRECISION_FAULT`, with the cell as its place (`J1.vondstgewicht[voorjaar]`).
+  step refuses before any session: the 422 below, code EF-034 or EF-035; a value its declaration does not hold is
+  EF-004, with the cell as its place (`J1.vondstgewicht[voorjaar]`).
 - The parameters go into the case the mapper writes, as its `input.parameters`, each under its declared name: the
   descriptor defaults, the values the parameter sets give on the request's `asOfDate`, and over them the request's
   own `parameters`, which win. uchar's input step reads them as its replay reads the parameters of a case and binds
@@ -266,42 +266,45 @@ refuse the start as well.
   "2025-01-01", "to": "2025-03-01", "value": {"marker": "onbekend"}}, {"from": "2025-03-01", "to": "2025-06-01",
   "value": 10}, …]}`) and per cell, and so does the `fixpoint` of the detail. A marker decides as a value does (uchar's
   ch. 9.5): it displaces an input, and a writer that writes a marker and one that writes a value on the same day are a
-  `WRITERS_CONFLICT`. An attribute of another sum type, which only an IR document of another producer declares, has no
-  form in the service: a value on it is a 400 `UNSUPPORTED`, and in `output` it refuses the start (`UNSUPPORTED`).
+  fault EF-016 (two writers that disagree). An attribute of another sum type, which only an IR document of another
+  producer declares, has no form in the service: a value on it is a 400 `UNSUPPORTED`, and in `output` it refuses the
+  start (`UNSUPPORTED`).
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
-  `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"kind": …, "error": <uchar's sentence>}, …]}`, one element per
-  fault in uchar's order. Every fault at the fixpoint is such an element, whatever its type: the core reads them from
-  uchar's entry (`DroolsBackend.fixpointOf`) before the write-back, so an exception of the entry itself stays a 500.
-  `kind` is `DIVISION_BY_ZERO` (a division by zero that uchar's runtime itself raises; a division by a numeric zero in
-  the rules gives an empty value and a §9.5 fact EF-005, so a 200 with the rule among the `inconsistencies`),
-  `COMPUTE_FAULT` (a fault of a computation or of the
-  evaluation date), `WRITERS_CONFLICT` (two writers of one attribute that disagree), `INPUT_FORM_FAULT` (a timeline of
-  the request where a rule reads the value in the period of the evaluation date, such as the subject's own total),
-  `WRITE_BOUNDARY_FAULT` (a value that does not fit the declared decimals of its target, EF-006),
-  `INPUT_PRECISION_FAULT` (below), `CELL_FAULT` (below), `OPEN_SEGMENT_FAULT` (a temporal total over a segment with an
-  open bound that is not 0, EF-036, uchar's `OpenSegmentFault`), `CHARACTERISTIC_PERIODS_FAULT` (the periods in which
-  a time-dependent characteristic holds have an open bound, EF-023, uchar's `CharacteristicPeriodsFault`) or
-  `SECOND_FILLING_FAULT` (a fact creation that gives a to-one role a second, different filling, EF-017, uchar's
-  `SecondFillingFault`); uchar puts no fault of another type at the fixpoint (`Fault.KINDS`). Where uchar's sentence
-  names an object of the request, it names it by its id, and an object a creation made by its type ("een aangemaakte
-  Vondst"). No stacktrace enters the answer. The Quarkus adapter answers the same, and the
-  OpenAPI contract describes the body of the 422 (schema `EvaluationFault`, with `kind` as an enumeration of these
-  kinds).
+  `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"code": "EF-###", "params": {…}, "error": <uchar's
+  sentence>}, …]}`, one element per fault in uchar's order. Every fault at the fixpoint is such an element, whatever
+  its type: the core reads them from uchar's entry (`DroolsBackend.fixpointOf`) before the write-back, so an exception
+  of the entry itself stays a 500. `code` and `params` are the fault kind uchar's public fault API names for the fault
+  (`CaseRunner.faultKinds`): the code of uchar's RUNTIME-SEMANTICS ch. 5.7b and its parameters, an object of strings
+  under the names of that table, as a red case of uchar's corpus pins them in `expectedFault`. The service classifies
+  nothing itself. A fault of which uchar names no kind (a division by zero its runtime itself raises, a full timeline
+  of the request where a rule reads the value in the period of the evaluation date, periods of the request on a
+  time-dependent characteristic a rule writes) has `"code": null` and `"params": {}`. A division by a numeric zero in
+  the rules gives an empty value and a §9.5 fact EF-005, so a 200 with the rule among the `inconsistencies`. Where
+  uchar's sentence names an object of the request, it names it by its id, and an object a creation made by its type
+  ("een aangemaakte Vondst"). No stacktrace enters the answer. The Quarkus adapter answers the same, and the OpenAPI
+  contract describes the body of the 422 (schema `EvaluationFault`: `code` with the pattern `^EF-[0-9]{3}$`, nullable,
+  and `params`, an object of strings). `check-service-replay.sh` holds the service to uchar's red cases: each red case
+  on which uchar's gate 8 lets the Drools branch fault goes through the service as a request, and the 422 carries the
+  pinned code with the pinned parameters (a subset), unless the service refuses the request first with a 400, which
+  that script lists by case with the reason.
 - A request that validates but holds a number its declaration does not hold, an attribute or a parameter with more
-  decimals than declared, gets the same 422 with the kind `INPUT_PRECISION_FAULT` and uchar's sentence of EF-004:
-  uchar's input fence (`CaseRunner.inputFits`) refuses the value before any session, as uchar's replay refuses it in a
-  case. uchar's input step reads the attributes and then the parameters, and stops at the first. No session runs, so
-  the 422 carries no detail, also when the request asks for it. A parameter default of the descriptor and a value of a
-  parameter set that uchar's input step refuses (a number that does not fit, a date outside the case lexeme) refuse
-  the start, with a violation on `parameters.<name>` or `parameterSets` that carries uchar's sentence.
+  decimals than declared, gets the same 422 with the code EF-004 and uchar's sentence: uchar's input fence
+  (`CaseRunner.inputFits`) refuses the value before any session, as uchar's replay refuses it in a case. uchar's input
+  step reads the attributes and then the parameters, and stops at the first. No session runs, so the 422 carries no
+  detail, also when the request asks for it. A parameter default of the descriptor and a value of a parameter set that
+  uchar's input step refuses (a number that does not fit, a date outside the case lexeme) refuse the start, with a
+  violation on `parameters.<name>` or `parameterSets` that carries uchar's sentence.
 - The cells of a dimensioned attribute whose labels name no cell of it (EF-034) or that give one cell twice, also in
-  two spellings of a label (EF-035), get the same 422 with the kind `CELL_FAULT` and uchar's sentence; uchar's input
-  step refuses them before the values of the cells and stops at the first. The mapper tells that refusal by uchar's
-  type of it (`CaseInput.CellFault`) and takes its sentence; an `IllegalArgumentException` of uchar's input step that
-  the mapper did not foresee stays a 500.
+  two spellings of a label (EF-035), get the same 422 with that code and uchar's sentence; uchar's input step refuses
+  them before the values of the cells and stops at the first. So does a cycle in the links of the switch relation of
+  an instance-ordered cycle (EF-033). The mapper tells these refusals by uchar's types of them (`CaseInput.CellFault`,
+  `CaseInput.LinkCycleFault`) and takes their sentences; an `IllegalArgumentException` of uchar's input step that the
+  mapper did not foresee stays a 500.
 - A request whose session reaches no fixpoint gets 422 with `{"status": "NO_FIXPOINT", "error": <uchar's
-  sentence>}`: uchar's `DroolsBackend.fire` ended the run at its fire cap or at the creation budget
-  (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence. Nothing stands to be read then, so
+  sentence>, "code": …, "params": {…}}`: uchar's `DroolsBackend.fire` ended the run at its fire cap or at the creation
+  budget (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence and the fault kind uchar names for
+  it, EF-015 with `creation`, `stratum` and `depth` at the creation budget, `null` and `{}` at the cap, which is a
+  safeguard of uchar's branch and no fault kind. Nothing stands to be read then, so
   nothing is read or written back; the service does not judge which of the two it was. With the detail flags (below)
   the 422 carries `trace` and `coverage` of what fired up to the end of the run, and for `?fixpoint=true` `fixpointError`
   with the same sentence. The Quarkus adapter answers the same; the OpenAPI 422 is one of `EvaluationFault`,
@@ -321,7 +324,8 @@ refuse the start as well.
   uchar's `DroolsBackend.Observer` records them on the request's session; `?coverage=true` gives `coverage: [{rule,
   kind}]`, per form of the entry point's build `FIRED` or `NOT_FIRED` (uchar's `DroolsBackend.coverage` over the
   forms the observer saw); `?fixpoint=true` gives `fixpoint: {objects, madeObjects, links, faults,
-  inconsistencies}` in the form of the playground's (below), with the instances of the request as its input: an
+  inconsistencies}` in the form of the playground's (below), each fault with its `rule`, `subject`, the `code` and
+  `params` of its kind as in the 422 and uchar's `sentence`, with the instances of the request as its input: an
   instance by its id, its input values read off its bean before the fire, a made object `#<n>`, a type by its name;
   or `fixpointError` with the reason a value of it cannot be shown. A dimensioned attribute has a row per cell, with
   the cell's `labels` after `attribute`, in their declared spelling, as uchar's `Fixpoint.DerivedValue.labels` names a

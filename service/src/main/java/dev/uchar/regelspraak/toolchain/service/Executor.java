@@ -94,7 +94,7 @@ public final class Executor {
             DroolsBackend.insert(build, session, world.input().inputData());
             DroolsBackend.Firing firing = observer == null ? DroolsBackend.fire(build, session)
                     : DroolsBackend.fire(build, session, observer);
-            if (firing.noFixpoint() != null) throw new NoFixpoint(firing.noFixpoint());
+            if (firing.noFixpoint() != null) throw new NoFixpoint(firing);
             // a fault names its object by the id of the request; a made object has none, and uchar names it as ref does
             Map<Object, String> label = new IdentityHashMap<>();
             world.beans().forEach((id, bean) -> label.put(bean, id));

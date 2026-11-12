@@ -192,7 +192,7 @@ class DetailHttpTest {
         bare.remove(List.of("trace", "fixpoint"));
         assertEquals(ServiceHttp.MAPPER.readTree(without.body()), bare, "de fouten blijven gelijk");
         JsonNode error = a.at("/fixpoint/faults/0");
-        assertEquals("WRITERS_CONFLICT", error.get("kind").asText(), a.toString());
+        assertEquals("EF-016", error.get("code").asText(), a.toString());
         assertEquals("helpersdeel van een berging", error.get("rule").asText());
         assertEquals("B", error.get("subject").asText());
         assertEquals(a.at("/faults/0/error").asText(), error.get("sentence").asText());
@@ -375,7 +375,7 @@ class DetailHttpTest {
                       {"labels":["voorjaar"],"value":2},{"labels":["najaar"],"value":4}]}}}]}""");
             assertEquals(422, r.statusCode(), r.body());
             JsonNode fixpoint = ServiceHttp.MAPPER.readTree(r.body()).get("fixpoint");
-            assertEquals("WRITERS_CONFLICT", fixpoint.at("/faults/0/kind").asText(), r.body());
+            assertEquals("EF-016", fixpoint.at("/faults/0/code").asText(), r.body());
             assertEquals(ServiceHttp.MAPPER.readTree("""
                     {"attribute":"vangstgewicht","labels":["voorjaar"],"value":"2","origin":"creation","unit":"kg"}"""),
                     fixpoint.at("/objects/1/values/0"), r.body());

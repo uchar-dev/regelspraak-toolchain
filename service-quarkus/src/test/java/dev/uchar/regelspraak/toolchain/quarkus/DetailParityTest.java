@@ -112,7 +112,7 @@ class DetailParityTest {
     @Test
     void a_422_with_the_fixpoint_is_equal() throws Exception {
         JsonNode body = compare(berging, "berging", "fixpoint", request(5), 422);
-        assertEquals("WRITERS_CONFLICT", body.at("/fixpoint/faults/0/kind").asText(), body.toString());
+        assertEquals("EF-016", body.at("/fixpoint/faults/0/code").asText(), body.toString());
     }
 
     @Test

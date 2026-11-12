@@ -132,8 +132,9 @@ public final class AnswerBuilder {
 
     /** The answer to a request on which the rules give an evaluation fault, which both adapters send with HTTP 422,
      *  shaped as the MARKER answer and the answer to a request that does not validate:
-     *  {@code {"status": "EVALUATION_FAULT", "error": <sentence>, "faults": [{"kind": <soort>, "error": <uchar's
-     *  sentence>}, ...]}}, one element per fault in uchar's order. Where uchar's sentence names an object, it names an
+     *  {@code {"status": "EVALUATION_FAULT", "error": <sentence>, "faults": [{"code": <EF-###>, "params": {<name>:
+     *  <text>, ...}, "error": <uchar's sentence>}, ...]}}, one element per fault in uchar's order, its code and
+     *  parameters the fault kind uchar's fault API names (null and empty where it names none). Where uchar's sentence names an object, it names an
      *  object of the request by its id; no stacktrace and no class name enter it. The detail of the session the request
      *  asked ({@link EvaluationFault#detail()}) follows the faults, under the keys of the answer it would have had. */
     public static ObjectNode evaluationFault(EvaluationFault error) {
@@ -143,20 +144,34 @@ public final class AnswerBuilder {
         ArrayNode errors = n.putArray("faults");
         for (EvaluationFault.Fault f : error.errors()) {
             ObjectNode fn = errors.addObject();
-            fn.put("kind", f.kind().name());
+            code(fn, f);
             fn.put("error", f.sentence());
         }
         if (error.detail() != null) n.setAll(error.detail());
         return n;
     }
 
+    /** Puts the fault kind of {@code f} on {@code n}: {@code code}, null where uchar names no kind, and {@code params},
+     *  an object of strings. */
+    static void code(ObjectNode n, EvaluationFault.Fault f) {
+        code(n, f.code(), f.params());
+    }
+
+    private static void code(ObjectNode n, String code, Map<String, String> params) {
+        n.put("code", code);
+        ObjectNode p = n.putObject("params");
+        params.forEach(p::put);
+    }
+
     /** The answer to a request whose session reached no fixpoint, which both adapters send with HTTP 422, shaped as the
-     *  answer to an evaluation fault: {@code {"status": "NO_FIXPOINT", "error": <uchar's sentence>}}. The detail of the
-     *  session the request asked ({@link NoFixpoint#detail()}) follows the sentence. */
+     *  answer to an evaluation fault: {@code {"status": "NO_FIXPOINT", "error": <uchar's sentence>, "code": <EF-015 or
+     *  null>, "params": {...}}}, the fault kind uchar names for the end of the run (EF-015 at the creation budget, none
+     *  at the cap). The detail of the session the request asked ({@link NoFixpoint#detail()}) follows. */
     public static ObjectNode noFixpoint(NoFixpoint none) {
         ObjectNode n = NF.objectNode();
         n.put("status", "NO_FIXPOINT");
         n.put("error", none.getMessage());
+        code(n, none.code(), none.params());
         if (none.detail() != null) n.setAll(none.detail());
         return n;
     }

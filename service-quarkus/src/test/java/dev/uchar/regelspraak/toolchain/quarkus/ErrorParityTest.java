@@ -37,7 +37,7 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
  * evaluation fault, the 422 LIMIT of a value uchar's Drools branch cannot hold, and the 500 of a fault the core never
  * throws on purpose, without its message. A violation on a role of {@code relations} names the field as the request
  * wrote it, in capitals or as a designation of a vocabulary. The 400s include a to-one role that gets a second, different target through {@code relaties}; the
- * 422s include the second filling of a to-one role, {@code SECOND_FILLING_FAULT}, alone and beside a read of the
+ * 422s include the second filling of a to-one role, EF-017, alone and beside a read of the
  * rekenjaar without an evaluation date. {@link DecideResource} builds the first bodies by hand, as {@code ServiceHttp}'s builders
  * are package-private in the service module, and the 422 body with the service core's builder, as {@code ServiceHttp}
  * does; this test catches a drift in either adapter, as {@link InfoParityTest} does for {@code /info}.
@@ -375,7 +375,7 @@ class ErrorParityTest {
             {"instances":[{"type":"Kustwacht","id":"K1",
               "roles":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
               {"type":"Haven","id":"H1"},{"type":"Haven","id":"H2"},{"type":"Jutter","id":"J1"}]}""", 422);
-        assertEquals(List.of("SECOND_FILLING_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-017"), codes(body), body.toString());
     }
 
     @Test
@@ -385,7 +385,7 @@ class ErrorParityTest {
               "roles":{"bewaakte havens":["H1","H2"],"geworven jutters":["J1"]}},
               {"type":"Haven","id":"H1","attributes":{"ligplaatsen":0}},
               {"type":"Haven","id":"H2","attributes":{"ligplaatsen":4}},{"type":"Jutter","id":"J1"}]}""", 422);
-        assertEquals(List.of("SECOND_FILLING_FAULT", "COMPUTE_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-017", "EF-011"), codes(body), body.toString());
     }
 
     @Test
@@ -417,8 +417,8 @@ class ErrorParityTest {
         }
     }
 
-    private static List<String> kinds(JsonNode body) {
-        return body.path("faults").valueStream().map(f -> f.path("kind").asText()).toList();
+    private static List<String> codes(JsonNode body) {
+        return body.path("faults").valueStream().map(f -> f.path("code").asText()).toList();
     }
 
     private static String aPath(DecisionCore core) {

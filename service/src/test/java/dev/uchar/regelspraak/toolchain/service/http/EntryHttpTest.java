@@ -416,7 +416,7 @@ class EntryHttpTest {
     void a_missing_evaluation_date_is_422_compute_fault() throws Exception {
         JsonNode body = evaluationFault(post("/vondstjaar", """
             {"instances":[{"type":"Vondst","id":"V1","attributes":{}}]}"""));
-        assertEquals(List.of("COMPUTE_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-011"), codes(body), body.toString());
         assertTrue(body.at("/faults/0/error").asText().contains("vondstjaar van een vondst")
                 && body.at("/faults/0/error").asText().contains("evaluation date"), body.toString());
     }
@@ -425,7 +425,7 @@ class EntryHttpTest {
     void two_writers_that_differ_are_422_writers_conflict_with_the_id_from_the_request() throws Exception {
         JsonNode body = evaluationFault(post("/vindersloon", """
             {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00}}]}"""));
-        assertEquals(List.of("WRITERS_CONFLICT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-016"), codes(body), body.toString());
         String sentence = body.at("/faults/0/error").asText();
         assertTrue(sentence.contains("\"loon voor een zware vondst\" schrijft 25") && sentence.contains("\"loon voor een grote"
                 + " vondst\" schrijft 10") && sentence.contains("in het attribuut vindersloon van V1, een Vondst"), sentence);
@@ -433,7 +433,7 @@ class EntryHttpTest {
 
     /** 1001 in equal shares over two veilingjutters is 1001/2 each, which the whole veilingdeel does not hold: uchar
      *  puts a {@code WriteBoundaryFault} (EF-006, RUNTIME-SEMANTICS ch. 2.4) at the fixpoint, and the 422 gives it as
-     *  WRITE_BOUNDARY_FAULT with the sentence uchar's replay gives on the same input. */
+     *  EF-006 with the sentence uchar's replay gives on the same input. */
     @Test
     void a_value_that_does_not_fit_its_target_is_422_write_boundary_fault(@TempDir Path map) throws Exception {
         String request = """
@@ -444,7 +444,8 @@ class EntryHttpTest {
         assertEquals("EF-006", fault.code());
         assertEquals(Map.of("place", "J1.veilingdeel", "value", "1001/2", "decimals", "0"), fault.params());
         JsonNode body = evaluationFault(post(allocationService, "/veiling", request));
-        assertEquals(List.of("WRITE_BOUNDARY_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-006"), codes(body), body.toString());
+        assertEquals(fault.params(), params(body, 0), body.toString());
         assertEquals(List.of(fault.getMessage()), sentences(body), body.toString());
     }
 
@@ -453,7 +454,7 @@ class EntryHttpTest {
         JsonNode body = evaluationFault(post("/alles", """
             {"instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":6.00,"aantal delen":3}}]}"""));
         assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("error").asText(), body.toString());
-        assertEquals(List.of("WRITERS_CONFLICT", "COMPUTE_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-016", "EF-011"), codes(body), body.toString());
         assertTrue(body.at("/faults/0/error").asText().contains("van V1, een Vondst"), body.toString());
         assertTrue(body.at("/faults/1/error").asText().startsWith("fout in de regel \"vondstjaar van een vondst\""),
                 body.toString());
@@ -462,7 +463,7 @@ class EntryHttpTest {
     /** The subject's own total of a timeline takes the asOfDate-bucket scalar (uchar's RUNTIME-SEMANTICS ch. 8.4), which
      *  the request does not carry: a scalar on the timeline attribute is a 400 UNSUPPORTED, which this test asserts
      *  first. A full timeline there is the other convention, an {@code InputFormFault} at the fixpoint, and the service
-     *  answers it with the 422 of the kind INPUT_FORM_FAULT and uchar's sentence. The translation is also tested at the
+     *  answers it with a 422 whose fault carries no code and uchar's sentence. The translation is also tested at the
      *  level of the core: the service's executor ({@link Executor}) gets a world whose bean holds that full timeline,
      *  and {@link AnswerBuilder#evaluationFault} builds from the fault the body both adapters send with the 422. */
     @Test
@@ -483,7 +484,9 @@ class EntryHttpTest {
                    {"timeline":[{"from":"2026-01-01","to":"2027-01-01","value":10}]}}}]}""");
             assertEquals(422, full.statusCode(), full.body());
             JsonNode answer = tree(full.body());
-            assertEquals(List.of("INPUT_FORM_FAULT"), kinds(answer), full.body());
+            // a full timeline where the rule reads the bucket scalar: uchar names no fault kind for it (EF-037 is the
+            // other way round), so the element has no code
+            assertEquals(java.util.Collections.singletonList(null), codes(answer), full.body());
             String said = answer.at("/faults/0/error").asText();
             assertTrue(said.startsWith("fout in de regel \"bewaargeld van een jutter\"") && said.contains("\"J1\"")
                     && said.contains("supplies a full timeline"), said);
@@ -499,17 +502,17 @@ class EntryHttpTest {
                 .fire(new World(inputSection, LocalDate.of(2026, 3, 15)), null, null, false));
         JsonNode body = AnswerBuilder.evaluationFault(error);
         assertEquals("EVALUATION_FAULT", body.path("status").asText(), body.toString());
-        assertEquals(List.of("INPUT_FORM_FAULT"), kinds(body), body.toString());
+        assertEquals(java.util.Collections.singletonList(null), codes(body), body.toString());
         String sentence = body.at("/faults/0/error").asText();
         assertTrue(sentence.startsWith("fout in de regel \"bewaargeld van een jutter\"") && sentence.contains("\"J1\"")
                 && sentence.contains("supplies a full timeline"), sentence);
     }
 
-    // ---------------- a value the declaration does not hold: INPUT_PRECISION_FAULT ----------------
+    // ---------------- a value the declaration does not hold: EF-004 ----------------
 
     /** 1,005 for a gewicht of two decimals: uchar's input step ({@code CaseInput.of}) refuses it as EF-004
      *  (RUNTIME-SEMANTICS ch. 2.4, 5.7 step 3) before any session, as uchar's replay of the same input does, and the
-     *  422 gives it as INPUT_PRECISION_FAULT with the sentence of that replay. */
+     *  422 gives it as EF-004 with the sentence of that replay. */
     @Test
     void an_attribute_value_that_does_not_fit_is_422_input_precision_fault(@TempDir Path map) throws Exception {
         String request = """
@@ -519,7 +522,7 @@ class EntryHttpTest {
         assertEquals("EF-004", replay.code());
         assertEquals(Map.of("place", "V1.gewicht", "value", "1.005", "decimals", "2"), replay.params());
         JsonNode body = evaluationFault(post(precisionService, "/gewogen", request));
-        assertEquals(List.of("INPUT_PRECISION_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-004"), codes(body), body.toString());
         assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
     }
 
@@ -532,7 +535,7 @@ class EntryHttpTest {
         JsonNode body = evaluationFault(post(precisionService, "/gewogen", """
             {"parameters":{"vondstfactor":0.505},
              "instances":[{"type":"Vondst","id":"V1","attributes":{"gewicht":2.00}}]}"""));
-        assertEquals(List.of("INPUT_PRECISION_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-004"), codes(body), body.toString());
         assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
     }
 
@@ -601,27 +604,27 @@ class EntryHttpTest {
     }
 
     /** Labels that name no cell of the attribute: uchar's input step refuses them as EF-034 before any session, as
-     *  uchar's replay of the same input does, and the 422 gives them as CELL_FAULT with the sentence of that replay. */
+     *  uchar's replay of the same input does, and the 422 gives them as EF-034 with the sentence of that replay. */
     @Test
     void labels_that_name_no_cell_are_422_cell_fault(@TempDir Path map) throws Exception {
         assertCellFault(map, """
             {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
               {"labels":["voorjaar"],"value":1.50},{"labels":["winter"],"value":2.00}]}}}]}""",
-                "J1.vondstgewicht: de labels [winter] noemen geen cel");
+                "J1.vondstgewicht: de labels [winter] noemen geen cel", "EF-034");
     }
 
     /** One cell given twice, here in two spellings of its label: uchar's input step refuses it as EF-035, and the 422
-     *  gives it as CELL_FAULT with the sentence of uchar's replay. */
+     *  gives it as EF-035 with the sentence of uchar's replay. */
     @Test
     void a_cell_given_twice_is_422_cell_fault(@TempDir Path map) throws Exception {
         assertCellFault(map, """
             {"instances":[{"type":"Jutter","id":"J1","attributes":{"vondstgewicht":{"cells":[
               {"labels":["voorjaar"],"value":1.50},{"labels":["Voorjaar"],"value":2.00}]}}}]}""",
-                "J1.vondstgewicht: de cel [Voorjaar] staat twee keer in de invoer");
+                "J1.vondstgewicht: de cel [Voorjaar] staat twee keer in de invoer", "EF-035");
     }
 
     /** 1,005 in a cell of two decimals: uchar's input fence refuses it as EF-004 with the cell as its place, and the
-     *  422 gives it as INPUT_PRECISION_FAULT with the sentence of uchar's replay. */
+     *  422 gives it as EF-004 with the sentence of uchar's replay. */
     @Test
     void a_cell_value_that_does_not_fit_is_422_input_precision_fault(@TempDir Path map) throws Exception {
         String request = """
@@ -631,8 +634,9 @@ class EntryHttpTest {
                 replay(map, CELL_SOURCE, request));
         assertEquals(Map.of("place", "J1.vondstgewicht[voorjaar]", "value", "1.005", "decimals", "2"), replay.params());
         JsonNode body = evaluationFault(post(cellService, "/seizoen", request));
-        assertEquals(List.of("INPUT_PRECISION_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-004"), codes(body), body.toString());
         assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
+        assertEquals(replay.params(), params(body, 0), body.toString());
     }
 
     /** A request that does not give a dimensioned attribute as cells, or gives cells to an attribute without
@@ -652,21 +656,55 @@ class EntryHttpTest {
                 resp.body());
     }
 
-    /** The 422 of {@code request} on the cell model gives one CELL_FAULT with the sentence uchar's replay throws on the
-     *  same input, which begins with {@code begin}. */
-    private static void assertCellFault(Path map, String request, String begin) throws Exception {
+    /** The 422 of {@code request} on the cell model gives one fault of kind {@code code} with the sentence uchar's
+     *  replay throws on the same input, which begins with {@code begin}, and the parameters uchar's fault API names. */
+    private static void assertCellFault(Path map, String request, String begin, String code) throws Exception {
         RuntimeException replay = assertInstanceOf(IllegalArgumentException.class, replay(map, CELL_SOURCE, request));
         assertTrue(replay.getMessage().startsWith(begin), replay::toString);
         JsonNode body = evaluationFault(post(cellService, "/seizoen", request));
-        assertEquals(List.of("CELL_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of(code), codes(body), body.toString());
+        assertEquals(List.of(new CaseRunner.FaultKind(code, params(body, 0))), CaseRunner.faultKinds(replay),
+                body.toString());
         assertEquals(List.of(replay.getMessage()), sentences(body), body.toString());
     }
 
-    // ---------------- the second filling of a to-one role: SECOND_FILLING_FAULT ----------------
+    /** A cycle in the links of the switch relation of an instance-ordered cycle (EF-033): uchar's input step refuses
+     *  it before any session, and the 422 gives it with the code and the parameters uchar's red case
+     *  {@code instance-order-link-cycle} pins, where the service answered a 500. */
+    @Test
+    void a_link_cycle_of_the_input_is_422_with_its_fault_kind() throws Exception {
+        Path red = dev.uchar.regelspraak.toolchain.service.TokaSource.REPO
+                .resolve("uchar/corpus/red/instance-order-link-cycle");
+        DecisionCore core = DecisionCore.buildFromDocument("""
+                {"service": {"name": "kring", "version": "1"},
+                 "entrypoints": [{"name": "kring", "path": "kring", "scope": {"ruleNames": ["restant", "einddag",
+                   "einddag zonder restant", "overschot", "verlengde einddag"]}, "input": [], "output": [],
+                   "scopeCheckOptOut": true}]}""", Files.readString(red.resolve("ir.json")), CoreConfig.strict(),
+                Thread.currentThread().getContextClassLoader(), null);
+        ServiceHttp cycle = ServiceHttp.bind(core, "127.0.0.1", 0).start();
+        try {
+            JsonNode body = evaluationFault(post(cycle, "/kring", """
+                {"instances":[
+                  {"type":"Vergunning","id":"V1","attributes":{"stopdag":"2026-03-01","basiseinddag":"2026-06-01"},
+                   "roles":{"vorige vergunning":["V2"]}},
+                  {"type":"Vergunning","id":"V2","attributes":{"stopdag":"2026-09-01","basiseinddag":"2026-12-01"},
+                   "roles":{"vorige vergunning":["V1"]}}]}"""));
+            assertEquals(List.of("EF-033"), codes(body), body.toString());
+            JsonNode pinned = tree(Files.readString(red.resolve("case1-twee-vergunningen.json"))).at("/expectedFault");
+            assertEquals("EF-033", pinned.path("code").asText());
+            Map<String, String> expected = new java.util.LinkedHashMap<>();
+            pinned.path("params").properties().forEach(e -> expected.put(e.getKey(), e.getValue().asText()));
+            assertEquals(expected, params(body, 0), body.toString());
+        } finally {
+            cycle.stop(0);
+        }
+    }
+
+    // ---------------- the second filling of a to-one role: EF-017 ----------------
 
     /** uchar's case D2 ({@code TmsCreationWitnessTest.a_second_filling_of_a_to_one_role_is_a_fault}): the fact
      *  creation gives J1 two havens, and uchar puts that fault at the fixpoint as a {@code SecondFillingFault}
-     *  (EF-017), so the 422 gives it as SECOND_FILLING_FAULT, with the sentence uchar's replay gives on the same
+     *  (EF-017), so the 422 gives it as EF-017, with the sentence uchar's replay gives on the same
      *  input. */
     @Test
     void a_second_filling_of_a_to_one_role_is_422_second_filling_fault(@TempDir Path map) throws Exception {
@@ -676,7 +714,7 @@ class EntryHttpTest {
                 + " vullingen"), replay::toString);
         JsonNode body = evaluationFault(post(fillingService, "/vulling", FILLING));
         assertEquals("de regels geven op deze invoer een evaluatiefout", body.get("error").asText(), body.toString());
-        assertEquals(List.of("SECOND_FILLING_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-017"), codes(body), body.toString());
         assertEquals(replay, sentences(body), body.toString());
     }
 
@@ -690,7 +728,7 @@ class EntryHttpTest {
         assertEquals(2, replay.size(), replay::toString);
         JsonNode body = evaluationFault(post(fillingService, "/mengsel", MENGSEL));
         assertEquals("de regels geven op deze invoer 2 evaluatiefouten", body.get("error").asText(), body.toString());
-        assertEquals(List.of("SECOND_FILLING_FAULT", "COMPUTE_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-017", "EF-011"), codes(body), body.toString());
         assertEquals(replay, sentences(body), body.toString());
     }
 
@@ -801,7 +839,7 @@ class EntryHttpTest {
         String replay = replayFault(map, asCase != null ? asCase : request);
         assertTrue(replay.contains("\"zware vondsten\"") && replay.contains("18446744073709551618"), replay);
         JsonNode body = evaluationFault(post(foldService, "/zware-vondsten", request));
-        assertEquals(List.of("COMPUTE_FAULT"), kinds(body), body.toString());
+        assertEquals(List.of("EF-008"), codes(body), body.toString());
         assertEquals(replay, body.at("/faults/0/error").asText(), body.toString());
     }
 
@@ -865,21 +903,34 @@ class EntryHttpTest {
         return assertThrows(RuntimeException.class, () -> CaseRunner.runGolden(ir, List.of(casePath)));
     }
 
-    /** The body of a 422: status EVALUATION_FAULT, a sentence, and per fault its kind and uchar's sentence, without a
-     *  stacktrace. */
+    /** The body of a 422: status EVALUATION_FAULT, a sentence, and per fault its code, its parameters and uchar's
+     *  sentence, without a stacktrace. */
     private static JsonNode evaluationFault(HttpResponse<String> resp) throws Exception {
         assertEquals(422, resp.statusCode(), resp.body());
         JsonNode body = tree(resp.body());
         assertEquals("EVALUATION_FAULT", body.path("status").asText(), resp.body());
         assertTrue(body.path("faults").isArray() && !body.path("faults").isEmpty(), resp.body());
         assertEquals(List.of("error", "faults", "status"), fields(body), resp.body());
-        for (JsonNode f : body.get("faults")) assertEquals(List.of("error", "kind"), fields(f), resp.body());
+        for (JsonNode f : body.get("faults")) assertEquals(List.of("code", "error", "params"), fields(f), resp.body());
         assertFalse(resp.body().contains("Exception") || resp.body().contains("\tat "), "geen stacktrace: " + resp.body());
         return body;
     }
 
-    private static List<String> kinds(JsonNode body) {
-        return body.get("faults").valueStream().map(f -> f.get("kind").asText()).toList();
+    /** The code of each fault of the 422 {@code body}, null where uchar names no kind; every fault carries the key. */
+    private static List<String> codes(JsonNode body) {
+        List<String> out = new java.util.ArrayList<>();
+        for (JsonNode f : body.get("faults")) {
+            assertTrue(f.has("code"), f::toString);
+            out.add(f.get("code").isNull() ? null : f.get("code").asText());
+        }
+        return out;
+    }
+
+    /** The parameters of fault {@code k} of the 422 {@code body}. */
+    private static Map<String, String> params(JsonNode body, int k) {
+        Map<String, String> out = new java.util.LinkedHashMap<>();
+        body.get("faults").get(k).get("params").properties().forEach(e -> out.put(e.getKey(), e.getValue().asText()));
+        return out;
     }
 
     private static List<String> sentences(JsonNode body) {

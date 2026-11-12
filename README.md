@@ -314,6 +314,14 @@ writes one does not start:
   declared, the 422 names the first uchar's input step reads, the attributes before the parameters, where it named
   every parameter and then the first attribute. A value of a parameter set that uchar's input step refuses (more
   decimals than declared, a date outside the case lexeme) refuses the start, where the service bound it unchecked.
+- **The fault kind of a 422 is uchar's code** (card `end-state-and-service-reads`): every element of `faults` in a 422
+  `EVALUATION_FAULT` and in `fixpoint.faults` carries `code`, the `EF-###` of uchar's RUNTIME-SEMANTICS ch. 5.7b, and
+  `params`, an object of strings, as uchar's public fault API names them, where it carried `kind`, a class of the
+  service per Java type of uchar's exception (`COMPUTE_FAULT` covered several codes). `kind` is gone. A fault of which
+  uchar names no kind has `"code": null` and `"params": {}`, where it had `DIVISION_BY_ZERO`, `INPUT_FORM_FAULT` or
+  `CHARACTERISTIC_PERIODS_FAULT`. A 422 `NO_FIXPOINT` carries `code` and `params` too: EF-015 at the creation budget.
+  A cycle in the links of the switch relation of an instance-ordered cycle is a 422 EF-033, where it was a 500.
+  `docs/ENGINE.md` has the codes; the OpenAPI schemas `EvaluationFault`, `NoFixpoint` and `Fixpoint` describe them.
 
 ## The pin
 
@@ -381,16 +389,20 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (362). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (379). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   replay excludes a case, not a golden: a golden plays when every case the service carries plays. The numbers of
-  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 353; `EXPECTED_REPLAY_CASES`, 1000); every case
+  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 370; `EXPECTED_REPLAY_CASES`, 1038); every case
   that does not play is listed by golden and case file with its reason (10 cases of 9 goldens, each with a scalar on a
   time-dependent attribute, which the request does not carry), and every golden the service does not start on by name
   (1, whose document holds an `Unresolved` node); a deviation always fails, and the list fails when it goes stale in
   either direction. An attribute or characteristic of the answer is compared by its name under uchar's name equality
   (`Namen.norm`), since the answer spells a name as declared and a case as it writes it. Every golden that plays is asked with
-  `?explanation=true` as well, and an explanation the service does not give fails it. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
+  `?explanation=true` as well, and an explanation the service does not give fails it. A red leg sends every red case
+  of uchar (`uchar/corpus/red`) on which uchar's gate 8 lets the Drools branch fault as a request, and the 422 must
+  carry the pinned `code` with the pinned `params` as a subset, as gate 8 holds them (`EXPECTED_RED_FAULTS`, 64); the
+  cases the service refuses first, with a 400 or by not starting on the document, stand in `RED_REFUSED` with the
+  reason (13), and that list fails when it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
   and a listed scenario uchar accepts fails the run.

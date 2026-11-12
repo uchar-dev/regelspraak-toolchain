@@ -97,15 +97,18 @@ class NoFixpointTest {
 
     // ---------------- the decision route ----------------
 
-    /** A 422 with status {@code NO_FIXPOINT} and uchar's sentence, and nothing else without a flag. */
+    /** A 422 with status {@code NO_FIXPOINT}, uchar's sentence and the fault kind uchar names for the end of the run
+     *  (EF-015, the creation budget, with its parameters), and nothing else without a flag. */
     @Test
     void the_decide_route_gives_a_422_with_the_uchar_sentence() throws Exception {
         HttpResponse<String> r = post("/estafette", REQUEST.formatted(1));
         assertEquals(422, r.statusCode(), r.body());
         JsonNode body = ServiceHttp.MAPPER.readTree(r.body());
-        assertEquals(List.of("status", "error"), keys(body));
+        assertEquals(List.of("status", "error", "code", "params"), keys(body));
         assertEquals("NO_FIXPOINT", body.path("status").asText());
         assertTrue(body.path("error").asText().startsWith(fragment), body.toString());
+        assertEquals("EF-015", body.path("code").asText(), body.toString());
+        assertEquals(List.of("creation", "stratum", "depth"), keys(body.path("params")), body.toString());
     }
 
     /** With the detail flags the 422 carries the trace and the coverage of what fired, and for the fixpoint the reason
@@ -115,7 +118,7 @@ class NoFixpointTest {
         HttpResponse<String> r = post("/estafette?trace=true&coverage=true&fixpoint=true", REQUEST.formatted(1));
         assertEquals(422, r.statusCode(), r.body());
         JsonNode body = ServiceHttp.MAPPER.readTree(r.body());
-        assertEquals(List.of("status", "error", "trace", "coverage", "fixpointError"), keys(body));
+        assertEquals(List.of("status", "error", "code", "params", "trace", "coverage", "fixpointError"), keys(body));
         assertEquals(body.path("error"), body.path("fixpointError"));
         boolean werving = false;
         for (JsonNode v : body.path("trace"))
@@ -136,8 +139,9 @@ class NoFixpointTest {
                         + "{\"$ref\":\"#/components/schemas/Limit\"}]",
                 schema.path("oneOf").toString(), schema::toString);
         JsonNode s = doc.at("/components/schemas/NoFixpoint");
-        assertEquals("[\"status\",\"error\"]", s.path("required").toString(), s::toString);
-        assertEquals(List.of("status", "error", "trace", "coverage", "fixpointError"), keys(s.path("properties")));
+        assertEquals("[\"status\",\"error\",\"code\",\"params\"]", s.path("required").toString(), s::toString);
+        assertEquals(List.of("status", "error", "code", "params", "trace", "coverage", "fixpointError"),
+                keys(s.path("properties")));
         assertEquals("[\"NO_FIXPOINT\"]", s.at("/properties/status/enum").toString(), s::toString);
     }
 

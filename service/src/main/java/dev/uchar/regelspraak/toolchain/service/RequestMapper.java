@@ -56,7 +56,8 @@ import java.util.Map;
  * [...], "value": ...}, ...]}}, one label per dimension in their declared order, each value as the attribute's datatype
  * takes it; a null value is an empty cell. uchar's input step reads the cells (RUNTIME-SEMANTICS ch. 5.8c): labels that
  * name no cell (EF-034) and a cell given twice (EF-035) it refuses before any session, as it refuses EF-004 per cell,
- * and the result returns them as faults of the kind {@link EvaluationFault.Kind#CELL_FAULT}.
+ * and the result returns them as faults of the input. So does a cycle in the links of the switch relation of an
+ * instance-ordered cycle (EF-033, {@link CaseInput.LinkCycleFault}), which uchar's input step refuses as well.
  *
  * <p>A time-dependent parameter takes its timeline ({@link TimelineInput}), written into the case as uchar's case gives
  * it, and a segment may leave out {@code from} or {@code to}, an open bound. A scalar on such a parameter and a
@@ -156,7 +157,7 @@ public final class RequestMapper {
      *  mapping (empty on success), and the values uchar's input refused before any session (EF-004, EF-034, EF-035;
      *  empty on success). The world is null when uchar refused the input. */
     public record Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations,
-                         List<EvaluationFault.InputFault> inputFaults) {}
+                         List<RuntimeException> inputFaults) {}
 
     /** A role link the mapper writes into the case: under the {@code roles} of instance {@code id}, the key
      *  {@code role}, naming {@code doel}; uchar's {@link CaseInput.RoleError} names a refused link the same way. */
@@ -180,7 +181,7 @@ public final class RequestMapper {
      */
     public Result map(Request request, java.util.function.Function<LocalDate, ObjectNode> base) {
         List<Violation> s = new ArrayList<>();
-        List<EvaluationFault.InputFault> inputFaults = new ArrayList<>();
+        List<RuntimeException> inputFaults = new ArrayList<>();
         Map<String, ObjectType> typePerLabel = new LinkedHashMap<>();
         // the instances of the case by id, in the order of the request, and the field of the request per link
         Map<String, ObjectNode> instances = new LinkedHashMap<>();
@@ -321,9 +322,9 @@ public final class RequestMapper {
             // a form uchar's input step does not carry that the validation above let through: no link names it
             s.add(Violation.of(Violation.Kind.UNSUPPORTED, "instances", x.getMessage()));
         } catch (CaseRunner.InputPrecisionFault f) {
-            inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.INPUT_PRECISION_FAULT, f));
-        } catch (CaseInput.CellFault f) {
-            inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.CELL_FAULT, f));
+            inputFaults.add(f);
+        } catch (CaseInput.CellFault | CaseInput.LinkCycleFault f) {
+            inputFaults.add(f);
         } catch (IllegalArgumentException f) {
             // after the validation above uchar's input step can refuse a year the refusals list, and it stops at the
             // first it reads; anything else is a defect of the case the mapper wrote, and fails here
