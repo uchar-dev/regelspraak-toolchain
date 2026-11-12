@@ -656,6 +656,11 @@ public final class DecisionCore {
         ValueCoder.Result r = ValueCoder.decode(node, p.datatype(), field);
         sink.addAll(r.violations());
         if (!r.violations().isEmpty()) return null;
+        Violation year = RequestMapper.outsideCaseForm(r.value(), field);
+        if (year != null) {
+            sink.add(year);
+            return null;
+        }
         if (r.value() instanceof java.math.BigDecimal b)
             CaseRunner.inputFits(NF.objectNode().put("number", b.toPlainString()), p.datatype(), "parameter " + p.name());
         return r.value();

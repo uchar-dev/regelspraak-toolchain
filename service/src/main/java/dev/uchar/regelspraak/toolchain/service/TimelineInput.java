@@ -104,6 +104,15 @@ final class TimelineInput {
         List<Segment> segments = segments(new Grid("parameter '" + p.name() + "'", p.granularity(),
                 p.fixedStartPoint(), p.datatype()), value, field, segmentValue, sink);
         if (segments == null) return null;
+        // the service binds the parameter itself, so it holds the bounds to the case lexeme as a case would be held
+        int before = sink.size();
+        for (int k = 0; k < segments.size(); k++)
+            for (String key : List.of("from", "to")) {
+                Violation year = RequestMapper.outsideCaseForm(key.equals("from") ? segments.get(k).from()
+                        : segments.get(k).to(), field + ".timeline[" + k + "]." + key);
+                if (year != null) sink.add(year);
+            }
+        if (sink.size() > before) return null;
         List<Period> out = new ArrayList<>();
         for (Segment s : segments)
             out.add(new Period(s.from() == null ? Period.OPEN_FROM : s.from(), s.to() == null ? Period.OPEN_TO : s.to(),

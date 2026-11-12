@@ -159,7 +159,9 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   model cannot hold (`CaseInput.RoleRefusal`) a 400 `UNSUPPORTED`, each with uchar's sentence. A date or
   date-time whose year the case lexeme does not carry (beyond 0000–9999, `+10000-01-01`), uchar's input step refuses
   as well: a 400 `WRONG_TYPE` on the field that holds it (`asOfDate`, `rekendatum` or the attribute), with uchar's
-  sentence. A number is read as the case writes it: a JSON number exactly as written (`30.00` keeps its two
+  sentence. A parameter and a bound of its timeline reach no case, since the service binds them itself; the mapper
+  holds them to the same lexeme, with the same sentence (EF-003), and a descriptor default with such a year refuses
+  the start. A number is read as the case writes it: a JSON number exactly as written (`30.00` keeps its two
   decimals) or a text of digits with at most one point, written into the case in that plain form. A number with an
   exponent in its text (`"1.25E1"`), one whose value has a negative scale (a JSON number `1E+3`) and one whose digits
   written out exceed the 1000 characters the parser reads of a number (a JSON number `1E-20000000`) are a 400

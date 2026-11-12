@@ -4,6 +4,8 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
+import dev.uchar.regelspraak.toolchain.service.ServiceError;
+import dev.uchar.regelspraak.toolchain.service.Violation;
 
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
@@ -14,9 +16,11 @@ import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -29,6 +33,9 @@ class YearOutsideCaseFormHttpTest {
 
     /** uchar's golden {@code jutterswet-vondstverjaring}. */
     private static final String SOURCE = """
+        Parameter de peildag : Datum in dagen;
+        Parameter de havenheffing : Numeriek (geheel getal) voor elke maand;
+
         Objecttype de Vondst (mv: Vondsten)
             de vondstdag Datum in dagen;
             is verjaard kenmerk (bijvoeglijk);
@@ -96,6 +103,30 @@ class YearOutsideCaseFormHttpTest {
         assertYearOutsideCaseForm(post("""
             {"rekendatum":"+10000-01-01","instances":[{"type":"Vondst","id":"V1"}]}"""),
                 "rekendatum", "+10000-01-01");
+    }
+
+    /** A parameter the service binds itself, and a bound of its timeline, are held to the lexeme a case holds them to,
+     *  in the same sentence. */
+    @Test
+    void a_parameter_with_year_10000_is_400_on_its_field() throws Exception {
+        assertYearOutsideCaseForm(post("""
+            {"parameters":{"peildag":"+10000-01-01"},"instances":[{"type":"Vondst","id":"V1"}]}"""),
+                "parameters.peildag", "+10000-01-01");
+        assertYearOutsideCaseForm(post("""
+            {"parameters":{"havenheffing":{"timeline":[{"to":"+10000-01-01","value":3}]}},
+             "instances":[{"type":"Vondst","id":"V1"}]}"""),
+                "parameters.havenheffing.timeline[0].to", "+10000-01-01");
+    }
+
+    /** A descriptor default is held to the lexeme as a request is: the service does not start. */
+    @Test
+    void a_parameter_default_with_year_10000_refuses_the_start() {
+        ServiceError f = assertThrows(ServiceError.class, () -> DecisionCore.assemble(
+                DESCRIPTOR.replace("\"parameters\": {}", "\"parameters\": {\"peildag\": \"-0001-01-01\"}"),
+                Map.of("verjaring.rgs", SOURCE), CoreConfig.strict(), Thread.currentThread().getContextClassLoader()));
+        assertEquals(List.of("parameters.peildag"), f.violations().stream().map(Violation::field).toList(),
+                f.violations().toString());
+        assertTrue(f.violations().get(0).message().startsWith("malformed date '-0001-01-01'"), f.getMessage());
     }
 
     /** One violation, WRONG_TYPE on {@code field}, in uchar's sentence about the date lexeme {@code lexeme}. */

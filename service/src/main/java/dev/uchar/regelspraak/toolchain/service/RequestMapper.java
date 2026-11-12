@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import dev.uchar.regelspraak.cases.CaseInput;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.message.Msg;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
@@ -330,6 +331,19 @@ public final class RequestMapper {
         return year >= 0 && year <= 9999;
     }
 
+    /** The violation of a date or date-time {@code value} on {@code field} whose year the case lexeme does not carry,
+     *  or null. A value the service binds itself (a parameter, a bound of its timeline) reaches no case, so it is held
+     *  here to the lexeme uchar's input step holds an attribute to: a date in uchar's sentence of EF-003. */
+    static Violation outsideCaseForm(Object value, String field) {
+        if (value instanceof LocalDate d && !inCaseForm(d.getYear()))
+            return Violation.of(Violation.Kind.WRONG_TYPE, field,
+                    Msg.drools("EF-003.malformed", "lexeme", d.toString(), "field", field).text());
+        if (value instanceof LocalDateTime t && !inCaseForm(t.getYear()))
+            return Violation.of(Violation.Kind.WRONG_TYPE, field, "'" + t + "' heeft een jaar buiten 0000-9999, dat het"
+                    + " datumtijdlexeem van uchar-case-v0 niet draagt (yyyy-mm-ddThh:mm:ss[.fff], zonder teken)");
+        return null;
+    }
+
     /** The {@code uchar-case-v0} value of {@code w}, a value {@link ValueCoder} decoded for {@code dt}: what uchar's
      *  case reader reads back as that same Java value. Null after adding the violation of a value the case form cannot
      *  carry: a date-time with a fraction finer than a millisecond. A date or date-time whose year the lexeme does not
@@ -489,6 +503,11 @@ public final class RequestMapper {
         ValueCoder.Result r = ValueCoder.decode(value, p.datatype(), field);
         s.addAll(r.violations());
         if (!r.violations().isEmpty()) return null;
+        Violation year = outsideCaseForm(r.value(), field);
+        if (year != null) {
+            s.add(year);
+            return null;
+        }
         if (r.value() instanceof BigDecimal b)
             CaseRunner.inputFits(NF.objectNode().put("number", b.toPlainString()), p.datatype(), "parameter " + p.name());
         return r.value();
