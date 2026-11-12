@@ -282,14 +282,21 @@ refuse the start as well.
   forms the observer saw); `?fixpoint=true` gives `fixpoint: {objects, madeObjects, links, faults,
   inconsistencies}` in the form of the playground's (below), each fault with its `rule`, `subject`, the `code` and
   `params` of its kind as in the 422 and uchar's `sentence`, with the instances of the request as its input: an
-  instance by its id, its input values read off its bean before the fire, a made object `#<n>`, a type by its name;
-  or `fixpointError` with the reason a value of it cannot be shown. A dimensioned attribute has a row per cell, with
+  instance by its id, a made object `#<n>`, a type by its name; or `fixpointError` with the reason a value of it
+  cannot be shown. Beside uchar's `Fixpoint`, `Executor` reads what the session holds there through
+  `DroolsBackend.standingOf` before the fault branch and the write-back: every object with its type, and per member
+  what its bean field holds without the write-back (`EndState.Member.given`), which gives the input of an instance and
+  the value a creation assigned to a made object. In the 422 of an evaluation fault or a limit, `fixpoint` is what the
+  Drools session holds beside its faults: uchar's RUNTIME-SEMANTICS ch. 5.7 does not norm what such a session derives
+  beside its faults (the Drools branch withdraws the value of the form that faulted), and a session with a standing
+  fault has no end state (ch. 5.12a). It is a view of the session for diagnosis, not an outcome; the outcome of that
+  request is its `faults`. A dimensioned attribute has a row per cell, with
   the cell's `labels` after `attribute`, in their declared spelling, as uchar's `Fixpoint.DerivedValue.labels` names a
   derived cell, the cells in the declared order of their labels. A row a rule, a default or an allocation derived has
-  the origin `derived`, with the value it replaced beside it as `input`: the input of an instance of the request, as
-  read off its bean before the fire. An object a creation made has no input; in its place stands the value the
-  creation assigned, what the creation put on its bean (rank 2 of uchar's stack, RUNTIME-SEMANTICS ch. 7.8), which `Executor`
-  reads at the fixpoint before the write-back (`CaseSession.making`), as the write-back replaces it on the same bean. A
+  the origin `derived`, with the value it replaced beside it as `input`: the input of an instance of the request, its
+  `given` in uchar's reading. An object a creation made has no input; in its place stands the value the creation
+  assigned, what the creation put on its bean (rank 2 of uchar's stack, RUNTIME-SEMANTICS ch. 7.8), its `given` in the
+  same reading, which the write-back would replace on the same bean. A
   row of a made object without a derived value has the origin `creation`, and beside a derived value the value the
   creation assigned stands as `input` with `inputOrigin: "creation"`, a scalar, a timeline as its segments and a cell as its
   value, in the 422 of an evaluation fault and of a limit too: on uchar's golden `jutterswet-creatie-per-dag`, where
@@ -300,7 +307,7 @@ refuse the start as well.
   rule wrote within a window, which uchar's `Fixpoint.DerivedValue` gives as its true periods, with the origin
   `derived` (`{"characteristic": "rentedragend", "origin": "derived", "periods": [{"from": "2025-11-16", "to":
   "2026-03-13"}]}` on uchar's golden `jutterswet-verzuimrente-30-360-afgerond`), or else those of the input, with the
-  origin `input`; uchar gives no input periods on a characteristic a rule writes (`CHARACTERISTIC_PERIODS_FAULT`).
+  origin `input`; input periods on a characteristic a rule writes are uchar's fault EF-041.
   A form and a declaration are named in the vocabulary of the answer; in `fixpoint` the canonical name stands beside a
   name that differs (`objectTypeCanonical`), as in the playground, whose trace and coverage name a form without it. A
   422 gets the asked fields beside its faults, so the faults stand as data in `fixpoint.faults` next to the values. The
@@ -400,8 +407,9 @@ refuse the start as well.
   `{"marker": "onbekend"}` under `value` and the value `waarde(…)` as its payload, also in a segment and a cell; the
   page shows a marker by its name), and the `fixpoint`
   of the case's own session as uchar reads it (`DroolsBackend.fixpointOf`): per object every value and characteristic with
-  its origin, on a made object the value the creation assigned as the service gives it (above, `?fixpoint=true`), read in the
-  session uchar's replay hands over before its write-back (`CaseRunner.Handoff`), the made objects, the links, the
+  its origin, on a made object the value the creation assigned as the service gives it (above, `?fixpoint=true`), read
+  through `DroolsBackend.standingOf` in the session uchar's replay hands over before its write-back
+  (`CaseRunner.Handoff`), the made objects, the links, the
   evaluation faults as data and the inconsistencies, each list sorted, or `fixpointError` with the reason there is
   none. The page writes the `input` of a made object as `(creatie …)`, that of an instance as `(invoer …)`.
   `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
