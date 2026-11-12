@@ -1046,6 +1046,17 @@ public final class DecisionCore {
      *  by {@link dev.uchar.regelspraak.toolchain.service.http.ServiceMain} at startup. Empty when no gap / no sets. */
     public List<String> periodWarnings() { return periodWarnings; }
 
+    /** What a start says beside the serving lines, one sentence each: the {@link #periodWarnings}, and that the
+     *  descriptor names no entry point, where it names none. Such a service starts, so that a descriptor can grow an
+     *  entry point at a time, but it decides nothing: only {@code /info} and, where bound, the playground answer. */
+    public List<String> startWarnings() {
+        List<String> out = new ArrayList<>(periodWarnings);
+        if (perPath.isEmpty())
+            out.add("de descriptor noemt geen entrypoints: de dienst beslist niets; alleen /info en de playground"
+                    + " antwoorden");
+        return List.copyOf(out);
+    }
+
     /** Thrown when no entry point of the service carries the forms of a scenario ({@link #pathForScope}). */
     public static final class NoEntryPoint extends RuntimeException {
         public NoEntryPoint(String sentence) { super(sentence); }

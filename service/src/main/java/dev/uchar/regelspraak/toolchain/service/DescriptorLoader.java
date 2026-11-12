@@ -82,7 +82,9 @@ public final class DescriptorLoader {
      *  with compare case-insensitively but take a run of spaces or a tab as written. */
     static ServiceDescriptor declared(ServiceDescriptor d, RegelSpraakModel model) {
         List<ServiceDescriptor.Entrypoint> eps = new ArrayList<>();
-        for (ServiceDescriptor.Entrypoint ep : d.entrypoints())
+        // a descriptor without entrypoints starts, as a service that decides nothing (startWarnings)
+        for (ServiceDescriptor.Entrypoint ep : d.entrypoints() == null ? List.<ServiceDescriptor.Entrypoint>of()
+                : d.entrypoints())
             eps.add(new ServiceDescriptor.Entrypoint(ep.name(), ep.path(), ep.scope(),
                     ep.input() == null ? null : ep.input().stream().map(o -> objectType(model, o).name).toList(),
                     ep.output() == null ? null : ep.output().stream().map(u -> declaredSelector(model, u)).toList(),

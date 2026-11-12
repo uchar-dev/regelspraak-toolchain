@@ -84,7 +84,7 @@ public final class ServiceMain {
             return;
         }
 
-        printPeriodWarnings(core);
+        printStartWarnings(core);
         try {
             ServiceHttp service = ServiceHttp.bind(core, args.host(), args.port()).start();
             printServingLines(core, service.port());
@@ -122,10 +122,11 @@ public final class ServiceMain {
         System.err.println(error.getMessage());
     }
 
-    /** Log every regel-geldigheid × parameter-geldigheid coverage gap (gate G3) as a {@code WAARSCHUWING: …}
-     *  line at startup — the CLI-visibility of the same period-coverage story /info serves. Silent when no gap. */
-    static void printPeriodWarnings(DecisionCore core) {
-        for (String w : core.periodWarnings())
+    /** Log every warning of the start ({@link DecisionCore#startWarnings}: a regel-geldigheid × parameter-geldigheid
+     *  coverage gap, a descriptor without entrypoints) as a {@code WAARSCHUWING: …} line on stderr. Silent when there
+     *  is none. */
+    static void printStartWarnings(DecisionCore core) {
+        for (String w : core.startWarnings())
             System.err.println("WAARSCHUWING: " + w);
     }
 

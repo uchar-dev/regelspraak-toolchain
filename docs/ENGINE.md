@@ -95,7 +95,10 @@ subtype (`<basis> voor <subtype>`), goes with the groups of the base it inherits
 composes one stack per concrete type from them: a scope that names either carries all of them, as uchar's
 scenario layer does as well since uchar `2a0c6d60` (`ScenarioResolver`). A `uchar-ir-v1` document is served whole: a scope drops forms by rebuilding the model it
 came from, which a document without its source does not have, so a scope that does not carry every form refuses the
-start.
+start. A descriptor without entry points (an empty `entrypoints` or none) starts, so that a descriptor can grow an
+entry point at a time: the service decides nothing, `/info` lists no entry point, and both adapters write
+`WAARSCHUWING: de descriptor noemt geen entrypoints: …` on stderr at the start (`DecisionCore.startWarnings`, beside
+the period warnings).
 
 At the start the core also checks that each scope uchar carries is complete. It reads the forms of the entry point's
 KieBase as uchar's rule graph reads them (`ProducerConsumer.forms`): of a rule its condition and value, of a defaults

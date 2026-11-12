@@ -61,8 +61,10 @@ public class CoreProducer {
         if (detail) config = config.withDetail();
         try {
             // ServiceError (a RuntimeException) propagates out of bouw as-is → fail-fast startup (readiness DOWN).
-            return DecisionCore.assemble(descriptorPath, sources, config,
+            DecisionCore core = DecisionCore.assemble(descriptorPath, sources, config,
                     Thread.currentThread().getContextClassLoader());
+            for (String w : core.startWarnings()) System.err.println("WAARSCHUWING: " + w);
+            return core;
         } catch (IOException ioe) {
             throw new UncheckedIOException("kon de dienst niet bouwen: " + ioe.getMessage(), ioe);
         }

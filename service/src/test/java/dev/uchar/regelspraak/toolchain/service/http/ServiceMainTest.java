@@ -62,6 +62,32 @@ class ServiceMainTest {
         assertEquals(ServiceMain.EXIT_MARKER, ServiceMain.exitCodeFor(error));
     }
 
+    /** A descriptor without entrypoints, an empty list or none at all, starts: the service decides nothing, /info
+     *  answers with an empty list, and the start warns on stderr ({@link ServiceMain#printStartWarnings}). */
+    @Test
+    void a_descriptor_without_entrypoints_starts_with_a_warning() throws Exception {
+        for (String descriptor : List.of("""
+                { "service": {"name":"leeg","version":"1"}, "entrypoints": [] }""", """
+                { "service": {"name":"leeg","version":"1"} }""")) {
+            DecisionCore core = DecisionCore.assemble(descriptor, markerSource(), CoreConfig.strict(),
+                    Thread.currentThread().getContextClassLoader());
+            assertTrue(core.entrypoints().isEmpty(), descriptor);
+            assertEquals(List.of("de descriptor noemt geen entrypoints: de dienst beslist niets; alleen /info en de"
+                    + " playground antwoorden"), core.startWarnings(), descriptor);
+            ServiceHttp service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
+            try {
+                java.net.http.HttpResponse<String> info = java.net.http.HttpClient.newHttpClient().send(
+                        java.net.http.HttpRequest.newBuilder(java.net.URI.create("http://127.0.0.1:" + service.port()
+                                + "/info")).GET().build(), java.net.http.HttpResponse.BodyHandlers.ofString());
+                assertEquals(200, info.statusCode(), info.body());
+                assertEquals("[]", ServiceHttp.MAPPER.readTree(info.body()).path("entrypoints").toString(),
+                        info.body());
+            } finally {
+                service.stop(0);
+            }
+        }
+    }
+
     @Test
     void a_non_marker_startup_error_classifies_as_exit_1() {
         ServiceError other = new ServiceError("descriptor valideert niet", List.of(
