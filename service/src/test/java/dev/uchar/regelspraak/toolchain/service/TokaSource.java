@@ -32,7 +32,11 @@ import java.util.stream.Stream;
  *       quirk list, in TokaVuurTest's refusal witness, and in uchar's gate-11 holdout.</li>
  * </ul>
  *
- * Both are exit-1 markers, not served rules. This is exactly the file set the pinned facts and the
+ * Both are exit-1 markers, not served rules. It also leaves out toka-33 to toka-37: each scenario of the casus
+ * distributes the train miles in its own way, so the six allocations of toka-32 to toka-37 all write 'treinmiles' of
+ * Natuurlijk persoon, and uchar's frontend refuses a second allocation to one target (WF-026, RGS-427). The served
+ * model keeps the first, toka-32, as uchar's casus dump does; the golden scenarios of the other five run one by one in
+ * {@code examples/toka-scenarios/manifest}. This is exactly the file set the pinned facts and the
  * {@code toka.service.json} descriptor are built over. Paths are resolved relative to the repo root
  * ({@code ../examples} from the {@code service/} module dir), or {@code examples} when run from the root.
  */
@@ -50,7 +54,8 @@ public final class TokaSource {
         throw new IllegalStateException("kan de repo-root (examples/toka) niet vinden vanaf " + here);
     }
 
-    /** The ordered service source files (foundation first, then the served rule files, no toka-23/toka-45). */
+    /** The ordered service source files (foundation first, then the served rule files, no toka-23, toka-33 to
+     *  toka-37 or toka-45). */
     static List<Path> sourceFiles() {
         List<Path> sink = new ArrayList<>();
         Path toka = REPO.resolve("examples/toka");
@@ -63,11 +68,12 @@ public final class TokaSource {
         }
         sink.add(REPO.resolve("examples/toka-reconciliation/casus-omissies.rgs"));
         sink.add(REPO.resolve("examples/toka-scenarios/scenario-model-extensie.rgs"));
-        // served rule files toka-17..47 except the two quirk files that do not resolve (see the class javadoc)
+        // served rule files toka-17..47 except those the class javadoc names
         try (Stream<Path> st = Files.list(toka)) {
             st.filter(p -> p.getFileName().toString().matches("toka-(1[7-9]|[2-9][0-9])-.*\\.rgs"))
               .filter(p -> !p.getFileName().toString().startsWith("toka-23-"))
               .filter(p -> !p.getFileName().toString().startsWith("toka-45-"))
+              .filter(p -> !p.getFileName().toString().matches("toka-3[3-7]-.*"))
               .sorted().forEach(sink::add);
         } catch (IOException e) { throw new UncheckedIOException(e); }
         return sink;
@@ -88,7 +94,7 @@ public final class TokaSource {
         catch (IOException e) { throw new UncheckedIOException(e); }
     }
 
-    /** The resolved model over the full served TOKA source (no toka-23/toka-45). */
+    /** The resolved model over the full served TOKA source. */
     static RegelSpraakModel model() {
         StringBuilder source = new StringBuilder();
         for (String text : sourcePerFile().values()) source.append(text).append('\n');
@@ -96,8 +102,8 @@ public final class TokaSource {
     }
 
     /** uchar's build of the declarations of the served TOKA model, a scope without forms, on the exec-model branch
-     *  ({@link UcharBuild}), as {@link DecisionCore} builds an entry point at startup. The whole model does not build
-     *  (two of its allocations write one attribute, WF-026), and the mapper reads no rule: mapper/relation tests read
+     *  ({@link UcharBuild}), as {@link DecisionCore} builds an entry point at startup. The mapper reads no rule:
+     *  mapper/relation tests read
      *  their requests with the input step of this build, whose bean model carries every type and fact type. */
     static DroolsBackend.Build build() {
         return UcharBuild.assemble(CaseEmitter.withScope(model(), new ResolvedScenario.Scope(List.of())),

@@ -37,6 +37,7 @@ import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -59,7 +60,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The 29 scenarios are dynamic tests (so one failure names its scenario) plus a final count assertion that the
  * harness saw exactly 29 golden scenarios and all were accounted for. A scenario uchar's scenario resolver refuses
  * cannot serve as an oracle: it is listed by file name in {@link #UCHAR_REFUSES} with a fragment of the refusal, and
- * its dynamic test asserts exactly that refusal, so an entry fails the day uchar resolves the scenario again.
+ * its dynamic test asserts exactly that refusal, so an entry fails the day uchar resolves the scenario again. A
+ * scenario of an allocation the service does not serve is listed in {@link #NOT_SERVED}.
  */
 class GoldenOverHttpTest {
 
@@ -72,6 +74,17 @@ class GoldenOverHttpTest {
                     "een scope in een document met een startpuntbepaling wordt geweigerd",
             "scenario-toka-44-startpunt-min-reserveringstermijn.rgs",
                     "een scope in een document met een startpuntbepaling wordt geweigerd");
+
+    /** The golden scenarios of the allocations the TOKA service does not serve: each distributes the train miles of
+     *  the contingent in its own way, and uchar's frontend refuses a second allocation to 'treinmiles' in one model
+     *  (WF-026), so the served set keeps toka-32 alone ({@code TokaSource}). Each scenario still resolves on its own,
+     *  and no entrypoint serves its scope; the manifest runs them one by one. */
+    private static final java.util.Set<String> NOT_SERVED = java.util.Set.of(
+            "scenario-toka-33-naar-rato-woonregio.rgs",
+            "scenario-toka-34-leeftijd-en-woonregio.rgs",
+            "scenario-toka-35-woonregio-met-maximum.rgs",
+            "scenario-toka-36-naar-rato-afronding.rgs",
+            "scenario-toka-37-leeftijd-woonregio-max-afronding.rgs");
 
     private static ServiceDescriptor descriptor;
     private static ServiceHttp service;
@@ -116,6 +129,7 @@ class GoldenOverHttpTest {
 
         AtomicInteger succeeded = new AtomicInteger();
         AtomicInteger refused = new AtomicInteger();
+        AtomicInteger notServed = new AtomicInteger();
         List<DynamicTest> tests = new ArrayList<>();
         for (Golden g : golden) {
             String name = g.scenarioFile.getFileName().toString();
@@ -124,6 +138,9 @@ class GoldenOverHttpTest {
                 if (refusal != null) {
                     testRefusal(g, refusal);
                     refused.incrementAndGet();
+                } else if (NOT_SERVED.contains(name)) {
+                    testNotServed(g);
+                    notServed.incrementAndGet();
                 } else {
                     testScenario(g);
                     succeeded.incrementAndGet();
@@ -133,7 +150,8 @@ class GoldenOverHttpTest {
         // final aggregating assertion: every golden reproduced, or refused as its entry in UCHAR_REFUSES says.
         tests.add(DynamicTest.dynamicTest("29 golden: over HTTP gereproduceerd of door uchar geweigerd", () -> {
             assertEquals(UCHAR_REFUSES.size(), refused.get(), "elke weigering in UCHAR_WEIGERT hoort op te treden");
-            assertEquals(29 - UCHAR_REFUSES.size(), succeeded.get(),
+            assertEquals(NOT_SERVED.size(), notServed.get(), "elk scenario in NOT_SERVED hoort in de manifest te staan");
+            assertEquals(29 - UCHAR_REFUSES.size() - NOT_SERVED.size(), succeeded.get(),
                     "golden reproducties over HTTP; gereproduceerd: " + succeeded.get());
         }));
         return tests.stream();
@@ -151,6 +169,19 @@ class GoldenOverHttpTest {
     }
 
     /** Resolve one golden scenario, derive its request, POST it, and assert every verwachting. */
+    /** A listed golden scenario of an allocation the service does not serve: it resolves, and no entrypoint
+     *  serves its scope, so an entry fails the day the descriptor serves it again. */
+    private void testNotServed(Golden g) throws IOException {
+        StringBuilder source = new StringBuilder();
+        for (Path c : g.companions) source.append(Files.readString(c)).append('\n');
+        source.append(Files.readString(g.scenarioFile)).append('\n');
+        ScenarioBundle bundle = ScenarioResolver.resolve(source.toString());
+        assertTrue(bundle.isOk(), () -> "scenario resolvet niet: " + bundle.model().errors());
+        String path = pathForScope(bundle.scenarios().get(0));
+        assertNull(path, () -> g.scenarioFile.getFileName() + " staat in NOT_SERVED, maar /" + path
+                + " dient zijn scope");
+    }
+
     private void testScenario(Golden g) throws Exception {
         // 1. resolve (companions first, then the scenario file) — the resolver output is the single oracle.
         StringBuilder source = new StringBuilder();

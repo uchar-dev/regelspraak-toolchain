@@ -32,9 +32,10 @@ class DescriptorLoaderTest {
     void toka_descriptor_validates_clean() {
         ServiceDescriptor d = DescriptorLoader.load(TokaSource.descriptorJson(), MODEL);
         assertEquals("TOKA belastingdienst", d.service().name());
-        assertEquals(29, d.entrypoints().size(), "de gepinde TOKA-descriptor hoort 29 entrypoints te hebben "
-                + "— precies de 29 exit-0 golden scenariotoetsen (30 tot besluit 16Y toka-45 liet vervallen, "
-                + "zie TokaBron), inclusief toka-29 'passagier met recht op "
+        assertEquals(24, d.entrypoints().size(), "de gepinde TOKA-descriptor hoort 24 entrypoints te hebben "
+                + "— de 29 exit-0 golden scenariotoetsen zonder de vijf verdelingen naar 'treinmiles' die het "
+                + "gediende model weglaat (toka-33 tot en met toka-37, WF-026, zie TokaSource), inclusief toka-29 "
+                + "'passagier met recht op "
                 + "treinmiles' (een §13.4.7 feitcreatie: nu benoembaar via de RAW model.regels, ook al levert "
                 + "hij geen resolved-collectie-regel op)");
         // no violations

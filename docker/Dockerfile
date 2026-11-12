@@ -57,14 +57,15 @@ COPY docker/entrypoint.sh /app/entrypoint.sh
 # Bake the ordered TOKA source manifest at build time so the entrypoint gives the service its sources in exactly
 # the order of TokaBron.bronBestanden() (service tests): the model foundation (toka-01..16) and the two companions,
 # then the served rules (toka-17..47) WITHOUT the two files that do not resolve: toka-23 (datum+datum, §4.1 Tabel 2)
-# and toka-45 (dimensionally inconsistent under uchar's unit-identity typing). Keep this filter in step with
+# and toka-45 (dimensionally inconsistent under uchar's unit-identity typing), and without toka-33 to toka-37, five
+# more allocations to the 'treinmiles' that toka-32 writes (WF-026). Keep this filter in step with
 # TokaBron.bronBestanden(): a source that does not resolve stops the service before it binds its port, so the
 # HEALTHCHECK would never pass.
 RUN chmod +x /app/entrypoint.sh /app/bin/regelspraak \
     && { ls /app/rules/toka/toka-0[1-9]-*.rgs /app/rules/toka/toka-1[0-6]-*.rgs | sort; \
          echo /app/rules/companions/casus-omissies.rgs; \
          echo /app/rules/companions/scenario-model-extensie.rgs; \
-         ls /app/rules/toka/toka-1[7-9]-*.rgs /app/rules/toka/toka-[2-9][0-9]-*.rgs | sort | grep -v -e 'toka-23-' -e 'toka-45-'; \
+         ls /app/rules/toka/toka-1[7-9]-*.rgs /app/rules/toka/toka-[2-9][0-9]-*.rgs | sort | grep -v -e 'toka-23-' -e 'toka-45-' -e 'toka-3[3-7]-'; \
        } > /app/rules/toka-manifest.txt
 
 # Mounting a volume at /app/rules and overriding DESCRIPTOR + SOURCES_MANIFEST serves an entirely different rule

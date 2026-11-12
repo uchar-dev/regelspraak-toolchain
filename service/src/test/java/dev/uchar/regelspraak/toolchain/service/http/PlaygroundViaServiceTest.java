@@ -154,6 +154,12 @@ class PlaygroundViaServiceTest {
     private static final Set<String> UCHAR_REFUSES = Set.of("scenario-toka-29-passagier-met-recht.rgs",
             "scenario-toka-43-startpunt-vertrek.rgs", "scenario-toka-44-startpunt-min-reserveringstermijn.rgs");
 
+    /** The golden TOKA scenarios of the allocations {@code toka.service.json} does not serve
+     *  ({@code GoldenOverHttpTest.NOT_SERVED}): they have no entry point to go via. */
+    private static final Set<String> NOT_SERVED = Set.of("scenario-toka-33-naar-rato-woonregio.rgs",
+            "scenario-toka-34-leeftijd-en-woonregio.rgs", "scenario-toka-35-woonregio-met-maximum.rgs",
+            "scenario-toka-36-naar-rato-afronding.rgs", "scenario-toka-37-leeftijd-woonregio-max-afronding.rgs");
+
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
     private static DecisionCore berging;
     private static ServiceHttp withDetail;
@@ -179,7 +185,7 @@ class PlaygroundViaServiceTest {
     // ---------------- the verdict of the ordinary route ----------------
 
     /**
-     * Every golden TOKA scenario that uchar's scenario resolver takes (the exit-0 lines of
+     * Every golden TOKA scenario that uchar's scenario resolver takes and the TOKA service serves (the exit-0 lines of
      * {@code examples/toka-scenarios/manifest}), each on a service of its own companions, with the entry points of
      * {@code examples/toka/toka.service.json} whose rules those carry: the document is the companions as the service
      * reads them and the scenario after them. Via the service every result has the verdict of the ordinary route
@@ -196,7 +202,8 @@ class PlaygroundViaServiceTest {
             String[] fields = line.strip().split("\\s+");
             if (fields.length < 2 || !"0".equals(fields[0])) continue;
             Path scenario = TokaSource.REPO.resolve(fields[1]);
-            if (UCHAR_REFUSES.contains(scenario.getFileName().toString())) continue;
+            if (UCHAR_REFUSES.contains(scenario.getFileName().toString())
+                    || NOT_SERVED.contains(scenario.getFileName().toString())) continue;
             List<Path> companions = new ArrayList<>();
             for (int i = 2; i < fields.length; i++) companions.add(TokaSource.REPO.resolve(fields[i]));
             tests.add(DynamicTest.dynamicTest(scenario.getFileName().toString(), () -> {
@@ -236,9 +243,9 @@ class PlaygroundViaServiceTest {
                 }
             }));
         }
-        tests.add(DynamicTest.dynamicTest("26 golden scenario's vergeleken, alle PASS", () -> {
-            assertEquals(26, compared.get());
-            assertEquals(26, pass.get());
+        tests.add(DynamicTest.dynamicTest("21 golden scenario's vergeleken, alle PASS", () -> {
+            assertEquals(21, compared.get());
+            assertEquals(21, pass.get());
         }));
         return tests.stream();
     }

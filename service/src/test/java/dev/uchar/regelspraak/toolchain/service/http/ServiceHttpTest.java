@@ -265,7 +265,7 @@ class ServiceHttpTest {
         assertTrue(info.get("service").has("version"), resp.body());
         assertEquals("TOKA belastingdienst", info.get("service").get("name").asText(), resp.body());
         assertEquals("2.3.0", info.get("service").get("version").asText(), resp.body());
-        assertEquals(29, info.get("entrypoints").size(), "29 golden entrypoints");
+        assertEquals(24, info.get("entrypoints").size(), "24 golden entrypoints");
         assertTrue(info.get("parameters").isObject(), resp.body());
         assertTrue(info.get("skipped").isArray(), resp.body());
         // strict TOKA: nothing overgeslagen

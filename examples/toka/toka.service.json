@@ -89,46 +89,6 @@
       "output": ["Natuurlijk persoon.treinmiles"]
     },
     {
-      "name": "verdeling treinmiles op basis van woonregio factor",
-      "path": "verdeling-treinmiles-op-basis-van-woonregio-factor",
-      "scope": { "ruleNames": ["verdeling treinmiles op basis van woonregio factor"] },
-      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
-      "inputElements": ["Natuurlijk persoon.woonregio factor"],
-      "output": ["Natuurlijk persoon.treinmiles"]
-    },
-    {
-      "name": "Verdeling treinmiles op basis van leeftijd en woonregio factor",
-      "path": "verdeling-treinmiles-op-basis-van-leeftijd-en-woonregio-factor",
-      "scope": { "ruleNames": ["Verdeling treinmiles op basis van leeftijd en woonregio factor"] },
-      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
-      "inputElements": ["Natuurlijk persoon.leeftijd", "Natuurlijk persoon.woonregio factor"],
-      "output": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
-    },
-    {
-      "name": "verdeling treinmiles op basis van woonregio factor en met maximum waarde",
-      "path": "verdeling-treinmiles-op-basis-van-woonregio-factor-en-met-maximum-waarde",
-      "scope": { "ruleNames": ["verdeling treinmiles op basis van woonregio factor en met maximum waarde"] },
-      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
-      "inputElements": ["Natuurlijk persoon.woonregio factor"],
-      "output": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
-    },
-    {
-      "name": "verdeling treinmiles op basis van woonregio factor met afronding",
-      "path": "verdeling-treinmiles-op-basis-van-woonregio-factor-met-afronding",
-      "scope": { "ruleNames": ["verdeling treinmiles op basis van woonregio factor met afronding"] },
-      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
-      "inputElements": ["Natuurlijk persoon.woonregio factor"],
-      "output": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
-    },
-    {
-      "name": "Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding",
-      "path": "verdeling-treinmiles-op-basis-van-leeftijd-woonregio-factor-met-maximum-waarde-en-afronding",
-      "scope": { "ruleNames": ["Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding"] },
-      "input": ["Contingent treinmiles", "Natuurlijk persoon"],
-      "inputElements": ["Natuurlijk persoon.leeftijd", "Natuurlijk persoon.woonregio factor"],
-      "output": ["Natuurlijk persoon.treinmiles", "Contingent treinmiles.restant na verdeling"]
-    },
-    {
       "name": "belaste reis",
       "path": "belaste-reis",
       "scope": { "ruleNames": ["belaste reis"] },

@@ -32,10 +32,11 @@ class DecisionCoreTest {
 
     @Test
     void all_golden_entrypoints_are_built() {
-        // 29 descriptor entrypoints = ALL 29 exit-0 golden scenariotoetsen (30 until besluit 16Y dropped toka-45
-        // — see TokaSource), INCLUDING toka-29 (see its round trip below); every one runs.
-        assertEquals(29, CORE.entrypoints().size());
-        assertEquals(29, CORE.entrypoints().values().stream().filter(DecisionCore.Entrypoint::executable).count());
+        // 24 descriptor entrypoints = the 29 exit-0 golden scenariotoetsen less the five allocations to 'treinmiles'
+        // the served model leaves out (toka-33 to toka-37, WF-026 — see TokaSource), INCLUDING toka-29 (see its round
+        // trip below); every one runs.
+        assertEquals(24, CORE.entrypoints().size());
+        assertEquals(24, CORE.entrypoints().values().stream().filter(DecisionCore.Entrypoint::executable).count());
     }
 
     @Test
@@ -178,8 +179,9 @@ class DecisionCoreTest {
     @Test
     void descriptor_covers_every_exit0_golden_scope() throws Exception {
         // Pin descriptor completeness against the golden set FOREVER: parse the manifest + each exit-0 scenario's
-        // "toetst de regel <naam>" line mechanically, and assert the 29-entrypoint TOKA descriptor scopes every
-        // such name. This wires the descriptor to the golden manifest so a dropped/renamed scope fails here.
+        // "toetst de regel <naam>" line mechanically, and assert the 24-entrypoint TOKA descriptor scopes every
+        // such name but the five allocations the served model leaves out, and none of those. This wires the
+        // descriptor to the golden manifest so a dropped/renamed scope fails here.
         java.nio.file.Path manifest = TokaSource.REPO.resolve("examples/toka-scenarios/manifest");
         java.util.List<String> golden = new java.util.ArrayList<>();       // exit-0 scoped rule names
         for (String line : java.nio.file.Files.readAllLines(manifest)) {
@@ -196,15 +198,24 @@ class DecisionCoreTest {
         assertEquals(29, golden.size(), "verwacht 29 exit-0 golden scope-regels, kreeg " + golden);
 
         ServiceDescriptor d = DescriptorLoader.load(TokaSource.descriptorJson(), TokaSource.model());
-        assertEquals(29, d.entrypoints().size(), "de TOKA-descriptor hoort 29 entrypoints te hebben");
+        assertEquals(24, d.entrypoints().size(), "de TOKA-descriptor hoort 24 entrypoints te hebben");
         java.util.Set<String> scoped = new java.util.LinkedHashSet<>();
         for (ServiceDescriptor.Entrypoint ep : d.entrypoints())
             for (String n : ep.scope().ruleNamesOrEmpty())
                 scoped.add(dev.uchar.regelspraak.emit.IrEmitter.norm(n));
 
+        java.util.Set<String> notServed = java.util.Set.of(
+                "verdeling treinmiles op basis van woonregio factor",
+                "Verdeling treinmiles op basis van leeftijd en woonregio factor",
+                "verdeling treinmiles op basis van woonregio factor en met maximum waarde",
+                "verdeling treinmiles op basis van woonregio factor met afronding",
+                "Verdeling treinmiles op basis van leeftijd, woonregio factor, met maximum waarde en afronding");
+        assertTrue(golden.containsAll(notServed), "elke niet-gediende verdeling hoort een golden scope te zijn: "
+                + golden);
         for (String name : golden)
-            assertTrue(scoped.contains(dev.uchar.regelspraak.emit.IrEmitter.norm(name)),
-                    "geen enkel descriptor-entrypoint scoopt de golden regel '" + name + "' — gescoopt: " + scoped);
+            assertEquals(!notServed.contains(name), scoped.contains(dev.uchar.regelspraak.emit.IrEmitter.norm(name)),
+                    "de golden regel '" + name + "' hoort " + (notServed.contains(name) ? "door geen" : "door een")
+                            + " descriptor-entrypoint gescoopt te zijn — gescoopt: " + scoped);
     }
 
     @Test
