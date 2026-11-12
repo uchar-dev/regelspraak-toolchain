@@ -3,7 +3,6 @@ package dev.uchar.regelspraak.toolchain.quarkus;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
@@ -20,19 +19,14 @@ import java.net.http.HttpResponse;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
 /**
- * Pins that the Quarkus adapter's {@code GET /info} body ({@link InfoBuilder#assemble}) is IDENTICAL to the one the
- * zero-dep {@code ServiceHttp} serves — over the SAME {@link DecisionCore}. {@code ServiceHttp.infoBody()} is
- * package-private in the service module, so {@link InfoBuilder} reproduces its shape by hand; this test is the
- * anti-drift net that catches a divergence in EITHER mirror (if {@code ServiceHttp.infoBody()} gains a field and
- * {@link InfoBuilder} does not, the trees stop matching and this fails).
- *
- * <p>A PLAIN JUnit test (NOT {@code @QuarkusTest}) on purpose: it needs no Quarkus augmentation — it builds one
- * kern, feeds it to both the in-process {@link ServiceHttp} (bound on an ephemeral port) and {@link InfoBuilder},
- * and deep-compares the two JSON trees. No value is re-typed; the whole /info body comes from the shared kern.
+ * Pins that the Quarkus adapter's {@code GET /info} body is the one the JDK {@code ServiceHttp} serves over the same
+ * {@link DecisionCore}: the resource is called directly with the core set, the JDK adapter over HTTP on an ephemeral
+ * port, and the two JSON trees are compared. A plain JUnit test, not {@code @QuarkusTest}: it needs no Quarkus
+ * augmentation.
  */
 class InfoParityTest {
 
-    /** BigDecimal-for-floats so the parse of ServiceHttp's /info matches InfoBuilder's exact-BigDecimal nodes. */
+    /** BigDecimal-for-floats, as both adapters write their numbers. */
     private static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true);
 
@@ -41,8 +35,10 @@ class InfoParityTest {
         DecisionCore core = DecisionCore.assemble(TokaSource.descriptorJson(), TokaSource.sourcePerFile(),
                 CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
 
-        // the Quarkus adapter's /info body, built directly.
-        ObjectNode quarkusInfo = InfoBuilder.assemble(core);
+        // the Quarkus adapter's /info body, from the resource called directly.
+        DecideResource resource = new DecideResource();
+        resource.core = core;
+        JsonNode quarkusInfo = MAPPER.readTree((String) resource.info().getEntity());
 
         // the zero-dep ServiceHttp's /info body over the SAME kern, fetched over HTTP.
         ServiceHttp service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
@@ -53,7 +49,7 @@ class InfoParityTest {
             assertEquals(200, resp.statusCode());
             JsonNode serviceHttpInfo = MAPPER.readTree(resp.body());
             assertEquals(serviceHttpInfo, quarkusInfo,
-                    "de Quarkus /info body wijkt af van DienstHttp /info — de InfoBouwer-spiegel is gedreven");
+                    "de Quarkus /info body wijkt af van ServiceHttp /info");
         } finally {
             service.stop(0);
         }

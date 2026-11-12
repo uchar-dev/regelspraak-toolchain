@@ -44,33 +44,36 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 
 /**
- * The THIN HTTP adapter over the framework-agnostic {@link DecisionCore}. It owns no RegelSpraak meaning: it
- * only marshals JSON in/out and maps the core's typed outcomes onto HTTP status codes. A host-side Quarkus wrap
- * later can reuse the very same {@link DecisionCore} unchanged — this class is disposable plumbing.
+ * The HTTP contract of the decision service over the framework-agnostic {@link DecisionCore}, and its adapter on the
+ * JDK {@link HttpServer}. It owns no RegelSpraak meaning: it marshals JSON in and out and maps the core's typed
+ * outcomes onto HTTP status codes. The Quarkus adapter sends the same answers through {@link #post} and
+ * {@link #info}, so the two cannot drift.
  *
  * <h2>Routes</h2>
  * <ul>
- *   <li>{@code POST /<pad>} for every entry point: the body is read as JSON (BigDecimal-for-floats so no request
+ *   <li>{@code POST /<path>} for every entry point: the body is read as JSON (BigDecimal-for-floats so no request
  *       number is ever a double), handed to {@link DecisionCore#process}, and the response tree is written back
  *       with {@code 200} and {@code Content-Type: application/json; charset=UTF-8}. The query carries what the
- *       request asks beside its body ({@link #options}): {@code explanation}, {@code vocabulaire} (the vocabulary of the
- *       answer), {@code inputVocabulary} (the one the request's names are read in), and the detail flags
- *       {@code trace}, {@code dekking} and {@code fixpunt}, which a core started with detail answers
- *       ({@link dev.uchar.regelspraak.toolchain.service.CoreConfig#detail()}) and any other refuses with a 400.</li>
- *   <li>{@code GET /info}: the service manifest — dienst identity, one entry per entry point carrying its path,
- *       whether it is {@code uitvoerbaar}, its {@code dekking} (the exec-model branch's verdict per form of its
- *       document, the defaults groups included), its {@code markers} and, when uchar does not carry it, uchar's
- *       sentence as {@code weigering}; the list of ALL {@code skipped} (marker) names across the service, and
- *       the descriptor {@code parameters} defaults verbatim. A model with vocabularies adds {@code vocabulaires}
- *       ({@link Completeness}), and an entry point with a default vocabulary names it.</li>
+ *       request asks beside its body ({@link #options}): {@code explanation}, {@code explanationParts},
+ *       {@code vocabulary} (the vocabulary of the answer), {@code inputVocabulary} (the one the request's names are
+ *       read in), and the detail flags {@code trace}, {@code coverage} and {@code fixpoint}, which a core started with
+ *       detail answers ({@link dev.uchar.regelspraak.toolchain.service.CoreConfig#detail()}) and any other refuses
+ *       with a 400.</li>
+ *   <li>{@code GET /info}: the service manifest ({@link #info}) — the service identity, one entry per entry point
+ *       carrying its path, whether it is {@code executable}, its {@code coverage} (the exec-model branch's verdict per
+ *       form of its document, the defaults groups included), its {@code markers} and, when uchar does not carry it,
+ *       uchar's sentence as {@code refusal}; the list of all {@code skipped} (marker) names across the service, the
+ *       descriptor {@code parameters} defaults verbatim, the {@code parameterSets} and the {@code periodWarnings}. A
+ *       model with vocabularies adds {@code vocabularies} ({@link Completeness}), and an entry point with a default
+ *       vocabulary names it.</li>
  * </ul>
  *
- * <h2>Errors — always a JSON body, NEVER a leaked stacktrace</h2>
+ * <h2>Errors — always a JSON body, never a leaked stacktrace</h2>
  * <ul>
- *   <li>{@link ServiceError} from {@code process} → {@code 400} {@code {"error": <boodschap>, "violations":
- *       [{"field": <pad>, "error": <detail>}, ...]}} — every schending names its {@code field}.</li>
+ *   <li>{@link ServiceError} from {@code process} → {@code 400} {@code {"error": …, "violations": [{"field": <path>,
+ *       "kind": <kind>, "error": <detail>}, ...]}} — every violation names its {@code field}.</li>
  *   <li>malformed / empty request body JSON → {@code 400} {@code {"error": "...", "field": "body"}}.</li>
- *   <li>{@link DecisionCore.UnknownPath} → {@code 404} naming the pad.</li>
+ *   <li>{@link DecisionCore.UnknownPath} → {@code 404} naming the path.</li>
  *   <li>{@link DecisionCore.NonExecutable} → {@code 503}, the MARKER answer: {@code {"status": "MARKER",
  *       "error": …, "reason": <uchar's sentence>, "markers": […]}}. An entry point uchar does not carry has no
  *       KieBase, and an answer without the construct would be an answer to another rule set.</li>
@@ -84,21 +87,21 @@ import java.util.concurrent.TimeoutException;
  *       ({@link AnswerBuilder#limit}): {@code {"status": "LIMIT", "error": …, "code": <uchar's register code>,
  *       "reason": <uchar's sentence>}}.</li>
  *   <li>wrong method on a known path → {@code 405} naming the method.</li>
- *   <li>ANY other exception → {@code 500} {@code {"error": "interne fout"}} — never a stacktrace or an exception
+ *   <li>any other exception → {@code 500} {@code {"error": "interne fout"}} — never a stacktrace or an exception
  *       message in the body; the stack is logged to {@code stderr} server-side.</li>
  * </ul>
  *
  * <h2>Concurrency</h2>
  * The server executor is {@link Executors#newVirtualThreadPerTaskExecutor()} (Java 21 virtual threads). The core
- * is thread-safe BY CONSTRUCTION — each entry point's {@link org.kie.api.KieBase} is built once at startup and
+ * is thread-safe by construction — each entry point's {@link org.kie.api.KieBase} is built once at startup and
  * immutable thereafter, and {@code process} opens a fresh {@code KieSession} per request over the entry point's
- * read-only bean classloader — so an unbounded virtual-thread-per-request executor is safe. G7 (50 concurrent
- * POSTs, no cross-session fact leakage) lands in fase 6; this adapter is already ready for it.
+ * read-only bean classloader — so an unbounded virtual-thread-per-request executor is safe.
  */
 public final class ServiceHttp {
 
-    /** BigDecimal-for-floats: a request/response number is never a double (the exact-render discipline). */
-    static final ObjectMapper MAPPER = new ObjectMapper()
+    /** BigDecimal-for-floats: a request/response number is never a double (the exact-render discipline). Both adapters
+     *  read and write with it. */
+    public static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true)
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
@@ -157,12 +160,11 @@ public final class ServiceHttp {
         return service;
     }
 
-    /** The POST-handling delegate — {@code (pad, boom) -> ObjectNode}, satisfied by {@code core::process}. The
-     *  {@code ?explanation=true} path does NOT go through this delegate: it calls {@link DecisionCore#process} with the
-     *  uitleg flag directly (the delegate is the 500-never-leaks test seam, uitleg-independent). */
+    /** The POST-handling delegate, satisfied by {@code core::process}; a test hands in one that throws, to see the 500
+     *  that never leaks. */
     @FunctionalInterface
-    interface Processor {
-        ObjectNode process(String path, JsonNode requestTree);
+    public interface Processor {
+        ObjectNode process(String path, JsonNode requestTree, RequestOptions options);
     }
 
     public ServiceHttp start() { server.start(); return this; }
@@ -184,48 +186,51 @@ public final class ServiceHttp {
             }
             String path = ex.getRequestURI().getPath();
             if (path.startsWith("/")) path = path.substring(1);
-
-            byte[] body = ex.getRequestBody().readAllBytes();
-            JsonNode tree;
-            if (body.length == 0) {
-                send(ex, 400, errorBody("leeg verzoek-body: verwacht JSON met een 'instances'-array", "body"));
-                return;
-            }
-            try {
-                tree = MAPPER.readTree(new String(body, StandardCharsets.UTF_8));
-            } catch (JsonProcessingException malformed) {
-                send(ex, 400, errorBody("verzoek-body is geen geldige JSON: " + malformed.getOriginalMessage(),
-                        "body"));
-                return;
-            }
-            if (tree == null || tree.isNull()) {
-                send(ex, 400, errorBody("verzoek-body is geen geldige JSON (null)", "body"));
-                return;
-            }
-
-            // a request that asks something beside its body bypasses the test-seam delegate and asks the core itself;
-            // the plain path stays byte-identical through the delegate (core::process in production).
-            RequestOptions options = options(ex.getRequestURI().getRawQuery());
-            ObjectNode answer = options.equals(RequestOptions.DEFAULT)
-                    ? processor.process(path, tree)
-                    : core.process(path, tree, options);
-            send(ex, 200, answer);
-        } catch (DecisionCore.UnknownPath unknown) {
-            send(ex, 404, errorBody(unknown.getMessage(), null));
-        } catch (DecisionCore.NonExecutable rejected) {
-            send(ex, 503, markerBody(rejected));
-        } catch (ServiceError serviceError) {
-            send(ex, 400, requestErrorBody(serviceError));
-        } catch (EvaluationFault evaluationFault) {
-            send(ex, 422, AnswerBuilder.evaluationFault(evaluationFault));
-        } catch (NoFixpoint none) {
-            send(ex, 422, AnswerBuilder.noFixpoint(none));
-        } catch (Limit limit) {
-            send(ex, 422, AnswerBuilder.limit(limit));
+            Answer answer = post(processor, path, options(ex.getRequestURI().getRawQuery()),
+                    new String(ex.getRequestBody().readAllBytes(), StandardCharsets.UTF_8));
+            send(ex, answer.status(), answer.body());
         } catch (Exception intern) {
             // NEVER leak a stacktrace or the exception message to the client; log it server-side.
             intern.printStackTrace(System.err);
             send(ex, 500, errorBody("interne fout", null));
+        }
+    }
+
+    /** What an adapter sends for a request: the HTTP status and the body. */
+    public record Answer(int status, JsonNode body) {}
+
+    /**
+     * The answer to a {@code POST} of {@code body} to the entry point at {@code path}, asking {@code options}: the
+     * status and body both adapters send. An empty body, one that is no JSON and JSON {@code null} are a 400 on
+     * {@code body}; otherwise {@code processor} answers, and what it throws maps as the class comment says. Any other
+     * exception leaves here, for the adapter to log and answer with a 500.
+     */
+    public static Answer post(Processor processor, String path, RequestOptions options, String body) {
+        if (body == null || body.isEmpty())
+            return new Answer(400, errorBody("leeg verzoek-body: verwacht JSON met een 'instances'-array", "body"));
+        JsonNode tree;
+        try {
+            tree = MAPPER.readTree(body);
+        } catch (JsonProcessingException malformed) {
+            return new Answer(400, errorBody("verzoek-body is geen geldige JSON: " + malformed.getOriginalMessage(),
+                    "body"));
+        }
+        if (tree == null || tree.isNull())
+            return new Answer(400, errorBody("verzoek-body is geen geldige JSON (null)", "body"));
+        try {
+            return new Answer(200, processor.process(path, tree, options));
+        } catch (DecisionCore.UnknownPath unknown) {
+            return new Answer(404, errorBody("onbekend pad: '/" + path + "'", null));
+        } catch (DecisionCore.NonExecutable rejected) {
+            return new Answer(503, markerBody(rejected));
+        } catch (ServiceError serviceError) {
+            return new Answer(400, requestErrorBody(serviceError));
+        } catch (EvaluationFault evaluationFault) {
+            return new Answer(422, AnswerBuilder.evaluationFault(evaluationFault));
+        } catch (NoFixpoint none) {
+            return new Answer(422, AnswerBuilder.noFixpoint(none));
+        } catch (Limit limit) {
+            return new Answer(422, AnswerBuilder.limit(limit));
         }
     }
 
@@ -240,15 +245,13 @@ public final class ServiceHttp {
     /** Whether the query string sets the flag {@code naam} as {@link #requiresExplanation} reads {@code explanation}: the first
      *  parameter of that name (compared case-insensitively) with the value {@code true} (case-insensitive), or bare. */
     public static boolean isRequested(String rawQuery, String name) {
-        if (rawQuery == null || rawQuery.isEmpty()) return false;
-        for (String part : rawQuery.split("&")) {
-            int eq = part.indexOf('=');
-            String key = eq < 0 ? part : part.substring(0, eq);
-            if (!name.equalsIgnoreCase(key)) continue;
-            String value = eq < 0 ? "true" : part.substring(eq + 1);
-            return "true".equalsIgnoreCase(value) || value.isEmpty();
-        }
-        return false;
+        return isSet(queryValue(rawQuery, name));
+    }
+
+    /** Whether the value of a flag in the query sets it: {@code true} (case-insensitive) or bare (the empty text); null,
+     *  the flag absent, does not. */
+    public static boolean isSet(String value) {
+        return value != null && (value.isEmpty() || "true".equalsIgnoreCase(value));
     }
 
     /** What the query of a request asks beside its body: {@link #requiresExplanation}, the values of {@code vocabulaire} and
@@ -283,7 +286,7 @@ public final class ServiceHttp {
                         + "' niet toegestaan op '/info' (gebruik GET)", null));
                 return;
             }
-            send(ex, 200, infoBody());
+            send(ex, 200, info(core));
         } catch (Exception intern) {
             intern.printStackTrace(System.err);
             send(ex, 500, errorBody("interne fout", null));
@@ -409,8 +412,9 @@ public final class ServiceHttp {
         }
     }
 
-    /** Build the {@code /info} manifest from the kern's descriptor + compiled entry points. */
-    ObjectNode infoBody() {
+    /** The {@code /info} manifest of {@code core}, from its descriptor and compiled entry points; both adapters serve
+     *  it. */
+    public static ObjectNode info(DecisionCore core) {
         ServiceDescriptor descriptor = core.descriptor();
         ObjectNode root = NF.objectNode();
 
@@ -485,7 +489,7 @@ public final class ServiceHttp {
     /** Render a parameterset value as an EXACT JSON node for /info (ValueCoder-symmetric with
      *  {@code AnswerBuilder.rend}): BigDecimal as a number (never a double), date/datetime as an ISO string,
      *  boolean as boolean, tekst/enum as string, explicit leegwaarde as JSON null. */
-    private JsonNode renderValue(Object v) {
+    private static JsonNode renderValue(Object v) {
         if (v == null) return NF.nullNode();
         if (v instanceof BigDecimal b) return NF.numberNode(b);
         if (v instanceof Boolean b) return NF.booleanNode(b);
@@ -498,7 +502,7 @@ public final class ServiceHttp {
     // ---------------- error bodies ----------------
 
     /** {@code {"error": <boodschap>, "field"?: <veld>}}. */
-    static ObjectNode errorBody(String notice, String field) {
+    public static ObjectNode errorBody(String notice, String field) {
         ObjectNode n = NF.objectNode();
         n.put("error", notice);
         if (field != null) n.put("field", field);
@@ -507,7 +511,7 @@ public final class ServiceHttp {
 
     /** The MARKER answer to a request at an entry point uchar does not carry: {@code {"status": "MARKER", "error":
      *  <boodschap>, "reason": <uchar's sentence>, "markers": [<construct>...]}}. */
-    static ObjectNode markerBody(DecisionCore.NonExecutable rejected) {
+    private static ObjectNode markerBody(DecisionCore.NonExecutable rejected) {
         ObjectNode n = NF.objectNode();
         n.put("status", "MARKER");
         n.put("error", rejected.getMessage());
@@ -520,10 +524,8 @@ public final class ServiceHttp {
     /** {@code {"error": <boodschap>, "violations": [{"field": <pad>, "kind": <soort>, "error": <detail>}, ...]}} —
      *  every schending NAMES its veld, and its soort tells a caller a request error from a request form the service
      *  does not carry ({@code UNSUPPORTED}). Built from a request-mapping {@link ServiceError}. */
-    static ObjectNode requestErrorBody(ServiceError error) {
+    private static ObjectNode requestErrorBody(ServiceError error) {
         ObjectNode n = NF.objectNode();
-        // the constructed message already concatenates the schendingen; use its context head only would lose the
-        // count, so keep the full message — it names nothing secret (all service-internal diagnostics).
         n.put("error", "verzoek valideert niet");
         ArrayNode violations = n.putArray("violations");
         for (Violation s : error.violations()) {

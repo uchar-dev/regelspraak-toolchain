@@ -11,6 +11,6 @@ public final class ExplodingService {
     private ExplodingService() {}
 
     public static ServiceHttp start(DecisionCore core, RuntimeException fault) throws IOException {
-        return ServiceHttp.bindWith(core, (path, tree) -> { throw fault; }, "127.0.0.1", 0).start();
+        return ServiceHttp.bindWith(core, (path, tree, options) -> { throw fault; }, "127.0.0.1", 0).start();
     }
 }

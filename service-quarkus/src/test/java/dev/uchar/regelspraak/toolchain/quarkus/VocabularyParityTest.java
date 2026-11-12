@@ -70,7 +70,9 @@ class VocabularyParityTest {
         HttpResponse<String> r = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
                 URI.create("http://127.0.0.1:" + service.port() + "/info")).GET().build(), HttpResponse.BodyHandlers.ofString());
         JsonNode jdk = MAPPER.readTree(r.body());
-        assertEquals(jdk, InfoBuilder.assemble(core));
+        DecideResource resource = new DecideResource();
+        resource.core = core;
+        assertEquals(jdk, MAPPER.readTree((String) resource.info().getEntity()));
         assertEquals(2, jdk.get("vocabularies").size(), r.body());
         assertEquals("cgm", jdk.at("/entrypoints/1/vocabulary").asText(), r.body());
     }

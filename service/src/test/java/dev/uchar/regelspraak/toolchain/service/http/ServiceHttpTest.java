@@ -455,7 +455,7 @@ class ServiceHttpTest {
         // Force an internal error via a verwerk delegate that throws a RuntimeException carrying a secret. The
         // adapter must answer 500 with {"error":"interne fout"} and NEVER echo the message or a class name.
         DecisionCore core = tokaCore();
-        ServiceHttp.Processor exploding = (path, tree) -> {
+        ServiceHttp.Processor exploding = (path, tree, options) -> {
             throw new RuntimeException("geheim");
         };
         service = ServiceHttp.bindWith(core, exploding, "127.0.0.1", 0).start();
