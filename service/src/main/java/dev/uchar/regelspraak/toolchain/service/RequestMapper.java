@@ -40,7 +40,7 @@ import java.util.Map;
  * (WF-013, {@link CaseInput.RoleCollision}) is a {@link Violation.Kind#WRONG_TYPE}, a link the bean model cannot hold
  * ({@link CaseInput.RoleRefusal}) a {@link Violation.Kind#UNSUPPORTED}, each with uchar's sentence. On any
  * violation it does not throw: it returns the violations, beside the world uchar read from the fields that validated
- * (none when uchar refused a link), so a caller (fase 3) can turn the full set into one 400 naming every bad field.
+ * (none when uchar refused a link), so a caller can turn the full set into one 400 naming every bad field.
  *
  * <p>A number its declaration does not hold is no violation but uchar's evaluation fault EF-004 on the input, which
  * uchar's input fence raises ({@link CaseRunner#inputFits}): for an attribute uchar's input step raises it and stops at
@@ -142,11 +142,9 @@ public final class RequestMapper {
         List<CaseRefusal> refusals = new ArrayList<>();
         unknownKeys(request.tree(), REQUEST_KEYS, "", s);
 
-        // 1. peildatum / rekendatum — ONE date authority (fase 5). 'peildatum' is the preferred name, 'rekendatum'
-        //    the existing alias: the two are the SAME notion. Both present and UNEQUAL is a violation naming BOTH
-        //    fields and BOTH values (a caller must never give two conflicting dates); otherwise the date is the one
-        //    present (peildatum wins when both are given and equal). The unified date drives World.evaluationDate —
-        //    which the vintage-selection ALSO reads, so a rule reading Rekendatum and the vintage follow ONE date.
+        // 1. asOfDate and rekendatum name the one evaluation date. Both present and unequal is a violation naming
+        //    both values; otherwise the date is the one present. It drives World.evaluationDate, which the vintage
+        //    selection reads as well, so a rule reading Rekendatum and the vintage follow one date.
         LocalDate asOfDate = readDate(request.asOfDate(), "asOfDate", s);
         LocalDate evaluationDate = readDate(request.evaluationDate(), "rekendatum", s);
         LocalDate date;
@@ -156,7 +154,7 @@ public final class RequestMapper {
                             + " maar verschillen — geef er één (of gelijke waarden)"));
             date = asOfDate;
         } else {
-            date = asOfDate != null ? asOfDate : evaluationDate;   // peildatum wins when both equal
+            date = asOfDate != null ? asOfDate : evaluationDate;
         }
         if (date != null && !inCaseForm(date.getYear()))
             refusals.add(new CaseRefusal(asOfDate != null ? "asOfDate" : "rekendatum"));
@@ -309,7 +307,7 @@ public final class RequestMapper {
 
     /** Parse an ISO-datum node (yyyy-MM-dd) into a {@link LocalDate}, or {@code null} when absent/null. A
      *  non-textual or unparseable value adds a {@link Violation.Kind#WRONG_TYPE} on {@code field}. Shared by
-     *  the {@code asOfDate} and {@code evaluationDate} legs of the one date authority (fase 5). */
+     *  {@code asOfDate} and {@code rekendatum}, the two names of the one evaluation date. */
     private static LocalDate readDate(JsonNode node, String field, List<Violation> s) {
         if (node == null || node.isNull()) return null;
         if (!node.isTextual()) {

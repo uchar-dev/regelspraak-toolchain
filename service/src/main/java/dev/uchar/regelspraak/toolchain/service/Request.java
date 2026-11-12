@@ -3,28 +3,26 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.JsonNode;
 
 /**
- * A decision request as a raw Jackson tree — the framework-agnostic core object the HTTP layer (fase 3) will
- * hand in. It must express everything a {@link dev.uchar.regelspraak.ir.ResolvedScenario} situatie can: a
- * rekendatum, parameter overrides, labelled object instances with attribuut/kenmerk values, and rol relations
- * between those instances.
+ * A decision request as a raw Jackson tree, as an adapter hands it to the core. It expresses what a situation of a
+ * scenario can: an evaluation date, parameter overrides, labelled object instances with attribute and characteristic
+ * values, and role links between those instances.
  *
- * <p>Shape (decision 4):
+ * <p>Shape ({@link RequestMapper} refuses any other key at these three levels):
  * <pre>{@code
  * {
- *   "rekendatum"?: "yyyy-MM-dd",
- *   "parameters"?: { "<parameternaam>": <waarde>, ... },
+ *   "asOfDate"?: "yyyy-MM-dd",   "rekendatum"?: "yyyy-MM-dd",   (one date; both given, they must be equal)
+ *   "parameters"?: { "<parameter>": <value>, ... },
  *   "instances": [
- *     { "type": "<objecttype>", "id": "<label>",
- *       "attributes"?: { "<attribuut>": <waarde>, ... },
- *       "characteristics"?:  { "<kenmerk>": true|false, ... },
- *       "roles"?:     { "<rol>": "<id>" | ["<id>", ...], ... } }
+ *     { "type": "<object type>", "id": "<label>",
+ *       "attributes"?: { "<attribute>": <value>, ... },
+ *       "characteristics"?: { "<characteristic>": true|false, ... },
+ *       "roles"?: { "<role>": "<id>" | ["<id>", ...], ... } }
  *   ],
- *   "relations"?: [ { "factType": "<naam>", "roles": { "<rol>": "<id>", ... } } ]
+ *   "relations"?: [ { "factType": "<name>", "roles": { "<role>": "<id>" | ["<id>", ...], ... } } ]
  * }
  * }</pre>
- * Rol relations may be given inline per instance ({@code instances[].rollen}, mirroring the situatie's
- * "de reis is V1" and a case file's {@code roles}) and/or via the top-level {@code relations} list; both become the
- * {@code roles} of a case, which uchar's input step reads ({@link RequestMapper}).
+ * Role links may be given inline per instance ({@code instances[].roles}, as a case file's {@code roles}) and through
+ * the top-level {@code relations}; both become the {@code roles} of a case, which uchar's input step reads.
  */
 public record Request(JsonNode tree) {
 
@@ -32,11 +30,11 @@ public record Request(JsonNode tree) {
         if (tree == null) throw new IllegalArgumentException("verzoek-boom is null");
     }
 
-    /** The {@code evaluationDate} node, or null when absent. */
+    /** The {@code rekendatum} node, or null when absent: the same date as {@link #asOfDate}, under the name of the
+     *  RegelSpraak global; {@link RequestMapper} unifies the two. */
     public JsonNode evaluationDate() { return tree.get("rekendatum"); }
 
-    /** The {@code asOfDate} node, or null when absent (fase 5). {@code asOfDate} is the PREFERRED name for the
-     *  one date authority; {@code evaluationDate} is the existing alias — {@link RequestMapper} unifies the two. */
+    /** The {@code asOfDate} node, or null when absent: the one evaluation date of the request. */
     public JsonNode asOfDate() { return tree.get("asOfDate"); }
 
     /** The {@code parameters} object node, or null when absent. */

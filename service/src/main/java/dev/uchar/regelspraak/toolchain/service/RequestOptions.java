@@ -6,14 +6,14 @@ import java.util.List;
 /**
  * What a request asks beside its body, from the query of its URL: {@code explanation}, the explanation in words;
  * {@code explanationParts}, beside it each of its sentences as its parts (which asks the explanation as well);
- * {@code vocabulaire}, the vocabulary the answer names the declarations in (null: the entry point's default from the
+ * {@code vocabulary}, the vocabulary the answer names the declarations in (null: the entry point's default from the
  * descriptor, else the canonical names); {@code inputVocabulary}, the vocabulary the request's names are read in
  * (null: every name is read liberally, canonical or a designation in any vocabulary). A vocabulary is one the model
- * declares, or {@code canoniek} for the canonical names.
+ * declares, or {@code canonical} for the canonical names.
  *
  * <p>The detail flags ask to see the request's session beside the answer, which a core gives only when it was started
  * with them ({@link CoreConfig#detail()}): {@code trace}, the firings per form with the ids of the request they bound;
- * {@code dekking}, per form of the entry point whether it fired; {@code fixpunt}, what stands at the fixpoint.
+ * {@code coverage}, per form of the entry point whether it fired; {@code fixpoint}, what stands at the fixpoint.
  */
 public record RequestOptions(boolean explanation, String vocabulary, String inputVocabulary, boolean trace,
                             boolean coverage, boolean fixpoint, boolean explanationParts) {

@@ -4,13 +4,13 @@ package dev.uchar.regelspraak.toolchain.service;
  * A typed validation violation (a <i>schending</i>) — the single currency of every fail-fast check in the
  * service core. It carries the KIND of problem, a machine-usable FIELD PATH naming exactly what was wrong
  * ({@code "instances[0].attributes.leeftijd"}, {@code "entrypoints[2].scope.ruleNames[0]"},
- * {@code "parameters.volwassenleeftijd"}), and a human-readable message. Fase 3 turns a request-mapping
- * violation into a 400 whose body names {@link #field()}, and a startup (descriptor/marker) violation into a
+ * {@code "parameters.volwassenleeftijd"}), and a human-readable message. The HTTP contract turns a request-mapping
+ * violation into a 400 whose body names {@link #field()}, and a startup (descriptor/marker) violation is a
  * refused start naming the offending value.
  *
- * @param soort   the category of violation
- * @param veld    the field path that located the problem (dot/bracket notation), never null (may be "")
- * @param bericht the human diagnostic, always naming the offending value
+ * @param kind    the category of violation
+ * @param field   the field path that located the problem (dot/bracket notation), never null (may be "")
+ * @param message the human diagnostic, always naming the offending value
  */
 public record Violation(Kind kind, String field, String message) {
 

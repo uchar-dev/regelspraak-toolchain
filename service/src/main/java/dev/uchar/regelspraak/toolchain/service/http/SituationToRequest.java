@@ -23,7 +23,7 @@ import java.util.List;
 /**
  * MECHANICALLY derive the request body of the service from a resolved scenario's merged
  * {@link ResolvedScenario.Situation}. Nothing here is hand-typed — every value, label, type, rol target,
- * parameter and the peildatum is read straight off uchar's scenario resolver, so the "one truth, two transports"
+ * parameter and the evaluation date is read straight off uchar's scenario resolver, so the "one truth, two transports"
  * guarantee holds: the same {@link dev.uchar.regelspraak.resolver.ScenarioResolver} output that the scenario
  * runner lowers to a case file is the request the golden harness posts and the playground's {@code via=service}
  * hands to the core ({@link Playground}). Each instance keeps its label as its {@code id}, so an expectation of the
@@ -41,8 +41,8 @@ import java.util.List;
  * and a time-dependent kenmerk as the {@code periods} in which it holds. A fraction that has no exact decimal form has
  * no request form, and fails here by name ({@link NonPortable}).
  *
- * <p>The response shape produced matches {@link dev.uchar.regelspraak.toolchain.service.Request}:
- * {@code instanties[]{type,id,attributen,kenmerken,rollen}}, {@code parameters}, {@code rekendatum}.
+ * <p>The request it builds has the shape of {@link dev.uchar.regelspraak.toolchain.service.Request}:
+ * {@code instances[]{type,id,attributes,characteristics,roles}}, {@code parameters}, {@code rekendatum}.
  */
 final class SituationToRequest {
 
@@ -57,12 +57,12 @@ final class SituationToRequest {
         NonPortable(String sentence, Throwable cause) { super(sentence, cause); }
     }
 
-    /** Build the request tree from a resolved scenario's situatie + peildatum. */
+    /** Build the request tree from a resolved scenario's situatie and evaluation date. */
     static ObjectNode assemble(ResolvedScenario scenario) {
         ResolvedScenario.Situation situation = scenario.situation();
         ObjectNode root = NF.objectNode();
 
-        // rekendatum (peildatum) — the mapper reads it as an ISO date.
+        // the evaluation date, which the mapper reads as an ISO date
         if (scenario.asOfDate() != null) root.put("rekendatum", scenario.asOfDate().toString());
 
         // parameters — the last-wins merged parameter values, keyed by declared parameter name.
