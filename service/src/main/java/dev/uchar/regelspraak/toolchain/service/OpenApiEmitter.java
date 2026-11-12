@@ -660,7 +660,8 @@ public final class OpenApiEmitter {
         rel.put("additionalProperties", false);
         ObjectNode relProps = rel.putObject("properties");
         relProps.putObject("factType").put("type", "string");
-        freeObject(relProps.putObject("roles"), "rolnaam -> id of lijst van ids.");
+        freeObject(relProps.putObject("roles"), "rolnaam -> id of lijst van ids; hoogstens één rol noemt een lijst,"
+                + " met een link per id; de ene rol van een wederkerig feittype noemt zijn twee ids in een lijst.");
         return s;
     }
 

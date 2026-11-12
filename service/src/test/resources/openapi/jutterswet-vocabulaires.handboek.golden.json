@@ -593,7 +593,7 @@
                 "roles": {
                   "type": "object",
                   "additionalProperties": true,
-                  "description": "rolnaam -> id of lijst van ids."
+                  "description": "rolnaam -> id of lijst van ids; hoogstens één rol noemt een lijst, met een link per id; de ene rol van een wederkerig feittype noemt zijn twee ids in een lijst."
                 }
               }
             }

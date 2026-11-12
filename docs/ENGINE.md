@@ -143,7 +143,10 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
   its fact type a 400 `UNKNOWN_FIELD`) and writes it as
   the input of a `uchar-case-v0` case, `{"asOfDate", "input": {"instances": [...]}}` with the ids of the request as
   labels, the inline `roles` and each relation of `relations` as `roles` (a relation on the end whose role toward the
-  other is to-one, or on its first end where both roles are to-many). uchar's input step reads that case
+  other is to-one, or on its first end where both roles are to-many). A role names one id or a list of ids; in a
+  relation at most one role names a list, which writes a link per id with the id of the other role, and the one role
+  of a reciprocal fact type names its two ids in a list. A role value that is neither (null, an object, a number) is
+  a 400 `MALFORMED` on its field, at an instance and in a relation. uchar's input step reads that case
   (`CaseInput.of`), the one its replay reads every case with: the beans, the role by its written name, the far field
   of a one-to-one relation, a to-many role through the far end, the reverse leg of a reciprocal role
   (RUNTIME-SEMANTICS ch. 5.7a), a relation of two to-many roles as one link of its fact type from either end

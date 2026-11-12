@@ -142,6 +142,37 @@ class RelationsTest {
         assertEquals(Violation.Kind.UNKNOWN_FIELD, r.violations().get(1).kind(), r.violations().toString());
     }
 
+    /** A list of ids on one role of a relation writes one link per id, with the id of the other role. */
+    @Test
+    void a_list_on_a_role_writes_a_link_per_id() {
+        var r = map("""
+            { "instances": [ { "type": "Vlucht", "id": "V1" },
+                { "type": "Natuurlijk persoon", "id": "P1" }, { "type": "Natuurlijk persoon", "id": "P2" } ],
+              "relations": [ { "factType": "Vlucht van natuurlijke personen",
+                              "roles": { "reis": "V1", "passagier": ["P1", "P2"] } } ] }""");
+        assertTrue(r.violations().isEmpty(), r.violations().toString());
+        Object v1 = r.world().beans().get("V1");
+        assertSame(v1, RegelSpraakRuntime.get(r.world().beans().get("P1"), "reis"), "P1.reis moet naar V1 wijzen");
+        assertSame(v1, RegelSpraakRuntime.get(r.world().beans().get("P2"), "reis"), "P2.reis moet naar V1 wijzen");
+    }
+
+    /** A role value that is no id and no list of ids — null, an object, a number — is refused on its field, in a
+     *  relation as at an instance, instead of being read as the id it prints as. */
+    @Test
+    void a_role_value_that_is_no_id_is_refused() {
+        var r = map("""
+            { "instances": [ { "type": "Vlucht", "id": "V1" }, { "type": "Natuurlijk persoon", "id": "5" },
+                { "type": "Natuurlijk persoon", "id": "P1", "roles": { "reis": { "id": "V1" } } },
+                { "type": "Natuurlijk persoon", "id": "P2", "roles": { "reis": null } } ],
+              "relations": [ { "factType": "Vlucht van natuurlijke personen", "roles": { "reis": "V1", "passagier": 5 } },
+                             { "factType": "Vlucht van natuurlijke personen",
+                              "roles": { "reis": "V1", "passagier": [null] } } ] }""");
+        assertEquals(List.of("instances[2].roles.reis", "instances[3].roles.reis", "relations[0].roles.passagier",
+                        "relations[1].roles.passagier"),
+                r.violations().stream().map(Violation::field).toList(), r.violations().toString());
+        assertTrue(r.violations().stream().allMatch(v -> v.kind() == Violation.Kind.MALFORMED), r.violations().toString());
+    }
+
     @Test
     void unknown_fact_type_is_reported() {
         var r = map("""

@@ -756,10 +756,8 @@ public final class RequestMapper {
                         "onbekende rol '" + role + "' vanaf objecttype '" + ot.name + "'" + reader.pinnedClause()));
                 return;
             }
-            List<String> targets = new ArrayList<>();
-            JsonNode v = e.getValue();
-            if (v.isArray()) v.forEach(n -> targets.add(n.asText()));
-            else targets.add(v.asText());
+            List<String> targets = ids(e.getValue(), role, field, s);
+            if (targets == null) return;
             for (String label : targets) {
                 ObjectType labelType = typePerLabel.get(label);
                 if (labelType == null) {
@@ -827,9 +825,8 @@ public final class RequestMapper {
             rolesN = rolesRead(ft, rolesN, path + ".roles", written, s);
             if (rolesN == null) continue;
             java.util.function.UnaryOperator<String> field = role -> path + ".roles." + written.getOrDefault(role, role);
-            // resolve each named role to its id. A binary feittype has two roles; a §13.3.9.2 WEDERKERIG feittype
-            // relates an objecttype to itself through ONE role entry — the request then names that one role TWICE
-            // (two ids under the same role name in a JSON array), or gives an array value.
+            // a binary fact type has two roles; a reciprocal one (RegelSpraak §13.3.9.2) relates an object type to itself
+            // through one role, which then names the two ids in a list
             List<Role> roles = ft.roles;
             if (roles.size() != 2 && !(ft.reciprocal && roles.size() == 1)) {
                 s.add(Violation.of(Violation.Kind.UNSUPPORTED, path,
@@ -837,34 +834,79 @@ public final class RequestMapper {
                                 + ft.name + "')"));
                 continue;
             }
-            // collect the (roleName, id) endpoints: two entries even for a wederkerig 1-role feittype (its role
-            // appears once but with an array of two ids, or is repeated).
-            List<String[]> endPoints = endPoints(rolesN, roles, ft.reciprocal);
-            if (endPoints.size() != 2) {
-                s.add(Violation.of(Violation.Kind.MALFORMED, path + ".roles",
-                        "relatie moet precies twee rol-eindpunten noemen (feittype '" + ft.name + "')"));
-                continue;
+            Map<String, List<String>> ids = new LinkedHashMap<>();
+            for (Role r : roles) {
+                JsonNode v = rolesN.get(r.name());
+                List<String> read = v == null ? null : ids(v, r.name(), field.apply(r.name()), s);
+                if (read != null) ids.put(r.name(), read);
             }
-            String roleA = endPoints.get(0)[0], idA = endPoints.get(0)[1];
-            String roleB = endPoints.get(1)[0], idB = endPoints.get(1)[1];
-            ObjectType otA = typePerLabel.get(idA), otB = typePerLabel.get(idB);
-            if (otA == null) { s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, field.apply(roleA), "onbekend id '" + idA + "'")); continue; }
-            if (otB == null) { s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, field.apply(roleB), "onbekend id '" + idB + "'")); continue; }
-            // the input step falls back on the type pair: an id that does not fill its role would be written into
-            // another relation between the two types, as on an inline rol
-            boolean fillsA = fillsRole(ft, roleA, idA, otA, field.apply(roleA), s),
-                    fillsB = fillsRole(ft, roleB, idB, otB, field.apply(roleB), s);
-            if (!fillsA || !fillsB) continue;
-            // the link goes where its field is: A holds B in a to-one field named after B's role, or else B holds A.
-            // The role NAME disambiguates when the same objecttype pair is joined by more than one feittype.
-            if (!model.toManyRole(otA, otB, roleB) || model.toManyRole(otB, otA, roleA))
-                writeLink(instances, paths, idA, roleB, idB, field.apply(roleB));
-            else
-                writeLink(instances, paths, idB, roleA, idA, field.apply(roleA));
+            if (ids.size() != rolesN.size()) continue;
+            for (String[] link : links(ids, roles, ft, path, s))
+                relationLink(ft, link[0], link[1], link[2], link[3], typePerLabel, field, instances, paths, s);
         }
     }
 
-    /** The roles of a relation keyed by their declared names, which {@link #endPoints} looks them up by: each written
+    /** The ends of the links a relation names, each {@code {roleA, idA, roleB, idB}}, from the ids per role: the two
+     *  ids of the one role of a reciprocal fact type, or else one id per role, where one role may name a list and
+     *  gives a link per id of it; an empty list on it gives none. Empty after adding the violation of another count. */
+    private static List<String[]> links(Map<String, List<String>> ids, List<Role> roles, FactType ft, String path,
+                                        List<Violation> s) {
+        List<String[]> links = new ArrayList<>();
+        if (roles.size() == 1) {
+            List<String> both = ids.get(roles.get(0).name());
+            if (both != null && both.size() == 2)
+                links.add(new String[]{roles.get(0).name(), both.get(0), roles.get(0).name(), both.get(1)});
+        } else if (ids.size() == 2) {
+            String roleA = roles.get(0).name(), roleB = roles.get(1).name();
+            List<String> as = ids.get(roleA), bs = ids.get(roleB);
+            if (as.size() > 1 && bs.size() > 1) {
+                s.add(Violation.of(Violation.Kind.MALFORMED, path + ".roles", "hoogstens één rol van een relatie noemt"
+                        + " een lijst van meer dan één id (feittype '" + ft.name + "')"));
+                return List.of();
+            }
+            for (String a : as) for (String b : bs) links.add(new String[]{roleA, a, roleB, b});
+            if (as.isEmpty() || bs.isEmpty()) return links;
+        }
+        if (links.isEmpty())
+            s.add(Violation.of(Violation.Kind.MALFORMED, path + ".roles",
+                    "relatie moet precies twee rol-eindpunten noemen (feittype '" + ft.name + "')"));
+        return links;
+    }
+
+    /** One link of a relation of {@code ft} between {@code idA} in {@code roleA} and {@code idB} in {@code roleB},
+     *  written into the case on the end whose role toward the other is to-one ({@link #setRelations}). */
+    private void relationLink(FactType ft, String roleA, String idA, String roleB, String idB,
+                              Map<String, ObjectType> typePerLabel, java.util.function.UnaryOperator<String> field,
+                              Map<String, ObjectNode> instances, Map<Link, String> paths, List<Violation> s) {
+        ObjectType otA = typePerLabel.get(idA), otB = typePerLabel.get(idB);
+        if (otA == null) { s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, field.apply(roleA), "onbekend id '" + idA + "'")); return; }
+        if (otB == null) { s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, field.apply(roleB), "onbekend id '" + idB + "'")); return; }
+        // the input step falls back on the type pair: an id that does not fill its role would be written into
+        // another relation between the two types, as on an inline rol
+        boolean fillsA = fillsRole(ft, roleA, idA, otA, field.apply(roleA), s),
+                fillsB = fillsRole(ft, roleB, idB, otB, field.apply(roleB), s);
+        if (!fillsA || !fillsB) return;
+        // the link goes where its field is: A holds B in a to-one field named after B's role, or else B holds A.
+        // The role NAME disambiguates when the same objecttype pair is joined by more than one feittype.
+        if (!model.toManyRole(otA, otB, roleB) || model.toManyRole(otB, otA, roleA))
+            writeLink(instances, paths, idA, roleB, idB, field.apply(roleB));
+        else
+            writeLink(instances, paths, idB, roleA, idA, field.apply(roleA));
+    }
+
+    /** The ids role {@code role} names on {@code field}: one id, or a list of ids; null after adding the violation of a
+     *  value that is neither (null, an object, a number, a list with another element), which would otherwise be
+     *  read as the id it prints as. */
+    private static List<String> ids(JsonNode value, String role, String field, List<Violation> s) {
+        if (value.isTextual()) return List.of(value.asText());
+        if (value.isArray() && value.valueStream().allMatch(JsonNode::isTextual))
+            return value.valueStream().map(JsonNode::asText).toList();
+        s.add(Violation.of(Violation.Kind.MALFORMED, field, "rol '" + role + "' noemt een id (tekst) of een lijst ids,"
+                + " niet " + value));
+        return null;
+    }
+
+    /** The roles of a relation keyed by their declared names, which {@link #setRelations} looks them up by: each written
      *  name read as a role of {@code ft}, and in {@code written} the key the request wrote for that declared name; null
      *  after adding the violation of an ambiguous or a repeated role, or of a name no role of {@code ft} answers to. */
     private JsonNode rolesRead(FactType ft, JsonNode rolesN, String path, Map<String, String> written,
@@ -901,26 +943,6 @@ public final class RequestMapper {
             return false;
         }
         return true;
-    }
-
-    /** Collect exactly the two (roleName, id) endpoints of a relation. For a normal binary feittype that is one
-     *  id per role name; for a WEDERKERIG 1-role feittype the single role name carries an array of two ids (or
-     *  is listed twice via a JSON array), both under the same role name. */
-    private static List<String[]> endPoints(JsonNode rolesN, List<Role> roles, boolean reciprocal) {
-        List<String[]> sink = new ArrayList<>();
-        if (reciprocal && roles.size() == 1) {
-            String role = roles.get(0).name();
-            JsonNode v = rolesN.get(role);
-            if (v != null && v.isArray())
-                v.forEach(n -> sink.add(new String[]{role, n.asText()}));
-            else if (v != null) sink.add(new String[]{role, v.asText()});
-        } else {
-            for (Role r : roles) {
-                JsonNode v = rolesN.get(r.name());
-                if (v != null && !v.isNull()) sink.add(new String[]{r.name(), v.asText()});
-            }
-        }
-        return sink;
     }
 
     private FactType factType(String name) {
