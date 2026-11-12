@@ -2265,21 +2265,28 @@ public final class Verbaliser {
         verbaliseAtom(b, c, read, subject, ucharText);
     }
 
-    /** Of samenstelling {@code s} een telling is waarvan de uitleg de drempel noemt. */
+    /** Of samenstelling {@code s} een telling is waarvan de uitleg de drempel noemt. Ten minste 1 leest als "A of B",
+     *  wat precies die drempel zegt. */
     private static boolean counting(Condition.Compound s) {
-        return s.quantifier() == Condition.Quantifier.TEN_HOOGSTE;
+        return switch (s.quantifier()) {
+            case TEN_MINSTE -> s.threshold() > 1;
+            case TEN_HOOGSTE, PRECIES -> true;
+            case ALLE, GEEN, DE -> false;
+        };
     }
 
     /**
      * Een samenstelling met een telling: de drempel ("ten hoogste 1 van de 2 voorwaarden geldt") en daarna elk lid dat
      * de motor bereikte met zijn eigen oordeel, "A" of "niet A", verbonden met "en". Een telling kan gelden op leden die
      * niet gelden (ten hoogste: de rest kan de drempel niet meer overschrijden, RUNTIME-SEMANTICS ch. 5.10); een lid
-     * zonder "niet" zou zeggen dat het geldt.
+     * zonder "niet" zou zeggen dat het geldt. "A of B" zou bij ten minste 2 zeggen dat één lid volstaat.
      */
     private void countingCompound(Sentence.Builder b, Condition.Compound s, Read read, ObjectType subject,
                                   boolean ucharText) {
         String phrase = switch (s.quantifier()) {
+            case TEN_MINSTE -> "ten minste";
             case TEN_HOOGSTE -> "ten hoogste";
+            case PRECIES -> "precies";
             default -> throw new IllegalStateException("de kwantor " + s.quantifier() + " is geen telling");
         };
         b.open(Part.Kind.CONDITION, conditionMeta(s, read));

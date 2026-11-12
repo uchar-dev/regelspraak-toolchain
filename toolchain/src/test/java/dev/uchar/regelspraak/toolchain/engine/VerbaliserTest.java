@@ -101,6 +101,7 @@ class VerbaliserTest {
                 de bezetting Numeriek (positief geheel getal);
                 is ruim kenmerk (bijvoeglijk);
                 is bescheiden kenmerk (bijvoeglijk);
+                is gemengd kenmerk (bijvoeglijk);
             Regel ruim
             geldig altijd
             Een Vlucht is ruim
@@ -113,6 +114,12 @@ class VerbaliserTest {
             Een Vlucht is bescheiden
             indien hij aan ten hoogste één van de volgende voorwaarden voldoet:
             - de afstand tot bestemming van de Vlucht is groter dan 1000 km
+            - de bezetting van de Vlucht is kleiner dan 10.
+            Regel gemengd
+            geldig altijd
+            Een Vlucht is gemengd
+            indien hij aan precies één van de volgende voorwaarden voldoet:
+            - de afstand tot bestemming van de Vlucht is groter dan 100 km
             - de bezetting van de Vlucht is kleiner dan 10.
             """;
 
@@ -131,6 +138,26 @@ class VerbaliserTest {
         assertEquals("V1 is bescheiden, omdat ten hoogste 1 van de 2 voorwaarden geldt: niet de afstand tot"
                         + " bestemming van de Vlucht (200 km) is groter dan 1.000 km",
                 countsForVlucht(200, 5).get(1));
+    }
+
+    /** "ten minste twee van de volgende" carries its threshold, where "A of B" would say one suffices; every member
+     *  read is stated with its own verdict, holding or failing. */
+    @Test void compound_at_least_states_its_threshold_and_member_verdicts() throws Exception {
+        assertEquals("V1 is ruim, omdat ten minste 2 van de 3 voorwaarden gelden: niet de afstand tot bestemming van"
+                        + " de Vlucht (200 km) is groter dan 1.000 km en de afstand tot bestemming van de Vlucht (200 km)"
+                        + " is groter dan 100 km en de bezetting van de Vlucht (5) is kleiner dan 10",
+                countsForVlucht(200, 5).get(0));
+        assertEquals("V1 is niet ruim, want niet geldt: ten minste 2 van de 3 voorwaarden gelden: niet de afstand tot"
+                        + " bestemming van de Vlucht (200 km) is groter dan 1.000 km en de afstand tot bestemming van de"
+                        + " Vlucht (200 km) is groter dan 100 km en niet de bezetting van de Vlucht (50) is kleiner dan 10",
+                countsForVlucht(200, 50).get(0));
+    }
+
+    /** "precies één van de volgende" carries its threshold too, with every member read and its own verdict. */
+    @Test void compound_exactly_states_its_threshold_and_member_verdicts() throws Exception {
+        assertEquals("V1 is gemengd, omdat precies 1 van de 2 voorwaarden geldt: de afstand tot bestemming van de"
+                        + " Vlucht (200 km) is groter dan 100 km en niet de bezetting van de Vlucht (50) is kleiner dan 10",
+                countsForVlucht(200, 50).get(2));
     }
 
     /** A negative value that rounds to zero at the declared scale is written as zero, without a sign: "-0,00" is no
