@@ -15,8 +15,7 @@ import java.util.Map;
  * fault by its place at the fixpoint, so each one is an element: it keeps uchar's sentence and carries the fault kind
  * uchar's public fault API names for it ({@link CaseRunner#faultKinds}): its code {@code EF-###} of uchar's
  * RUNTIME-SEMANTICS ch. 5.7b and its parameters, as a red case of uchar's corpus pins them in {@code expectedFault}. A
- * fault of which uchar names no kind (a division by zero its runtime itself raises, a computation whose sentence no
- * red case witnesses yet) has no code and no parameters. Both adapters answer it with a 422
+ * fault of which uchar names no kind has no code and no parameters. Both adapters answer it with a 422
  * ({@link AnswerBuilder#evaluationFault}).
  *
  * <p>It carries the {@link Fixpoint} the faults stand at, with the values the creation assigned read at the same moment

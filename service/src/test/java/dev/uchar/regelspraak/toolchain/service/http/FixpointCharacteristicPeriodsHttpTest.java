@@ -107,9 +107,8 @@ class FixpointCharacteristicPeriodsHttpTest {
                 answer.toString());
     }
 
-    /** Input periods on a characteristic a rule writes are a fault of uchar (a 422, without a code: uchar names EF-023
-     *  for periods with an open bound only):
-     *  the rule writes nothing, and the fixpoint of the 422 gives the periods of the input. */
+    /** Input periods on a characteristic a rule writes are uchar's fault kind EF-041 (a 422): the rule writes
+     *  nothing, and the fixpoint of the 422 gives the periods of the input. */
     @Test
     void in_the_fault_of_input_periods_beside_a_rule_the_periods_of_the_input_stand() throws Exception {
         JsonNode answer = fixpoint(detail, "verzuimrente", 422, """
@@ -117,7 +116,9 @@ class FixpointCharacteristicPeriodsHttpTest {
               "attributes": {"afdrachtbedrag": "10000", "vervaldatum": "2025-11-15", "betaaldatum": "2026-03-12"},
               "characteristics": {"rentedragend": {"periods": [{"from": "2025-01-01", "to": "2025-02-01"}]}}}]}"""
                 .formatted(PARAMETERS));
-        assertTrue(answer.at("/faults/0/code").isNull(), answer.toString());
+        assertEquals("EF-041", answer.at("/faults/0/code").asText(), answer.toString());
+        assertEquals(tree("""
+            {"characteristic": "rentedragend", "label": "A1"}"""), answer.at("/faults/0/params"), answer.toString());
         assertEquals(tree("""
             [{"characteristic": "rentedragend", "origin": "input",
               "periods": [{"from": "2025-01-01", "to": "2025-02-01"}]}]"""), characteristics(answer, "A1"),

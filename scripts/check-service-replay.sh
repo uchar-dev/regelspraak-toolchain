@@ -322,8 +322,9 @@ RED_REFUSED=(
   "wf044-unresolved-reached/case1.json|een Unresolved-knoop in het document (EF-019 waar de evaluatie hem bereikt): de dienst start niet op een onopgeloste naam"
 )
 # Het aantal rode cases dat door de dienst zijn foutsoort geeft (een gelijkheid). Gemeten bij de pin van uchar
-# 1b42bea65: 64 van de 77 cases van de 53 rode mappen waarop gate 8 de Drools-tak laat falen.
-EXPECTED_RED_FAULTS=64
+# 2663bd6c8: 70 van de 83 cases van de 59 rode mappen waarop gate 8 de Drools-tak laat falen (64 bij 1b42bea65; de
+# zes rode mappen van EF-041 tot en met EF-046 kwamen erbij en geven elk hun foutsoort).
+EXPECTED_RED_FAULTS=70
 
 is_red_refused() {
   local e; for e in "${RED_REFUSED[@]+"${RED_REFUSED[@]}"}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1

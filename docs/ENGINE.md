@@ -232,9 +232,9 @@ refuse the start as well.
   of the entry itself stays a 500. `code` and `params` are the fault kind uchar's public fault API names for the fault
   (`CaseRunner.faultKinds`): the code of uchar's RUNTIME-SEMANTICS ch. 5.7b and its parameters, an object of strings
   under the names of that table, as a red case of uchar's corpus pins them in `expectedFault`. The service classifies
-  nothing itself. A fault of which uchar names no kind (a division by zero its runtime itself raises, a full timeline
-  of the request where a rule reads the value in the period of the evaluation date, periods of the request on a
-  time-dependent characteristic a rule writes) has `"code": null` and `"params": {}`. A division by a numeric zero in
+  nothing itself. Periods of the request on a time-dependent characteristic a rule writes are EF-041, a full timeline
+  of the request where a rule reads the value in the period of the evaluation date is EF-042. A fault of which uchar
+  names no kind would have `"code": null` and `"params": {}`; no fault uchar's corpus witnesses has none. A division by a numeric zero in
   the rules gives an empty value and a §9.5 fact EF-005, so a 200 with the rule among the `inconsistencies`. Where
   uchar's sentence names an object of the request, it names it by its id, and an object a creation made by its type
   ("een aangemaakte Vondst"). No stacktrace enters the answer. The Quarkus adapter answers the same, and the OpenAPI

@@ -462,8 +462,8 @@ class EntryHttpTest {
 
     /** The subject's own total of a timeline takes the asOfDate-bucket scalar (uchar's RUNTIME-SEMANTICS ch. 8.4), which
      *  the request does not carry: a scalar on the timeline attribute is a 400 UNSUPPORTED, which this test asserts
-     *  first. A full timeline there is the other convention, an {@code InputFormFault} at the fixpoint, and the service
-     *  answers it with a 422 whose fault carries no code and uchar's sentence. The translation is also tested at the
+     *  first. A full timeline there is the other convention, uchar's fault kind EF-042 at the fixpoint, and the service
+     *  answers it with a 422 whose fault carries that code, its parameters and uchar's sentence. The translation is also tested at the
      *  level of the core: the service's executor ({@link Executor}) gets a world whose bean holds that full timeline,
      *  and {@link AnswerBuilder#evaluationFault} builds from the fault the body both adapters send with the 422. */
     @Test
@@ -484,9 +484,10 @@ class EntryHttpTest {
                    {"timeline":[{"from":"2026-01-01","to":"2027-01-01","value":10}]}}}]}""");
             assertEquals(422, full.statusCode(), full.body());
             JsonNode answer = tree(full.body());
-            // a full timeline where the rule reads the bucket scalar: uchar names no fault kind for it (EF-037 is the
-            // other way round), so the element has no code
-            assertEquals(java.util.Collections.singletonList(null), codes(answer), full.body());
+            // a full timeline where the rule reads the bucket scalar: EF-042 (EF-037 is the other way round)
+            assertEquals(List.of("EF-042"), codes(answer), full.body());
+            assertEquals(Map.of("attribute", "bewaarvergoeding per maand", "label", "J1"), params(answer, 0),
+                    full.body());
             String said = answer.at("/faults/0/error").asText();
             assertTrue(said.startsWith("fout in de regel \"bewaargeld van een jutter\"") && said.contains("\"J1\"")
                     && said.contains("supplies a full timeline"), said);
@@ -502,7 +503,9 @@ class EntryHttpTest {
                 .fire(new World(inputSection, LocalDate.of(2026, 3, 15)), null, null, false));
         JsonNode body = AnswerBuilder.evaluationFault(error);
         assertEquals("EVALUATION_FAULT", body.path("status").asText(), body.toString());
-        assertEquals(java.util.Collections.singletonList(null), codes(body), body.toString());
+        assertEquals(List.of("EF-042"), codes(body), body.toString());
+        assertEquals(Map.of("attribute", "bewaarvergoeding per maand", "label", "J1"), params(body, 0),
+                body.toString());
         String sentence = body.at("/faults/0/error").asText();
         assertTrue(sentence.startsWith("fout in de regel \"bewaargeld van een jutter\"") && sentence.contains("\"J1\"")
                 && sentence.contains("supplies a full timeline"), sentence);
