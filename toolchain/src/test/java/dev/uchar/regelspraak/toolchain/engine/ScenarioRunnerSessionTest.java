@@ -2,7 +2,8 @@ package dev.uchar.regelspraak.toolchain.engine;
 
 import dev.uchar.regelspraak.engine.ScenarioResult.Status;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
+import dev.uchar.regelspraak.cases.EndState;
+import dev.uchar.regelspraak.transpiler.tms.ComputeHelpers;
 import dev.uchar.regelspraak.transpiler.tms.Fault;
 
 import org.junit.jupiter.api.Test;
@@ -61,11 +62,12 @@ class ScenarioRunnerSessionTest {
         assertEquals(Status.PASS, s.result().status(), s.result()::diagnostic);
         assertNull(s.sessionError(), s::sessionError);
         assertNotNull(s.session());
-        Fixpoint f = s.session().fixpoint();
+        EndState f = s.session().standing();
         assertTrue(f.faults().isEmpty(), f.faults()::toString);
         Object b = s.session().beans().get("B");
-        List<String> derived = f.values().stream().filter(w -> w.object() == b)
-                .map(w -> w.attribute() + "=" + w.value()).sorted().toList();
+        List<String> derived = f.objects().stream().filter(o -> o.object() == b)
+                .flatMap(o -> o.members().stream()).filter(EndState.Member::derived)
+                .map(m -> m.name() + "=" + ComputeHelpers.collapse(m.value())).sorted().toList();
         assertEquals(List.of("helpersdeel=50", "premie=20"), derived, "het helpersdeel heeft geen verwachting");
     }
 
@@ -88,7 +90,7 @@ class ScenarioRunnerSessionTest {
         assertTrue(s.explanationError().startsWith("uchars replay speelde de case niet uit: "), s::explanationError);
         assertTrue(s.explanation().isEmpty());
         assertNull(s.sessionError(), s::sessionError);
-        List<Fault> errors = s.session().fixpoint().faults();
+        List<Fault> errors = s.session().standing().faults();
         assertEquals(1, errors.size(), errors::toString);
         assertEquals("premie van een berging", errors.get(0).rule());
         assertSame(s.session().beans().get("B"), errors.get(0).subject());

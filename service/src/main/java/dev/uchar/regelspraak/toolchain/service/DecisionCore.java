@@ -30,7 +30,6 @@ import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.transpiler.core.Coverage;
 import dev.uchar.regelspraak.transpiler.core.PeriodCoverage;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import org.kie.api.KieBase;
 
@@ -812,21 +811,18 @@ public final class DecisionCore {
             outcome = executor.fire(mr.world(), observer, expectations, options.explanation());
         } catch (EvaluationFault error) {
             if (!withDetail) throw error;
-            throw error.withDetail(detail(options, ep, observer, error.fixpoint(), error.standing(), null, inputLabels,
-                    output));
+            throw error.withDetail(detail(options, ep, observer, error.standing(), null, inputLabels, output));
         } catch (NoFixpoint none) {
             if (!withDetail) throw none;
-            throw none.withDetail(detail(options, ep, observer, null, null, none.getMessage(), inputLabels, output));
+            throw none.withDetail(detail(options, ep, observer, null, none.getMessage(), inputLabels, output));
         } catch (Limit limit) {
             if (!withDetail) throw limit;
-            throw limit.withDetail(detail(options, ep, observer, limit.fixpoint(), limit.standing(), null, inputLabels,
-                    output));
+            throw limit.withDetail(detail(options, ep, observer, limit.standing(), null, inputLabels, output));
         }
         ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());
         if (options.explanation()) addExplanation(answer, outcome, mr, ep, output, options.explanationParts());
-        if (withDetail) answer.setAll(detail(options, ep, observer, outcome.fixpoint(), outcome.endState(), null,
-                inputLabels, output));
+        if (withDetail) answer.setAll(detail(options, ep, observer, outcome.endState(), null, inputLabels, output));
         return new Assessment(answer, outcome.comparison());
     }
 
@@ -836,15 +832,14 @@ public final class DecisionCore {
      * its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's {@code observer}
      * recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
      * ({@link DroolsBackend#coverage}: {@code FIRED} or {@code NOT_FIRED}); and {@code fixpunt}, what stands at the
-     * fixpoint with the instances of the request, in the order of {@code inputLabels}, as its input, and
-     * {@code standing} what the session holds there as uchar reads it, the input of the instances and the values the
+     * fixpoint with the instances of the request, in the order of {@code inputLabels}, as its input, read off
+     * {@code standing}, what the session holds there as uchar reads it, the input of the instances and the values the
      * creations assigned to the objects they made among it ({@link FixpointGivens}), or {@code fixpointError} with the
      * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no
      * fixpoint (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.
      */
-    private ObjectNode detail(RequestOptions options, Entrypoint ep, DroolsBackend.Observer observer, Fixpoint fixpoint,
-                              EndState standing, String withoutFixpoint, List<String> inputLabels,
-                              Naming naming) {
+    private ObjectNode detail(RequestOptions options, Entrypoint ep, DroolsBackend.Observer observer,
+                              EndState standing, String withoutFixpoint, List<String> inputLabels, Naming naming) {
         ObjectNode n = NF.objectNode();
         if (options.trace()) {
             ArrayNode trace = n.putArray("trace");
@@ -868,7 +863,7 @@ public final class DecisionCore {
             n.put("fixpointError", withoutFixpoint);
         } else if (options.fixpoint()) {
             try {
-                n.set("fixpoint", FixpointGivens.fixpoint(fixpoint, standing,
+                n.set("fixpoint", FixpointGivens.fixpoint(standing,
                         FixpointGivens.inputOf(standing, inputLabels, model, naming), model, naming));
             } catch (FixpointGivens.UnrenderableValue o) {
                 n.put("fixpointError", o.getMessage());
@@ -891,7 +886,7 @@ public final class DecisionCore {
     /**
      * Attach the {@link Verbaliser} verhaal to {@code answer} as an {@code "explanation"} array: the beans of the
      * request with their derived values and the objects its creations made, on the document of the entry point's build
-     * with readings, with the decisions, the decisions per period, readings and fixpoint of the session that gave the
+     * with readings, with the decisions, the decisions per period, readings and end state of the session that gave the
      * answer. A pure read of the already-fired session — nothing re-fires, nothing is recomputed. The types of the
      * request's labels and the names lie on the model of that document. With
      * {@code parts}, {@code "explanationParts"} beside it: the same sentences as their parts ({@link ExplanationParts}).
@@ -908,7 +903,7 @@ public final class DecisionCore {
             types.put(label, named);
         });
         List<Sentence> sentences = new Verbaliser(ep.document(), Naming.of(explained, naming.choice()), outcome.readings(),
-                outcome.fixpoint()).sentences(outcome.beans(), types, outcome.decisions(), outcome.periodDecisions());
+                outcome.endState()).sentences(outcome.beans(), types, outcome.decisions(), outcome.periodDecisions());
         var arr = answer.putArray("explanation");
         for (Sentence sentence : sentences) arr.add(sentence.text());
         if (parts) answer.set("explanationParts", ExplanationParts.json(sentences));

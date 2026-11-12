@@ -7,7 +7,6 @@ import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.PeriodDecisions;
 
 import org.kie.api.runtime.KieSession;
@@ -23,11 +22,10 @@ import java.util.Map;
  * the rekendatum when the request carried one, the day-kind predicates), and then fills, fires and reads it through
  * uchar's entry: {@link DroolsBackend#insert} puts the input in that uchar's input step read ({@link World#input()}),
  * each to-many list in the replay's order, {@link DroolsBackend#fire} fires to the fixpoint,
- * {@link DroolsBackend#fixpointOf} gives the evaluation faults that stand there, {@link DroolsBackend#standingOf} reads
- * what the session holds there, which is its end state where no fault stands and from which the response builder
- * answers, and {@link DroolsBackend#setDerivedValues} puts the derived values on the beans, which the branch keeps as
- * facts of the session until then. It returns the beans, the fixpoint, whose {@code Inconsistentie} facts the response
- * builder reads, and the end state.
+ * {@link DroolsBackend#standingOf} reads what the session holds there, the evaluation faults that stand there among it,
+ * which is its end state where no fault stands and from which the response builder answers, and
+ * {@link DroolsBackend#setDerivedValues} puts the derived values on the beans, which the branch keeps as facts of the
+ * session until then. It returns the beans and the end state, whose §9.5 facts the response builder reads.
  * Session-per-request; the KieBase is shared and immutable, so this is thread-safe by construction.
  *
  * <p>Every fault that stands at the fixpoint leaves here as an {@link EvaluationFault}, and nothing is written back: the
@@ -47,15 +45,14 @@ public final class Executor {
         this.build = build;
     }
 
-    /** The result of a fire: the beans by id with the derived values written back, the firings, what stood at the
-     *  fixpoint before the write-back, as uchar's entry reads it with the ids of the request, its §9.5 deposits
-     *  included ({@link Fixpoint#inconsistencies}), the end state of the session, read at the same moment with the ids
-     *  of the request as its labels ({@link DroolsBackend#standingOf} on a session without a standing fault), uchar's
+    /** The result of a fire: the beans by id with the derived values written back, the firings, the end state of the
+     *  session, read at the fixpoint before the write-back with the ids of the request as its labels
+     *  ({@link DroolsBackend#standingOf} on a session without a standing fault), its §9.5 facts included, uchar's
      *  verdict on the expectations the caller gave ({@link DroolsBackend#vergelijk}), null when it gave none, which
      *  default of each defaults stack decided ({@link DroolsBackend#decisionsOf}), who decided each timeline target per
      *  period ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out
      *  ({@link DroolsBackend#readingsOf}), all three empty when the caller did not ask for the explanation. */
-    public record Outcome(Map<String, Object> beans, int fired, Fixpoint fixpoint, EndState endState,
+    public record Outcome(Map<String, Object> beans, int fired, EndState endState,
                            DroolsBackend.Comparison comparison, List<DefaultsDecision> decisions,
                            List<PeriodDecisions> periodDecisions, List<ConditionReading> readings) {}
 
@@ -99,16 +96,14 @@ public final class Executor {
             Map<Object, String> label = new IdentityHashMap<>();
             world.beans().forEach((id, bean) -> label.put(bean, id));
             // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
-            // it as one exception among those the entry throws itself, so the faults are read as data first
-            Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, label::get);
-            // read before the fault branch and the write-back: where a fault stands this is no end state (ch. 5.12a)
-            // and nothing norms it (ch. 5.7), only the view of the session the fixpoint detail of the 422 shows; where
-            // none stands it is the end state the answer reads
+            // it as one exception among those the entry throws itself, so the faults are read as data first. Where a
+            // fault stands this is no end state (ch. 5.12a) and nothing norms it (ch. 5.7), only the view of the
+            // session the fixpoint detail of the 422 shows; where none stands it is the end state the answer reads
             EndState standing = DroolsBackend.standingOf(build, session, label::get);
-            if (!fixpoint.faults().isEmpty()) {
-                RuntimeException thrown = rethrown(session, label, fixpoint);
-                if (thrown instanceof CaseRunner.Excluded limit) throw new Limit(limit, fixpoint, standing);
-                throw EvaluationFault.of(fixpoint, standing, thrown);
+            if (!standing.faults().isEmpty()) {
+                RuntimeException thrown = rethrown(session, label, standing);
+                if (thrown instanceof CaseRunner.Excluded limit) throw new Limit(limit, standing);
+                throw EvaluationFault.of(standing, thrown);
             }
             DroolsBackend.setDerivedValues(build, session, label::get);
             DroolsBackend.Comparison comparison = expectations == null ? null
@@ -117,7 +112,7 @@ public final class Executor {
             List<PeriodDecisions> periodDecisions = withExplanation ? DroolsBackend.periodDecisionsOf(build, session)
                     : List.of();
             List<ConditionReading> readings = withExplanation ? DroolsBackend.readingsOf(build, session) : List.of();
-            return new Outcome(world.beans(), firing.firings(), fixpoint, standing, comparison, decisions,
+            return new Outcome(world.beans(), firing.firings(), standing, comparison, decisions,
                     periodDecisions, readings);
         } finally {
             session.dispose();
@@ -125,16 +120,16 @@ public final class Executor {
         }
     }
 
-    /** The exception uchar's write-back throws for the faults that stand at {@code fixpunt}: the fault's own for one,
+    /** The exception uchar's write-back throws for the faults that stand in {@code standing}: the fault's own for one,
      *  uchar's {@code EvaluationFaults} for two or more, and the exclusion of a limit of its branch where one stands
      *  there. It writes nothing back then; a write-back that does not throw is a broken promise of uchar's entry. */
-    private RuntimeException rethrown(KieSession session, Map<Object, String> label, Fixpoint fixpoint) {
+    private RuntimeException rethrown(KieSession session, Map<Object, String> label, EndState standing) {
         try {
             DroolsBackend.setDerivedValues(build, session, label::get);
         } catch (RuntimeException e) {
             return e;
         }
         throw new IllegalStateException("uchars terugzetting wierp niets, terwijl aan het fixpunt "
-                + fixpoint.faults().size() + " evaluatiefout(en) staan, de eerste: " + fixpoint.faults().get(0).message());
+                + standing.faults().size() + " evaluatiefout(en) staan, de eerste: " + standing.faults().get(0).message());
     }
 }

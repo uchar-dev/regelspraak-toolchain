@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.cases.Input;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
@@ -11,7 +12,6 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.core.Namen;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import org.kie.api.runtime.KieSession;
 
@@ -54,7 +54,7 @@ final class ExplanationSession {
 
     /** The attribution sentences ({@link Verbaliser#verbalise(Map, Map)}) of {@code beans}, all of object type
      *  {@code type}, and of the objects the creations made, after a session that fired them to the fixpoint, in
-     *  vocabulary {@code vocabulary}. The fixpoint is read with the labels of {@code beans}, before the write-back. */
+     *  vocabulary {@code vocabulary}. The session is read with the labels of {@code beans}, before the write-back. */
     List<String> explain(String vocabulary, String type, Map<String, Object> beans) {
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(build.beanLoader());
@@ -65,14 +65,14 @@ final class ExplanationSession {
             if (firing.noFixpoint() != null) throw new IllegalStateException(firing.noFixpoint());
             Map<Object, String> labelOf = new IdentityHashMap<>();
             beans.forEach((label, bean) -> labelOf.put(bean, label));
-            Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, labelOf::get);
+            EndState standing = DroolsBackend.standingOf(build, session, labelOf::get);
             DroolsBackend.setDerivedValues(build, session);
             RegelSpraakModel model = document.model();
             ObjectType ot = model.objectTypeByName(type);
             Map<String, ObjectType> types = new LinkedHashMap<>();
             for (String label : beans.keySet()) types.put(label, ot);
             return new Verbaliser(document, Naming.of(model, vocabulary), DroolsBackend.readingsOf(build, session),
-                    fixpoint).verbalise(beans, types);
+                    standing).verbalise(beans, types);
         } finally {
             session.dispose();
             Thread.currentThread().setContextClassLoader(previous);

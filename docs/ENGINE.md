@@ -11,7 +11,7 @@ here lacks a rule without saying so.
 
 The one session facade is the service's `Executor`: per request a fresh session of the entry point's build, with the
 input and the parameters that uchar's input step read from the case the request mapper wrote (`CaseInput.of`,
-`CaseInput.setGlobals`), filled, fired and read through uchar's entry (`DroolsBackend.insert`, `fire`, `fixpointOf`
+`CaseInput.setGlobals`), filled, fired and read through uchar's entry (`DroolsBackend.insert`, `fire`, `standingOf`
 and `setDerivedValues`; uchar's `backends/drools/README.md`, "The entry for consumers"). The scenario runner
 (`bin/regelspraak scenario`) plays a model's scenarios through uchar's report. A consumer in Java that fires a model
 without the service builds it with `UcharBuild` and goes through the same entry and input step, as `Executor` does.
@@ -152,10 +152,10 @@ refuse the start as well.
   not start. A declaration without a designation in the chosen vocabulary keeps its canonical name. The Quarkus
   adapter reads the same query parameters.
 - Each request gets a fresh session that the core fills, fires and reads through uchar's entry (`DroolsBackend.insert`,
-  `fire`, `fixpointOf`, `setDerivedValues`), so the answer carries the values the rules derive. The answer lists per
-  instance the selected attributes and characteristics, `inconsistencies` (the rule names of the failed consistency
-  checks) and `inconsistencyDetails` (the same, each with its `subject`: the request id of the instance the check
-  is about). A 400 names per violation its `field`, its `kind` and its message; `kind` `UNSUPPORTED` marks a
+  `fire`, `standingOf`, `setDerivedValues`), so the answer carries the values the rules derive. The answer lists per
+  instance the selected attributes and characteristics, `inconsistencies` (the rule names of the §9.5 facts, one per
+  rule and subject however often the rule deposited, RUNTIME-SEMANTICS ch. 5.6) and `inconsistencyDetails` (the same,
+  each with its `subject`: the request id of the instance the check is about). A 400 names per violation its `field`, its `kind` and its message; `kind` `UNSUPPORTED` marks a
   request form the service does not carry (a scalar on a time-dependent attribute, below), an explanation the entry
   point does not give, and a detail flag of a service started without `DETAIL` (below).
 - A dimensioned attribute (uchar's RUNTIME-SEMANTICS ch. 5.8c) has a value per cell and none of its own, so a request
@@ -232,7 +232,7 @@ refuse the start as well.
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
   `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"code": "EF-###", "params": {…}, "error": <uchar's
   sentence>}, …]}`, one element per fault in uchar's order. Every fault at the fixpoint is such an element, whatever
-  its type: the core reads them from uchar's entry (`DroolsBackend.fixpointOf`) before the write-back, so an exception
+  its type: the core reads them from uchar's entry (`DroolsBackend.standingOf`) before the write-back, so an exception
   of the entry itself stays a 500. `code` and `params` are the fault kind uchar's public fault API names for the fault
   (`CaseRunner.faultKinds`): the code of uchar's RUNTIME-SEMANTICS ch. 5.7b and its parameters, an object of strings
   under the names of that table, as a red case of uchar's corpus pins them in `expectedFault`. The service classifies
@@ -287,16 +287,17 @@ refuse the start as well.
   inconsistencies}` in the form of the playground's (below), each fault with its `rule`, `subject`, the `code` and
   `params` of its kind as in the 422 and uchar's `sentence`, with the instances of the request as its input: an
   instance by its id, a made object `#<n>`, a type by its name; or `fixpointError` with the reason a value of it
-  cannot be shown. Beside uchar's `Fixpoint`, `Executor` reads what the session holds there through
-  `DroolsBackend.standingOf` before the fault branch and the write-back: every object with its type, and per member
-  what its bean field holds without the write-back (`EndState.Member.given`), which gives the input of an instance and
-  the value a creation assigned to a made object. In the 422 of an evaluation fault or a limit, `fixpoint` is what the
+  cannot be shown. `Executor` reads what the session holds there through `DroolsBackend.standingOf` before the fault
+  branch and the write-back, and `fixpoint` renders that one record: every object with its type and the creation that
+  made it, per member its value, whether a rule derived it and what its bean field holds without the write-back
+  (`EndState.Member.given`), which gives the input of an instance and the value a creation assigned to a made object;
+  the links a creation laid, the faults, and the §9.5 facts, one per rule and subject. In the 422 of an evaluation fault or a limit, `fixpoint` is what the
   Drools session holds beside its faults: uchar's RUNTIME-SEMANTICS ch. 5.7 does not norm what such a session derives
   beside its faults (the Drools branch withdraws the value of the form that faulted), and a session with a standing
   fault has no end state (ch. 5.12a). It is a view of the session for diagnosis, not an outcome; the outcome of that
   request is its `faults`. A dimensioned attribute has a row per cell, with
-  the cell's `labels` after `attribute`, in their declared spelling, as uchar's `Fixpoint.DerivedValue.labels` names a
-  derived cell, the cells in the declared order of their labels. A row a rule, a default or an allocation derived has
+  the cell's `labels` after `attribute`, in their declared spelling, as uchar's `EndState.Member.cell` names a
+  cell, the cells in the declared order of their labels. A row a rule, a default or an allocation derived has
   the origin `derived`, with the value it replaced beside it as `input`: the input of an instance of the request, its
   `given` in uchar's reading. An object a creation made has no input; in its place stands the value the creation
   assigned, what the creation put on its bean (rank 2 of uchar's stack, RUNTIME-SEMANTICS ch. 7.8), its `given` in the
@@ -308,7 +309,7 @@ refuse the start as well.
   "timeline": [{"to": "2025-03-01", "value": "7"}, {"from": "2025-03-01", "to": "2025-09-01", "value": "20"}, {"from":
   "2025-09-01", "value": "7"}], "origin": "derived", "input": [{"value": "7"}], "inputOrigin": "creation"}`.
   A time-dependent characteristic has a row with the periods in which it holds, as the request gives them: those a
-  rule wrote within a window, which uchar's `Fixpoint.DerivedValue` gives as its true periods, with the origin
+  rule wrote within a window, which uchar's `EndState` gives as its true periods, with the origin
   `derived` (`{"characteristic": "rentedragend", "origin": "derived", "periods": [{"from": "2025-11-16", "to":
   "2026-03-13"}]}` on uchar's golden `jutterswet-verzuimrente-30-360-afgerond`), or else those of the input, with the
   origin `input`; input periods on a characteristic a rule writes are uchar's fault EF-041.
@@ -410,7 +411,7 @@ refuse the start as well.
   with absence markers, which uchar's resolver gives as a constructor value, as a request gives it too, a marker as
   `{"marker": "onbekend"}` under `value` and the value `waarde(…)` as its payload, also in a segment and a cell; the
   page shows a marker by its name), and the `fixpoint`
-  of the case's own session as uchar reads it (`DroolsBackend.fixpointOf`): per object every value and characteristic with
+  of the case's own session as uchar reads it: per object every value and characteristic with
   its origin, on a made object the value the creation assigned as the service gives it (above, `?fixpoint=true`), read
   through `DroolsBackend.standingOf` in the session uchar's replay hands over before its write-back
   (`CaseRunner.Handoff`), the made objects, the links, the

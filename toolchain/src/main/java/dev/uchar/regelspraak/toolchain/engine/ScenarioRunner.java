@@ -16,7 +16,6 @@ import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.PeriodDecisions;
 
 import java.io.IOException;
@@ -129,16 +128,15 @@ public final class ScenarioRunner {
             Map<String, Handed> handed = new LinkedHashMap<>();
             CaseRunner.Handoff handoff = (caseFile, build, session, labels, firing) -> {
                 if (firing.noFixpoint() != null) {
-                    handed.put(caseFile, new Handed(labels, null, null, List.of(), List.of(), List.of(),
+                    handed.put(caseFile, new Handed(labels, null, List.of(), List.of(), List.of(),
                             firing.noFixpoint()));
                     return;
                 }
                 Map<Object, String> labelOf = new IdentityHashMap<>();
                 labels.forEach((label, bean) -> labelOf.put(bean, label));
-                Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, labelOf::get);
-                boolean answered = fixpoint.faults().isEmpty();
-                handed.put(caseFile, new Handed(labels, fixpoint,
-                        DroolsBackend.standingOf(build, session, labelOf::get),
+                EndState standing = DroolsBackend.standingOf(build, session, labelOf::get);
+                boolean answered = standing.faults().isEmpty();
+                handed.put(caseFile, new Handed(labels, standing,
                         answered ? DroolsBackend.decisionsOf(build, session) : List.of(),
                         answered ? DroolsBackend.periodDecisionsOf(build, session) : List.of(),
                         answered ? DroolsBackend.readingsOf(build, session) : List.of(), null));
@@ -187,11 +185,11 @@ public final class ScenarioRunner {
         return sink;
     }
 
-    /** What the replay handed over of the session of one case: the case labels of its input beans, its fixpoint with
-     *  what the session holds there as uchar reads it ({@link DroolsBackend#standingOf}, also where a fault stands),
+    /** What the replay handed over of the session of one case: the case labels of its input beans, what the session
+     *  holds at its fixpoint as uchar reads it ({@link DroolsBackend#standingOf}, also where a fault stands),
      *  and the decisions, the decisions per period and the readings of a session without a standing fault; or, without
      *  a fixpoint, uchar's sentence. */
-    private record Handed(Map<String, Object> labels, Fixpoint fixpoint, EndState standing,
+    private record Handed(Map<String, Object> labels, EndState standing,
                           List<DefaultsDecision> decisions, List<PeriodDecisions> periodDecisions,
                           List<ConditionReading> readings, String noFixpoint) {}
 
@@ -200,7 +198,7 @@ public final class ScenarioRunner {
      *  uchar's loader read of the IR document the build was made from. The document carries uchar's table of origins
      *  (IR-SPEC ch. 2.13), so that model tells the rules uchar wrote. The objects of the session are of the build's
      *  types, named alike in that model, and their types are those the case gives its labels; the objects its
-     *  creations made the verbaliser takes from the fixpoint. */
+     *  creations made the verbaliser takes from uchar's reading of the session. */
     private static Explained explanation(Verbaliser.Document explained, ScenarioResult r, Handed h, JsonNode c,
                                          String vocabulary) {
         if (r.status() == ScenarioResult.Status.MARKER) return new Explained(r, List.of(), null, null, null);
@@ -223,15 +221,15 @@ public final class ScenarioRunner {
             types.put(label, named);
         }
         CaseSession.Outcome session = new CaseSession.Outcome(new LinkedHashMap<>(h.labels()), types,
-                r.trace().firings(), h.fixpoint(), h.standing(), h.decisions(), h.periodDecisions(), h.readings());
+                r.trace().firings(), h.standing(), h.decisions(), h.periodDecisions(), h.readings());
         if (!playedOut) {
             // the write-back of the replay throws a fault that stands at the fixpoint: that is a case not played out
-            if (h.fixpoint().faults().isEmpty())
+            if (h.standing().faults().isEmpty())
                 return new Explained(r, List.of(), noExplanation, null, "uchars replay kwam zonder evaluatiefout op"
                         + " het fixpunt, en speelde de case toch niet uit");
             return new Explained(r, List.of(), noExplanation, session, null);
         }
-        return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings(), h.fixpoint())
+        return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings(), h.standing())
                 .sentences(session.beans(), types, h.decisions(), h.periodDecisions()), null, session, null);
     }
 

@@ -23,7 +23,7 @@ import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
+import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.transpiler.tms.Period;
 import dev.uchar.regelspraak.transpiler.tms.PeriodArithmetic;
 import dev.uchar.regelspraak.transpiler.tms.PeriodDecisions;
@@ -133,11 +133,11 @@ import java.util.regex.Pattern;
  * (een regel bij haar vorm, een default bij zijn groep en zijn pointer daarin), zodat een lezer zijn annotaties en hun
  * plek in de bronnen vindt zonder de zin te lezen.
  *
- * <p><b>Gemaakte objecten.</b> Een object dat een objectcreatie van de sessie maakte ({@link Fixpoint#objects}) heeft
+ * <p><b>Gemaakte objecten.</b> Een object dat een objectcreatie van de sessie maakte ({@link EndState.EndObject#creation}) heeft
  * geen label; de uitleg noemt het met de naam die uchars canonieke tekst het geeft (RUNTIME-SEMANTICS ch. 5.12),
  * {@code «"<creatie>"»(<onderwerp>)#1}, met het onderwerp zoals de uitleg het noemt: een object van de invoer bij zijn
  * label, een gemaakt object bij deze naam ("«"schrijf een kwitantie"»(«"geef een vangstpenning"»(J1)#1)#1"). Zo'n
- * object krijgt zijn zinnen na de objecten van de invoer, in de volgorde van het fixpunt, en heet zo ook als lid van
+ * object krijgt zijn zinnen na de objecten van de invoer, in de volgorde van uchars lezing van de sessie, en heet zo ook als lid van
  * een kwantorvouw. Het heeft geen invoer: waar een object van de invoer zijn invoerwaarde houdt, houdt het de waarde
  * die de creatie het gaf (uchars RUNTIME-SEMANTICS ch. 7.8), en de zin noemt die "de bij de objectcreatie toegekende
  * waarde", ook per periode; een initialisatie besliste daar omdat het doel "bij de objectcreatie leeg was". De woorden
@@ -167,23 +167,24 @@ public final class Verbaliser {
     /** De naam van elk object dat de uitleg verantwoordt: het label dat {@code verbalise} kreeg, of de naam van een
      *  gemaakt object ({@link #madeName}); de zin van een kwantorvouw noemt haar leden zo. */
     private final Map<Object, String> labels = new IdentityHashMap<>();
-    /** De objecten die de creaties van de sessie maakten, in de volgorde van het fixpunt. */
-    private final List<Fixpoint.MadeObject> made;
+    /** De objecten die de creaties van de sessie maakten, in de volgorde van uchars lezing van de sessie. */
+    private final List<EndState.EndObject> made;
 
     /**
      * Een verbalisator voor één sessie van een build met lezingen: {@code document} is het document van die build zoals
      * uchars lader het las, met de posities van zijn knopen ({@link Document#of}); {@code readings} wat
-     * {@link DroolsBackend#readingsOf} van de sessie gaf; {@code fixpoint} wat {@code DroolsBackend.fixpointOf} van
+     * {@link DroolsBackend#readingsOf} van de sessie gaf; {@code standing} wat {@code DroolsBackend.standingOf} van
      * dezelfde sessie gaf, met de labels van de invoer gelezen, waarvan de uitleg de gemaakte objecten leest;
      * {@code naming} de namen, op het model van {@code document}.
      *
      * @throws IllegalStateException twee lezingen van één vorm op één object
      */
-    public Verbaliser(Document document, Naming naming, List<ConditionReading> readings, Fixpoint fixpoint) {
+    public Verbaliser(Document document, Naming naming, List<ConditionReading> readings, EndState standing) {
         this.document = Objects.requireNonNull(document, "document");
         this.model = document.model();
         this.naming = Objects.requireNonNull(naming, "naming");
-        this.made = Objects.requireNonNull(fixpoint, "fixpoint").objects();
+        this.made = Objects.requireNonNull(standing, "standing").objects().stream()
+                .filter(o -> o.creation() != null).toList();
         for (ConditionReading r : readings)
             if (this.readings.computeIfAbsent(r.form(), k -> new IdentityHashMap<>()).put(r.object(), r) != null)
                 throw new IllegalStateException("de motor gaf twee lezingen van " + r.form() + " op één object");
@@ -275,9 +276,9 @@ public final class Verbaliser {
             if (bean != null && labels.put(bean, label) != null)
                 throw new IllegalStateException("het object van " + label + " staat onder twee labels");
         });
-        Map<Object, Fixpoint.MadeObject> byObject = new IdentityHashMap<>();
+        Map<Object, EndState.EndObject> byObject = new IdentityHashMap<>();
         Map<Object, Set<String>> creationsPerSubject = new IdentityHashMap<>();
-        for (Fixpoint.MadeObject g : made) {
+        for (EndState.EndObject g : made) {
             if (labels.containsKey(g.object()))
                 throw new IllegalStateException("het fixpunt noemt " + labels.get(g.object()) + " van de invoer een"
                         + " gemaakt object, van de creatie '" + g.creation() + "'");
@@ -292,7 +293,7 @@ public final class Verbaliser {
         }
         Map<String, Object> beans = new LinkedHashMap<>(instances);
         Map<String, ObjectType> types = new HashMap<>(typePerLabel);
-        for (Fixpoint.MadeObject g : made) {
+        for (EndState.EndObject g : made) {
             String name = madeName(g.object(), byObject, new ArrayList<>());
             if (beans.put(name, g.object()) != null)
                 throw new IllegalStateException("het gemaakte object " + name + " heeft de naam van een object van de"
@@ -313,10 +314,10 @@ public final class Verbaliser {
      * @throws IllegalStateException een onderwerp dat geen object van de invoer en geen gemaakt object is, of gemaakte
      *                               objecten die elkaars onderwerp zijn in een kring
      */
-    private String madeName(Object o, Map<Object, Fixpoint.MadeObject> byObject, List<Object> path) {
+    private String madeName(Object o, Map<Object, EndState.EndObject> byObject, List<Object> path) {
         String known = labels.get(o);
         if (known != null) return known;
-        Fixpoint.MadeObject g = byObject.get(o);
+        EndState.EndObject g = byObject.get(o);
         if (g == null)
             throw new IllegalStateException("het fixpunt noemt als onderwerp van een gemaakt object een "
                     + o.getClass().getSimpleName() + " dat geen object van de invoer en geen gemaakt object is");
@@ -337,8 +338,8 @@ public final class Verbaliser {
                 + "\"";
     }
 
-    /** Het objecttype van gemaakt object {@code o}, dat {@code name} heet: het type waarvan het de gegenereerde bean
-     *  is, want uchars {@link Fixpoint.MadeObject} noemt geen type. */
+    /** Het objecttype van gemaakt object {@code o}, dat {@code name} heet: het type van het model van de uitleg
+     *  waarvan het de gegenereerde bean is. */
     private ObjectType madeType(String name, Object o) {
         String bean = o.getClass().getName();
         for (ObjectType ot : model.objectTypes.values())
@@ -2138,9 +2139,9 @@ public final class Verbaliser {
         return true;
     }
 
-    /** Of {@code bean} een object is dat een creatie van de sessie maakte ({@link Fixpoint#objects}). */
+    /** Of {@code bean} een object is dat een creatie van de sessie maakte ({@link EndState.EndObject#creation}). */
     private boolean madeObject(Object bean) {
-        for (Fixpoint.MadeObject g : made) if (g.object() == bean) return true;
+        for (EndState.EndObject g : made) if (g.object() == bean) return true;
         return false;
     }
 

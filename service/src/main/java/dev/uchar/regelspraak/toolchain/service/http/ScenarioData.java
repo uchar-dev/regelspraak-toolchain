@@ -34,7 +34,7 @@ import java.util.TreeMap;
 /**
  * The data of one scenario the playground gives beside uchar's report: its situation as uchar's scenario resolver
  * gives it ({@link ResolvedScenario}), the source line of each expectation, and what stands at the fixpoint of the
- * case's own session ({@link CaseSession.Outcome#fixpoint}). It reads uchar's public API and computes nothing itself.
+ * case's own session ({@link CaseSession.Outcome#standing}). It reads uchar's public API and computes nothing itself.
  *
  * <p><b>Names</b> are those of the chosen {@link Naming}; where a name there differs from the canonical one, the
  * canonical name stands beside it under the key with {@code Canoniek} appended ({@code attribuut} and
@@ -170,7 +170,7 @@ final class ScenarioData {
             }
             input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods));
         }
-        return FixpointGivens.fixpoint(session.fixpoint(), session.standing(), input, model, ng);
+        return FixpointGivens.fixpoint(session.standing(), input, model, ng);
     }
 
     private static void name(ObjectNode n, String key, String chosen, String canonical) {

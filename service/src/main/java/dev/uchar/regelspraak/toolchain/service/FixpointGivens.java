@@ -12,12 +12,8 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.transpiler.tms.ComputeHelpers;
 import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint.DerivedCharacteristic;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint.DerivedValue;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint.MadeLink;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint.MadeObject;
 import dev.uchar.regelspraak.transpiler.tms.Fault;
 
 import java.math.BigDecimal;
@@ -35,11 +31,12 @@ import java.util.TreeSet;
 import java.util.function.Function;
 
 /**
- * What stands at the fixpoint of a session ({@link Fixpoint}, as uchar's entry reads it with {@code DroolsBackend.fixpointOf})
- * as JSON: the playground gives it per scenario and the decision service per request ({@code ?fixpoint=true}), so both
- * render it here. Beside the fixpoint uchar reads what the session holds there ({@link EndState}, through
- * {@code DroolsBackend.standingOf}, also where an evaluation fault stands): every object with its type, and per member
- * what its bean field holds without the write-back ({@link EndState.Member#given}). The input of the session is a list
+ * What stands at the fixpoint of a session as JSON, read off uchar's record of what the session holds there
+ * ({@link EndState}, through {@code DroolsBackend.standingOf}, also where an evaluation fault stands): the playground
+ * gives it per scenario and the decision service per request ({@code ?fixpoint=true}), so both render it here. That
+ * record gives every object with its type and the creation that made it, per member its value, whether a rule derived
+ * it and what its bean field holds without the write-back ({@link EndState.Member#given}), the links, the faults and
+ * the §9.5 facts. The input of the session is a list
  * of {@link InputObject}s: the playground makes them of a scenario's situation, the service of what the session holds
  * of the objects of a request ({@link #inputOf}). An object a creation made has no input: in its place stands the value
  * the creation assigned, what the creation put on its bean (rank 2 of uchar's stack, RUNTIME-SEMANTICS ch. 7.8), its
@@ -52,10 +49,9 @@ import java.util.function.Function;
  * date-time, a text and an enumeration value (in the chosen vocabulary), a JSON boolean for a truth value and null for
  * leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}, an open bound left out. A dimensioned
  * attribute has a row per cell, with the cell's {@code labels} after the attribute, one per dimension in their declared
- * spelling, as uchar's
- * {@link DerivedValue#labels} names a derived cell. {@code unit} is the declared unit of a number.
+ * spelling, as uchar's {@link EndState.Member#cell} names a cell. {@code unit} is the declared unit of a number.
  *
- * <p><b>Order.</b> uchar's {@link Fixpoint} lists have no order, so every list here is sorted: the objects of the input in
+ * <p><b>Order.</b> Every list here is sorted: the objects of the input in
  * the order of the input, the made objects after them; the members of an object in the declaration order of its type,
  * the nearest type of its chain first, the cells of an attribute with the first dimension outermost, each in the declared
  * order of its labels; the made objects by type, creation, subject and values; links, faults and
@@ -175,20 +171,20 @@ public final class FixpointGivens {
     }
 
     /**
-     * What stands at fixpoint {@code f} of a session with input {@code input}, with {@code standing} uchar's reading of
-     * the same session at the same moment ({@code DroolsBackend.standingOf}): {@code objects}, every object of the
+     * What stands at the fixpoint of a session with input {@code input}, as uchar reads the session there in
+     * {@code standing} ({@code DroolsBackend.standingOf}): {@code objects}, every object of the
      * input and every made object, each with its attribute values and characteristics and their {@code origin} (an
      * input value: {@code input}; on a made object the value the creation assigned, what its bean field holds without
      * the write-back in {@code standing}: {@code creation}; one a rule, a default or an allocation derived:
      * {@code derived}, with the input value or the value the creation assigned, which it replaced beside it as
      * {@code input}, and on a made object {@code inputOrigin} {@code creation}); {@code madeObjects} with their
      * creation and subject; the {@code links} the creations laid; the evaluation {@code faults} with the code and
-     * parameters of their kind and uchar's sentence; and the {@code inconsistencies}.
+     * parameters of their kind and uchar's sentence; and the {@code inconsistencies}, one per rule and subject
+     * (RUNTIME-SEMANTICS ch. 5.6).
      *
      * @throws UnrenderableValue a value in a form this view does not show
      */
-    public static ObjectNode fixpoint(Fixpoint f, EndState standing, List<InputObject> input, RegelSpraakModel model,
-                                      Naming ng) {
+    public static ObjectNode fixpoint(EndState standing, List<InputObject> input, RegelSpraakModel model, Naming ng) {
         // every object of the session, those of the input by their label and the made ones, with its type
         Map<Object, ObjectType> type = new IdentityHashMap<>();
         Map<Object, EndState.EndObject> held = new IdentityHashMap<>();
@@ -215,46 +211,38 @@ public final class FixpointGivens {
             throw new IllegalStateException("uchars lezing van de sessie heeft de objecten " + labelled.keySet()
                     + ", de invoer " + inputObjects.size());
 
-        Map<Object, MadeObject> made = new IdentityHashMap<>();
-        for (MadeObject g : f.objects()) {
-            EndState.EndObject h = held.get(g.object());
-            if (h == null || h.label() != null)
-                throw new IllegalStateException("het gemaakte object " + g.object().getClass().getName()
-                        + " van de creatie '" + g.creation() + "' staat niet als gemaakt object in uchars lezing"
-                        + " van de sessie");
-            made.put(g.object(), g);
+        // every object without a label is one a creation made (uchar's reading names no other)
+        Map<Object, EndState.EndObject> made = new IdentityHashMap<>();
+        for (EndState.EndObject o : standing.objects()) {
+            if (o.label() != null) continue;
+            if (o.creation() == null)
+                throw new IllegalStateException("uchars lezing van de sessie geeft een object van " + o.type()
+                        + " zonder label en zonder creatie");
+            made.put(o.object(), o);
         }
-        if (made.size() + inputObjects.size() != type.size())
-            throw new IllegalStateException("uchars lezing van de sessie heeft " + type.size() + " objecten, de"
-                    + " invoer en het fixpunt samen " + (made.size() + inputObjects.size()));
 
         // per object and attribute the derived values by the labels of their cell, an attribute without dimensions under
-        // no labels
-        Map<Object, Map<String, Map<List<String>, DerivedValue>>> values = new IdentityHashMap<>();
-        // a time-dependent characteristic a rule writes within a window stands among the values, under its name, its
-        // true periods as segments without a value (uchar's Fixpoint.DerivedValue)
+        // no labels, each in the decimal form a bean holds (ComputeHelpers.collapse)
+        Map<Object, Map<String, Map<List<String>, Object>>> values = new IdentityHashMap<>();
+        // a time-dependent characteristic a rule writes within a window: its true periods as segments without a value
         Map<Object, Map<String, ArrayNode>> periods = new IdentityHashMap<>();
-        for (DerivedValue w : f.values()) {
-            Object o = known(w.object(), type);
-            if (declaresCharacteristic(type.get(o), w.attribute())) {
-                if (!(w.value() instanceof List<?> segments))
-                    throw new IllegalStateException("het fixpunt geeft het kenmerk '" + w.attribute() + "' als "
-                            + (w.value() == null ? "leeg" : w.value().getClass().getName()) + ", niet als zijn perioden");
-                if (periods.computeIfAbsent(o, x -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
-                        .put(w.attribute(), periodNodes(segments)) != null)
-                    throw new IllegalStateException("het fixpunt geeft het kenmerk '" + w.attribute() + "' twee keer");
-                continue;
-            }
-            if (values.computeIfAbsent(o, x -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
-                    .computeIfAbsent(w.attribute(), a -> new HashMap<>())
-                    .put(w.labels() == null ? List.of() : w.labels(), w) != null)
-                throw new IllegalStateException("het fixpunt geeft het attribuut '" + w.attribute() + "'"
-                        + (w.labels() == null ? "" : " in de cel " + w.labels()) + " twee keer");
-        }
         Map<Object, Set<String>> characteristics = new IdentityHashMap<>();
-        for (DerivedCharacteristic k : f.characteristics())
-            characteristics.computeIfAbsent(known(k.object(), type),
-                    o -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)).add(k.characteristic());
+        for (EndState.EndObject h : standing.objects())
+            for (EndState.Member m : h.members()) {
+                if (!m.derived()) continue;
+                Object o = h.object();
+                if (m.characteristic() && m.value() instanceof List<?> segments) {
+                    if (periods.computeIfAbsent(o, x -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
+                            .put(m.name(), periodNodes(segments)) != null)
+                        throw new IllegalStateException("uchars lezing geeft het kenmerk '" + m.name() + "' twee keer");
+                } else if (m.characteristic()) {
+                    characteristics.computeIfAbsent(o, x -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)).add(m.name());
+                } else if (values.computeIfAbsent(o, x -> new TreeMap<>(String.CASE_INSENSITIVE_ORDER))
+                        .computeIfAbsent(m.name(), a -> new HashMap<>())
+                        .put(m.cell() == null ? List.of() : m.cell(), ComputeHelpers.collapse(m.value())) != null)
+                    throw new IllegalStateException("uchars lezing geeft het attribuut '" + m.name() + "'"
+                            + (m.cell() == null ? "" : " in de cel " + m.cell()) + " twee keer");
+            }
 
         // the members of every object first: a made object is ordered by its values too
         Map<Object, ArrayNode[]> members = new IdentityHashMap<>();
@@ -287,19 +275,20 @@ public final class FixpointGivens {
         }
         ArrayNode madeNode = n.putArray("madeObjects");
         for (Object o : madeObjects) {
-            MadeObject g = made.get(o);
+            EndState.EndObject g = made.get(o);
             ObjectNode gn = madeNode.addObject();
             gn.put("object", ref.get(o));
             name(gn, "objectType", ng.objectType(type.get(o).name), type.get(o).name);
             name(gn, "creation", ng.form(g.creation()), g.creation());
             gn.put("subject", refOf(g.subject(), ref));
         }
-        List<MadeLink> links = new ArrayList<>(f.links());
-        links.sort(Comparator.comparing(MadeLink::factType).thenComparing(MadeLink::firstRole)
-                .thenComparing(k -> refOf(k.first(), ref)).thenComparing(MadeLink::secondRole)
+        List<EndState.Link> links = new ArrayList<>();
+        for (EndState.Link k : standing.links()) if (k.made()) links.add(k);
+        links.sort(Comparator.comparing(EndState.Link::factType).thenComparing(EndState.Link::firstRole)
+                .thenComparing(k -> refOf(k.first(), ref)).thenComparing(EndState.Link::secondRole)
                 .thenComparing(k -> refOf(k.second(), ref)));
         ArrayNode linkNode = n.putArray("links");
-        for (MadeLink k : links) {
+        for (EndState.Link k : links) {
             ObjectNode kn = linkNode.addObject();
             name(kn, "factType", ng.factType(k.factType()), k.factType());
             name(kn, "firstRole", ng.role(k.factType(), k.firstRole()), k.firstRole());
@@ -307,7 +296,7 @@ public final class FixpointGivens {
             name(kn, "secondRole", ng.role(k.factType(), k.secondRole()), k.secondRole());
             kn.put("second", refOf(k.second(), ref));
         }
-        List<Fault> errors = new ArrayList<>(f.faults());
+        List<Fault> errors = new ArrayList<>(standing.faults());
         errors.sort(Comparator.comparing(Fault::rule).thenComparing(Fault::message)
                 .thenComparing(x -> refOf(x.subject(), ref)));
         ArrayNode faultNode = n.putArray("faults");
@@ -319,12 +308,8 @@ public final class FixpointGivens {
             fn.put("sentence", x.message());
         }
         List<String[]> inconsistencies = new ArrayList<>();
-        for (Object o : f.inconsistencies()) {
-            Object line = CaseSession.read(o, "getRule");
-            Object subject = CaseSession.read(o, "getSubject");
-            inconsistencies.add(new String[]{line == null ? null : line.toString(),
-                    subject == null ? null : refOf(subject, ref)});
-        }
+        for (EndState.ChannelFact c : standing.channel())
+            inconsistencies.add(new String[]{c.rule(), c.subject() == null ? null : refOf(c.subject(), ref)});
         Comparator<String> emptyFirst = Comparator.nullsFirst(Comparator.naturalOrder());
         inconsistencies.sort(Comparator.<String[], String>comparing(x -> x[0], emptyFirst)
                 .thenComparing(x -> x[1], emptyFirst));
@@ -338,13 +323,13 @@ public final class FixpointGivens {
     }
 
     /** The attribute values of an object of type {@code ot} at the fixpoint, in declaration order: a derived value
-     *  from the fixpoint, with what {@code entered} gives the member beside it as {@code input}, else what
+     *  ({@code derived}), with what {@code entered} gives the member beside it as {@code input}, else what
      *  {@code entered} gives it: the input of an object of the input, the value the creation assigned to a made object
      *  ({@code made}), which has {@code creation} as its origin and as the {@code inputOrigin} beside a derived value.
      *  A member with none of these is no row. A dimensioned attribute has a row per cell, by the same rule, in the order
      *  of {@code model}'s labels ({@link #cellRows}). */
     private static ArrayNode valuesOf(ObjectType ot, Map<String, ObjectNode> entered,
-                                        Map<String, Map<List<String>, DerivedValue>> derived, boolean made,
+                                        Map<String, Map<List<String>, Object>> derived, boolean made,
                                         RegelSpraakModel model, Naming ng) {
         List<String> declared = new ArrayList<>();
         for (ObjectType t : ot.chain()) declared.addAll(t.attributes.keySet());
@@ -355,7 +340,7 @@ public final class FixpointGivens {
         ArrayNode sink = NF.arrayNode();
         for (String a : declared) {
             Datatype dt = ot.attribute(a);
-            Map<List<String>, DerivedValue> cells = derived.getOrDefault(a, Map.of());
+            Map<List<String>, Object> cells = derived.getOrDefault(a, Map.of());
             if (!ot.dimensionsOf(a).isEmpty()) {
                 cellRows(sink, ot, a, entered.get(a), cells, made, model, ng);
                 continue;
@@ -363,13 +348,13 @@ public final class FixpointGivens {
             if (cells.keySet().stream().anyMatch(labels -> !labels.isEmpty()))
                 throw new IllegalStateException("het fixpunt geeft een cel van het attribuut '" + a + "', dat geen"
                         + " dimensies heeft");
-            DerivedValue w = cells.get(List.of());
+            boolean isDerived = cells.containsKey(List.of());
             ObjectNode in = entered.get(a);
-            if (w == null && in == null) continue;
+            if (!isDerived && in == null) continue;
             ObjectNode rn = sink.addObject();
             name(rn, "attribute", ng.attribute(ot, a), a);
-            if (w != null) {
-                java(rn, w.value(), dt, ng);
+            if (isDerived) {
+                java(rn, cells.get(List.of()), dt, ng);
                 rn.put("origin", "derived");
                 if (in != null) beside(rn, in.has("timeline") ? in.get("timeline") : in.get("value"), made);
             } else {
@@ -387,7 +372,7 @@ public final class FixpointGivens {
      *  creation assigned); a cell with none of these is no row. A derived value of a cell the attribute does not have is a broken
      *  promise of uchar's. */
     private static void cellRows(ArrayNode sink, ObjectType ot, String a, ObjectNode in,
-                                  Map<List<String>, DerivedValue> derived, boolean made, RegelSpraakModel model,
+                                  Map<List<String>, Object> derived, boolean made, RegelSpraakModel model,
                                   Naming ng) {
         Datatype dt = ot.attribute(a);
         List<List<String>> all = AnswerBuilder.cellsOf(model, ot.dimensionsOf(a));
@@ -403,14 +388,14 @@ public final class FixpointGivens {
                 entered.put(List.copyOf(labels), (ObjectNode) cell);
             }
         for (List<String> labels : all) {
-            DerivedValue w = derived.get(labels);
+            boolean isDerived = derived.containsKey(labels);
             ObjectNode cellIn = entered.get(labels);
-            if (w == null && cellIn == null) continue;
+            if (!isDerived && cellIn == null) continue;
             ObjectNode rn = sink.addObject();
             name(rn, "attribute", ng.attribute(ot, a), a);
             labels(rn, labels);
-            if (w != null) {
-                java(rn, w.value(), dt, ng);
+            if (isDerived) {
+                java(rn, derived.get(labels), dt, ng);
                 rn.put("origin", "derived");
                 if (cellIn != null) beside(rn, cellIn.get("value"), made);
             } else {
@@ -482,13 +467,6 @@ public final class FixpointGivens {
         return sink;
     }
 
-    /** Whether {@code ot} or a supertype declares characteristic {@code name}. */
-    private static boolean declaresCharacteristic(ObjectType ot, String name) {
-        for (ObjectType t : ot.chain())
-            for (String k : t.characteristics) if (k.equalsIgnoreCase(name)) return true;
-        return false;
-    }
-
     /** The true periods of a time-dependent characteristic, uchar's segments without a value, as {@code from},
      *  {@code to} nodes as the request gives them; an open bound is left out, as in a segment ({@link #java}). */
     public static ArrayNode periodNodes(List<?> segments) {
@@ -504,7 +482,7 @@ public final class FixpointGivens {
 
     /** The sort key of made object {@code o}: its type, its creation, the key of its subject (a label, or the key of
      *  the made object that is its subject) and its values. */
-    private static String key(Object o, Map<Object, String> ref, Map<Object, MadeObject> made,
+    private static String key(Object o, Map<Object, String> ref, Map<Object, EndState.EndObject> made,
                                   Map<Object, ObjectType> type, Map<Object, ArrayNode[]> members,
                                   Map<Object, String> key, List<Object> path) {
         String label = ref.get(o);
@@ -514,7 +492,7 @@ public final class FixpointGivens {
         if (path.stream().anyMatch(p -> p == o))
             throw new IllegalStateException("de gemaakte objecten zijn elkaars onderwerp in een kring");
         path.add(o);
-        MadeObject g = made.get(o);
+        EndState.EndObject g = made.get(o);
         String subject = made.containsKey(g.subject()) || ref.containsKey(g.subject())
                 ? key(g.subject(), ref, made, type, members, key, path)
                 : refOf(g.subject(), ref);
@@ -523,15 +501,6 @@ public final class FixpointGivens {
         key.put(o, k);
         path.remove(path.size() - 1);
         return k;
-    }
-
-    /** {@code o} itself when it is an object of the input or a made object, which every object the fixpoint names
-     *  is. */
-    private static Object known(Object o, Map<Object, ObjectType> type) {
-        if (!type.containsKey(o))
-            throw new IllegalStateException("het fixpunt noemt een object dat geen invoer en geen gemaakt object is: "
-                    + o.getClass().getName());
-        return o;
     }
 
     private static String refOf(Object o, Map<Object, String> ref) {

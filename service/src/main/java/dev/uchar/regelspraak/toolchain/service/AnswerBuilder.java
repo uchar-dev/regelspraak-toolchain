@@ -34,10 +34,11 @@ import java.util.Map;
  * the input elsewhere, and none where the member is leeg. It renders it:
  * a {@link BigDecimal} as an EXACT JSON number (Jackson renders BigDecimal natively — never a double), a
  * {@code null}/leeg as JSON {@code null}, a kenmerk as a boolean, a date as an ISO string. It also emits the
- * {@code inconsistenties} array — the {@code line} names of every {@code Inconsistentie} fact — because the
- * golden verwachtingen include CONSISTENT/INCONSISTENT, and beside it {@code inconsistentieDetails}, the same facts
- * with their subject: the request id of the instance the failed check is about (null when that is no request
- * instance), since uchar pins an inconsistency on its subject.
+ * {@code inconsistencies} array — the rule of every §9.5 fact of the end state ({@link EndState#channel}), one per
+ * rule and subject however often the rule deposited (RUNTIME-SEMANTICS ch. 5.6) — because the golden verwachtingen
+ * include CONSISTENT/INCONSISTENT, and beside it {@code inconsistencyDetails}, the same facts with their subject: the
+ * request id of the instance the failed check is about (null when that is no request instance), since uchar pins an
+ * inconsistency on its subject.
  *
  * <p>The answer names the declarations through a {@link Naming}: in a vocabulary, the object type, the attributes
  * and characteristics, an enumeration value and the rule of an inconsistency go by their names there, and a
@@ -132,13 +133,12 @@ public final class AnswerBuilder {
 
         ArrayNode inc = root.putArray("inconsistencies");
         ArrayNode details = NF.arrayNode();
-        for (Object o : outcome.fixpoint().inconsistencies()) {
-            Object line = RegelSpraakRuntime.get(o, "rule");
-            String name = line == null ? null : naming.form(line.toString());
+        for (EndState.ChannelFact c : outcome.endState().channel()) {
+            String name = c.rule() == null ? null : naming.form(c.rule());
             inc.add(name);
             ObjectNode d = details.addObject();
             d.put("rule", name);
-            d.put("subject", idOf(outcome.beans(), RegelSpraakRuntime.get(o, "subject")));
+            d.put("subject", idOf(outcome.beans(), c.subject()));
         }
         root.set("inconsistencyDetails", details);
         return root;

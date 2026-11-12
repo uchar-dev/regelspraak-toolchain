@@ -4,7 +4,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.EndState;
-import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 /**
  * A request whose session reaches a limit of uchar's Drools branch at its fixpoint: a value of the rules that this
@@ -16,35 +15,32 @@ import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
  * Both adapters answer it with a 422 ({@link AnswerBuilder#limit}) with the code and uchar's sentence.
  *
  * <p>When the request asked to see its session ({@link RequestOptions#detailFlags()}), it carries the fields the 422
- * gives beside the sentence ({@link #detail()}), as an {@link EvaluationFault} does: the fixpoint is there, the limit
- * among its faults.
+ * gives beside the sentence ({@link #detail()}), as an {@link EvaluationFault} does: what the session holds at the
+ * fixpoint is there, the limit among its faults.
  */
 public final class Limit extends RuntimeException {
 
     private static final long serialVersionUID = 1L;
 
     private final String code;
-    private final transient Fixpoint fixpoint;
     private final transient EndState standing;
     private final transient ObjectNode detail;
 
-    /** uchar's {@code refusal} at {@code fixpoint}, with {@code standing} what the session holds there. */
-    Limit(CaseRunner.Excluded refusal, Fixpoint fixpoint, EndState standing) {
-        this(refusal.getMessage(), refusal.code().id(), refusal, fixpoint, standing, null);
+    /** uchar's {@code refusal} at the fixpoint, with {@code standing} what the session holds there. */
+    Limit(CaseRunner.Excluded refusal, EndState standing) {
+        this(refusal.getMessage(), refusal.code().id(), refusal, standing, null);
     }
 
-    private Limit(String sentence, String code, Throwable cause, Fixpoint fixpoint, EndState standing,
-                  ObjectNode detail) {
+    private Limit(String sentence, String code, Throwable cause, EndState standing, ObjectNode detail) {
         super(sentence, cause);
         this.code = code;
-        this.fixpoint = fixpoint;
         this.standing = standing;
         this.detail = detail;
     }
 
     /** The same limit with {@code detail}, the fields the request asked to see of its session. */
     Limit withDetail(ObjectNode detail) {
-        return new Limit(getMessage(), code, getCause(), fixpoint, standing, detail);
+        return new Limit(getMessage(), code, getCause(), standing, detail);
     }
 
     /** uchar's register code of the limit ({@code DROOLS-312}). */
@@ -52,13 +48,8 @@ public final class Limit extends RuntimeException {
         return code;
     }
 
-    /** What stands at the fixpoint the limit was reached at, as uchar's entry reads it. */
-    public Fixpoint fixpoint() {
-        return fixpoint;
-    }
-
-    /** What the session holds at {@link #fixpoint}, as uchar reads it ({@code DroolsBackend.standingOf}): no end
-     *  state, a view of the session for diagnosis. */
+    /** What the session holds at the fixpoint the limit was reached at, as uchar reads it
+     *  ({@code DroolsBackend.standingOf}): no end state, a view of the session for diagnosis. */
     public EndState standing() {
         return standing;
     }
