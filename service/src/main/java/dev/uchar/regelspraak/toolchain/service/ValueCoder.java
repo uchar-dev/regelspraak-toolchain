@@ -55,7 +55,7 @@ public final class ValueCoder {
         if (node == null || node.isNull()) return Result.ok(null);   // explicit leegwaarde
 
         if (dt instanceof Datatype.Numeric n)   return numeric(node, field, n.unit());
-        if (dt instanceof Datatype.Percentage p) return numeric(node, field, percentUnit(p.unit()));
+        if (dt instanceof Datatype.Percentage p) return numeric(node, field, p.unit());
         if (dt instanceof Datatype.BooleanType)     return decodeBoolean(node, field);
         if (dt instanceof Datatype.Text)        return text(node, field);
         if (dt instanceof Datatype.Enumeration e) return enumeration(node, field, e);
@@ -115,10 +115,6 @@ public final class ValueCoder {
         try { return new BigDecimal(text); }
         catch (NumberFormatException nfe) { return null; }
     }
-
-    /** A Percentage's eenheid is always '%' (optionally a rate); a plain number in a request is the percentage
-     *  value itself, so we only enforce a supplied eenheid object against the declared weergave. */
-    private static Unit percentUnit(Unit e) { return e; }
 
     // ---- boolean / tekst / enum ----
 

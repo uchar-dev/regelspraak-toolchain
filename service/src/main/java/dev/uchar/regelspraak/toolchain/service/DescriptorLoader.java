@@ -15,8 +15,6 @@ import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -48,11 +46,6 @@ public final class DescriptorLoader {
     private static final List<String> RESERVED_PATHS = List.of("info", "playground");
 
     private DescriptorLoader() {}
-
-    /** Parse + validate a descriptor file against {@code model}. */
-    public static ServiceDescriptor load(Path descriptorFile, RegelSpraakModel model) throws IOException {
-        return load(Files.readString(descriptorFile), model);
-    }
 
     /** Parse + validate a descriptor from its JSON text against {@code model}. */
     public static ServiceDescriptor load(String json, RegelSpraakModel model) {

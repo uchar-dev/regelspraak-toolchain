@@ -78,63 +78,26 @@ public final class Executor {
                            DroolsBackend.Comparison comparison, List<DefaultsDecision> decisions,
                            List<PeriodDecisions> periodDecisions, List<ConditionReading> readings) {}
 
-    /** Fire the entry point's rules over {@code world} and return the beans with their derived values and what
-     *  stood at the fixpoint. */
-    public Outcome fire(World world) {
-        return fire(world, Map.of());
-    }
-
     /**
-     * Fire the entry point's rules over {@code world}, with {@code setGlobals} the parameterset-vintage resolved
-     * values (fase 5). PRECEDENCE (decision D): descriptor defaults FIRST, then the set-resolved values (the
-     * DecisionCore conflict rule guarantees these never name the same parameter as a default), then the request
-     * parameter overrides LAST (explicit caller-intent wins — mirrors the scenario situatie-override). The
-     * rekendatum global stays {@code world.evaluationDate()} — that IS the peildatum (the one date authority).
-     *
-     * @throws Evaluatiefout the evaluation faults that stand at the fixpoint, one or more, of any type
-     */
-    public Outcome fire(World world, Map<String, Object> setGlobals) {
-        return fire(world, setGlobals, null);
-    }
-
-    /**
-     * As {@link #fire(Wereld, Map)}, with {@code observer} (null: none) recording what the session fires, through
-     * uchar's {@link DroolsBackend#fire(DroolsBackend.Build, KieSession, DroolsBackend.Observer)}. A waarnemer belongs
-     * to one session, so the caller gives each request a fresh one and reads it after this returns or throws.
-     *
-     * @throws Evaluatiefout the evaluation faults that stand at the fixpoint, one or more, of any type, with the
-     *                       fixpoint they stand at
-     */
-    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer) {
-        return fire(world, setGlobals, observer, null);
-    }
-
-    /**
-     * As {@link #fire(Wereld, Map, DroolsBackend.Observer)}, and with {@code expectations} (null: none), the
-     * {@code expected} of a {@code uchar-case-v0} case whose labels are ids of the request, uchar's verdict on them over
-     * the written-back session ({@link DroolsBackend#vergelijk}, with the ids of the request as labels), before the
-     * session is disposed. uchar compares; this class only hands the session over.
-     *
-     * @throws Evaluatiefout            the evaluation faults that stand at the fixpoint, with the fixpoint they stand
-     *                                  at; nothing is compared then, as uchar's report compares nothing of such a case
-     * @throws NoFixpoint              a run that reached no fixpoint, with uchar's sentence; nothing is compared
-     * @throws Limit                   a limit of uchar's branch at the fixpoint, with its code and uchar's sentence;
-     *                                  nothing is compared
-     * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare, in the
-     *                                  sentence of its replay
-     */
-    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer,
-                         JsonNode expectations) {
-        return fire(world, setGlobals, observer, expectations, false);
-    }
-
-    /**
-     * As {@link #fire(World, Map, DroolsBackend.Observer, JsonNode)}, and with {@code withExplanation} what the
-     * explanation reads off the session after the write-back: which default of each defaults stack decided
-     * ({@link DroolsBackend#decisionsOf}), who decided each timeline target per period
+     * Fires the entry point's rules over {@code world} and returns the beans with their derived values and what stood
+     * at the fixpoint. The globals: the descriptor defaults first, then {@code setGlobals}, the values the parameter
+     * sets give for the evaluation date (the core's conflict rule keeps them apart from the defaults), then the
+     * request's parameters, which win; the {@code rekendatum} global is {@code world.evaluationDate()}.
+     * {@code observer} (null: none) records what the session fires, through uchar's
+     * {@link DroolsBackend#fire(DroolsBackend.Build, KieSession, DroolsBackend.Observer)}; it belongs to one session,
+     * so the caller gives each request a fresh one. {@code expectations} (null: none) is the {@code expected} of a
+     * {@code uchar-case-v0} case whose labels are ids of the request, on which uchar gives its verdict over the
+     * written-back session ({@link DroolsBackend#compare}) before the session is disposed. With
+     * {@code withExplanation} it reads what the explanation needs off the session after the write-back: which default
+     * of each defaults stack decided ({@link DroolsBackend#decisionsOf}), who decided each timeline target per period
      * ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out ({@link DroolsBackend#readingsOf}), the
-     * last of a build with readings only. Only asked for an explanation: a pointer uchar cannot give fails the read,
-     * and a request without an explanation has no use for it.
+     * last of a build with readings only; a request without an explanation has no use for it.
+     *
+     * @throws EvaluationFault the evaluation faults that stand at the fixpoint, one or more, of any type, with the
+     *                         fixpoint they stand at; nothing is compared
+     * @throws NoFixpoint      a run that reached no fixpoint, with uchar's sentence; nothing is compared
+     * @throws Limit           a limit of uchar's branch at the fixpoint, with its code and uchar's sentence
+     * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare
      */
     public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer,
                          JsonNode expectations, boolean withExplanation) {

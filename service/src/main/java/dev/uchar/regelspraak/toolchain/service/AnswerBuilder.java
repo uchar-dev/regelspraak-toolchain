@@ -17,7 +17,6 @@ import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -72,8 +71,6 @@ public final class AnswerBuilder {
 
     private final RegelSpraakModel model;
     private final Naming naming;
-
-    public AnswerBuilder(RegelSpraakModel model) { this(model, Naming.canonical(model)); }
 
     public AnswerBuilder(RegelSpraakModel model, Naming naming) {
         this.model = model;
@@ -282,10 +279,5 @@ public final class AnswerBuilder {
 
     private JsonNode renderCharacteristic(Object v) {
         return NF.booleanNode(Boolean.TRUE.equals(v));
-    }
-
-    /** A stable per-request map (id → objecttype) helper for callers that only kept beans. */
-    public static Map<String, ObjectType> typePerLabel(Map<String, ObjectType> in) {
-        return new LinkedHashMap<>(in);
     }
 }

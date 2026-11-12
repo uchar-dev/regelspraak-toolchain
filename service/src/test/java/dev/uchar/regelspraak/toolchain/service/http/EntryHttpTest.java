@@ -496,7 +496,7 @@ class EntryHttpTest {
             {"asOfDate":"2026-03-15","input":{"instances":[{"label":"J1","objectType":"Jutter","attributes":
               {"bewaarvergoeding per maand":{"timeline":[{"from":"2026-01-01","to":"2027-01-01","value":{"number":"10"}}]}}}]}}"""));
         EvaluationFault error = assertThrows(EvaluationFault.class, () -> new Executor(ep.build(), ep.defaultGlobals())
-                .fire(new World(inputSection, Map.of(), LocalDate.of(2026, 3, 15))));
+                .fire(new World(inputSection, Map.of(), LocalDate.of(2026, 3, 15)), Map.of(), null, null, false));
         JsonNode body = AnswerBuilder.evaluationFault(error);
         assertEquals("EVALUATION_FAULT", body.path("status").asText(), body.toString());
         assertEquals(List.of("INPUT_FORM_FAULT"), kinds(body), body.toString());

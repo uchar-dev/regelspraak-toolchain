@@ -129,9 +129,6 @@ public final class DecisionCore {
 
         /** The manifest of the build, empty for an entry point uchar does not carry. */
         public List<Coverage> coverage() { return build == null ? List.of() : build.coverage(); }
-
-        /** The class loader of the generated fact beans, null for an entry point uchar does not carry. */
-        public ClassLoader beanLoader() { return build == null ? null : build.beanLoader(); }
     }
 
     // ---------------- startup ----------------
