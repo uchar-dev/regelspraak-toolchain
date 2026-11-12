@@ -198,6 +198,27 @@ class RequestMapperTest {
         assertTrue(r.violations().stream().allMatch(v -> v.kind() == Violation.Kind.MALFORMED), r.violations().toString());
     }
 
+    /** A number is written into the case in its lexeme, digits with at most one point: a number with an exponent in its
+     *  text, or one whose value has a negative scale (a JSON number such as 1E+3), is refused, and so is one whose
+     *  digits written out exceed what the parser reads of a number; 12.5 written as a JSON number 1.25E1 is 12.5. */
+    @Test
+    void a_number_with_an_exponent_is_wrong_type() {
+        for (String value : List.of("\"1.25E1\"", "1E+3", "1E-20000000")) {
+            var r = map("""
+                { "instances": [ { "type": "Natuurlijk persoon", "id": "P1",
+                    "attributes": { "te betalen belasting": %s } } ] }""".formatted(value));
+            assertEquals(List.of("instances[0].attributes.te betalen belasting"),
+                    r.violations().stream().map(Violation::field).toList(), value + ": " + r.violations());
+            assertEquals(Violation.Kind.WRONG_TYPE, r.violations().get(0).kind(), r.violations().toString());
+        }
+        var r = map("""
+            { "instances": [ { "type": "Natuurlijk persoon", "id": "P1",
+                "attributes": { "te betalen belasting": 3.000E1 } } ] }""");
+        assertTrue(r.violations().isEmpty(), r.violations().toString());
+        assertEquals(new BigDecimal("30.00"), dev.uchar.regelspraak.runtime.RegelSpraakRuntime.get(
+                r.world().beans().get("P1"), "teBetalenBelasting"));
+    }
+
     private static JsonNode parse(String json) {
         try { return DescriptorLoader.MAPPER.readTree(json); }
         catch (Exception e) { throw new RuntimeException(e); }

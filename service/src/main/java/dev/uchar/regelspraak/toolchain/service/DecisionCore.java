@@ -657,7 +657,7 @@ public final class DecisionCore {
         sink.addAll(r.violations());
         if (!r.violations().isEmpty()) return null;
         if (r.value() instanceof java.math.BigDecimal b)
-            CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(), "parameter " + p.name());
+            CaseRunner.inputFits(NF.objectNode().put("number", b.toPlainString()), p.datatype(), "parameter " + p.name());
         return r.value();
     }
 

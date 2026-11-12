@@ -106,6 +106,7 @@ public final class ServiceHttp {
     public static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true)
             .configure(JsonParser.Feature.STRICT_DUPLICATE_DETECTION, true)
+            .setNodeFactory(JsonNodeFactory.withExactBigDecimals(true))
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);

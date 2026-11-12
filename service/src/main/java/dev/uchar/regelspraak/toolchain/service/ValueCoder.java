@@ -1,5 +1,6 @@
 package dev.uchar.regelspraak.toolchain.service;
 
+import com.fasterxml.jackson.core.StreamReadConstraints;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.model.Datatype;
@@ -91,14 +92,28 @@ public final class ValueCoder {
         return number(node, field);
     }
 
+    /** A number as the case writes it: digits with at most one point, without an exponent ({@code uchar-case-v0}). A
+     *  text with an exponent is refused, and so is a value whose plain form the case cannot write as it was given: a
+     *  negative scale, which only an exponent writes (a JSON number {@code 1E+3}), and digits written out beyond the
+     *  length the parser reads of a number (a JSON number {@code 1E-20000000}). */
     private static Result number(JsonNode node, String field) {
-        if (node.isNumber()) return Result.ok(node.decimalValue());   // BigDecimal (USE_BIG_DECIMAL_FOR_FLOATS)
-        if (node.isTextual()) {
-            try { return Result.ok(new BigDecimal(node.asText())); }
-            catch (NumberFormatException nfe) { /* fall through */ }
-        }
-        return Result.error(Violation.of(Violation.Kind.WRONG_TYPE, field,
-                "verwacht een getal, kreeg " + describe(node)));
+        BigDecimal b = node.isNumber() ? node.decimalValue()   // BigDecimal (USE_BIG_DECIMAL_FOR_FLOATS)
+                : node.isTextual() ? decimal(node.asText()) : null;
+        if (b == null)
+            return Result.error(Violation.of(Violation.Kind.WRONG_TYPE, field,
+                    "verwacht een getal, kreeg " + describe(node)));
+        boolean exponent = node.isTextual() && (node.asText().indexOf('e') >= 0 || node.asText().indexOf('E') >= 0);
+        if (exponent || b.scale() < 0 || b.scale() > StreamReadConstraints.DEFAULT_MAX_NUM_LEN)
+            return Result.error(Violation.of(Violation.Kind.WRONG_TYPE, field, "'" + (node.isTextual()
+                    ? node.asText() : node.toString()) + "' is een getal met een exponent; de dienst neemt een getal"
+                    + " zoals de case het schrijft, cijfers met hoogstens één punt, uitgeschreven niet langer dan "
+                    + StreamReadConstraints.DEFAULT_MAX_NUM_LEN + " tekens"));
+        return Result.ok(b);
+    }
+
+    private static BigDecimal decimal(String text) {
+        try { return new BigDecimal(text); }
+        catch (NumberFormatException nfe) { return null; }
     }
 
     /** A Percentage's eenheid is always '%' (optionally a rate); a plain number in a request is the percentage

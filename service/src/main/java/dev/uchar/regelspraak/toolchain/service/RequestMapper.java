@@ -339,8 +339,8 @@ public final class RequestMapper {
                                        List<Violation> s) {
         if (w == null) return NF.nullNode();
         ObjectNode n = NF.objectNode();
-        // toString, not toPlainString: new BigDecimal(toString()) gives back the same unscaled value and scale
-        if (w instanceof BigDecimal b) return n.put("number", b.toString());
+        // the plain form is the case lexeme; ValueCoder refused the negative scale it could not write as given
+        if (w instanceof BigDecimal b) return n.put("number", b.toPlainString());
         if (w instanceof LocalDate d) {
             if (!inCaseForm(d.getYear())) refusals.add(new CaseRefusal(field));
             return n.put("date", d.toString());
@@ -472,9 +472,10 @@ public final class RequestMapper {
      *  constructor value of a marker or of a number. */
     private static JsonNode segmentCaseValue(Object v) {
         if (v instanceof String t) return NF.objectNode().put("text", t);
-        if (!(v instanceof ConstructorValue c)) return NF.objectNode().put("number", v.toString());
+        if (!(v instanceof ConstructorValue c)) return NF.objectNode().put("number", ((BigDecimal) v).toPlainString());
         ObjectNode n = NF.objectNode().put("constructor", c.constructor());
-        if (c.payload() != null) n.set("payload", NF.objectNode().put("number", c.payload().toString()));
+        if (c.payload() != null)
+            n.set("payload", NF.objectNode().put("number", ((BigDecimal) c.payload()).toPlainString()));
         return n;
     }
 
@@ -489,7 +490,7 @@ public final class RequestMapper {
         s.addAll(r.violations());
         if (!r.violations().isEmpty()) return null;
         if (r.value() instanceof BigDecimal b)
-            CaseRunner.inputFits(NF.objectNode().put("number", b.toString()), p.datatype(), "parameter " + p.name());
+            CaseRunner.inputFits(NF.objectNode().put("number", b.toPlainString()), p.datatype(), "parameter " + p.name());
         return r.value();
     }
 

@@ -3,6 +3,7 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
@@ -36,6 +37,7 @@ public final class DescriptorLoader {
     /** A shared, thread-safe ObjectMapper: BigDecimal-for-floats so no descriptor number is ever a double. */
     static final ObjectMapper MAPPER = new ObjectMapper()
             .configure(DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS, true)
+            .setNodeFactory(JsonNodeFactory.withExactBigDecimals(true))
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private DescriptorLoader() {}
