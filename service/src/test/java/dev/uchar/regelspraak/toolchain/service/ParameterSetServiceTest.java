@@ -285,6 +285,51 @@ class ParameterSetServiceTest {
                 dev.uchar.regelspraak.cases.CaseRunner.faultKinds(fault.getCause()), fault.errors().toString());
     }
 
+    @Test
+    void a_request_value_goes_over_the_descriptor_default() {
+        // the service writes the parameters into the case, the default under the request's value, and uchar's input
+        // step binds what the case gives
+        String descriptor = """
+            { "service": {"name":"default-test","version":"1"},
+              "entrypoints": [ { "name":"grens","path":"grens",
+                "scope": {"ruleNames": ["grensregel"]},
+                "input": ["Persoon"], "output": ["Persoon.grens"] } ],
+              "parameters": { "volwassenleeftijd": 18 } }""";
+        DecisionCore core = DecisionCore.assemble(descriptor, source(VINTAGE_SOURCE), CoreConfig.strict(),
+                Thread.currentThread().getContextClassLoader());
+        ObjectNode byDefault = core.process("grens", parse("""
+            { "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
+        assertEquals(0, new BigDecimal("18").compareTo(bound(byDefault)), byDefault.toString());
+        ObjectNode byRequest = core.process("grens", parse("""
+            { "parameters": { "volwassenleeftijd": 30 }, "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
+        assertEquals(0, new BigDecimal("30").compareTo(bound(byRequest)), byRequest.toString());
+    }
+
+    @Test
+    void a_request_value_goes_over_the_parameter_set() {
+        DecisionCore core = assemble(VINTAGE_DESCRIPTOR, VINTAGE_SOURCE, VINTAGE_SETS);
+        ObjectNode a = core.process("grens", parse("""
+            { "asOfDate": "2025-06-01", "parameters": { "volwassenleeftijd": 30 },
+              "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
+        assertEquals(0, new BigDecimal("30").compareTo(bound(a)), a.toString());
+    }
+
+    @Test
+    void a_default_uchars_input_step_refuses_refuses_the_start() {
+        // a number its declaration does not hold (EF-004): uchar's input step refuses it on every request, so the
+        // service does not start on it, naming the default
+        String descriptor = """
+            { "service": {"name":"default-test","version":"1"},
+              "entrypoints": [ { "name":"grens","path":"grens",
+                "scope": {"ruleNames": ["grensregel"]},
+                "input": ["Persoon"], "output": ["Persoon.grens"] } ],
+              "parameters": { "volwassenleeftijd": 18.5 } }""";
+        ServiceError error = assertThrows(ServiceError.class, () -> DecisionCore.assemble(descriptor,
+                source(VINTAGE_SOURCE), CoreConfig.strict(), Thread.currentThread().getContextClassLoader()));
+        assertEquals(List.of("parameters.volwassenleeftijd"),
+                error.violations().stream().map(Violation::field).toList(), error.violations().toString());
+    }
+
     // ---- helpers ----
 
     private static BigDecimal bound(ObjectNode answer) { return value(answer, "grens"); }

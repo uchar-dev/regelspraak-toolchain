@@ -156,13 +156,27 @@ class RequestMapperTest {
     }
 
     @Test
-    void valid_parameter_becomes_global() {
-        var r = map("""
+    void valid_parameter_is_bound_by_uchars_input_step() {
+        // the mapper writes the parameter into the case; uchar's input step reads it and binds it on a session of a
+        // build with a rule that reads it (a build declares the global of a parameter a rule reads)
+        dev.uchar.regelspraak.cases.DroolsBackend.Build reading = dev.uchar.regelspraak.toolchain.engine.UcharBuild
+                .assemble(dev.uchar.regelspraak.emit.CaseEmitter.withScope(MODEL,
+                        new dev.uchar.regelspraak.ir.ResolvedScenario.Scope(
+                                List.of("Kenmerktoekenning persoon minderjarig"))),
+                        dev.uchar.regelspraak.cases.DroolsBackend.Branch.EXEC_MODEL);
+        var r = new RequestMapper(MODEL, reading).map(new Request(parse("""
             { "parameters": { "volwassenleeftijd": 18 },
-              "instances": [ { "type": "Vlucht", "id": "V1" } ] }""");
+              "instances": [ { "type": "Vlucht", "id": "V1" } ] }""")));
         assertTrue(r.violations().isEmpty(), "onverwacht: " + r.violations());
-        assertNotNull(r.world().globals().get("volwassenleeftijd"));
-        assertEquals(0, new BigDecimal("18").compareTo((BigDecimal) r.world().globals().get("volwassenleeftijd")));
+        org.kie.api.runtime.KieSession session = reading.kieBase().newKieSession();
+        try {
+            r.world().input().setGlobals(session);
+            Object bound = session.getGlobal("volwassenleeftijd");
+            assertNotNull(bound, "uchar bindt de parameter niet");
+            assertEquals(0, new BigDecimal("18").compareTo((BigDecimal) bound), String.valueOf(bound));
+        } finally {
+            session.dispose();
+        }
     }
 
     @Test

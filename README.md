@@ -307,6 +307,13 @@ writes one does not start:
   declared name or declared plural, as uchar reads a role key; a plural the model does not declare is a 400
   `UNKNOWN_FIELD`. The answer names an attribute or characteristic of `output` in its declared spelling, where it
   repeated the spelling of the selector.
+- **Parameters read by uchar** (card `end-state-and-service-reads`): the service writes the parameters into the case
+  it hands uchar's input step, the descriptor defaults and the values of the parameter sets under the request's own,
+  and uchar binds them on the session (`docs/ENGINE.md`). A parameter a rule reads that nothing binds is a 422 with
+  uchar's EF-014, where the rules computed with an empty value. Of the values a request gives with more decimals than
+  declared, the 422 names the first uchar's input step reads, the attributes before the parameters, where it named
+  every parameter and then the first attribute. A value of a parameter set that uchar's input step refuses (more
+  decimals than declared, a date outside the case lexeme) refuses the start, where the service bound it unchecked.
 
 ## The pin
 

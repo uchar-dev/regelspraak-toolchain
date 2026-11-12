@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.CaseInput;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
@@ -79,6 +80,8 @@ public final class DecisionCore {
     private final Map<String, Entrypoint> perPath;   // URL path -> compiled entry point
     /** The loaded, validity-versioned parameter sets (fase 5), or empty when the descriptor names no sidecar. */
     private final List<ParameterSet> parameterSets;
+    /** The descriptor's parameter defaults in the form of {@code uchar-case-v0}, under their declared names. */
+    private final ObjectNode defaultParameters;
     /** The rendered {@link PeriodCoverage} WARNING lines (regel-geldigheid × parameter-geldigheid gaps), computed
      *  once at startup; served verbatim on /info and logged by ServiceMain. Empty when no gap or no sets. */
     private final List<String> periodWarnings;
@@ -91,11 +94,13 @@ public final class DecisionCore {
     private volatile String document;
     private DecisionCore(ServiceDescriptor descriptor, RegelSpraakModel model,
                           Map<String, Entrypoint> perPath, List<ParameterSet> parameterSets,
-                          List<String> periodWarnings, boolean detail, FormIndex forms, String document) {
+                          ObjectNode defaultParameters, List<String> periodWarnings, boolean detail, FormIndex forms,
+                          String document) {
         this.descriptor = descriptor;
         this.model = model;
         this.perPath = perPath;
         this.parameterSets = parameterSets;
+        this.defaultParameters = defaultParameters;
         this.periodWarnings = periodWarnings;
         this.detail = detail;
         this.forms = forms;
@@ -104,8 +109,7 @@ public final class DecisionCore {
 
     /** One compiled entry point: its descriptor entry, uchar's {@link DroolsBackend.Build} of its scope (the scoped
      *  {@link KieBase}, the class loader of its generated fact beans and the manifest, which a session needs whole
-     *  to go through uchar's entry), its marker list, the descriptor parameter defaults resolved to globals, and when
-     *  uchar refused its build, the refusal.
+     *  to go through uchar's entry), its marker list, and when uchar refused its build, the refusal.
      *
      *  <p>{@link #coverage()} is the exec-model branch's manifest of the entry point's document, one verdict per form,
      *  the defaults groups included; the document carries only the forms of the scope, so the manifest is the
@@ -123,7 +127,7 @@ public final class DecisionCore {
      *  attribution rules the scope leaves out. Both are null without a build, and for an entry point whose descriptor
      *  says it does not explain ({@link ServiceDescriptor.Entrypoint#explains}). */
     public record Entrypoint(ServiceDescriptor.Entrypoint descriptor, DroolsBackend.Build build,
-                             List<String> markers, Map<String, Object> defaultGlobals, String refusal,
+                             List<String> markers, String refusal,
                              DroolsBackend.Build explanationBuild, Verbaliser.Document document) {
         /** Whether a request to this entry point can fire: uchar built it. */
         public boolean executable() { return build != null; }
@@ -231,15 +235,15 @@ public final class DecisionCore {
         // the producer index is model-wide (every form that WRITES a kenmerk/attribuut), computed once.
         Map<ElementKey, java.util.Set<String>> producers =
                 ProducerConsumer.producerIndex(model, model.prioritizedDefaults);
+        ObjectNode defaults = defaultParameters(descriptor, model);
         for (ServiceDescriptor.Entrypoint ep : descriptor.entrypoints()) {
             FormIndex.Choice choice = forms.scope(ep.scope());
-            Map<String, Object> defaults = defaultGlobals(descriptor, model);
             if (!choice.withoutForm().isEmpty()) {
                 String name = choice.withoutForm().get(0);
                 List<String> uchar = forms.warningsAbout(name);
                 marker(ep, name, "de regel '" + name + "' uit de scope levert in uchars model geen vorm op"
                         + (uchar.isEmpty() ? "" : "; uchar: " + String.join("; ", uchar)),
-                        defaults, config, perPath, markerErrors);
+                        config, perPath, markerErrors);
                 continue;
             }
             RegelSpraakModel scoped = CaseEmitter.withScope(model, new ResolvedScenario.Scope(choice.forms()));
@@ -258,19 +262,19 @@ public final class DecisionCore {
                 // a form without a norm is a form uchar does not carry; any other node a fault in the source, which is
                 // no marker, so allowMarkers does not start it
                 if (u.onlyFormsWithoutNorm())
-                    marker(ep, u.sites().get(0).form(), u.getMessage(), defaults, config, perPath, markerErrors);
+                    marker(ep, u.sites().get(0).form(), u.getMessage(), config, perPath, markerErrors);
                 else
                     for (UcharBuild.Site site : u.sites()) unresolved.add(site.sentence());
                 continue;
             } catch (UcharBuild.NotCarried ng) {
-                marker(ep, ng.construct(), ng.getMessage(), defaults, config, perPath, markerErrors);
+                marker(ep, ng.construct(), ng.getMessage(), config, perPath, markerErrors);
                 continue;
             }
             // Only once uchar carries the scope: a marker answers no request, so its reads decide nothing, and uchar's
             // walk throws on a navigation its emitter refuses, where the marker names the refusal.
             if (!ep.scopeCheckOptOut())
                 scopeErrors.addAll(scopeCompleteness(ep, model, scoped, producers));
-            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null, explanationBuild, explained));
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), null, explanationBuild, explained));
         }
         if (!unresolved.isEmpty()) throw unresolvedName(unresolved);
         if (!scopeErrors.isEmpty())
@@ -282,9 +286,10 @@ public final class DecisionCore {
         // 6. parametersets (fase 5, decision B). Load + validate the sidecar against the model, apply the
         //    default×set conflict rule, then compute the regel×parameter period-coverage WARNINGs.
         List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
+        refuseParameters(perPath.values(), defaults, sets, model);
         List<String> warnings = periodWarnings(model, sets);
 
-        return new DecisionCore(descriptor, model, perPath, sets, warnings, config.detail(), forms, null);
+        return new DecisionCore(descriptor, model, perPath, sets, defaults, warnings, config.detail(), forms, null);
     }
 
     /** The {@code uchar-ir-v1} document uchar's emitter wrote, as a tree. */
@@ -372,6 +377,7 @@ public final class DecisionCore {
         Map<String, Entrypoint> perPath = new LinkedHashMap<>();
         List<Violation> markerErrors = new ArrayList<>();
         List<Violation> scopeErrors = new ArrayList<>();
+        ObjectNode defaults = defaultParameters(descriptor, model);
         for (ServiceDescriptor.Entrypoint ep : descriptor.entrypoints()) {
             List<String> absent = new ArrayList<>(forms.all());
             absent.removeAll(forms.scope(ep.scope()).forms());
@@ -381,12 +387,11 @@ public final class DecisionCore {
                                 + "' draagt niet: " + absent));
                 continue;
             }
-            Map<String, Object> defaults = defaultGlobals(descriptor, model);
             if (refusal != null) {
-                marker(ep, construct, refusal, defaults, config, perPath, markerErrors);
+                marker(ep, construct, refusal, config, perPath, markerErrors);
                 continue;
             }
-            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), defaults, null,
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), null,
                     ep.explains() ? explanationBuild : null, ep.explains() ? explained : null));
         }
         if (!scopeErrors.isEmpty())
@@ -394,8 +399,9 @@ public final class DecisionCore {
         if (!markerErrors.isEmpty())
             throw new ServiceError("dienst start niet: uchar draagt een entrypoint niet", markerErrors);
         List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
-        return new DecisionCore(descriptor, model, perPath, sets, periodWarnings(model, sets), config.detail(),
-                forms, documentJson);
+        refuseParameters(perPath.values(), defaults, sets, model);
+        return new DecisionCore(descriptor, model, perPath, sets, defaults, periodWarnings(model, sets),
+                config.detail(), forms, documentJson);
     }
 
     /** The start refused for names the resolver bound to no declaration ({@link UcharBuild.UnresolvedName}), one
@@ -411,11 +417,10 @@ public final class DecisionCore {
      *  names (null when it names none) and {@code reden} uchar's sentence. Strict, it is a startup violation; with
      *  markers allowed, the entry point is registered without a KieBase and every request to it is refused. */
     private static void marker(ServiceDescriptor.Entrypoint ep, String construct, String reason,
-                               Map<String, Object> defaults, CoreConfig config, Map<String, Entrypoint> perPath,
-                               List<Violation> markerErrors) {
+                               CoreConfig config, Map<String, Entrypoint> perPath, List<Violation> markerErrors) {
         if (config.allowMarkers()) {
             perPath.put(ep.path(), new Entrypoint(ep, null, construct == null ? List.of() : List.of(construct),
-                    defaults, reason, null, null));
+                    reason, null, null));
             return;
         }
         markerErrors.add(Violation.of(Violation.Kind.MARKER, "entrypoint:" + ep.path(), construct == null
@@ -610,54 +615,58 @@ public final class DecisionCore {
         return "in de " + part + (text == null ? "" : " '" + text + "'") + " van default " + d.path();
     }
 
-    /** The descriptor parameter defaults, decoded per-parameter datatype to (global name -> value), a time-dependent
-     *  parameter as its timeline ({@link TimelineInput}), as a request gives it. A number its declaration does not
-     *  hold is a violation with uchar's sentence of EF-004 ({@code CaseRunner.inputFits}), so the descriptor does not
-     *  load, as a request with that value gets the evaluation fault. */
-    private static Map<String, Object> defaultGlobals(ServiceDescriptor descriptor, RegelSpraakModel model) {
-        Map<String, Object> globals = new LinkedHashMap<>();
-        if (descriptor.parameters() == null) return globals;
+    /** The descriptor parameter defaults in the form of {@code uchar-case-v0}, under their declared names, as a request
+     *  writes its parameters into the case ({@link RequestMapper#defaults}); a value in another form or of another
+     *  type refuses the start, as a request with that value gets a 400. */
+    private static ObjectNode defaultParameters(ServiceDescriptor descriptor, RegelSpraakModel model) {
         List<Violation> errors = new ArrayList<>();
-        for (var e : descriptor.parameters().entrySet()) {
-            RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, e.getKey());
-            if (p == null) continue;   // already reported by descriptor validation
-            String field = "parameters." + e.getKey();
-            Violation form = TimelineInput.formViolation(p, e.getValue(), field);
-            if (form != null) {
-                errors.add(form);
-                continue;
-            }
-            Object value;
-            try {
-                value = TimelineInput.timeDependent(p)
-                        ? TimelineInput.decode(p, e.getValue(), field, (v, f, sink) -> defaultScalar(p, v, f, sink),
-                                errors)
-                        : defaultScalar(p, e.getValue(), field, errors);
-            } catch (CaseRunner.InputPrecisionFault f) {
-                errors.add(Violation.of(Violation.Kind.WRONG_TYPE, field, f.getMessage()));
-                continue;
-            }
-            if (value != null) globals.put(RequestMapper.ident(p.name()), value);
-        }
+        ObjectNode defaults = RequestMapper.defaults(model, descriptor.parameters(), errors);
         if (!errors.isEmpty()) throw new ServiceError("descriptor parameter-default ongeldig", errors);
-        return globals;
+        return defaults;
     }
 
-    /** The scalar default {@code node} of parameter {@code p} on {@code field}, or null after adding its violations.
-     *
-     *  @throws CaseRunner.InputPrecisionFault a number with more decimals than {@code p} declares (EF-004) */
-    private static Object defaultScalar(RegelSpraakModel.Parameter p, JsonNode node, String field, List<Violation> sink) {
-        ValueCoder.Result r = ValueCoder.decode(node, p.datatype(), field);
-        sink.addAll(r.violations());
-        if (!r.violations().isEmpty()) return null;
-        Violation year = RequestMapper.outsideCaseForm(r.value(), field);
-        if (year != null) {
-            sink.add(year);
+    /**
+     * Reads the descriptor defaults and every value of the parameter sets through uchar's input step on a build of the
+     * service, one parameter at a time, as a request binds them ({@code CaseInput.of}): what it refuses there, a number
+     * its declaration does not hold (EF-004) or a date outside the case lexeme, it would refuse on every request, so
+     * the start is refused, on {@code parameters.<name>} or on {@code parameterSets}. Without a build (every entry
+     * point a marker) no request is answered and nothing is read.
+     */
+    private static void refuseParameters(java.util.Collection<Entrypoint> entrypoints, ObjectNode defaults,
+                                         List<ParameterSet> sets, RegelSpraakModel model) {
+        DroolsBackend.Build build = entrypoints.stream().map(Entrypoint::build).filter(java.util.Objects::nonNull)
+                .findFirst().orElse(null);
+        if (build == null) return;
+        List<Violation> errors = new ArrayList<>();
+        defaults.properties().forEach(e -> {
+            String refusal = refusal(build, e.getKey(), e.getValue());
+            if (refusal != null) errors.add(Violation.of(Violation.Kind.WRONG_TYPE, "parameters." + e.getKey(), refusal));
+        });
+        for (ParameterSet set : sets)
+            for (var e : set.values().entrySet()) {
+                RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, e.getKey());
+                for (ParameterSet.ValueInterval v : e.getValue()) {
+                    JsonNode value = RequestMapper.setValue(v.value(), p.datatype(), "parameterSets", errors);
+                    String refusal = value == null ? null : refusal(build, p.name(), value);
+                    if (refusal != null) errors.add(Violation.of(Violation.Kind.WRONG_TYPE, "parameterSets",
+                            "set '" + set.name() + "', parameter '" + p.name() + "': " + refusal));
+                }
+            }
+        if (!errors.isEmpty()) throw new ServiceError("descriptor parameter-default ongeldig", errors);
+    }
+
+    /** uchar's sentence where its input step refuses {@code value} for parameter {@code name}, or null. */
+    private static String refusal(DroolsBackend.Build build, String name, JsonNode value) {
+        ObjectNode c = NF.objectNode();
+        ObjectNode input = c.putObject("input");
+        input.putArray("instances");
+        input.putObject("parameters").set(name, value);
+        try {
+            CaseInput.of(build, c);
             return null;
+        } catch (IllegalArgumentException e) {
+            return e.getMessage();
         }
-        if (r.value() instanceof java.math.BigDecimal b)
-            CaseRunner.inputFits(NF.objectNode().put("number", b.toPlainString()), p.datatype(), "parameter " + p.name());
-        return r.value();
     }
 
     // ---------------- request handling ----------------
@@ -774,7 +783,7 @@ public final class DecisionCore {
         // an explanation is given from the build with readings, which answers the request as well: one fire
         DroolsBackend.Build fired = options.explanation() ? ep.explanationBuild() : ep.build();
         RequestMapper mapper = new RequestMapper(model, fired, new NameReader(model, options.inputVocabulary()));
-        RequestMapper.Result mr = mapper.map(new Request(requestTree));
+        RequestMapper.Result mr = mapper.map(new Request(requestTree), this::baseParameters);
         if (!mr.violations().isEmpty())
             throw new ServiceError("verzoek valideert niet", mr.violations());
         // core contract check (fase 6, G4): the entrypoint's invoer list is the DECLARED contract — every
@@ -789,11 +798,6 @@ public final class DecisionCore {
         // a request that validates may still hold a number its declaration does not: uchar's evaluation fault EF-004,
         // a 422 like every evaluation fault, and no session runs
         if (!mr.inputFaults().isEmpty()) throw EvaluationFault.ofInput(mr.inputFaults());
-        // fase 5, decision D: resolve the parameterset vintage against the one date authority (the request
-        // peildatum, which IS World.evaluationDate). The resolved values sit BETWEEN the descriptor defaults and the
-        // request parameter overrides (descriptor default first, set-value next — the conflict rule guarantees
-        // they never name the same parameter — request override last: explicit caller-intent wins).
-        Map<String, Object> setGlobals = vintageGlobals(mr.world().evaluationDate());
         boolean withDetail = !options.detailFlags().isEmpty();
         // uchar's waarnemer labels a firing with the ids of the request; the input is read off the beans before the
         // fire, because the write-back puts the derived values on the same beans
@@ -803,10 +807,10 @@ public final class DecisionCore {
                 ? new DroolsBackend.Observer(label::get) : null;
         List<FixpointGivens.InputObject> input = options.fixpoint()
                 ? FixpointGivens.input(mr.world().beans(), mr.typePerLabel(), model, output) : null;
-        Executor executor = new Executor(fired, ep.defaultGlobals());
+        Executor executor = new Executor(fired);
         Executor.Outcome outcome;
         try {
-            outcome = executor.fire(mr.world(), setGlobals, observer, expectations, options.explanation());
+            outcome = executor.fire(mr.world(), observer, expectations, options.explanation());
         } catch (EvaluationFault error) {
             if (!withDetail) throw error;
             throw error.withDetail(detail(options, ep, observer, error.fixpoint(), error.making(), null, input, output));
@@ -908,8 +912,10 @@ public final class DecisionCore {
     }
 
     /**
-     * Resolve the parameterset vintage for one request (fase 5, decision D). Returns the (global-name → value) map
-     * of set-resolved parameters, empty when no sets are loaded. Fail-fast against the one date authority
+     * The parameters a request does not give, in the form of {@code uchar-case-v0} under their declared names: the
+     * descriptor defaults, and beside them the parameterset vintage of the request's date (fase 5, decision D; the
+     * conflict rule keeps the two apart). The request's own parameters go over them ({@link RequestMapper#map(Request,
+     * java.util.function.Function)}). Fail-fast against the one date authority
      * ({@code datum} = the request peildatum = {@code World.evaluationDate}):
      * <ul>
      *   <li><b>datum present</b> — {@link ParameterSet#valuesOn}; any gap is a 4xx {@link ServiceError} whose
@@ -919,11 +925,10 @@ public final class DecisionCore {
      *   <li><b>datum absent + NOT multi-vintage</b> — the degenerate single-value case: resolve with
      *       {@link LocalDate#EPOCH} (date-independent by construction, mirroring the ScenarioRunner).</li>
      * </ul>
-     * The resolved values are keyed by the engine's camelCase global name ({@link RequestMapper#ident}),
-     * exactly as the descriptor defaults are.
      */
-    private Map<String, Object> vintageGlobals(LocalDate date) {
-        if (parameterSets.isEmpty()) return Map.of();
+    private ObjectNode baseParameters(LocalDate date) {
+        ObjectNode out = defaultParameters.deepCopy();
+        if (parameterSets.isEmpty()) return out;
         if (date == null && ParameterSet.multiVintage(parameterSets))
             throw new ServiceError("verzoek valideert niet", List.of(Violation.of(Violation.Kind.WRONG_TYPE,
                     "asOfDate", "asOfDate is verplicht: de geladen parameterSets dragen meer dan één vintage")));
@@ -936,10 +941,16 @@ public final class DecisionCore {
                 errors.add(Violation.of(Violation.Kind.WRONG_TYPE, "asOfDate", gap));
             throw new ServiceError("verzoek valideert niet", errors);
         }
-        Map<String, Object> globals = new LinkedHashMap<>();
-        for (var e : resolved.entrySet())
-            globals.put(RequestMapper.ident(e.getKey()), e.getValue());
-        return globals;
+        for (var e : resolved.entrySet()) {
+            RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, e.getKey());
+            List<Violation> unread = new ArrayList<>();
+            JsonNode value = RequestMapper.setValue(e.getValue(), p.datatype(), "parameterSets", unread);
+            // the start read every set value through uchar's input step (refuseParameters)
+            if (!unread.isEmpty()) throw new IllegalStateException("een waarde van de parameterSets die de start las,"
+                    + " past niet in de case: " + unread);
+            if (value != null) out.set(p.name(), value);
+        }
+        return out;
     }
 
     /**

@@ -210,8 +210,13 @@ refuse the start as well.
   a 400 `MALFORMED`. Labels that name no cell of the attribute (EF-034) and a cell given twice (EF-035) uchar's input
   step refuses before any session: the 422 below, kind `CELL_FAULT`; a value its declaration does not hold is EF-004,
   `INPUT_PRECISION_FAULT`, with the cell as its place (`J1.vondstgewicht[voorjaar]`).
-- A time-dependent parameter (`voor elke maand`, uchar's RUNTIME-SEMANTICS ch. 3.4, 8.3) has a value per day, which
-  uchar's Drools branch reads whole, from a global of type `List<Period>`. The service sets the globals itself, so a
+- The parameters go into the case the mapper writes, as its `input.parameters`, each under its declared name: the
+  descriptor defaults, the values the parameter sets give on the request's `asOfDate`, and over them the request's
+  own `parameters`, which win. uchar's input step reads them as its replay reads the parameters of a case and binds
+  them on the session (`CaseInput.setGlobals`), with the `rekendatum`; the service binds no global itself. A parameter
+  that nothing binds and a rule reads is uchar's evaluation fault EF-014 where the read is reached: the 422 below. A
+  null value binds nothing.
+- A time-dependent parameter (`voor elke maand`, uchar's RUNTIME-SEMANTICS ch. 3.4, 8.3) has a value per day, so a
   request and a descriptor default give such a parameter its timeline, in the form of uchar's case: `"havenheffing":
   {"timeline": [{"to": "2024-01-01", "value": 2.50}, {"from": "2024-01-01", "value": 3.00}]}`, each value as the
   parameter's datatype takes it. A segment without `from` begins before every day and one without `to` runs past every
@@ -285,10 +290,10 @@ refuse the start as well.
 - A request that validates but holds a number its declaration does not hold, an attribute or a parameter with more
   decimals than declared, gets the same 422 with the kind `INPUT_PRECISION_FAULT` and uchar's sentence of EF-004:
   uchar's input fence (`CaseRunner.inputFits`) refuses the value before any session, as uchar's replay refuses it in a
-  case. An attribute reaches the fence in uchar's input step, which stops at the first; the core holds every parameter
-  to it, since it binds the parameters itself. No session runs, so the 422 carries no detail, also when the request
-  asks for it. A parameter default of the descriptor that does not fit is refused when the descriptor loads, with a
-  violation on `parameters.<name>` that carries uchar's sentence, so the service does not start.
+  case. uchar's input step reads the attributes and then the parameters, and stops at the first. No session runs, so
+  the 422 carries no detail, also when the request asks for it. A parameter default of the descriptor and a value of a
+  parameter set that uchar's input step refuses (a number that does not fit, a date outside the case lexeme) refuse
+  the start, with a violation on `parameters.<name>` or `parameterSets` that carries uchar's sentence.
 - The cells of a dimensioned attribute whose labels name no cell of it (EF-034) or that give one cell twice, also in
   two spellings of a label (EF-035), get the same 422 with the kind `CELL_FAULT` and uchar's sentence; uchar's input
   step refuses them before the values of the cells and stops at the first. The mapper tells that refusal by uchar's

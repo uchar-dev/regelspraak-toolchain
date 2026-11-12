@@ -8,7 +8,6 @@ import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Granularity;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
-import dev.uchar.regelspraak.transpiler.tms.Period;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -25,10 +24,8 @@ import java.util.List;
  * <p>A time-dependent parameter (a parameter {@code voor elke maand}) and a time-dependent attribute take their
  * timeline, {@code {"timeline": [{"from": <datum>, "to": <datum>, "value": <waarde>}, ...]}}, each value as the member's
  * datatype takes it. A segment without {@code from} begins before every day and one without {@code to} runs past every
- * day (an open bound, ch. 3.1); a day no segment covers is a gap and reads leeg. uchar's Drools branch reads such a
- * parameter whole, from a global of type {@code List<Period>} with the open bounds {@link Period#OPEN_FROM} and
- * {@link Period#OPEN_TO}, and the service sets its globals itself, so for a parameter this is the value it sets; an
- * attribute's timeline the request mapper writes into the case, whose input step reads it.
+ * day (an open bound, ch. 3.1); a day no segment covers is a gap and reads leeg. The request mapper writes the timeline
+ * of a parameter and of an attribute into the case, whose input step reads it.
  *
  * <p>The checks are those of uchar's case reader ({@code CaseRunner.timelineSegments}, which mirrors the reference
  * interpreter's loader): at least one segment, {@code from} before {@code to}, the segments in order and apart, only the
@@ -89,35 +86,6 @@ final class TimelineInput {
                 ? "parameter '" + p.name() + "' is tijdsafhankelijk (" + perGrid(p.granularity())
                         + "): zijn waarde is een tijdlijn, " + TIMELINE_FORM
                 : "parameter '" + p.name() + "' is niet tijdsafhankelijk: zijn waarde is één waarde, geen tijdlijn");
-    }
-
-    /**
-     * The timeline {@code value} of the time-dependent parameter {@code p} on {@code field}, as uchar's branch reads
-     * it, or null after adding the violations to {@code sink}. {@code segmentValue} decodes the value of one segment as
-     * a scalar of the parameter (null after adding its violation), holding a number to uchar's input fence.
-     *
-     * @throws CaseRunner.InputPrecisionFault from {@code segmentValue}: a segment value with more decimals than the
-     *                                        parameter declares (EF-004)
-     */
-    static List<Period> decode(RegelSpraakModel.Parameter p, JsonNode value, String field, SegmentValue segmentValue,
-                               List<Violation> sink) {
-        List<Segment> segments = segments(new Grid("parameter '" + p.name() + "'", p.granularity(),
-                p.fixedStartPoint(), p.datatype()), value, field, segmentValue, sink);
-        if (segments == null) return null;
-        // the service binds the parameter itself, so it holds the bounds to the case lexeme as a case would be held
-        int before = sink.size();
-        for (int k = 0; k < segments.size(); k++)
-            for (String key : List.of("from", "to")) {
-                Violation year = RequestMapper.outsideCaseForm(key.equals("from") ? segments.get(k).from()
-                        : segments.get(k).to(), field + ".timeline[" + k + "]." + key);
-                if (year != null) sink.add(year);
-            }
-        if (sink.size() > before) return null;
-        List<Period> out = new ArrayList<>();
-        for (Segment s : segments)
-            out.add(new Period(s.from() == null ? Period.OPEN_FROM : s.from(), s.to() == null ? Period.OPEN_TO : s.to(),
-                    s.value()));
-        return List.copyOf(out);
     }
 
     /**

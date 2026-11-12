@@ -12,19 +12,16 @@ import dev.uchar.regelspraak.transpiler.tms.PeriodDecisions;
 
 import org.kie.api.runtime.KieSession;
 
-import java.time.LocalDate;
-import java.util.HashSet;
 import java.util.IdentityHashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 
 /**
  * The per-request executor: given an entry point's {@link DroolsBackend.Build} (built once at startup by uchar,
- * immutable thereafter) and a mapped {@link World}, it opens a FRESH session of the build's KieBase, sets the
- * parameter globals (the descriptor defaults, overridden by the request), sets the rekendatum global when the request
- * carried one, and then fills, fires and reads it through uchar's entry: {@link DroolsBackend#insert} puts the input
+ * immutable thereafter) and a mapped {@link World}, it opens a FRESH session of the build's KieBase, lets uchar's input
+ * step bind the globals of the case it read ({@link dev.uchar.regelspraak.cases.CaseInput#setGlobals}: the parameters,
+ * the rekendatum when the request carried one, the day-kind predicates), and then fills, fires and reads it through
+ * uchar's entry: {@link DroolsBackend#insert} puts the input
  * in that uchar's input step read ({@link World#input()}), each to-many list in the replay's order, {@link DroolsBackend#fire}
  * fires to the fixpoint, {@link DroolsBackend#fixpointOf} gives the evaluation faults that stand there, and where none
  * stands {@link DroolsBackend#setDerivedValues} puts the derived values on the beans, which the branch keeps as
@@ -40,29 +37,13 @@ import java.util.Set;
  * limit of uchar's branch at the fixpoint (a value it cannot hold, DROOLS-312) is no fault of the rules: uchar's
  * write-back refuses the session as an exclusion with its register code, before the faults beside it, and it leaves as a
  * {@link Limit}.
- *
- * <p>A global is set where the build declares it: a parameter no scoped rule reads has none. A declared global takes
- * its value or the request fails with Drools' sentence; the value of a time-dependent parameter is the
- * {@code List<Period>} uchar's branch reads ({@link RequestMapper}), and no other form reaches it.
  */
 public final class Executor {
 
     private final DroolsBackend.Build build;
-    private final Map<String, Object> defaultGlobals;   // descriptor parameter defaults (global name -> value)
-    private final Set<String> declaredGlobals;
 
-    public Executor(DroolsBackend.Build build, Map<String, Object> defaultGlobals) {
+    public Executor(DroolsBackend.Build build) {
         this.build = build;
-        this.defaultGlobals = defaultGlobals == null ? Map.of() : defaultGlobals;
-        this.declaredGlobals = declaredGlobals(build);
-    }
-
-    /** The names of the globals the KieBase of {@code build} declares. */
-    static Set<String> declaredGlobals(DroolsBackend.Build build) {
-        Set<String> names = new HashSet<>();
-        for (org.kie.api.definition.KiePackage p : build.kieBase().getKiePackages())
-            for (org.kie.api.definition.rule.Global g : p.getGlobalVariables()) names.add(g.getName());
-        return names;
     }
 
     /** The result of a fire: the beans by id with the derived values written back, the firings, what stood at the
@@ -80,9 +61,8 @@ public final class Executor {
 
     /**
      * Fires the entry point's rules over {@code world} and returns the beans with their derived values and what stood
-     * at the fixpoint. The globals: the descriptor defaults first, then {@code setGlobals}, the values the parameter
-     * sets give for the evaluation date (the core's conflict rule keeps them apart from the defaults), then the
-     * request's parameters, which win; the {@code rekendatum} global is {@code world.evaluationDate()}.
+     * at the fixpoint. The globals are those uchar's input step binds for the case it read ({@link World#input()}): the
+     * parameters the mapper wrote into it, the {@code rekendatum} of its evaluation date and the day-kind predicates.
      * {@code observer} (null: none) records what the session fires, through uchar's
      * {@link DroolsBackend#fire(DroolsBackend.Build, KieSession, DroolsBackend.Observer)}; it belongs to one session,
      * so the caller gives each request a fresh one. {@code expectations} (null: none) is the {@code expected} of a
@@ -102,22 +82,13 @@ public final class Executor {
      *                                  {@code uchar-case-v0} does not have, a value of another datatype, a scalar
      *                                  expectation on a time-dependent member
      */
-    public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer,
-                         JsonNode expectations, boolean withExplanation) {
-        // descriptor defaults first, set-vintage values next, request parameters override last
-        Map<String, Object> globals = new LinkedHashMap<>(defaultGlobals);
-        if (setGlobals != null) globals.putAll(setGlobals);
-        globals.putAll(world.globals());
-
+    public Outcome fire(World world, DroolsBackend.Observer observer, JsonNode expectations, boolean withExplanation) {
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(build.beanLoader());   // Drools resolves fact types via the TCCL
         KieSession session = build.kieBase().newKieSession();
         try {
             // the branch states the globals as facts at the first fire, so they all go on before it
-            for (var e : build.dayKindGlobals().entrySet()) setGlobal(session, e.getKey(), e.getValue());
-            for (var e : globals.entrySet()) setGlobal(session, e.getKey(), e.getValue());
-            LocalDate rd = world.evaluationDate();
-            if (rd != null) setGlobal(session, "rekendatum", rd);
+            world.input().setGlobals(session);
             // the input as uchar's replay puts it in: the order of a list decides which member a fault of a fold
             // names, so the 422 names the member uchar's replay names on the same input
             DroolsBackend.insert(build, session, world.input().inputData());
@@ -162,11 +133,5 @@ public final class Executor {
         }
         throw new IllegalStateException("uchars terugzetting wierp niets, terwijl aan het fixpunt "
                 + fixpoint.faults().size() + " evaluatiefout(en) staan, de eerste: " + fixpoint.faults().get(0).message());
-    }
-
-    /** Sets the global {@code name} where the build declares it; a parameter no scoped rule reads is no global of the
-     *  build, and nothing reads it. */
-    private void setGlobal(KieSession session, String name, Object value) {
-        if (declaredGlobals.contains(name)) session.setGlobal(name, value);
     }
 }

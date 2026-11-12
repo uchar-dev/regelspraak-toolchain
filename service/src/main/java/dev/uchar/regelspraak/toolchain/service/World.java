@@ -3,24 +3,22 @@ package dev.uchar.regelspraak.toolchain.service;
 import dev.uchar.regelspraak.cases.CaseInput;
 
 import java.time.LocalDate;
-import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Objects;
 
 /**
  * The mapped request world: uchar's reading of the request as the input of a case ({@link CaseInput}: the labelled
- * beans and what {@code insert} needs beside them), the parameter globals to set, and the rekendatum — everything a
- * session needs to fire. Produced by {@link RequestMapper} and consumed by {@link Executor}.
+ * beans, what {@code insert} needs beside them, and the parameters it binds on a session) and the evaluation date —
+ * everything a session needs to fire. Produced by {@link RequestMapper} and consumed by {@link Executor}.
  *
- * @param invoer     the beans of the request by id, read by uchar's input step from the case the mapper wrote
- * @param globals    global name (already the engine's camelCase form) → value (BigDecimal / LocalDate / …)
- * @param rekendatum the §4.2 rekendatum, or null when the request set none
+ * @param input          the beans of the request by id and the parameters, read by uchar's input step from the case the
+ *                       mapper wrote
+ * @param evaluationDate the §4.2 rekendatum, or null when the request set none
  */
-public record World(CaseInput input, Map<String, Object> globals, LocalDate evaluationDate) {
+public record World(CaseInput input, LocalDate evaluationDate) {
 
     public World {
-        Objects.requireNonNull(input, "invoer");
-        globals = globals == null ? new LinkedHashMap<>() : globals;
+        Objects.requireNonNull(input, "input");
     }
 
     /** The beans by id, in the order of the request. */

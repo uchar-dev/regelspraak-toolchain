@@ -9,7 +9,6 @@ import com.fasterxml.jackson.databind.node.TextNode;
 import dev.uchar.regelspraak.cases.CaseInput;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
-import dev.uchar.regelspraak.message.Msg;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
@@ -42,10 +41,16 @@ import java.util.Map;
  * violation it does not throw: it returns the violations, beside the world uchar read from the fields that validated
  * (none when uchar refused a link), so a caller can turn the full set into one 400 naming every bad field.
  *
+ * <p>The parameters go into the case as well, as its {@code input.parameters}, each under its declared name: the
+ * values the caller gives as the parameters the request does not give ({@link #map(Request, java.util.function.Function)}:
+ * the descriptor defaults and the parameter sets on the evaluation date), and over them the request's own. uchar's
+ * input step reads them as its replay reads the parameters of a case, and binds them on the session
+ * ({@link CaseInput#setGlobals}); a parameter that nothing binds and a rule reads faults EF-014 there.
+ *
  * <p>A number its declaration does not hold is no violation but uchar's evaluation fault EF-004 on the input, which
- * uchar's input fence raises ({@link CaseRunner#inputFits}): for an attribute uchar's input step raises it and stops at
- * the first, for a parameter, which the service binds itself, the mapper asks the fence. The result returns those
- * faults, in that order, for the caller to answer as an evaluation fault.
+ * uchar's input fence raises ({@link CaseRunner#inputFits}) where its input step reads the value, and stops at the
+ * first: the attributes in the order of the case, then the parameters. The result returns that fault for the caller to
+ * answer as an evaluation fault.
  *
  * <p>A dimensioned attribute takes its input per cell, in the form of uchar's case: {@code {"cells": [{"labels":
  * [...], "value": ...}, ...]}}, one label per dimension in their declared order, each value as the attribute's datatype
@@ -53,9 +58,9 @@ import java.util.Map;
  * name no cell (EF-034) and a cell given twice (EF-035) it refuses before any session, as it refuses EF-004 per cell,
  * and the result returns them as faults of the kind {@link EvaluationFault.Kind#CELL_FAULT}.
  *
- * <p>A time-dependent parameter takes its timeline ({@link TimelineInput}): uchar's branch reads it whole, as a
- * {@code List<Period>} global, and a segment may leave out {@code from} or {@code to}, an open bound. A scalar on such a
- * parameter and a timeline on another are violations.
+ * <p>A time-dependent parameter takes its timeline ({@link TimelineInput}), written into the case as uchar's case gives
+ * it, and a segment may leave out {@code from} or {@code to}, an open bound. A scalar on such a parameter and a
+ * timeline on another are violations.
  *
  * <p>A time-dependent attribute takes its timeline in the same form, and a time-dependent characteristic the periods in
  * which it holds, {@code {"periods": [{"from", "to"}, ...]}} ({@link TimelineInput}); the mapper writes them into the
@@ -109,9 +114,42 @@ public final class RequestMapper {
 
     /** As {@link #RequestMapper(RegelSpraakModel, DroolsBackend.Build)}, reading the names with {@code reader}. */
     RequestMapper(RegelSpraakModel model, DroolsBackend.Build build, NameReader reader) {
+        this(model, java.util.Objects.requireNonNull(build, "build"), reader, true);
+    }
+
+    /** A mapper that writes values in the form of the case and reads no case, so it needs no build. */
+    private RequestMapper(RegelSpraakModel model, DroolsBackend.Build build, NameReader reader, boolean unused) {
         this.model = model;
-        this.build = java.util.Objects.requireNonNull(build, "build");
+        this.build = build;
         this.reader = reader;
+    }
+
+    /**
+     * The descriptor's parameter defaults {@code written}, each name as the descriptor writes it with its value as a
+     * request gives it, in the form of {@code uchar-case-v0} under the declared name ({@link #parameterValue}), after
+     * adding the violations of a value in another form or of another type on {@code parameters.<name>}. A name the model
+     * does not declare is left out, as the descriptor's validation refuses it. What uchar's input step refuses of such a
+     * value, a year outside the case lexeme or a number its declaration does not hold, it refuses where the core reads
+     * the defaults through it at start.
+     */
+    static ObjectNode defaults(RegelSpraakModel model, Map<String, JsonNode> written, List<Violation> s) {
+        RequestMapper mapper = new RequestMapper(model, null, new NameReader(model, null), true);
+        ObjectNode out = NF.objectNode();
+        if (written == null) return out;
+        for (Map.Entry<String, JsonNode> e : written.entrySet()) {
+            RegelSpraakModel.Parameter p = DescriptorLoader.parameter(model, e.getKey());
+            if (p == null) continue;
+            JsonNode value = mapper.parameterValue(p, e.getValue(), "parameters." + e.getKey(), new ArrayList<>(), s);
+            if (value != null) out.set(p.name(), value);
+        }
+        return out;
+    }
+
+    /** The value {@code w} of a parameter set, decoded for datatype {@code dt}, in the form of {@code uchar-case-v0};
+     *  null for null, which binds nothing. A value the case form cannot carry adds its violation on {@code field}. */
+    static JsonNode setValue(Object w, Datatype dt, String field, List<Violation> s) {
+        if (w == null) return null;
+        return caseValue(w, dt, field, new ArrayList<>(), s);
     }
 
     /** The mapped world, the id→objecttype map (for the response builder), the violations produced while
@@ -126,13 +164,23 @@ public final class RequestMapper {
 
     /** What the mapper wrote into the case that uchar's input step refuses with an {@link IllegalArgumentException} of
      *  no public type: a date or date-time on {@code field} whose year the case lexeme does not carry (four digits, no
-     *  sign), a violation of that field. */
+     *  sign), a violation of that field. An attribute, a characteristic period or a parameter alike. */
     private record CaseRefusal(String field) {}
 
     public Result map(Request request) {
+        return map(request, date -> NF.objectNode());
+    }
+
+    /**
+     * As {@link #map(Request)}, with {@code base} the parameters the request does not give: per evaluation date of the
+     * request (null where it gives none) the value of each parameter in the form of {@code uchar-case-v0}, under its
+     * declared name, the descriptor defaults overlaid with the values the parameter sets give for that date. A request
+     * value wins. {@code base} may refuse the date with a {@link ServiceError}; its violations join those of the
+     * request.
+     */
+    public Result map(Request request, java.util.function.Function<LocalDate, ObjectNode> base) {
         List<Violation> s = new ArrayList<>();
         List<EvaluationFault.InputFault> inputFaults = new ArrayList<>();
-        Map<String, Object> globals = new LinkedHashMap<>();
         Map<String, ObjectType> typePerLabel = new LinkedHashMap<>();
         // the instances of the case by id, in the order of the request, and the field of the request per link
         Map<String, ObjectNode> instances = new LinkedHashMap<>();
@@ -159,7 +207,10 @@ public final class RequestMapper {
         if (date != null && !inCaseForm(date.getYear()))
             refusals.add(new CaseRefusal(asOfDate != null ? "asOfDate" : "rekendatum"));
 
-        // 2. parameters
+        // 2. parameters, each in the form of the case under its declared name; uchar's input step reads them after the
+        //    instances, so a year it refuses on a parameter comes after those of the attributes
+        ObjectNode parameters = NF.objectNode();
+        List<CaseRefusal> parameterRefusals = new ArrayList<>();
         JsonNode params = request.parameters();
         if (params != null && !params.isNull()) {
             if (!params.isObject())
@@ -177,21 +228,8 @@ public final class RequestMapper {
                                 "onbekende parameter '" + name + "'" + reader.pinnedClause()));
                         return;
                     }
-                    Violation form = TimelineInput.formViolation(p, e.getValue(), field);
-                    if (form != null) {
-                        s.add(form);
-                        return;
-                    }
-                    Object decoded;
-                    try {
-                        decoded = TimelineInput.timeDependent(p)
-                                ? TimelineInput.decode(p, e.getValue(), field, (v, f, sink) -> scalar(p, v, f, sink), s)
-                                : scalar(p, e.getValue(), field, s);
-                    } catch (CaseRunner.InputPrecisionFault f) {
-                        inputFaults.add(new EvaluationFault.InputFault(EvaluationFault.Kind.INPUT_PRECISION_FAULT, f));
-                        return;
-                    }
-                    if (decoded != null) globals.put(ident(p.name()), decoded);
+                    JsonNode caseValue = parameterValue(p, e.getValue(), field, parameterRefusals, s);
+                    if (caseValue != null) parameters.set(p.name(), caseValue);
                 });
             }
         }
@@ -253,12 +291,25 @@ public final class RequestMapper {
                 setRoles(ot, id, typePerLabel, in.get("roles"), "instances[" + i + "].roles", instances, paths, s);
             }
         setRelations(request.relations(), typePerLabel, instances, paths, s);
+        refusals.addAll(parameterRefusals);
 
-        // 5. uchar reads the case: the beans, the roles both ways (RUNTIME-SEMANTICS ch. 5.7a), the lists
+        // 5. the parameters the request does not give: the defaults and the parameter sets on its evaluation date
+        ObjectNode bound = NF.objectNode();
+        try {
+            bound.setAll(base.apply(date));
+        } catch (ServiceError e) {
+            s.addAll(e.violations());
+        }
+        bound.setAll(parameters);
+
+        // 6. uchar reads the case: the beans, the roles both ways (RUNTIME-SEMANTICS ch. 5.7a), the lists, the
+        //    parameters
         ObjectNode c = NF.objectNode();
         if (date != null) c.put("asOfDate", date.toString());
-        ArrayNode cInstances = c.putObject("input").putArray("instances");
+        ObjectNode cInput = c.putObject("input");
+        ArrayNode cInstances = cInput.putArray("instances");
         instances.values().forEach(cInstances::add);
+        if (!bound.isEmpty()) cInput.set("parameters", bound);
         CaseInput input = null;
         try {
             input = CaseInput.of(build, c);
@@ -279,7 +330,7 @@ public final class RequestMapper {
             if (refusals.isEmpty()) throw f;
             s.add(Violation.of(Violation.Kind.WRONG_TYPE, refusals.get(0).field(), f.getMessage()));
         }
-        return new Result(input == null ? null : new World(input, globals, date), typePerLabel, s, inputFaults);
+        return new Result(input == null ? null : new World(input, date), typePerLabel, s, inputFaults);
     }
 
     /** The field of the request that wrote the link uchar refused. A link the mapper did not write is a broken promise
@@ -327,19 +378,6 @@ public final class RequestMapper {
     /** Whether the case lexeme of a date carries year {@code jaar}: four digits, no sign. */
     private static boolean inCaseForm(int year) {
         return year >= 0 && year <= 9999;
-    }
-
-    /** The violation of a date or date-time {@code value} on {@code field} whose year the case lexeme does not carry,
-     *  or null. A value the service binds itself (a parameter, a bound of its timeline) reaches no case, so it is held
-     *  here to the lexeme uchar's input step holds an attribute to: a date in uchar's sentence of EF-003. */
-    static Violation outsideCaseForm(Object value, String field) {
-        if (value instanceof LocalDate d && !inCaseForm(d.getYear()))
-            return Violation.of(Violation.Kind.WRONG_TYPE, field,
-                    Msg.drools("EF-003.malformed", "lexeme", d.toString(), "field", field).text());
-        if (value instanceof LocalDateTime t && !inCaseForm(t.getYear()))
-            return Violation.of(Violation.Kind.WRONG_TYPE, field, "'" + t + "' heeft een jaar buiten 0000-9999, dat het"
-                    + " datumtijdlexeem van uchar-case-v0 niet draagt (yyyy-mm-ddThh:mm:ss[.fff], zonder teken)");
-        return null;
     }
 
     /** The {@code uchar-case-v0} value of {@code w}, a value {@link ValueCoder} decoded for {@code dt}: what uchar's
@@ -491,24 +529,41 @@ public final class RequestMapper {
         return n;
     }
 
-    /** The scalar {@code node} of parameter {@code p} on {@code field}, decoded by its datatype, or null after adding
-     *  the violations to {@code s}.
-     *
-     *  @throws CaseRunner.InputPrecisionFault a number with more decimals than {@code p} declares (EF-004) */
-    private Object scalar(RegelSpraakModel.Parameter p, JsonNode node, String field, List<Violation> s) {
-        JsonNode value = value(node, p.datatype(), field, s);
-        if (value == null) return null;
-        ValueCoder.Result r = ValueCoder.decode(value, p.datatype(), field);
-        s.addAll(r.violations());
-        if (!r.violations().isEmpty()) return null;
-        Violation year = outsideCaseForm(r.value(), field);
-        if (year != null) {
-            s.add(year);
+    /**
+     * The value {@code node} of parameter {@code p} on {@code field} in the form of {@code uchar-case-v0}, for uchar's
+     * input step to read and bind ({@link CaseInput#setGlobals}): a value of its datatype, or on a time-dependent
+     * parameter its timeline, {@code {"timeline": [{"from", "to", "value": <case value>}, ...]}}, an open bound left out.
+     * Null for null, which binds nothing, and null after adding the violations of a value in another form than the
+     * declaration takes or one {@link ValueCoder} refuses. A date whose year the case lexeme does not carry is written as
+     * {@link LocalDate#toString} writes it, for uchar's reader to refuse, and its field is added to {@code refusals}; a
+     * number its declaration does not hold uchar's input fence refuses (EF-004).
+     */
+    JsonNode parameterValue(RegelSpraakModel.Parameter p, JsonNode node, String field, List<CaseRefusal> refusals,
+                            List<Violation> s) {
+        if (node == null || node.isNull()) return null;
+        Violation form = TimelineInput.formViolation(p, node, field);
+        if (form != null) {
+            s.add(form);
             return null;
         }
-        if (r.value() instanceof BigDecimal b)
-            CaseRunner.inputFits(NF.objectNode().put("number", b.toPlainString()), p.datatype(), "parameter " + p.name());
-        return r.value();
+        if (TimelineInput.timeDependent(p)) {
+            List<TimelineInput.Segment> segments = TimelineInput.segments(new TimelineInput.Grid("parameter '"
+                    + p.name() + "'", p.granularity(), p.fixedStartPoint(), p.datatype()), node, field,
+                    (v, f, sink) -> decoded(v, p.datatype(), f, sink), s);
+            return segments == null ? null : caseTimeline(segments, field, refusals);
+        }
+        Object decoded = decoded(node, p.datatype(), field, s);
+        return decoded == null ? null : caseValue(decoded, p.datatype(), field, refusals, s);
+    }
+
+    /** {@code node} decoded for datatype {@code dt} on {@code field}, an enumeration value read by the
+     *  {@link NameReader}; null after adding its violations, and null for null. */
+    private Object decoded(JsonNode node, Datatype dt, String field, List<Violation> s) {
+        JsonNode value = value(node, dt, field, s);
+        if (value == null) return null;
+        ValueCoder.Result r = ValueCoder.decode(value, dt, field);
+        s.addAll(r.violations());
+        return r.violations().isEmpty() ? r.value() : null;
     }
 
     /**
@@ -542,7 +597,14 @@ public final class RequestMapper {
         List<TimelineInput.Segment> segments = TimelineInput.segments(new TimelineInput.Grid("attribuut '" + name + "'",
                 g, ot.fixedStartPointOf(attribute), markers == null ? dt : markers.payload()), value, field,
                 (v, f, sink) -> segmentValue(v, dt, markers, name, f, sink), s);
-        if (segments == null) return null;
+        return segments == null ? null : caseTimeline(segments, field, refusals);
+    }
+
+    /** The timeline of {@code segments} on {@code field} as the case writes it, {@code {"timeline": [{"from", "to",
+     *  "value": <case value>}, ...]}}, an open bound left out; a bound whose year the case lexeme does not carry adds
+     *  its field to {@code refusals}. */
+    private static JsonNode caseTimeline(List<TimelineInput.Segment> segments, String field,
+                                         List<CaseRefusal> refusals) {
         ArrayNode out = NF.arrayNode();
         for (int k = 0; k < segments.size(); k++) {
             TimelineInput.Segment segment = segments.get(k);
@@ -987,8 +1049,7 @@ public final class RequestMapper {
     }
 
     /** The camelCase name uchar gives a RegelSpraak name in Java ({@link Namen#ident}{@code (name, false)}, runs of
-     *  non-letters and non-digits collapsed): the global of a parameter, which uchar's transpiler names so and keeps that
-     *  step private, and the property of a generated bean, which {@link RegelSpraakRuntime#get} reaches through the
-     *  accessor uchar's generator writes. */
+     *  non-letters and non-digits collapsed): the property of a generated bean, which {@link RegelSpraakRuntime#get}
+     *  reaches through the accessor uchar's generator writes. */
     static String ident(String name) { return Namen.ident(name, false); }
 }
