@@ -225,7 +225,9 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # jutterswet-registratienummer, jutterswet-registratienummer-gehele-jaar (een tekst op een tijdlijn) en
 # jutterswet-saldotoezicht.
 # Pin uchar 970286134: 369 — jutterswet-leeg-deeltal-per-periode speelt door de dienst.
-EXPECTED_REPLAY_PLAYED=369
+# Pin uchar 1b42bea65: 370 — jutterswet-verdeling-voorwaarde-op-bron (een voorwaarde op de bron van een verdeling)
+# speelt door de dienst.
+EXPECTED_REPLAY_PLAYED=370
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -235,7 +237,8 @@ EXPECTED_REPLAY_PLAYED=369
 # 1014 (pin uchar 1db2a783e): de acht cases van de zes nieuwe goldens hierboven, drie daarvan van jutterswet-leeg-deeltal.
 # 1034 (pin uchar cee0c1a98): de 20 cases van de vier nieuwe goldens hierboven.
 # 1037 (pin uchar 970286134): de drie cases van jutterswet-leeg-deeltal-per-periode.
-EXPECTED_REPLAY_CASES=1037
+# 1038 (pin uchar 1b42bea65): de case van jutterswet-verdeling-voorwaarde-op-bron.
+EXPECTED_REPLAY_CASES=1038
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk

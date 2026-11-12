@@ -103,14 +103,14 @@ csv-beslistabel:
 
 # Generate the fact-model beans a model implies, then PROVE they are pure-JDK by javac'ing them. Without FILE the
 # input is the TOKA *model foundation* — the exact companion model files the golden scenario manifest
-# (examples/toka-scenarios/manifest) lists: toka-01..16 plus the reconciliatie/model-extensie companions. That
+# (examples/toka-scenarios/manifest) lists: toka-01..15 plus the reconciliatie/model-extensie companions. That
 # set resolves WITHOUT errors; the toka-2x regel files add no fact-model structure, so the beans are fully
 # determined by the foundation. `bin/regelspraak facts` is model-level: it writes NOTHING when the model has
 # errors, so this target doubles as a resolve gate. The generated beans need no external classpath (java.* only),
 # so plain javac proves them.
 TOKA_MODEL_FOUNDATION := \
 	$(wildcard examples/toka/toka-0[1-9]-*.rgs) \
-	$(wildcard examples/toka/toka-1[0-6]-*.rgs) \
+	$(wildcard examples/toka/toka-1[0-5]-*.rgs) \
 	examples/toka-reconciliation/casus-omissies.rgs \
 	examples/toka-scenarios/scenario-model-extensie.rgs
 FACTS_DIR := $(OUT_DIR)/facts

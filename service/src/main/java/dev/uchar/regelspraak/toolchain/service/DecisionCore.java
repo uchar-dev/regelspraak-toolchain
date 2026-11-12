@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.emit.CaseEmitter;
+import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.engine.ScenarioResult;
 import dev.uchar.regelspraak.ir.Source;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
@@ -541,14 +542,14 @@ public final class DecisionCore {
         // carrier to one group per member; the opgave marker and a subtype's own exceptions get a group whose name
         // uchar makes up. The author knows the first two by a rule they wrote, the last two only by that name.
         java.util.Set<String> written = new java.util.HashSet<>();
-        for (var r : model.rules) if (r.name() != null) written.add(CaseEmitter.norm(r.name()));
+        for (var r : model.rules) if (r.name() != null) written.add(IrEmitter.norm(r.name()));
 
         List<Violation> sink = new ArrayList<>();
         java.util.Set<ElementKey> reported = new java.util.LinkedHashSet<>();
         for (ProducerConsumer.Form v : carried) {
             String reader = switch (v.kind()) {
                 case REGEL -> "regel '" + v.name() + "'";
-                case DEFAULTS_GROUP -> written.contains(CaseEmitter.norm(v.name()))
+                case DEFAULTS_GROUP -> written.contains(IrEmitter.norm(v.name()))
                         ? "defaults-groep van regel '" + v.name() + "'"
                         : "gegenereerde defaults-groep '" + v.name() + "'";
                 case OBJECT_CREATION -> "objectcreatie '" + v.name() + "'";
@@ -704,6 +705,7 @@ public final class DecisionCore {
      * @throws Evaluatiefout what {@link #process(String, JsonNode, RequestOptions)} throws, and nothing is compared
      * @throws NoFixpoint   what {@link #process(String, JsonNode, RequestOptions)} throws, and nothing is compared
      * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare
+     * @throws IllegalArgumentException a defect of {@code expectations} that uchar's replay refuses as well
      */
     public Assessment assess(String path, JsonNode requestTree, RequestOptions options, JsonNode expectations) {
         java.util.Objects.requireNonNull(expectations, "verwachtingen");
@@ -999,13 +1001,13 @@ public final class DecisionCore {
     public String pathForScope(ResolvedScenario.Scope scope) {
         java.util.Set<String> requested = new java.util.LinkedHashSet<>();
         for (String v : scope == null ? forms.all() : scope.forms())
-            requested.add(CaseEmitter.norm(CaseEmitter.baseName(v)));
+            requested.add(IrEmitter.norm(RegelSpraakModel.formName(v)));
         String best = null;
         int extra = Integer.MAX_VALUE;
         List<String> shortfall = new ArrayList<>();
         for (ServiceDescriptor.Entrypoint ep : descriptor.entrypoints()) {
             java.util.Set<String> carried = new java.util.LinkedHashSet<>();
-            for (String v : forms.scope(ep.scope()).forms()) carried.add(CaseEmitter.norm(v));
+            for (String v : forms.scope(ep.scope()).forms()) carried.add(IrEmitter.norm(v));
             List<String> lacking = new ArrayList<>();
             for (String v : requested) if (!carried.contains(v)) lacking.add(v);
             if (!lacking.isEmpty()) {

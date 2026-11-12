@@ -14,7 +14,6 @@ import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -134,14 +133,17 @@ class AsOfDateSessionTest {
     @Test void t5_degenerate_only_date_and_setglobal_path() {
         // newSession(peildatum) zonder sets: zet alleen de rekendatum, tolerant voor een model zonder die global.
         RegelSpraakEngine boundEngine = RegelSpraakEngine.compile(BOUND_FROM_PARAMETER);
-        // zonder parameter-global set fires niets voor grens (parameter niet gezet) -> grens blijft leeg; geen fout.
+        // een parameter die de regel leest en niemand bindt, faalt EF-014 waar de lezing bereikt wordt
+        // (uchars RUNTIME-SEMANTICS ch. 5.7b); de rekendatum-global zelf geeft geen fout
         Object empty = boundEngine.newInstance("Persoon");
         try (RegelSpraakEngine.Session s = boundEngine.newSession(LocalDate.of(2025, 6, 1))) {
-            s.insert(empty).fire();
-            s.restore();
+            dev.uchar.regelspraak.transpiler.tms.ComputeFault f = assertThrows(
+                    dev.uchar.regelspraak.transpiler.tms.ComputeFault.class, () -> {
+                        s.insert(empty).fire();
+                        s.restore();
+                    });
+            assertEquals("EF-014", f.code(), f.getMessage());
         }
-        assertNull(RegelSpraakRuntime.get(empty, "grens"),
-                "zonder parameterset blijft grens ongezet (geen throw op de rekendatum-global)");
 
         // het bestaande newSession() + setGlobal-pad blijft werken (regression-pin).
         RegelSpraakEngine engine = RegelSpraakEngine.compile(RegelSpraakEngineTest.MINDERJARIG);

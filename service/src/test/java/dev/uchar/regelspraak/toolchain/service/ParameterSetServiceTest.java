@@ -7,6 +7,7 @@ import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -263,6 +264,25 @@ class ParameterSetServiceTest {
             { "parameters": { "volwassenleeftijd": 30 },
               "instances": [ { "type": "Persoon", "id": "P1" } ] }"""));
         assertEquals(0, new BigDecimal("30").compareTo(bound(a)), a.toString());
+    }
+
+    @Test
+    void an_unbound_parameter_a_rule_reads_is_an_evaluation_fault() {
+        // no request value, no descriptor default, no set: uchar faults EF-014 where the rule reads the parameter
+        // (RUNTIME-SEMANTICS ch. 5.7b), and the service answers it as an evaluation fault, a 422
+        String descriptor = """
+            { "service": {"name":"geen-waarde","version":"1"},
+              "entrypoints": [ { "name":"grens","path":"grens",
+                "scope": {"ruleNames": ["grensregel"]},
+                "input": ["Persoon"], "output": ["Persoon.grens"] } ] }""";
+        DecisionCore core = DecisionCore.assemble(descriptor, source(VINTAGE_SOURCE), CoreConfig.strict(),
+                Thread.currentThread().getContextClassLoader());
+        EvaluationFault fault = assertThrows(EvaluationFault.class, () -> core.process("grens", parse("""
+            { "instances": [ { "type": "Persoon", "id": "P1" } ] }""")));
+        assertEquals(1, fault.errors().size(), fault.errors().toString());
+        assertEquals(List.of(new dev.uchar.regelspraak.cases.CaseRunner.FaultKind("EF-014",
+                        Map.of("parameter", "volwassenleeftijd"))),
+                dev.uchar.regelspraak.cases.CaseRunner.faultKinds(fault.getCause()), fault.errors().toString());
     }
 
     // ---- helpers ----

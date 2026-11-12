@@ -8,16 +8,16 @@
 // (toolchain/src/test/java/dev/uchar/regelspraak/toolchain/engine/ScenarioRunnerTest.java),
 // als golden-CLI-oefening.
 Objecttype de Vlucht (mv: Vluchten)
-    de heffing Numeriek (getal met 2 decimalen) met eenheid EUR;
+    de heffing Numeriek (niet-negatief geheel getal);
     is belast kenmerk (bijvoeglijk) voor elke dag;
 Regel heffing markert
 geldig altijd
 De heffing van een Vlucht moet berekend worden als het aantal dagen in de maand dat hij belast is.
 Situatie basis-marker:
 een Vlucht V1
-- de heffing is 5,00 EUR
+- de heffing is 5
 Scenario markeroefening leest exit 3
 toetst de regel heffing markert
 gebaseerd op de situatie basis-marker
 Met als verwacht resultaat:
-- de heffing van V1 is 5,00 EUR
+- de heffing van V1 is 5

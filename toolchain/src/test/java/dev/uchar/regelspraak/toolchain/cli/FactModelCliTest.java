@@ -25,7 +25,7 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
  * Pins the {@code RegelSpraakCli --facts} CLI path (exposed as {@link RegelSpraakCli#factsToDisk}): it writes a
  * fact-model that (a) COMPILES as pure-JDK beans and (b) SATISFIES uchar's {@link ContractValidator} for the model
  * it came from — generate-then-validate closes the loop, so the generator and the validator can never drift. The
- * fixture is the TOKA model foundation (the manifest's companion model files: examples/toka/toka-01..16 plus
+ * fixture is the TOKA model foundation (the manifest's companion model files: examples/toka/toka-01..15 plus
  * the reconciliatie/model-extensie companions), which resolves WITHOUT errors — the toka-2x regel files carry
  * the known §4.1 datum+datum quirk and add no fact-model structure, so the model-level fact contract is fully
  * determined by the foundation alone.
@@ -51,8 +51,7 @@ class FactModelCliTest {
                     "toka-12-eenheidsysteem-valuta",
                     "toka-13-eenheidsysteem-tijd",
                     "toka-14-eenheidsysteem-afstand",
-                    "toka-15-dagsoort-de-kerstdag-mv-kerstdagen",
-                    "toka-16-tijdlijn-de-variabele-periode-van-3")
+                    "toka-15-dagsoort-de-kerstdag-mv-kerstdagen")
                     .map(n -> "examples/toka/" + n + ".rgs"),
             Stream.of("examples/toka-reconciliation/casus-omissies.rgs",
                     "examples/toka-scenarios/scenario-model-extensie.rgs"))

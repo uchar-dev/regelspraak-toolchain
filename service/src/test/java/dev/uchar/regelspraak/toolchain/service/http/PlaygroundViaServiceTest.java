@@ -266,7 +266,7 @@ class PlaygroundViaServiceTest {
         var scenario = bundle.scenarios().stream().filter(s -> s.name().equals(scenarioName)).findFirst().orElseThrow();
         List<String> names = new ArrayList<>();
         for (String form : scenario.scope().forms()) {
-            String name = dev.uchar.regelspraak.emit.CaseEmitter.baseName(form);
+            String name = dev.uchar.regelspraak.model.RegelSpraakModel.formName(form);
             if (!names.contains(name)) names.add(name);
         }
         for (var ep : core.descriptor().entrypoints())

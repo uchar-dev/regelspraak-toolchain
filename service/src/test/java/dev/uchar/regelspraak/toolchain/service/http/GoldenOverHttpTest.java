@@ -2,7 +2,7 @@ package dev.uchar.regelspraak.toolchain.service.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
-import dev.uchar.regelspraak.emit.CaseEmitter;
+import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Expectation;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
@@ -323,7 +323,7 @@ class GoldenOverHttpTest {
         List<String> sink = new ArrayList<>();
         if (scenario.scope() == null) return sink;
         for (String form : scenario.scope().forms()) {
-            String name = CaseEmitter.baseName(form);
+            String name = RegelSpraakModel.formName(form);
             if (!sink.contains(name)) sink.add(name);
         }
         return sink;

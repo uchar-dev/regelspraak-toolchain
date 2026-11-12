@@ -200,11 +200,26 @@ class DecisionCoreTest {
         java.util.Set<String> scoped = new java.util.LinkedHashSet<>();
         for (ServiceDescriptor.Entrypoint ep : d.entrypoints())
             for (String n : ep.scope().ruleNamesOrEmpty())
-                scoped.add(dev.uchar.regelspraak.emit.CaseEmitter.norm(n));
+                scoped.add(dev.uchar.regelspraak.emit.IrEmitter.norm(n));
 
         for (String name : golden)
-            assertTrue(scoped.contains(dev.uchar.regelspraak.emit.CaseEmitter.norm(name)),
+            assertTrue(scoped.contains(dev.uchar.regelspraak.emit.IrEmitter.norm(name)),
                     "geen enkel descriptor-entrypoint scoopt de golden regel '" + name + "' — gescoopt: " + scoped);
+    }
+
+    @Test
+    void a_defective_expectation_is_refused_by_uchars_comparison() {
+        // an expectation kind uchar-case-v0 does not have is a defect of the case, which uchar's comparison refuses as
+        // its replay does, not a form it does not carry
+        String request = """
+            { "instances": [
+                { "type": "Vlucht", "id": "V1" },
+                { "type": "Natuurlijk persoon", "id": "P1",
+                  "attributes": { "te betalen belasting": 30.00 }, "roles": { "reis": "V1" } } ] }""";
+        IllegalArgumentException refused = org.junit.jupiter.api.Assertions.assertThrows(
+                IllegalArgumentException.class, () -> CORE.assess("totaal-te-betalen-belasting", parse(request),
+                        RequestOptions.DEFAULT, parse("[ { \"kind\": \"attributeGuess\", \"label\": \"V1\" } ]")));
+        assertTrue(refused.getMessage().contains("attributeGuess"), refused.getMessage());
     }
 
     // ---- helpers ----

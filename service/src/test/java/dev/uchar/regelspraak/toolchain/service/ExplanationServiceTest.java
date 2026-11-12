@@ -34,7 +34,8 @@ class ExplanationServiceTest {
     @Test
     void uitleg_true_adds_a_story() {
         String request = """
-            { "instances": [
+            { "parameters": { "volwassenleeftijd": 18 },
+              "instances": [
                 { "type": "Vlucht", "id": "V1", "attributes": { "vluchtdatum": "2024-06-15" } },
                 { "type": "Natuurlijk persoon", "id": "P1",
                   "attributes": { "geboortedatum": "2015-06-15" },
@@ -79,7 +80,8 @@ class ExplanationServiceTest {
     @Test
     void without_flag_no_uitleg_field() {
         String request = """
-            { "instances": [
+            { "parameters": { "volwassenleeftijd": 18 },
+              "instances": [
                 { "type": "Vlucht", "id": "V1", "attributes": { "vluchtdatum": "2024-06-15" } },
                 { "type": "Natuurlijk persoon", "id": "P1",
                   "attributes": { "geboortedatum": "2015-06-15" },

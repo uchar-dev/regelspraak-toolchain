@@ -98,6 +98,9 @@ public final class Executor {
      * @throws NoFixpoint      a run that reached no fixpoint, with uchar's sentence; nothing is compared
      * @throws Limit           a limit of uchar's branch at the fixpoint, with its code and uchar's sentence
      * @throws dev.uchar.regelspraak.cases.CaseRunner.Excluded an expectation of a form uchar does not compare
+     * @throws IllegalArgumentException a defect of {@code expectations} that uchar's replay refuses as well: a kind
+     *                                  {@code uchar-case-v0} does not have, a value of another datatype, a scalar
+     *                                  expectation on a time-dependent member
      */
     public Outcome fire(World world, Map<String, Object> setGlobals, DroolsBackend.Observer observer,
                          JsonNode expectations, boolean withExplanation) {

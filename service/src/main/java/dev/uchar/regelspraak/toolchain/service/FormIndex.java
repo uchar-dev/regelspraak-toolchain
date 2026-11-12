@@ -1,6 +1,7 @@
 package dev.uchar.regelspraak.toolchain.service;
 
 import dev.uchar.regelspraak.emit.CaseEmitter;
+import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.graph.ProducerConsumer;
 import dev.uchar.regelspraak.ir.Default;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
@@ -66,7 +67,7 @@ public final class FormIndex {
         for (var x : model.factCreations) add(names, x.name());
         for (var x : defaults) add(names, x.name());
         Set<String> declared = new LinkedHashSet<>();
-        for (var r : model.rules) if (r.name() != null) declared.add(CaseEmitter.norm(r.name()));
+        for (var r : model.rules) if (r.name() != null) declared.add(IrEmitter.norm(r.name()));
         List<RegelSpraakModel.Diagnostic> warnings = new ArrayList<>();
         for (var d : model.diagnostics)
             if (d.severity() == RegelSpraakModel.Severity.WARNING) warnings.add(d);
@@ -106,11 +107,11 @@ public final class FormIndex {
         }
         Map<PrioritizedDefaults, List<String>> perRoot = new IdentityHashMap<>();
         for (PrioritizedDefaults p : named)
-            perRoot.computeIfAbsent(root(parent, p), w -> new ArrayList<>()).add(CaseEmitter.baseName(p.name()));
+            perRoot.computeIfAbsent(root(parent, p), w -> new ArrayList<>()).add(RegelSpraakModel.formName(p.name()));
         Map<String, List<String>> sink = new HashMap<>();
         for (PrioritizedDefaults p : named) {
             List<String> stack = perRoot.get(root(parent, p));
-            if (stack.size() > 1) sink.put(CaseEmitter.norm(CaseEmitter.baseName(p.name())), List.copyOf(stack));
+            if (stack.size() > 1) sink.put(IrEmitter.norm(RegelSpraakModel.formName(p.name())), List.copyOf(stack));
         }
         return sink;
     }
@@ -135,7 +136,7 @@ public final class FormIndex {
     }
 
     private static void add(Set<String> names, String name) {
-        if (name != null) names.add(CaseEmitter.baseName(name));
+        if (name != null) names.add(RegelSpraakModel.formName(name));
     }
 
     /** Every form, in model order. */
@@ -144,18 +145,18 @@ public final class FormIndex {
     /** The forms rule name {@code naam} carries: the forms of that name, or else the rows of the decision table of
      *  that name ({@code "<naam> <n>"}). Empty when it names no form. */
     public List<String> formsOf(String name) {
-        String n = CaseEmitter.norm(name);
+        String n = IrEmitter.norm(name);
         List<String> sink = new ArrayList<>();
-        for (String v : forms) if (CaseEmitter.norm(v).equals(n)) sink.add(v);
+        for (String v : forms) if (IrEmitter.norm(v).equals(n)) sink.add(v);
         if (!sink.isEmpty()) return sink;
         Pattern row = Pattern.compile(Pattern.quote(n) + " [0-9]+");
-        for (String v : forms) if (row.matcher(CaseEmitter.norm(v)).matches()) sink.add(v);
+        for (String v : forms) if (row.matcher(IrEmitter.norm(v)).matches()) sink.add(v);
         return sink;
     }
 
     /** Whether a scope may name {@code naam}: it carries a form, or the source declares a rule of that name. */
     public boolean exists(String name) {
-        return !formsOf(name).isEmpty() || declared.contains(CaseEmitter.norm(name));
+        return !formsOf(name).isEmpty() || declared.contains(IrEmitter.norm(name));
     }
 
     /** What a scope carries: the forms, and the named rules that carry none, in the order the scope names them. */
@@ -174,7 +175,7 @@ public final class FormIndex {
             if (v.isEmpty()) { if (!withoutForm.contains(name)) withoutForm.add(name); }
             else for (String form : v) {
                 sink.add(form);
-                sink.addAll(stackMates.getOrDefault(CaseEmitter.norm(form), List.of()));
+                sink.addAll(stackMates.getOrDefault(IrEmitter.norm(form), List.of()));
             }
         }
         return new Choice(List.copyOf(sink), List.copyOf(withoutForm));
@@ -182,10 +183,10 @@ public final class FormIndex {
 
     /** uchar's warnings that name rule {@code naam} in quotes: why its frontend did not make a form of it. */
     public List<String> warningsAbout(String name) {
-        String quoted = "'" + CaseEmitter.norm(name) + "'";
+        String quoted = "'" + IrEmitter.norm(name) + "'";
         List<String> sink = new ArrayList<>();
         for (var d : warnings)
-            if (d.message() != null && CaseEmitter.norm(d.message()).contains(quoted)) sink.add(d.message());
+            if (d.message() != null && IrEmitter.norm(d.message()).contains(quoted)) sink.add(d.message());
         return sink;
     }
 }
