@@ -138,17 +138,14 @@ final class ScenarioData {
      * What stands at the fixpoint of {@code session}, the case of scenario {@code s}, as {@link FixpointGivens#fixpoint}
      * renders it, with the objects of the situation as the input: each by its label, with the values and the
      * characteristics the situation gives it, a time-dependent one with its periods; the objects its creations made
-     * with the values their creation assigned, as uchar's replay handed them over ({@link CaseSession.Outcome#making}).
+     * with the values their creation assigned, as uchar read the session the replay handed over
+     * ({@link CaseSession.Outcome#standing}).
      *
      * @throws FixpointGivens.UnrenderableValue a value in a form this view does not show
      */
     static ObjectNode fixpoint(CaseSession.Outcome session, ResolvedScenario s, RegelSpraakModel model, Naming ng) {
         List<FixpointGivens.InputObject> input = new ArrayList<>();
         for (Instance i : s.situation().instances()) {
-            Object bean = session.beans().get(i.label());
-            if (bean == null)
-                throw new IllegalStateException("de sessie van het scenario '" + s.name() + "' heeft geen object '"
-                        + i.label() + "' van de situatie");
             ObjectType ot = i.objectType();
             Map<String, ObjectNode> attributes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             for (AttributeValue a : i.attributes()) {
@@ -170,12 +167,9 @@ final class ScenarioData {
                 for (TimeWindow w : k.periods()) p.addObject().put("from", w.van().toString()).put("to", w.until().toString());
                 periods.put(k.characteristic(), p);
             }
-            input.add(new FixpointGivens.InputObject(i.label(), ot, bean, attributes, characteristics, periods));
+            input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods));
         }
-        if (session.beans().size() != input.size())
-            throw new IllegalStateException("de sessie van het scenario '" + s.name() + "' heeft de objecten "
-                    + session.beans().keySet() + ", de situatie " + input.size());
-        return FixpointGivens.fixpoint(session.fixpoint(), session.making(), input, model, ng);
+        return FixpointGivens.fixpoint(session.fixpoint(), session.standing(), input, model, ng);
     }
 
     private static void name(ObjectNode n, String key, String chosen, String canonical) {

@@ -8,6 +8,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.uchar.regelspraak.cases.CaseInput;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.engine.ScenarioResult;
@@ -799,50 +800,51 @@ public final class DecisionCore {
         // a 422 like every evaluation fault, and no session runs
         if (!mr.inputFaults().isEmpty()) throw EvaluationFault.ofInput(mr.inputFaults());
         boolean withDetail = !options.detailFlags().isEmpty();
-        // uchar's waarnemer labels a firing with the ids of the request; the input is read off the beans before the
-        // fire, because the write-back puts the derived values on the same beans
+        // uchar's observer labels a firing with the ids of the request
         Map<Object, String> label = new IdentityHashMap<>();
         mr.world().beans().forEach((id, bean) -> label.put(bean, id));
         DroolsBackend.Observer observer = options.trace() || options.coverage()
                 ? new DroolsBackend.Observer(label::get) : null;
-        List<FixpointGivens.InputObject> input = options.fixpoint()
-                ? FixpointGivens.input(mr.world().beans(), mr.typePerLabel(), model, output) : null;
+        List<String> inputLabels = List.copyOf(mr.world().beans().keySet());
         Executor executor = new Executor(fired);
         Executor.Outcome outcome;
         try {
             outcome = executor.fire(mr.world(), observer, expectations, options.explanation());
         } catch (EvaluationFault error) {
             if (!withDetail) throw error;
-            throw error.withDetail(detail(options, ep, observer, error.fixpoint(), error.making(), null, input, output));
+            throw error.withDetail(detail(options, ep, observer, error.fixpoint(), error.standing(), null, inputLabels,
+                    output));
         } catch (NoFixpoint none) {
             if (!withDetail) throw none;
-            throw none.withDetail(detail(options, ep, observer, null, null, none.getMessage(), input, output));
+            throw none.withDetail(detail(options, ep, observer, null, null, none.getMessage(), inputLabels, output));
         } catch (Limit limit) {
             if (!withDetail) throw limit;
-            throw limit.withDetail(detail(options, ep, observer, limit.fixpoint(), limit.making(), null, input, output));
+            throw limit.withDetail(detail(options, ep, observer, limit.fixpoint(), limit.standing(), null, inputLabels,
+                    output));
         }
         ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());
         if (options.explanation()) addExplanation(answer, outcome, mr, ep, output, options.explanationParts());
-        if (withDetail) answer.setAll(detail(options, ep, observer, outcome.fixpoint(), outcome.making(), null, input,
-                output));
+        if (withDetail) answer.setAll(detail(options, ep, observer, outcome.fixpoint(), outcome.endState(), null,
+                inputLabels, output));
         return new Assessment(answer, outcome.comparison());
     }
 
     /**
      * The detail of a request's session that {@code options} asks, in this order and under these keys, the names in
-     * {@code naming}: {@code trace}, per form that fired, in the order a rule of it first fired, the ids of the
-     * request its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's
-     * {@code observer} recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
+     * {@code naming}: {@code trace}, per form that fired, in the order a rule of it first fired, the ids of the request
+     * its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's {@code observer}
+     * recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
      * ({@link DroolsBackend#coverage}: {@code FIRED} or {@code NOT_FIRED}); and {@code fixpunt}, what stands at the
-     * fixpoint with the instances of the request as its input and {@code making} the values the creation assigned of the
-     * objects its creations made ({@link FixpointGivens}), or {@code fixpointError} with the
-     * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no fixpoint
-     * (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.
+     * fixpoint with the instances of the request, in the order of {@code inputLabels}, as its input, and
+     * {@code standing} what the session holds there as uchar reads it, the input of the instances and the values the
+     * creations assigned to the objects they made among it ({@link FixpointGivens}), or {@code fixpointError} with the
+     * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no
+     * fixpoint (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.
      */
     private ObjectNode detail(RequestOptions options, Entrypoint ep, DroolsBackend.Observer observer, Fixpoint fixpoint,
-                              Map<Object, Map<String, Object>> making, String withoutFixpoint,
-                              List<FixpointGivens.InputObject> input, Naming naming) {
+                              EndState standing, String withoutFixpoint, List<String> inputLabels,
+                              Naming naming) {
         ObjectNode n = NF.objectNode();
         if (options.trace()) {
             ArrayNode trace = n.putArray("trace");
@@ -866,7 +868,8 @@ public final class DecisionCore {
             n.put("fixpointError", withoutFixpoint);
         } else if (options.fixpoint()) {
             try {
-                n.set("fixpoint", FixpointGivens.fixpoint(fixpoint, making, input, model, naming));
+                n.set("fixpoint", FixpointGivens.fixpoint(fixpoint, standing,
+                        FixpointGivens.inputOf(standing, inputLabels, model, naming), model, naming));
             } catch (FixpointGivens.UnrenderableValue o) {
                 n.put("fixpointError", o.getMessage());
             }

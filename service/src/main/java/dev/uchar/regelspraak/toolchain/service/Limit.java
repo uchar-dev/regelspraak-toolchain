@@ -3,9 +3,8 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.CaseRunner;
+import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
-
-import java.util.Map;
 
 /**
  * A request whose session reaches a limit of uchar's Drools branch at its fixpoint: a value of the rules that this
@@ -26,26 +25,26 @@ public final class Limit extends RuntimeException {
 
     private final String code;
     private final transient Fixpoint fixpoint;
-    private final transient Map<Object, Map<String, Object>> making;
+    private final transient EndState standing;
     private final transient ObjectNode detail;
 
-    /** uchar's {@code refusal} at {@code fixpoint}, with {@code making} the values the creation assigned there. */
-    Limit(CaseRunner.Excluded refusal, Fixpoint fixpoint, Map<Object, Map<String, Object>> making) {
-        this(refusal.getMessage(), refusal.code().id(), refusal, fixpoint, making, null);
+    /** uchar's {@code refusal} at {@code fixpoint}, with {@code standing} what the session holds there. */
+    Limit(CaseRunner.Excluded refusal, Fixpoint fixpoint, EndState standing) {
+        this(refusal.getMessage(), refusal.code().id(), refusal, fixpoint, standing, null);
     }
 
-    private Limit(String sentence, String code, Throwable cause, Fixpoint fixpoint,
-                  Map<Object, Map<String, Object>> making, ObjectNode detail) {
+    private Limit(String sentence, String code, Throwable cause, Fixpoint fixpoint, EndState standing,
+                  ObjectNode detail) {
         super(sentence, cause);
         this.code = code;
         this.fixpoint = fixpoint;
-        this.making = making;
+        this.standing = standing;
         this.detail = detail;
     }
 
     /** The same limit with {@code detail}, the fields the request asked to see of its session. */
     Limit withDetail(ObjectNode detail) {
-        return new Limit(getMessage(), code, getCause(), fixpoint, making, detail);
+        return new Limit(getMessage(), code, getCause(), fixpoint, standing, detail);
     }
 
     /** uchar's register code of the limit ({@code DROOLS-312}). */
@@ -58,9 +57,10 @@ public final class Limit extends RuntimeException {
         return fixpoint;
     }
 
-    /** The values the creations put on the objects they made, at {@link #fixpoint} ({@code CaseSession.making}). */
-    public Map<Object, Map<String, Object>> making() {
-        return making;
+    /** What the session holds at {@link #fixpoint}, as uchar reads it ({@code DroolsBackend.standingOf}): no end
+     *  state, a view of the session for diagnosis. */
+    public EndState standing() {
+        return standing;
     }
 
     /** The fields the 422 gives beside the sentence ({@code trace}, {@code coverage}, {@code fixpoint}), or null when

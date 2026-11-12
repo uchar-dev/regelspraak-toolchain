@@ -5,15 +5,13 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.Unit;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
-import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
-import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint.DerivedCharacteristic;
@@ -39,11 +37,14 @@ import java.util.function.Function;
 /**
  * What stands at the fixpoint of a session ({@link Fixpoint}, as uchar's entry reads it with {@code DroolsBackend.fixpointOf})
  * as JSON: the playground gives it per scenario and the decision service per request ({@code ?fixpoint=true}), so both
- * render it here. The input of the session is a list of {@link InputObject}s: the playground makes them of a
- * scenario's situation, the service of the instances of a request ({@link #input}). An object a creation made has no
- * input: in its place stands the value the creation assigned, what the creation put on its bean (rank 2 of uchar's stack,
- * RUNTIME-SEMANTICS ch. 7.8), read before the write-back ({@code CaseSession.making}), and the fixpoint gives it in the
- * form of an input value with the origin {@code creation}.
+ * render it here. Beside the fixpoint uchar reads what the session holds there ({@link EndState}, through
+ * {@code DroolsBackend.standingOf}, also where an evaluation fault stands): every object with its type, and per member
+ * what its bean field holds without the write-back ({@link EndState.Member#given}). The input of the session is a list
+ * of {@link InputObject}s: the playground makes them of a scenario's situation, the service of what the session holds
+ * of the objects of a request ({@link #inputOf}). An object a creation made has no input: in its place stands the value
+ * the creation assigned, what the creation put on its bean (rank 2 of uchar's stack, RUNTIME-SEMANTICS ch. 7.8), its
+ * {@code given} in uchar's reading, and the fixpoint gives it in the form of an input value with the origin
+ * {@code creation}.
  *
  * <p><b>Names</b> are those of the chosen {@link Naming}; where a name there differs from the canonical one, the
  * canonical name stands beside it under the key with {@code Canoniek} appended ({@code attribuut} and
@@ -62,9 +63,8 @@ import java.util.function.Function;
  * {@code #<n>}, its place in that order. Two made objects alike in type, creation, subject and every value change places
  * without changing anything that is shown of them, apart from the links they take part in.
  *
- * <p>No class name of a bean enters the JSON: an object goes by its label and its type by its name. uchar's
- * {@link MadeObject} names no type, so the type of a made object is found here as the type whose generated bean
- * class it is.
+ * <p>No class name of a bean enters the JSON: an object goes by its label and its type by its name, the one uchar's
+ * reading gives it ({@link EndState.EndObject#type}).
  */
 public final class FixpointGivens {
 
@@ -79,46 +79,69 @@ public final class FixpointGivens {
     }
 
     /**
-     * An object of the input of a session: its label, its object type, its bean in the session, and what the input gave
-     * it. {@code attributes} holds per attribute the input value as a node with {@code value} (and
-     * {@code valueCanonical} for an enumeration value named otherwise), {@code timeline}, or for a dimensioned attribute
-     * {@code cells}, a list of nodes with {@code labels} (as uchar keys a cell) and {@code value}, keyed
-     * case-insensitively; {@code characteristics} the characteristics the input set, case-insensitively, and
-     * {@code periods} per time-dependent characteristic the input gave periods those periods, as {@code from},
-     * {@code to} nodes ({@link #periodNodes}), keyed case-insensitively.
+     * An object of the input of a session: its label and what the input gave it. {@code attributes} holds per attribute
+     * the input value as a node with {@code value} (and {@code valueCanonical} for an enumeration value named
+     * otherwise), {@code timeline}, or for a dimensioned attribute {@code cells}, a list of nodes with {@code labels}
+     * (as uchar keys a cell) and {@code value}, keyed case-insensitively; {@code characteristics} the characteristics
+     * the input set, case-insensitively, and {@code periods} per time-dependent characteristic the input gave periods
+     * those periods, as {@code from}, {@code to} nodes ({@link #periodNodes}), keyed case-insensitively. Its object in
+     * the session is the one uchar's reading labels so ({@link EndState.EndObject#label}).
      */
-    public record InputObject(String label, ObjectType type, Object bean, Map<String, ObjectNode> attributes,
-                               Set<String> characteristics, Map<String, ArrayNode> periods) {}
+    public record InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
+                               Map<String, ArrayNode> periods) {}
 
     /**
-     * The input objects of a request, read off its beans before the session fires: per instance in the order of
-     * {@code beans}, the attributes that hold a value and the characteristics that hold. The beans then hold the input
-     * alone; the write-back after the fire puts the derived values on the same beans. A to-many or dimensioned member
-     * the request did not fill (an empty list or map) is no input value; of a dimensioned member the filled cells are,
-     * in the order of {@code model}'s labels.
+     * The input objects of a request, in the order of {@code labels}, as uchar's reading {@code standing} gives what
+     * their bean fields hold without the write-back ({@link EndState.Member#given}): the attributes that hold a value
+     * and the characteristics that hold. Of a dimensioned member the filled cells are, in the order of {@code model}'s
+     * labels.
      */
-    public static List<InputObject> input(Map<String, Object> beans, Map<String, ObjectType> typePerLabel,
-                                            RegelSpraakModel model, Naming ng) {
+    public static List<InputObject> inputOf(EndState standing, List<String> labels, RegelSpraakModel model, Naming ng) {
+        Map<String, EndState.EndObject> labelled = new HashMap<>();
+        for (EndState.EndObject o : standing.objects()) if (o.label() != null) labelled.put(o.label(), o);
         List<InputObject> sink = new ArrayList<>();
-        for (var e : beans.entrySet()) {
-            ObjectType ot = typePerLabel.get(e.getKey());
-            if (ot == null)
-                throw new IllegalStateException("het verzoek heeft een object '" + e.getKey() + "' zonder objecttype");
-            Object bean = e.getValue();
-            Map<String, ObjectNode> attributes = attributes(ot, a -> RegelSpraakRuntime.get(bean, RequestMapper.ident(a)),
-                    model, ng);
+        for (String label : labels) {
+            EndState.EndObject o = labelled.get(label);
+            if (o == null)
+                throw new IllegalStateException("uchars lezing van de sessie heeft geen object '" + label + "'");
             Set<String> characteristics = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             Map<String, ArrayNode> periods = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
-            for (ObjectType t : ot.chain())
-                for (String k : t.characteristics) {
-                    Object v = RegelSpraakRuntime.get(bean, RequestMapper.ident(k));
-                    if (Boolean.TRUE.equals(v)) characteristics.add(k);
-                    // a time-dependent characteristic holds its true periods on the bean, as uchar's segments
-                    else if (v instanceof List<?> segments && !segments.isEmpty()) periods.put(k, periodNodes(segments));
-                }
-            sink.add(new InputObject(e.getKey(), ot, bean, attributes, characteristics, periods));
+            for (EndState.Member m : o.members()) {
+                if (!m.characteristic()) continue;
+                if (Boolean.TRUE.equals(m.given())) characteristics.add(m.name());
+                // a time-dependent characteristic holds its true periods on the bean, as uchar's segments
+                else if (m.given() instanceof List<?> segments) periods.put(m.name(), periodNodes(segments));
+            }
+            sink.add(new InputObject(label, attributes(typeOf(o, model), given(o), model, ng), characteristics,
+                    periods));
         }
         return sink;
+    }
+
+    /** What the bean fields of {@code o} hold without the write-back per attribute, keyed case-insensitively
+     *  ({@link EndState.Member#given}): the value, or of a dimensioned attribute its filled cells by their labels. */
+    private static Function<String, Object> given(EndState.EndObject o) {
+        Map<String, Object> values = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (EndState.Member m : o.members()) {
+            if (m.characteristic() || m.given() == null) continue;
+            if (m.cell() == null) values.put(m.name(), m.given());
+            else {
+                @SuppressWarnings("unchecked")
+                Map<List<String>, Object> cells = (Map<List<String>, Object>) values.computeIfAbsent(m.name(),
+                        a -> new HashMap<List<String>, Object>());
+                cells.put(m.cell(), m.given());
+            }
+        }
+        return values::get;
+    }
+
+    /** The object type of {@code o} in {@code model}, by the name uchar's reading gives it. */
+    private static ObjectType typeOf(EndState.EndObject o, RegelSpraakModel model) {
+        ObjectType ot = model.objectTypeByName(o.type());
+        if (ot == null)
+            throw new IllegalStateException("uchars lezing van de sessie geeft een object van het type '" + o.type()
+                    + "', dat het model niet declareert");
+        return ot;
     }
 
     /** The attribute values of an object of type {@code ot} as input nodes, keyed case-insensitively: per attribute of
@@ -152,44 +175,58 @@ public final class FixpointGivens {
     }
 
     /**
-     * What stands at fixpoint {@code f} of a session with input {@code input}: {@code objects}, every object of the
+     * What stands at fixpoint {@code f} of a session with input {@code input}, with {@code standing} uchar's reading of
+     * the same session at the same moment ({@code DroolsBackend.standingOf}): {@code objects}, every object of the
      * input and every made object, each with its attribute values and characteristics and their {@code origin} (an
-     * input value: {@code input}; on a made object the value the creation assigned, what its creation put on its bean, read
-     * before the write-back and given in {@code making} by the identity of the object: {@code creation}; one a rule, a
-     * default or an allocation derived: {@code derived}, with the input value or the value the creation assigned, which it replaced
-     * beside it as {@code input}, and on a made object {@code inputOrigin} {@code creation});
-     * {@code madeObjects} with their creation and subject; the {@code links} the creations laid; the
-     * evaluation {@code faults} with the code and parameters of their kind and uchar's sentence; and the
-     * {@code inconsistencies}.
+     * input value: {@code input}; on a made object the value the creation assigned, what its bean field holds without
+     * the write-back in {@code standing}: {@code creation}; one a rule, a default or an allocation derived:
+     * {@code derived}, with the input value or the value the creation assigned, which it replaced beside it as
+     * {@code input}, and on a made object {@code inputOrigin} {@code creation}); {@code madeObjects} with their
+     * creation and subject; the {@code links} the creations laid; the evaluation {@code faults} with the code and
+     * parameters of their kind and uchar's sentence; and the {@code inconsistencies}.
      *
      * @throws UnrenderableValue a value in a form this view does not show
      */
-    public static ObjectNode fixpoint(Fixpoint f, Map<Object, Map<String, Object>> making, List<InputObject> input,
-                                      RegelSpraakModel model, Naming ng) {
-        Map<Object, String> ref = new IdentityHashMap<>();
+    public static ObjectNode fixpoint(Fixpoint f, EndState standing, List<InputObject> input, RegelSpraakModel model,
+                                      Naming ng) {
+        // every object of the session, those of the input by their label and the made ones, with its type
         Map<Object, ObjectType> type = new IdentityHashMap<>();
+        Map<Object, EndState.EndObject> held = new IdentityHashMap<>();
+        Map<String, Object> labelled = new HashMap<>();
+        for (EndState.EndObject o : standing.objects()) {
+            type.put(o.object(), typeOf(o, model));
+            held.put(o.object(), o);
+            if (o.label() != null) labelled.put(o.label(), o.object());
+        }
+        Map<Object, String> ref = new IdentityHashMap<>();
         Map<Object, InputObject> entered = new IdentityHashMap<>();
         List<Object> inputObjects = new ArrayList<>();
         for (InputObject i : input) {
-            if (ref.put(i.bean(), i.label()) != null)
+            Object bean = labelled.get(i.label());
+            if (bean == null)
+                throw new IllegalStateException("het object '" + i.label() + "' van de invoer staat niet in uchars"
+                        + " lezing van de sessie");
+            if (ref.put(bean, i.label()) != null)
                 throw new IllegalStateException("het object '" + i.label() + "' staat twee keer in de invoer");
-            type.put(i.bean(), i.type());
-            entered.put(i.bean(), i);
-            inputObjects.add(i.bean());
+            entered.put(bean, i);
+            inputObjects.add(bean);
         }
+        if (labelled.size() != inputObjects.size())
+            throw new IllegalStateException("uchars lezing van de sessie heeft de objecten " + labelled.keySet()
+                    + ", de invoer " + inputObjects.size());
 
-        Map<String, ObjectType> typePerClass = new HashMap<>();
-        for (ObjectType ot : model.objectTypes.values())
-            typePerClass.put(FactModelGenerator.PACKAGE + "." + Namen.ident(ot.name, true), ot);
         Map<Object, MadeObject> made = new IdentityHashMap<>();
         for (MadeObject g : f.objects()) {
-            ObjectType ot = typePerClass.get(g.object().getClass().getName());
-            if (ot == null)
+            EndState.EndObject h = held.get(g.object());
+            if (h == null || h.label() != null)
                 throw new IllegalStateException("het gemaakte object " + g.object().getClass().getName()
-                        + " is van geen objecttype van het model");
-            type.put(g.object(), ot);
+                        + " van de creatie '" + g.creation() + "' staat niet als gemaakt object in uchars lezing"
+                        + " van de sessie");
             made.put(g.object(), g);
         }
+        if (made.size() + inputObjects.size() != type.size())
+            throw new IllegalStateException("uchars lezing van de sessie heeft " + type.size() + " objecten, de"
+                    + " invoer en het fixpunt samen " + (made.size() + inputObjects.size()));
 
         // per object and attribute the derived values by the labels of their cell, an attribute without dimensions under
         // no labels
@@ -223,8 +260,8 @@ public final class FixpointGivens {
         Map<Object, ArrayNode[]> members = new IdentityHashMap<>();
         for (Object o : type.keySet()) {
             InputObject in = entered.get(o);
-            Map<String, ObjectNode> given = in != null ? in.attributes() : attributes(type.get(o), madeValues(o, making),
-                    model, ng);
+            Map<String, ObjectNode> given = in != null ? in.attributes()
+                    : attributes(type.get(o), given(held.get(o)), model, ng);
             members.put(o, new ArrayNode[]{
                     valuesOf(type.get(o), given, values.getOrDefault(o, Map.of()), made.containsKey(o), model, ng),
                     characteristicsOf(type.get(o), in == null ? Set.of() : in.characteristics(),
@@ -391,16 +428,6 @@ public final class FixpointGivens {
         if (made) rn.put("inputOrigin", "creation");
     }
 
-    /** The value the creation assigned to made object {@code o} per attribute ({@code making}); every made object has an entry,
-     *  empty where its creation gave nothing. */
-    private static Function<String, Object> madeValues(Object o, Map<Object, Map<String, Object>> making) {
-        Map<String, Object> values = making.get(o);
-        if (values == null)
-            throw new IllegalStateException("het gemaakte object " + o.getClass().getName() + " heeft geen bij de"
-                    + " objectcreatie toegekende waarden van vóór de terugzetting");
-        return values::get;
-    }
-
     /** The map of cells a bean holds for the dimensioned attribute {@code a}: uchar's map of the filled cells by their
      *  key, empty where the bean has none. */
     private static Map<?, ?> cellsOf(Object member, String a) {
@@ -421,7 +448,7 @@ public final class FixpointGivens {
      *  ({@code derived}, with {@code input: true} when the input set it too) or set by the input ({@code input}). A
      *  time-dependent characteristic holds in {@code periods}: those a rule wrote ({@code derivedPeriods}), or else
      *  those of the input ({@code enteredPeriods}); without a period it is no row. uchar gives no input periods on a
-     *  characteristic a rule writes (its CharacteristicPeriodsFault), so a row never has both. */
+     *  characteristic a rule writes (its fault EF-041), so a row never has both. */
     private static ArrayNode characteristicsOf(ObjectType ot, Set<String> entered, Map<String, ArrayNode> enteredPeriods,
                                                Set<String> derived, Map<String, ArrayNode> derivedPeriods, Naming ng) {
         List<String> declared = new ArrayList<>();

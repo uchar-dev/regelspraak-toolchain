@@ -14,8 +14,6 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
-import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
-import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 
 import java.math.BigDecimal;
@@ -1048,9 +1046,4 @@ public final class RequestMapper {
     static boolean isTemporalCharacteristic(ObjectType ot, String name) {
         return ot.characteristicGranularityOf(name) != null || ot.characteristicTimelineCountOf(name) != null;
     }
-
-    /** The camelCase name uchar gives a RegelSpraak name in Java ({@link Namen#ident}{@code (name, false)}, runs of
-     *  non-letters and non-digits collapsed): the property of a generated bean, which {@link RegelSpraakRuntime#get}
-     *  reaches through the accessor uchar's generator writes. */
-    static String ident(String name) { return Namen.ident(name, false); }
 }

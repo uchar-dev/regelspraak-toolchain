@@ -5,7 +5,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
 import dev.uchar.regelspraak.cases.EndState;
-import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
@@ -22,13 +21,13 @@ import java.util.Map;
  * immutable thereafter) and a mapped {@link World}, it opens a FRESH session of the build's KieBase, lets uchar's input
  * step bind the globals of the case it read ({@link dev.uchar.regelspraak.cases.CaseInput#setGlobals}: the parameters,
  * the rekendatum when the request carried one, the day-kind predicates), and then fills, fires and reads it through
- * uchar's entry: {@link DroolsBackend#insert} puts the input
- * in that uchar's input step read ({@link World#input()}), each to-many list in the replay's order, {@link DroolsBackend#fire}
- * fires to the fixpoint, {@link DroolsBackend#fixpointOf} gives the evaluation faults that stand there, and where none
- * stands {@link DroolsBackend#endStateOf} reads the end state of the session, from which the response builder answers,
- * and {@link DroolsBackend#setDerivedValues} puts the derived values on the beans, which the branch keeps as facts of
- * the session until then. It returns the beans, the fixpoint, whose {@code Inconsistentie} facts the response builder
- * reads, and the end state.
+ * uchar's entry: {@link DroolsBackend#insert} puts the input in that uchar's input step read ({@link World#input()}),
+ * each to-many list in the replay's order, {@link DroolsBackend#fire} fires to the fixpoint,
+ * {@link DroolsBackend#fixpointOf} gives the evaluation faults that stand there, {@link DroolsBackend#standingOf} reads
+ * what the session holds there, which is its end state where no fault stands and from which the response builder
+ * answers, and {@link DroolsBackend#setDerivedValues} puts the derived values on the beans, which the branch keeps as
+ * facts of the session until then. It returns the beans, the fixpoint, whose {@code Inconsistentie} facts the response
+ * builder reads, and the end state.
  * Session-per-request; the KieBase is shared and immutable, so this is thread-safe by construction.
  *
  * <p>Every fault that stands at the fixpoint leaves here as an {@link EvaluationFault}, and nothing is written back: the
@@ -50,15 +49,13 @@ public final class Executor {
 
     /** The result of a fire: the beans by id with the derived values written back, the firings, what stood at the
      *  fixpoint before the write-back, as uchar's entry reads it with the ids of the request, its §9.5 deposits
-     *  included ({@link Fixpoint#inconsistencies}), the values the creations put on the objects they made, read at the
-     *  same moment ({@link CaseSession#making}), the end state of the session, read at the same moment with the ids of
-     *  the request as its labels ({@link DroolsBackend#endStateOf}), uchar's verdict on the expectations the caller gave
-     *  ({@link DroolsBackend#vergelijk}), null when it gave none, which default of each defaults stack decided
-     *  ({@link DroolsBackend#decisionsOf}), who decided each timeline target per period
-     *  ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out ({@link DroolsBackend#readingsOf}),
-     *  all three empty when the caller did not ask for the explanation. */
-    public record Outcome(Map<String, Object> beans, int fired, Fixpoint fixpoint,
-                           Map<Object, Map<String, Object>> making, EndState endState,
+     *  included ({@link Fixpoint#inconsistencies}), the end state of the session, read at the same moment with the ids
+     *  of the request as its labels ({@link DroolsBackend#standingOf} on a session without a standing fault), uchar's
+     *  verdict on the expectations the caller gave ({@link DroolsBackend#vergelijk}), null when it gave none, which
+     *  default of each defaults stack decided ({@link DroolsBackend#decisionsOf}), who decided each timeline target per
+     *  period ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out
+     *  ({@link DroolsBackend#readingsOf}), all three empty when the caller did not ask for the explanation. */
+    public record Outcome(Map<String, Object> beans, int fired, Fixpoint fixpoint, EndState endState,
                            DroolsBackend.Comparison comparison, List<DefaultsDecision> decisions,
                            List<PeriodDecisions> periodDecisions, List<ConditionReading> readings) {}
 
@@ -104,13 +101,15 @@ public final class Executor {
             // a fault is an evaluation fault by its place at the fixpoint, not by its type: the write-back would throw
             // it as one exception among those the entry throws itself, so the faults are read as data first
             Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, label::get);
-            Map<Object, Map<String, Object>> making = CaseSession.making(build, fixpoint);
+            // read before the fault branch and the write-back: where a fault stands this is no end state (ch. 5.12a)
+            // and nothing norms it (ch. 5.7), only the view of the session the fixpoint detail of the 422 shows; where
+            // none stands it is the end state the answer reads
+            EndState standing = DroolsBackend.standingOf(build, session, label::get);
             if (!fixpoint.faults().isEmpty()) {
                 RuntimeException thrown = rethrown(session, label, fixpoint);
-                if (thrown instanceof CaseRunner.Excluded limit) throw new Limit(limit, fixpoint, making);
-                throw EvaluationFault.of(fixpoint, making, thrown);
+                if (thrown instanceof CaseRunner.Excluded limit) throw new Limit(limit, fixpoint, standing);
+                throw EvaluationFault.of(fixpoint, standing, thrown);
             }
-            EndState endState = DroolsBackend.endStateOf(build, session, label::get);
             DroolsBackend.setDerivedValues(build, session, label::get);
             DroolsBackend.Comparison comparison = expectations == null ? null
                     : DroolsBackend.compare(build, session, label::get, expectations);
@@ -118,7 +117,7 @@ public final class Executor {
             List<PeriodDecisions> periodDecisions = withExplanation ? DroolsBackend.periodDecisionsOf(build, session)
                     : List.of();
             List<ConditionReading> readings = withExplanation ? DroolsBackend.readingsOf(build, session) : List.of();
-            return new Outcome(world.beans(), firing.firings(), fixpoint, making, endState, comparison, decisions,
+            return new Outcome(world.beans(), firing.firings(), fixpoint, standing, comparison, decisions,
                     periodDecisions, readings);
         } finally {
             session.dispose();

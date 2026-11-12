@@ -3,6 +3,7 @@ package dev.uchar.regelspraak.toolchain.service;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.CaseRunner;
+import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint;
 
 import java.util.ArrayList;
@@ -18,11 +19,12 @@ import java.util.Map;
  * fault of which uchar names no kind has no code and no parameters. Both adapters answer it with a 422
  * ({@link AnswerBuilder#evaluationFault}).
  *
- * <p>It carries the {@link Fixpoint} the faults stand at, with the values the creation assigned read at the same moment
- * ({@code CaseSession.making}), and, when the request asked to see its session
- * ({@link RequestOptions#detailFlags()}), the fields the 422 gives beside the faults ({@link #detail()}). Its cause
- * is the exception uchar's write-back throws for these faults: the fault's own for one, uchar's
- * {@code EvaluationFaults} for two or more, the one uchar's scenario report names in its diagnose.
+ * <p>It carries the {@link Fixpoint} the faults stand at, with what the session holds there as uchar reads it at the
+ * same moment ({@code DroolsBackend.standingOf}): no end state and no outcome, which a session with a standing fault
+ * does not have (uchar's RUNTIME-SEMANTICS ch. 5.7, 5.12a), but the view of the session the fixpoint detail shows; and,
+ * when the request asked to see its session ({@link RequestOptions#detailFlags()}), the fields the 422 gives beside the
+ * faults ({@link #detail()}). Its cause is the exception uchar's write-back throws for these faults: the fault's own
+ * for one, uchar's {@code EvaluationFaults} for two or more, the one uchar's scenario report names in its diagnose.
  *
  * <p>A value of the request that its declaration does not hold is an evaluation fault too, EF-004, which uchar's input
  * fence raises before any session ({@code CaseRunner.inputFits}, {@link #ofInput}): it stands at no fixpoint and has
@@ -53,26 +55,26 @@ public final class EvaluationFault extends RuntimeException {
 
     private final transient List<Fault> errors;
     private final transient Fixpoint fixpoint;
-    private final transient Map<Object, Map<String, Object>> making;
+    private final transient EndState standing;
     private final transient ObjectNode detail;
 
-    private EvaluationFault(List<Fault> errors, RuntimeException cause, Fixpoint fixpoint,
-                            Map<Object, Map<String, Object>> making, ObjectNode detail) {
+    private EvaluationFault(List<Fault> errors, RuntimeException cause, Fixpoint fixpoint, EndState standing,
+                            ObjectNode detail) {
         super(errors.size() == 1 ? "de regels geven op deze invoer een evaluatiefout"
                 : "de regels geven op deze invoer " + errors.size() + " evaluatiefouten", cause);
         this.errors = List.copyOf(errors);
         this.fixpoint = fixpoint;
-        this.making = making;
+        this.standing = standing;
         this.detail = detail;
     }
 
     /** The faults that stand at {@code fixpunt}, one element per fault in the order of its {@code errors}, which is
-     *  uchar's: by the name of the form, then by the sentence; {@code making} the values the creation assigned at that
+     *  uchar's: by the name of the form, then by the sentence; {@code standing} what the session holds at that
      *  fixpoint. {@code cause} is what uchar's write-back threw for them. */
-    static EvaluationFault of(Fixpoint fixpoint, Map<Object, Map<String, Object>> making, RuntimeException cause) {
+    static EvaluationFault of(Fixpoint fixpoint, EndState standing, RuntimeException cause) {
         List<Fault> sink = new ArrayList<>();
         for (dev.uchar.regelspraak.transpiler.tms.Fault f : fixpoint.faults()) sink.add(Fault.of(f.fault(), f.message()));
-        return new EvaluationFault(sink, cause, fixpoint, making, null);
+        return new EvaluationFault(sink, cause, fixpoint, standing, null);
     }
 
     /** The values of a request that uchar's input refuses: its input fence ({@link CaseRunner.InputPrecisionFault},
@@ -87,7 +89,7 @@ public final class EvaluationFault extends RuntimeException {
 
     /** The same faults with {@code detail}, the fields the request asked to see of its session. */
     EvaluationFault withDetail(ObjectNode detail) {
-        return new EvaluationFault(errors, (RuntimeException) getCause(), fixpoint, making, detail);
+        return new EvaluationFault(errors, (RuntimeException) getCause(), fixpoint, standing, detail);
     }
 
     /** The faults, in the order uchar reports them. */
@@ -101,9 +103,10 @@ public final class EvaluationFault extends RuntimeException {
         return fixpoint;
     }
 
-    /** The values the creations put on the objects they made, at {@link #fixpoint}; null where that is null. */
-    public Map<Object, Map<String, Object>> making() {
-        return making;
+    /** What the session holds at {@link #fixpoint}, as uchar reads it ({@code DroolsBackend.standingOf}); null where
+     *  that is null. */
+    public EndState standing() {
+        return standing;
     }
 
     /** The fields the 422 gives beside the faults ({@code trace}, {@code dekking}, {@code fixpunt}), or null when the

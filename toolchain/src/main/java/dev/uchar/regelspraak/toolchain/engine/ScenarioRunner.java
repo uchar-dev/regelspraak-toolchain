@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 
 import dev.uchar.regelspraak.cases.CaseRunner;
 import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.emit.CaseEmitter;
 import dev.uchar.regelspraak.emit.IrEmitter;
 import dev.uchar.regelspraak.engine.ScenarioResult;
@@ -141,7 +142,8 @@ public final class ScenarioRunner {
                 labels.forEach((label, bean) -> labelOf.put(bean, label));
                 Fixpoint fixpoint = DroolsBackend.fixpointOf(build, session, labelOf::get);
                 boolean answered = fixpoint.faults().isEmpty();
-                handed.put(caseFile, new Handed(labels, fixpoint, CaseSession.making(build, fixpoint),
+                handed.put(caseFile, new Handed(labels, fixpoint,
+                        DroolsBackend.standingOf(build, session, labelOf::get),
                         answered ? DroolsBackend.decisionsOf(build, session) : List.of(),
                         answered ? DroolsBackend.periodDecisionsOf(build, session) : List.of(),
                         answered ? DroolsBackend.readingsOf(build, session) : List.of(), null));
@@ -191,9 +193,10 @@ public final class ScenarioRunner {
     }
 
     /** What the replay handed over of the session of one case: the case labels of its input beans, its fixpoint with
-     *  the values the creation assigned ({@link CaseSession#making}), and the decisions, the decisions per period and the
-     *  readings of a session without a standing fault; or, without a fixpoint, uchar's sentence. */
-    private record Handed(Map<String, Object> labels, Fixpoint fixpoint, Map<Object, Map<String, Object>> making,
+     *  what the session holds there as uchar reads it ({@link DroolsBackend#standingOf}, also where a fault stands),
+     *  and the decisions, the decisions per period and the readings of a session without a standing fault; or, without
+     *  a fixpoint, uchar's sentence. */
+    private record Handed(Map<String, Object> labels, Fixpoint fixpoint, EndState standing,
                           List<DefaultsDecision> decisions, List<PeriodDecisions> periodDecisions,
                           List<ConditionReading> readings, String noFixpoint) {}
 
@@ -225,7 +228,7 @@ public final class ScenarioRunner {
             types.put(label, named);
         }
         CaseSession.Outcome session = new CaseSession.Outcome(new LinkedHashMap<>(h.labels()), types,
-                r.trace().firings(), h.fixpoint(), h.making(), h.decisions(), h.periodDecisions(), h.readings());
+                r.trace().firings(), h.fixpoint(), h.standing(), h.decisions(), h.periodDecisions(), h.readings());
         if (!playedOut) {
             // the write-back of the replay throws a fault that stands at the fixpoint: that is a case not played out
             if (h.fixpoint().faults().isEmpty())
