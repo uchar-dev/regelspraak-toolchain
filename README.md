@@ -345,6 +345,14 @@ writes one does not start:
   `"opbrengst": 100` for a whole number the request wrote as `100.0`, where it was `100.0`. As JSON numbers they are
   the same; a caller that reads them with `BigDecimal.equals` or as text sees the change. A number of the unbounded
   form keeps its own scale (`docs/ENGINE.md`).
+- **The explanation of timelines** (card `explain-timelines`): a total over the timelines of members names its members
+  with what each contributed, its total and the timeline it came from (`"… het totaal van het bewaartarief van alle
+  vondsten van de Jutter (48 EUR): over V1 (36 EUR uit 12 EUR/mnd van 01-01-2026 tot 01-04-2026), …"`), where it
+  named no value and no member; and a rule on a timeline target names its computation, per period it decided with
+  the operands it read as a timeline in that period (`"… volgens de regel 'loonproduct van een jutter'
+  (onvoorwaardelijk): zijn strandloon maal zijn stormtoeslag, tot 01-04-2024 met zijn strandloon (100 van 01-01-2024
+  tot 01-04-2024) en zijn stormtoeslag (leeg); van 01-04-2024 tot 01-07-2024 met …"`), where it named its periods and
+  no computation. The explanation on the scenario route, on the service and in the playground changes alike.
 
 ## The pin
 

@@ -672,7 +672,9 @@ once, with the value the engine read there; where the value reads one declaratio
 cells of a dimensioned attribute, that node is the rule text itself, with its value (`de som van zijn vondstgewicht over
 alle seizoenen (4,50 kg)`; the engine's reading of a fold over cells carries no member, also where the cells are those
 of the object a role reaches). A fold over a set has its `MEMBERS` ("over I4 (01-04-2026) en I5 (01-05-2026) (2
-leden met een waarde)"; a count without a value per member, "(2 leden)"): a member whose value is leeg contributes
+leden met een waarde)"; a count without a value per member, "(2 leden)"; a total without a filter over a timeline of
+its members names beside the total of each member the timeline it holds at the fixpoint, "over V1 (36 EUR uit 12
+EUR/mnd van 01-01-2026 tot 01-04-2026) en V3 (0 EUR)"): a member whose value is leeg contributes
 nothing to a value fold (uchar's RUNTIME-SEMANTICS ch. 5.12), so a value fold counts the members with a value and,
 without one, says "geen lid droeg een waarde bij", where a count without a member says "er is geen enkel lid"; its text carries the keys of the attribute it folds, and for a cell of
 each member (`de som van het vondstgewicht in voorjaar van alle leden van de Ploeg`) the cell under `labels`; and its
@@ -688,13 +690,22 @@ it, with its negation, its digits and the period of the form "gedurende het gehe
 "leeg" and "gevuld" keeps its period too. A writer of a timeline target, also its only one, decides the days on which its
 timeline reads a value, and on the other days the target keeps its input (uchar's RUNTIME-SEMANTICS ch. 3.11); who
 decided which days comes from uchar's `DroolsBackend.periodDecisionsOf`. The sentence of a timeline target gives each
-rule that decided the periods it decided with their values, and has no computation; the condition of a rule, where it
-holds per period (a clip, ch. 3.10), is its text with the periods the engine read it to hold in; the periods in which
-the input stood follow: `"A1 heeft als rentedagen 30 dg/mnd van 01-12-2025 tot 01-03-2026 volgens de regel
-'rentedagen in een gehele maand', omdat hij gedurende de gehele maand rentedragend is (van 01-12-2025 tot
-01-03-2026), en 0 dg/mnd tot 01-11-2025, … volgens de regel 'rentedagen in een gedeeltelijke maand', omdat …"`,
-`"J1 heeft als borgdeel 12,00 van 01-01-2024 tot 01-03-2024 volgens de regel 'borgdeel van een jutter'
-(onvoorwaardelijk); de invoerwaarde 99,00 van 01-03-2024 tot 01-04-2024 bleef staan"`. Where no rule decided a day,
+rule that decided the periods it decided with their values, and its `COMPUTATION`: the rule text, the operands the
+engine read as one value once (`", met "`), and per period the rule decided (`", "` or `"; "`, the period as
+RegelSpraak writes it, `" met "`) every operand it read as a timeline, that timeline cut to the period (the reading
+carries each node of the value as the timeline it read or computed, RUNTIME-SEMANTICS ch. 5.12): one value where one
+segment fills the period, its segments in the period otherwise, "leeg" where it holds no value there; a fold over a
+set names there the members that contributed in that period. Where the rule decided no day, where its value (or the
+body of its `Let`) reads one declaration or binder or folds over a set or cells, or where no operand is a timeline, the
+computation is that of a rule without a timeline. The condition of a rule, where it holds per period (a clip,
+ch. 3.10), is its text with the periods the engine read it to hold in; the periods in which the input stood follow:
+`"J1 heeft als loonproduct 0 tot 01-04-2024, 2.500 van 01-04-2024 tot 01-07-2024 en 0 vanaf 01-07-2024 volgens de
+regel 'loonproduct van een jutter' (onvoorwaardelijk): zijn strandloon maal zijn stormtoeslag, tot 01-04-2024 met zijn
+strandloon (100 van 01-01-2024 tot 01-04-2024) en zijn stormtoeslag (leeg); van 01-04-2024 tot 01-07-2024 met zijn
+strandloon (100) en zijn stormtoeslag (25); vanaf 01-07-2024 met …"`, `"J1 heeft als borgdeel 12,00 van 01-01-2024 tot
+01-03-2024 volgens de regel 'borgdeel van een jutter' (onvoorwaardelijk): het tijdsevenredig deel per maand van zijn
+borgtarief gedurende de tijd dat hij borgplichtig is, van 01-01-2024 tot 01-03-2024 met zijn borgtarief (12,00); de
+invoerwaarde 99,00 van 01-03-2024 tot 01-04-2024 bleef staan"`. Where no rule decided a day,
 the target keeps its input as its periods, or is empty. A writer whose condition per period holds on no day has
 uchar's reading `HOLDS` with a condition that reads no period (RUNTIME-SEMANTICS ch. 5.12); it did not hold, and the
 sentence names it as a rule that did not hold, with its condition and the periods the engine read, a rule and an
