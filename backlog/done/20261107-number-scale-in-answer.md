@@ -29,11 +29,9 @@ Een getal van een type met een eindig aantal decimalen staat in het antwoord in 
 `instances`, in tijdlijnen en cellen, en in `fixpoint`. Een getal van de onbegrensde vorm (`Numeriek (getal)`) blijft
 zoals het nu is: exact als de waarde eindigt, anders de vorm die `docs/ENGINE.md` beschrijft.
 
-## Open besluit (eerst beslissen)
+## Besluit (2026-11-13, de eigenaar)
 
-Dit verandert het contract van de dienst voor afnemers die op de schaal leunen. Het is een keuze: de decimalen van het
-type (de voorkeur, gelijk aan uchars tekstvorm) of de schaal zoals nu, dan vastgelegd in `docs/ENGINE.md` en de
-OpenAPI-beschrijving. Bij twijfel een advies vragen voordat de bouw begint.
+De decimalen van het type, gelijk aan uchars tekstvorm (RUNTIME-SEMANTICS ch. 1.2, "Text coercion").
 
 ## Acceptance
 
@@ -43,3 +41,15 @@ OpenAPI-beschrijving. Bij twijfel een advies vragen voordat de bouw begint.
 - Dezelfde toets voor een tijdlijnsegment en een cel.
 - `docs/ENGINE.md` en de OpenAPI-beschrijving zeggen hoe een getal in het antwoord staat.
 - `make gates` groen.
+
+Result (2026-11-13):
+- A number of a type with a fixed number of decimals stands in the answer in exactly those decimals, in `instances`,
+  timeline segments, cells, the payload of an attribute with absence markers, and `fixpoint`
+  (`AnswerBuilder.inDecimalsOf`, `setScale` with `UNNECESSARY`: a value that does not fit fails loudly, never rounds;
+  uchar refuses such values earlier, EF-006/EF-004). A number of the unbounded form keeps its own scale. Witness
+  `NumberScaleHttpTest` (`maal 0,25` → `60.00`, `gedeeld door 4` → `25.00`, input `240` → `240.00`, segments and cells
+  in two decimals, an unbounded `25` stays `25`). The playground's fixpoint follows; the explanation already did.
+- Over 429 goldens 181 of 1054 answers change in form only (425 numbers in 71 goldens), no value and no status;
+  `docs/ENGINE.md`, README ("Contract change") and the OpenAPI descriptions say how a number stands. Not changed:
+  `/info` shows parameter-set values as written.
+- `make gates` green (replay 373/1042, red leg 69).
