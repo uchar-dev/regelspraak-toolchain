@@ -160,6 +160,78 @@ class VerbaliserTest {
                 countsForVlucht(200, 50).get(2));
     }
 
+    static final String DIGITS = """
+            Objecttype de Havenmeester (mv: Havenmeesters) (bezield)
+                de code Tekst;
+                is gecodeerd kenmerk (bijvoeglijk);
+                is ongecodeerd kenmerk (bijvoeglijk);
+            Regel codering
+            geldig altijd
+            Een Havenmeester is gecodeerd
+            indien zijn code numeriek is met exact 4 cijfers.
+            Regel geen codering
+            geldig altijd
+            Een Havenmeester is ongecodeerd
+            indien hij aan alle volgende voorwaarden voldoet:
+            - zijn code is gevuld
+            - zijn code is niet numeriek met exact 4 cijfers.
+            """;
+
+    /** "numeriek met exact N cijfers" is written as the rule writes it, with its number of digits and its negation:
+     *  never the name of the predicate kind, and never a negated test stated as the plain one. */
+    @Test void exact_digits_keeps_its_digits_and_its_negation() throws Exception {
+        ExplanationSession engine = ExplanationSession.of(DIGITS);
+        Object h1 = engine.newInstance("Havenmeester");
+        RegelSpraakRuntime.set(h1, Namen.ident("code", false), "1234");
+        Object h2 = engine.newInstance("Havenmeester");
+        RegelSpraakRuntime.set(h2, Namen.ident("code", false), "12a");
+        Map<String, Object> beans = new java.util.LinkedHashMap<>();
+        beans.put("H1", h1);
+        beans.put("H2", h2);
+        assertEquals(List.of(
+                "H1 is gecodeerd, omdat zijn code (1234) numeriek is met exact 4 cijfers",
+                "H1 is niet ongecodeerd, want niet geldt: zijn code (1234) niet numeriek is met exact 4 cijfers",
+                "H2 is niet gecodeerd, want niet geldt: zijn code (12a) numeriek is met exact 4 cijfers",
+                "H2 is ongecodeerd, omdat zijn code (12a) gevuld is en zijn code (12a) niet numeriek is met exact 4"
+                        + " cijfers"),
+                engine.explain(Naming.CANONICAL, "Havenmeester", beans));
+    }
+
+    /** The whole-period form of the predicate keeps its period and both its negations, on uchar's golden
+     *  jutterswet-registratienummer-gehele-jaar with the situation of its third case: a number of 9 digits for half
+     *  of 2026. */
+    @Test void exact_digits_keeps_its_whole_period() throws Exception {
+        String source = java.nio.file.Files.readString(java.nio.file.Path.of(
+                "../uchar/corpus/golden/jutterswet-registratienummer-gehele-jaar/source.rgs"));
+        List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(
+                dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source + """
+
+                        Scenario half jaar geldig
+                        Gegeven is de volgende situatie:
+                        een Jutter J1
+                        - het registratienummer is "123456789" van 01-01-2026 tot 01-07-2026
+                        Met als verwacht resultaat:
+                        - J1 is niet doorlopend geregistreerd
+                        - J1 is niet doorlopend afwijkend
+                        - J1 is onderbroken geregistreerd
+                        - J1 is maandelijks geregistreerd
+                        """));
+        assertEquals(1, u.size());
+        assertEquals(dev.uchar.regelspraak.engine.ScenarioResult.Status.PASS, u.get(0).result().status(),
+                () -> u.get(0).result().diagnostic());
+        String read = "zijn registratienummer (123456789 van 01-01-2026 tot 01-07-2026)";
+        assertEquals(List.of(
+                "J1 is niet doorlopend geregistreerd, want niet geldt: " + read + " gedurende het gehele jaar numeriek"
+                        + " is met exact 9 cijfers",
+                "J1 is niet doorlopend afwijkend, want niet geldt: " + read + " gedurende het gehele jaar niet"
+                        + " numeriek is met exact 9 cijfers",
+                "J1 is onderbroken geregistreerd, omdat " + read + " niet gedurende het gehele jaar numeriek is met"
+                        + " exact 9 cijfers",
+                "J1 is maandelijks geregistreerd, omdat " + read + " gedurende de gehele maand numeriek is met exact 9"
+                        + " cijfers"),
+                u.get(0).explanation());
+    }
+
     /** A negative value that rounds to zero at the declared scale is written as zero, without a sign: "-0,00" is no
      *  number the engine holds. A negative value that stays negative keeps its sign. */
     @Test void negative_value_rounding_to_zero_has_no_sign() {

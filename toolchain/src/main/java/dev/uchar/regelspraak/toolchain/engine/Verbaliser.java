@@ -2324,11 +2324,19 @@ public final class Verbaliser {
             String core = switch (p.kind()) {
                 case LEEG -> value ? "geen waarde heeft" : "leeg is";
                 case GEVULD -> value ? "een waarde heeft" : "gevuld is";
-                default -> "voldoet aan " + p.kind().name().toLowerCase(Locale.ROOT);
+                case NUMERIEK_MET_EXACT -> (p.negation() ? "niet " : "") + "numeriek is met exact " + p.digits()
+                        + " cijfers";
+                // a day-kind check outside a day-kind definition is no form uchar carries
+                case DAGSOORT -> throw new IllegalStateException("de voorwaarde \"" + summary(c) + "\" toetst een"
+                        + " dagsoort buiten een dagsoortdefinitie, wat uchar niet draagt");
             };
+            // the whole-period form (§8.2) stands before the predicate, as the rule writes it
+            String period = p.period() == null ? ""
+                    : (p.period().negated() ? "niet " : "") + "gedurende "
+                    + (p.period().year() ? "het gehele jaar " : "de gehele maand ");
             return b -> {
                 operandProse(b, p.operand(), read, ucharText);
-                b.text(" " + core);
+                b.text(" " + period + core);
             };
         }
         return null;
