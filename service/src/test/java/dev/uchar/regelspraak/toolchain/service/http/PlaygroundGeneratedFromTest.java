@@ -235,7 +235,7 @@ class PlaygroundGeneratedFromTest {
         for (Path p : sources) {
             String source = Files.readString(p);
             String golden = p.getParent().getFileName().toString();
-            RegelSpraakModel model = Playground.containsScenario(source)
+            RegelSpraakModel model = Resolver.parse(source).testDocument()
                     ? ScenarioResolver.resolve(source).model() : Resolver.resolve(source);
             if (!model.isOk()) continue;
             Naming naming = Naming.of(model, null);

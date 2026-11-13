@@ -70,6 +70,52 @@ class PlaygroundTest {
         assertFalse(a.has("graph"), "een parse-fout mag geen graaf opleveren: " + a);
     }
 
+    /** A character no token begins with is an error of the lexer: a syntax error with its line and column, no token
+     *  and no expected tokens, since a lexer has no follow set; never a fault of the analysis. */
+    @Test
+    void a_lexer_error_is_a_syntax_error() {
+        ObjectNode a = Playground.analyze("""
+                Objecttype de Jutter (mv: Jutters) (bezield)
+                    is premiewaardig kenmerk (bijvoeglijk);
+
+                Regel premie \\ toets
+                    geldig altijd
+                        Een Jutter is premiewaardig.
+                """);
+        JsonNode parse = a.get("parse");
+        assertFalse(parse.get("ok").asBoolean(), a.toString());
+        JsonNode f = parse.get("errors").get(0);
+        assertEquals(4, f.get("line").asInt(), f.toString());
+        assertEquals(13, f.get("column").asInt(), f.toString());
+        assertTrue(f.get("message").asText().contains("token recognition error"), f.toString());
+        assertFalse(f.has("token"), f.toString());
+        assertEquals(0, f.get("expected").size(), f.toString());
+        assertFalse(a.at("/resolver/ok").asBoolean(), a.toString());
+    }
+
+    /** A dimension label with the word 'en' ("eb en vloed") is read as uchar's resolver reads it, in the second parse
+     *  where that 'en' is a word of the label: no syntax error, and the model resolves. */
+    @Test
+    void a_label_with_en_parses() {
+        ObjectNode a = Playground.analyze("""
+                Dimensie het getij, bestaande uit de getijden (na het attribuut met voorzetsel bij):
+                    1. eb
+                    2. vloed
+                    3. eb en vloed
+
+                Objecttype de Jutter (mv: Jutters) (bezield)
+                    het getijgewicht Numeriek (getal met 2 decimalen) gedimensioneerd met getij;
+                    de uitkomst Numeriek (getal met 2 decimalen);
+
+                Regel r
+                    geldig altijd
+                        De uitkomst van een Jutter moet berekend worden als zijn getijgewicht bij eb en vloed.
+                """);
+        assertTrue(a.at("/parse/ok").asBoolean(), a.get("parse").toString());
+        assertTrue(a.at("/resolver/ok").asBoolean(), a.get("resolver").toString());
+        assertTrue(a.get("executable").asBoolean(), a.toString());
+    }
+
     // ---------------- shape 2: resolver error ----------------
 
     @Test

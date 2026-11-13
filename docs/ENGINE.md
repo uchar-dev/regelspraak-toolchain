@@ -362,9 +362,11 @@ refuse the start as well.
   that resolver error; a `uchar-ir-v1` document, which the service does not verify, gets as far as uchar's branch,
   which refuses it (DROOLS-315, a `contract` of its register), and the entry point is a marker with that sentence.
 - `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`). A source with a
-  parse or resolver error gets its diagnostics and nothing else. A clean source gets the `uchar-ir-v1` document, the
-  exec-model verdict (`executable` with the `coverage` and `generated`, or uchar's `refusal`, with `refusalLine`
-  beside it where the refusal has a place in the source, below), the DRL of the
+  parse or resolver error gets its diagnostics and nothing else: `parse.errors` are the syntax errors of uchar's parse
+  (`Resolver.parse`, the one its resolver reads), each with `line`, `column`, `message`, the offending `token` and the
+  `expected` tokens, an error of the lexer without `token` and with `expected` empty. A clean source gets the
+  `uchar-ir-v1` document, the exec-model verdict (`executable` with the `coverage` and `generated`, or uchar's
+  `refusal`, with `refusalLine` beside it where the refusal has a place in the source, below), the DRL of the
   DRL-text branch as a view (not the verdict: `drl`, or `drlError` with uchar's sentence and `drl` empty) with
   `drlRules` beside it (below), uchar's rule graph of the document its loader reads back, as Mermaid
   (`graph`) and as `graphJson` (`{nodes:[{id,label,kind,endOutput}], edges:[{from,to}]}`), the `vocabularies` of the

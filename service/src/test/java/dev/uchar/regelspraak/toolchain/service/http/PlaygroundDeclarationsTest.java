@@ -211,7 +211,7 @@ class PlaygroundDeclarationsTest {
         List<String> errors = new ArrayList<>();
         for (Path p : sources) {
             String source = Files.readString(p);
-            RegelSpraakModel model = Playground.containsScenario(source)
+            RegelSpraakModel model = Resolver.parse(source).testDocument()
                     ? ScenarioResolver.resolve(source).model() : Resolver.resolve(source);
             if (!model.isOk()) continue;
             List<String> lines = ScenarioData.lines(source);

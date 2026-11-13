@@ -34,8 +34,6 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.Diagnostic;
 import dev.uchar.regelspraak.model.RegelSpraakModel.GeneratedFrom;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Severity;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Vocabulary;
-import dev.uchar.regelspraak.parser.RegelSpraak;
-import dev.uchar.regelspraak.parser.RegelSpraakLexer;
 import dev.uchar.regelspraak.resolver.Resolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
@@ -43,15 +41,6 @@ import dev.uchar.regelspraak.transpiler.core.Coverage;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.StackComposition;
 import dev.uchar.regelspraak.transpiler.tms.TmsTranspiler;
-
-import org.antlr.v4.runtime.BaseErrorListener;
-import org.antlr.v4.runtime.CharStreams;
-import org.antlr.v4.runtime.CommonTokenStream;
-import org.antlr.v4.runtime.Parser;
-import org.antlr.v4.runtime.ParserRuleContext;
-import org.antlr.v4.runtime.RecognitionException;
-import org.antlr.v4.runtime.Recognizer;
-import org.antlr.v4.runtime.misc.IntervalSet;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -66,8 +55,9 @@ import java.util.Set;
  * The DEV-ONLY RegelSpraak playground core (a "type-and-see" workbench). It is a pure analyzer: given a RegelSpraak
  * source it returns ONE JSON tree:
  * <ol>
- *   <li><b>parse</b> — {@code ok} plus, per syntax error, its {@code position}/{@code column}, the offending token
- *       and the {@code verwacht} token set (the ANTLR follow set);</li>
+ *   <li><b>parse</b> — {@code ok} plus, per syntax error of uchar's parse ({@link Resolver#parse}), its {@code line},
+ *       {@code column}, ANTLR's {@code message}, the offending {@code token} (none for an error of the lexer) and the
+ *       {@code expected} tokens (the parser's follow set, empty for an error of the lexer);</li>
  *   <li><b>resolver</b> — the resolver verdict: the ERROR and WARNING diagnostics (line + message).</li>
  * </ol>
  * A source with a parse or resolver error gets those two and nothing else: uchar's emitter writes no document for
@@ -108,10 +98,11 @@ import java.util.Set;
  * and stay as uchar writes them. A vocabulary the source does not declare is a {@link Naming.VocabularyError},
  * which the HTTP adapter answers with 400.
  *
- * <p><b>Scenario-aware front-end.</b> {@code Situatie}/{@code Scenario} blocks are a documented extension of uchar's
- * frontend (its {@code grammar/DIVERGENCES.md}) reachable only via the scenario entry rule, NOT part of the
- * production {@code regelSpraakDocument}. So when a source carries such a block the analyzer parses + resolves it
- * through the scenario front-end ({@link ScenarioResolver}) and runs the scenarios off that same resolved bundle.
+ * <p><b>Scenario-aware front-end.</b> {@code Situatie}/{@code Parameterset}/{@code Scenario} blocks are a documented
+ * extension of uchar's frontend (its {@code grammar/DIVERGENCES.md}) reachable only via the scenario entry rule, NOT
+ * part of the production {@code regelSpraakDocument}. uchar's parse reads a source that opens such a block as a test
+ * document ({@link Resolver.Parse#testDocument}); the analyzer then resolves it through the scenario front-end
+ * ({@link ScenarioResolver}) and runs the scenarios off that same resolved bundle.
  *
  * <p><b>Via the service.</b> {@link #analyze(String, String, DecisionCore)} with a core gives the same tree, and only
  * the scenarios are computed by that core instead of uchar's scenario layer ({@link #renderViaService}): each becomes a
@@ -131,10 +122,6 @@ public final class Playground {
 
     private static final JsonNodeFactory NF = JsonNodeFactory.withExactBigDecimals(true);
     private static final com.fasterxml.jackson.databind.ObjectMapper JSON = new com.fasterxml.jackson.databind.ObjectMapper();
-
-    /** The literal that opens a scenariotoets block (RegelSpraakLexer SCENARIO token). Its presence is what makes
-     *  the analyzer run the scenario front-end/runner rather than only the production pipeline. */
-    private static final String SCENARIO_HEAD = "Scenario";
 
     /** Analyze {@code source} and return the answer tree (see the class javadoc for its shape). */
     public static ObjectNode analyze(String source) {
@@ -164,20 +151,19 @@ public final class Playground {
     public static ObjectNode analyze(String source, String vocabulary, DecisionCore service,
                                        java.util.Locale locale) {
         ObjectNode root = NF.objectNode();
-        boolean scenario = containsScenario(source);
 
-        // 1. PARSE — a dedicated pass that KEEPS the column + expected-token set the shared Resolver discards. Uses
-        //    the scenario entry rule when a Scenario block is present, so those keywords are not mis-flagged.
-        ParseResult parseResult = parse(source, scenario);
-        List<ParseError> parseErrors = parseResult.errors();
+        // 1. PARSE — uchar's parse, the one its resolver reads, with the column and the expected tokens the
+        //    resolver's diagnostics leave out
+        Resolver.Parse parsed = Resolver.parse(source);
+        boolean scenario = parsed.testDocument();
         ObjectNode parse = root.putObject("parse");
-        parse.put("ok", parseErrors.isEmpty());
+        parse.put("ok", parsed.errors().isEmpty());
         ArrayNode pf = parse.putArray("errors");
-        for (ParseError f : parseErrors) {
+        for (Resolver.SyntaxError f : parsed.errors()) {
             ObjectNode n = pf.addObject();
-            n.put("line", f.position());
+            n.put("line", f.line());
             n.put("column", f.column());
-            n.put("message", f.notice());
+            n.put("message", f.message());
             if (f.token() != null) n.put("token", f.token());
             ArrayNode expected = n.putArray("expected");
             for (String t : f.expected()) expected.add(t);
@@ -935,67 +921,6 @@ public final class Playground {
         for (Designatable b : model.designatable())
             if (b.kind() == Designatable.Kind.ATTRIBUUT || b.kind() == Designatable.Kind.KENMERK)
                 sink.computeIfAbsent(Namen.norm(b.name()) + " · " + Namen.norm(b.owner()), k -> new ArrayList<>()).add(b);
-        return sink;
-    }
-
-    /** True when the source carries a {@code Scenario} block. A raw substring test is intentionally cheap and
-     *  conservative: a false positive (e.g. the word inside a name) only means the scenario runner is invoked and
-     *  reports 0 scenarios, never a crash. */
-    static boolean containsScenario(String source) {
-        return source != null && source.contains(SCENARIO_HEAD);
-    }
-
-    // ---------------- parse pass (keeps column + expected tokens) ----------------
-
-    /** One syntax error with the position AND the ANTLR follow set (the expected tokens), which the shared
-     *  Resolver drops. */
-    record ParseError(int position, int column, String notice, String token, List<String> expected) {}
-
-    /** The parse of a source: its syntax errors, the tree of its entry rule and the token stream under it,. */
-    record ParseResult(List<ParseError> errors, ParserRuleContext document, CommonTokenStream tokens) {}
-
-    /**
-     * Parse {@code source}, collecting a {@link ParseError} per syntax error. Unlike {@link Resolver#resolve} (which
-     * keeps only line + message), this listener recovers the offending token text and the parser's expected-token
-     * set at the failure point, rendered with the grammar's literal/symbolic names — the "verwacht ..." hint a
-     * learner needs. The entry rule is {@code testDocument} when {@code scenario} is set (so a Scenario/Situatie
-     * block is admitted), else the production {@code regelSpraakDocument}.
-     */
-    static ParseResult parse(String source, boolean scenario) {
-        RegelSpraakLexer lexer = new RegelSpraakLexer(CharStreams.fromString(source));
-        CommonTokenStream tokens = new CommonTokenStream(lexer);
-        RegelSpraak parser = new RegelSpraak(tokens);
-
-        List<ParseError> errors = new ArrayList<>();
-        BaseErrorListener listener = new BaseErrorListener() {
-            @Override public void syntaxError(Recognizer<?, ?> r, Object sym, int line, int col,
-                                              String msg, RecognitionException e) {
-                String token = sym == null ? null : sym.toString();
-                if (sym instanceof org.antlr.v4.runtime.Token t) token = t.getText();
-                errors.add(new ParseError(line, col, msg, token, expectedTokens(r, e)));
-            }
-        };
-        lexer.removeErrorListeners(); lexer.addErrorListener(listener);
-        parser.removeErrorListeners(); parser.addErrorListener(listener);
-        ParserRuleContext document = scenario ? parser.testDocument() : parser.regelSpraakDocument();
-        return new ParseResult(errors, document, tokens);
-    }
-
-    /** The expected-token set at the failure point, rendered as grammar names. Uses the recognition exception's
-     *  own expected set (the exact follow set) when present, else the parser's current expected set. A lexer error
-     *  (no parser exception, {@code r} is a lexer) yields an empty list — there is no follow set. */
-    private static List<String> expectedTokens(Recognizer<?, ?> r, RecognitionException e) {
-        IntervalSet expected = null;
-        if (e != null) expected = e.getExpectedTokens();
-        if (expected == null && r instanceof Parser p) expected = p.getExpectedTokens();
-        List<String> sink = new ArrayList<>();
-        if (expected == null || r == null) return sink;
-        var vocab = r.getVocabulary();
-        for (int type : expected.toArray()) {
-            String lit = vocab.getLiteralName(type);
-            String sym = vocab.getSymbolicName(type);
-            sink.add(lit != null ? lit : (sym != null ? sym : "<" + type + ">"));
-        }
         return sink;
     }
 
