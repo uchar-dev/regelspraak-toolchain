@@ -171,9 +171,9 @@ class ExplanationComputationServiceTest {
                     + " 14 dagen, met zijn startdag (05-01-2026)",
             "J1 heeft als eerste waardevolle vinddag 01-02-2026 volgens de regel 'eerste waardevolle vinddag'"
                     + " (onvoorwaardelijk): " + FIRST + " (01-02-2026): over V1 (01-02-2026) en V2 (01-03-2026)"
-                    + " (2 leden)",
+                    + " (2 leden met een waarde)",
             "J1 heeft als vondstwaarde 273,45 volgens de regel 'vondstwaarde' (onvoorwaardelijk): " + SUM + " (273,45):"
-                    + " over V1 (123,45) en V2 (150,00) (2 leden)",
+                    + " over V1 (123,45) en V2 (150,00) (2 leden met een waarde)",
             "J1 heeft als premie 50,00 volgens de regel 'premie': " + PREMIE + ", met de vondstwaarde van de Jutter"
                     + " (273,45), de grondpremie is de vondstwaarde van de Jutter gedeeld door 10 (27,345) en het"
                     + " premiemaximum (50,00); vóór de afronding 50; vóór de begrenzing 54,69, omdat"
@@ -186,9 +186,9 @@ class ExplanationComputationServiceTest {
             "J2 heeft als meldtermijn 15-02-2026 volgens de regel 'meldtermijn' (onvoorwaardelijk): zijn startdag plus"
                     + " 14 dagen, met zijn startdag (01-02-2026)",
             "J2 heeft geen eerste waardevolle vinddag, want de regel 'eerste waardevolle vinddag' gaf geen waarde"
-                    + " (onvoorwaardelijk): " + FIRST + " (leeg): er is geen enkel lid",
+                    + " (onvoorwaardelijk): " + FIRST + " (leeg): geen lid droeg een waarde bij",
             "J2 heeft als vondstwaarde 0,00 volgens de regel 'vondstwaarde' (onvoorwaardelijk): " + SUM + " (0,00):"
-                    + " over V3 (0,00), het enige lid",
+                    + " over V3 (0,00), het enige lid met een waarde",
             "J2 heeft geen premie, want geen regel gold; de regel 'premie' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is",
             "J2 heeft als bonus 5,00 volgens de regel 'bonus zonder voorwaarde': 5,00, omdat de bonus in de invoer leeg"
@@ -199,9 +199,9 @@ class ExplanationComputationServiceTest {
             "J3 heeft geen meldtermijn, want de regel 'meldtermijn' gaf geen waarde (onvoorwaardelijk): zijn startdag"
                     + " plus 14 dagen, met zijn startdag (leeg)",
             "J3 heeft geen eerste waardevolle vinddag, want de regel 'eerste waardevolle vinddag' gaf geen waarde"
-                    + " (onvoorwaardelijk): " + FIRST + " (leeg): er is geen enkel lid",
+                    + " (onvoorwaardelijk): " + FIRST + " (leeg): geen lid droeg een waarde bij",
             "J3 heeft geen vondstwaarde, want de regel 'vondstwaarde' gaf geen waarde (onvoorwaardelijk): " + SUM
-                    + " (leeg): er is geen enkel lid",
+                    + " (leeg): geen lid droeg een waarde bij",
             "J3 heeft geen premie, want geen regel gold; de regel 'premie' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is",
             "J3 houdt als bonus de invoerwaarde 7,50, want geen regel gold; de regel 'bonus voor ingezetenen' gold"
@@ -248,7 +248,7 @@ class ExplanationComputationServiceTest {
                     + " vondsten van de Jutter die » QUOTE{declaration=KENMERK, owner=Vondst,"
                     + " canonical=waardevol}«waardevol zijn» READING[« (» VALUE«01-02-2026» «)»] MEMBERS{members=2}[«:"
                     + " over » SUBJECT«V1» READING[« (» VALUE«01-02-2026» «)»] « en » SUBJECT«V2» READING[« (»"
-                    + " VALUE«01-03-2026» «)»] « (2 leden)»]]",
+                    + " VALUE«01-03-2026» «)»] « (2 leden met een waarde)»]]",
             4, "SUBJECT«J1» « heeft als » NAME{declaration=ATTRIBUUT, owner=Jutter, canonical=bonus, object=J1}«bonus»"
                     + " « » VALUE«25,00» « volgens de regel '» RULE«bonus voor ingezetenen» «'» COMPUTATION[«: »"
                     + " QUOTE«25,00»] «, » CONNECTIVE«omdat» « » CONDITION{holds=true}[«het onderwerp »"
@@ -640,7 +640,7 @@ class ExplanationComputationServiceTest {
                         + " seizoenen (1,25 kg)",
                 "P1 heeft als ploegvoorjaarsgewicht 5,50 kg volgens de regel 'ploegvoorjaarsgewicht van een ploeg'"
                         + " (onvoorwaardelijk): de som van het vondstgewicht in voorjaar van alle leden van de Ploeg"
-                        + " (5,50 kg): over J1 (2,50 kg) en J3 (3,00 kg) (2 leden)"), sentences(answer));
+                        + " (5,50 kg): over J1 (2,50 kg) en J3 (3,00 kg) (2 leden met een waarde)"), sentences(answer));
         String leader = ExplanationPartsCheck.render(answer.at("/explanationParts/4"));
         assertTrue(leader.contains("QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=vondstgewicht, object=J1,"
                 + " labels=[\"voorjaar\"]}«het vondstgewicht in voorjaar van de leider van de Ploeg»"), leader);

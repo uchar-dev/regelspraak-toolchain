@@ -1813,9 +1813,12 @@ public final class Verbaliser {
         }
 
         /** De leden van vouw {@code f} met wat elk bijdroeg, bij hun naam in de code-unit-volgorde daarvan; een telling
-         *  zonder waarde per lid. Boven vijf de eerste vijf en "en nog k". */
+         *  zonder waarde per lid. Boven vijf de eerste vijf en "en nog k". De bijdragers van een telling zijn de leden
+         *  die zij telt; die van elke andere vouw de leden met een waarde, want een lid met een lege waarde draagt niets
+         *  bij (uchars RUNTIME-SEMANTICS ch. 5.12), dus zonder bijdrager zegt de zin niet dat er geen lid is. */
         private void contributors(Sentence.Builder b, Expr.FunctionCall f, ConditionReading.NodeReading n) {
             boolean count = f.kind() == Expr.FunctionKind.AANTAL || f.kind() == Expr.FunctionKind.AANTAL_GEVULDE;
+            String withValue = f.kind() == Expr.FunctionKind.AANTAL ? "" : " met een waarde";
             List<Map.Entry<String, Object>> members = new ArrayList<>();
             for (ConditionReading.Contributor c : n.contributors()) {
                 if (c.fault() != null)
@@ -1834,7 +1837,7 @@ public final class Verbaliser {
             int m = members.size();
             b.open(Part.Kind.MEMBERS, Part.meta("members", m)).text(": ");
             if (m == 0) {
-                b.text("er is geen enkel lid");
+                b.text(withValue.isEmpty() ? "er is geen enkel lid" : "geen lid droeg een waarde bij");
             } else {
                 b.text("over ");
                 int shown = Math.min(m, 5);
@@ -1846,7 +1849,7 @@ public final class Verbaliser {
                     reading(b, renderRead(f, member.getValue(), n.unit()), member.getValue() == null, member.getValue());
                 }
                 if (m > 5) b.text(" en nog " + (m - 5));
-                b.text(m == 1 ? ", het enige lid" : " (" + m + " leden)");
+                b.text(m == 1 ? ", het enige lid" + withValue : " (" + m + " leden" + withValue + ")");
             }
             b.close(Part.Kind.MEMBERS);
         }

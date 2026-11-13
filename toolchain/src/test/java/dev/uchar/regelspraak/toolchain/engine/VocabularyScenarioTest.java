@@ -42,7 +42,7 @@ class VocabularyScenarioTest {
                 "J1 is komt in aanmerking voor premie, omdat zijn vondstbedrag (12,60) is groter dan 10",
                 "J1 heeft als totale premie 12,60 volgens de regel 'vondstbedrag van een jutter' (onvoorwaardelijk):"
                         + " de som van de premie van alle vondsten van de Jutter of 0 als die er niet zijn (12,60): over"
-                        + " V1 (9,00) en V2 (3,60) (2 leden)",
+                        + " V1 (9,00) en V2 (3,60) (2 leden met een waarde)",
                 "J1 heeft als aantal vondsten van waarde 1 volgens de regel 'aantal waardevolle vondsten'"
                         + " (onvoorwaardelijk): het aantal vondsten van de Jutter die waardevol zijn (1): over V1, het"
                         + " enige lid",

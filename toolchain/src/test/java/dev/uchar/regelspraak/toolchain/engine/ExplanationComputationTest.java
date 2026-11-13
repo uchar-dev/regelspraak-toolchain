@@ -163,9 +163,9 @@ class ExplanationComputationTest {
                     + " 14 dagen, met zijn startdag (05-01-2026)",
             "J1 heeft als eerste waardevolle vinddag 01-02-2026 volgens de regel 'eerste waardevolle vinddag'"
                     + " (onvoorwaardelijk): " + FIRST + " (01-02-2026): over V1 (01-02-2026) en V2 (01-03-2026)"
-                    + " (2 leden)",
+                    + " (2 leden met een waarde)",
             "J1 heeft als vondstwaarde 273,45 volgens de regel 'vondstwaarde' (onvoorwaardelijk): " + SUM + " (273,45):"
-                    + " over V1 (123,45) en V2 (150,00) (2 leden)",
+                    + " over V1 (123,45) en V2 (150,00) (2 leden met een waarde)",
             "J1 heeft als premie 50,00 volgens de regel 'premie': " + PREMIE + ", met de vondstwaarde van de Jutter"
                     + " (273,45), de grondpremie is de vondstwaarde van de Jutter gedeeld door 10 (27,345) en het"
                     + " premiemaximum (50,00); vóór de afronding 50; vóór de begrenzing 54,69, omdat"
@@ -178,9 +178,9 @@ class ExplanationComputationTest {
             "J2 heeft als meldtermijn 15-02-2026 volgens de regel 'meldtermijn' (onvoorwaardelijk): zijn startdag plus"
                     + " 14 dagen, met zijn startdag (01-02-2026)",
             "J2 heeft geen eerste waardevolle vinddag, want de regel 'eerste waardevolle vinddag' gaf geen waarde"
-                    + " (onvoorwaardelijk): " + FIRST + " (leeg): er is geen enkel lid",
+                    + " (onvoorwaardelijk): " + FIRST + " (leeg): geen lid droeg een waarde bij",
             "J2 heeft als vondstwaarde 0,00 volgens de regel 'vondstwaarde' (onvoorwaardelijk): " + SUM + " (0,00):"
-                    + " over V3 (0,00), het enige lid",
+                    + " over V3 (0,00), het enige lid met een waarde",
             "J2 heeft geen premie, want geen regel gold; de regel 'premie' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is",
             "J2 heeft als bonus 5,00 volgens de regel 'bonus zonder voorwaarde': 5,00, omdat de bonus in de invoer leeg"
@@ -191,9 +191,9 @@ class ExplanationComputationTest {
             "J3 heeft geen meldtermijn, want de regel 'meldtermijn' gaf geen waarde (onvoorwaardelijk): zijn startdag"
                     + " plus 14 dagen, met zijn startdag (leeg)",
             "J3 heeft geen eerste waardevolle vinddag, want de regel 'eerste waardevolle vinddag' gaf geen waarde"
-                    + " (onvoorwaardelijk): " + FIRST + " (leeg): er is geen enkel lid",
+                    + " (onvoorwaardelijk): " + FIRST + " (leeg): geen lid droeg een waarde bij",
             "J3 heeft geen vondstwaarde, want de regel 'vondstwaarde' gaf geen waarde (onvoorwaardelijk): " + SUM
-                    + " (leeg): er is geen enkel lid",
+                    + " (leeg): geen lid droeg een waarde bij",
             "J3 heeft geen premie, want geen regel gold; de regel 'premie' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is",
             "J3 houdt als bonus de invoerwaarde 7,50, want geen regel gold; de regel 'bonus voor ingezetenen' gold"
@@ -493,6 +493,65 @@ class ExplanationComputationTest {
                 "V2 houdt als beoordeling de invoerwaarde 9, want de regel 'beoordeling uit opgave' gaf geen waarde"
                         + " (onvoorwaardelijk) en besliste niets: zijn opgave (leeg); verdrongen: de regel"
                         + " 'standaardbeoordeling'"),
+                explanation(document));
+    }
+
+    /** A member whose value is leeg contributes nothing to a value fold (uchar's RUNTIME-SEMANTICS ch. 5.12): the
+     *  sentence counts the members with a value, and where none has one it says so, not that there is no member. A
+     *  count counts every member. J1 has two vondsten without a gewicht, J2 one with and one without. */
+    @Test
+    void a_value_fold_counts_the_members_with_a_value() {
+        String document = """
+                Objecttype de Jutter (mv: Jutters)
+                    het totaalgewicht Numeriek (geheel getal);
+                    het vondstental Numeriek (geheel getal);
+
+                Objecttype de Vondst (mv: Vondsten)
+                    het gewicht Numeriek (geheel getal);
+
+                Feittype vondst van een jutter
+                    de jutter Jutter
+                    de vondst (mv: vondsten) Vondst
+                Eén jutter heeft meerdere vondsten
+
+                Regel totaalgewicht
+                    geldig altijd
+                        Het totaalgewicht van een Jutter moet berekend worden als de som van het gewicht van alle
+                        vondsten van de Jutter.
+
+                Regel vondstental
+                    geldig altijd
+                        Het vondstental van een Jutter moet berekend worden als het aantal vondsten van de Jutter.
+
+                Scenario lege gewichten
+                Gegeven is de volgende situatie:
+                een Jutter J1
+                een Jutter J2
+                een Vondst V1
+                - de jutter is J1
+                een Vondst V2
+                - de jutter is J1
+                een Vondst V3
+                - de jutter is J2
+                - het gewicht is 5
+                een Vondst V4
+                - de jutter is J2
+                Met als verwacht resultaat:
+                - het totaalgewicht van J1 is leeg
+                - het vondstental van J1 is 2
+                - het totaalgewicht van J2 is 5
+                """;
+        String sum = "de som van het gewicht van alle vondsten van de Jutter";
+        String count = "het aantal vondsten van de Jutter";
+        assertEquals(List.of(
+                "J1 heeft geen totaalgewicht, want de regel 'totaalgewicht' gaf geen waarde (onvoorwaardelijk): " + sum
+                        + " (leeg): geen lid droeg een waarde bij",
+                "J1 heeft als vondstental 2 volgens de regel 'vondstental' (onvoorwaardelijk): " + count + " (2): over"
+                        + " V1 en V2 (2 leden)",
+                "J2 heeft als totaalgewicht 5 volgens de regel 'totaalgewicht' (onvoorwaardelijk): " + sum + " (5):"
+                        + " over V3 (5), het enige lid met een waarde",
+                "J2 heeft als vondstental 2 volgens de regel 'vondstental' (onvoorwaardelijk): " + count + " (2): over"
+                        + " V3 en V4 (2 leden)"),
                 explanation(document));
     }
 
