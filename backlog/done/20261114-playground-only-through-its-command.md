@@ -26,3 +26,15 @@ keeps development routes in the production service behind an environment variabl
   answers `?via=service` as `serve` with `PLAYGROUND=true` did (the existing via-service tests move to it); without a
   descriptor as in `PlaygroundCommandTest`.
 - `make gates` green.
+
+Result (2026-11-14):
+- `bin/regelspraak playground [<descriptor.service.json> <source.rgs...> | <document.json>] [--allow-markers]
+  [--detail] [--host H] [--port N]`: without a model the playground alone; with one it builds the service as `serve`
+  does (same exit codes) and serves its routes and the playground's in one process, so `?via=service` works (with
+  `--detail`/`DETAIL=true`). `serve` binds no playground route whatever the environment; `PLAYGROUND` is gone from the
+  code, `bin/regelspraak`, the Makefile, README and `docs/ENGINE.md`; the Quarkus adapter is unchanged. Witnesses in
+  `PlaygroundCommandTest` (`serve` with `PLAYGROUND=true` answers 404 on `/playground`; `playground` with a descriptor
+  answers `via=service`); the via-service tests start through the new path with their assertions unchanged.
+  Provisional: `playground` with a descriptor also takes `--allow-markers`, as `serve` does.
+- A text for the workbench session on the new start command (outside the repository).
+- `make gates` green (replay 373/1042).
