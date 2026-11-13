@@ -353,6 +353,9 @@ writes one does not start:
   (onvoorwaardelijk): zijn strandloon maal zijn stormtoeslag, tot 01-04-2024 met zijn strandloon (100 van 01-01-2024
   tot 01-04-2024) en zijn stormtoeslag (leeg); van 01-04-2024 tot 01-07-2024 met …"`), where it named its periods and
   no computation. The explanation on the scenario route, on the service and in the playground changes alike.
+- **A playground of its own** (card `playground-command`): `bin/regelspraak playground [--host H] [--port N]` starts
+  the workbench without a descriptor and a source, where it was only a route of `serve` with `PLAYGROUND=true`. It
+  offers no `?via=service`, and says why; `serve` with `PLAYGROUND=true` stays for that comparison.
 
 ## The pin
 
@@ -461,6 +464,7 @@ of `scenario --manifest` and the messages the service itself writes keep their D
 | `scenario [--trace] [--explanation] [--vocabulary <name>] <source.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL and on a source without a Scenario block, 3 on a MARKER; `--vocabulary` names the rules of the trace and the declarations of the explanation in a vocabulary of the model |
 | `scenario --manifest <manifest> [--exclusions <list>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
 | `serve <descriptor.service.json> <source.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--port N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?coverage` and `?fixpoint`, and the workbench's `?via=service` |
+| `playground [--host H] [--port N]` | the workbench alone, without a descriptor and a source (`GET /playground`, `POST /playground/analyse`; `docs/ENGINE.md`): it analyses the source the page posts, as the workbench of `serve` does; it serves no model, so `?via=service`, the comparison of a scenario with the answers of a served model, is a 400 that says why, and the page says the same; for that comparison start `serve` with `PLAYGROUND=true` and `--detail` |
 | `openapi [--vocabulary <name>] <out.json> <descriptor.service.json> <source.rgs...> \| <document.json>` | the OpenAPI document of the service, byte for byte what its `GET /openapi` sends (`docs/ENGINE.md`): the service is built as `serve` builds it, with markers allowed; `--vocabulary` names the declarations in a vocabulary of the model (`canonical`: the canonical names), an unknown one is exit 2. The description of an object type, an attribute, a characteristic and a parameter starts with the comment above its declaration |
 | `drl <source.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering), and on a name the resolver bound to no declaration, as `check` |
 | `graph [--mmd] <out> <source.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |

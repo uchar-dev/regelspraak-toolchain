@@ -29,6 +29,9 @@ usage: bin/regelspraak [--language nl|en] <command> [arguments]
                                         the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench;
                                         --detail or DETAIL=true: ?trace, ?coverage and ?fixpoint, and the
                                         workbench's ?via=service)
+  playground [--host H] [--port N]      the workbench alone, without a descriptor and a source: it analyses the
+                                        source the page posts; ?via=service, the comparison with a served model,
+                                        needs serve with PLAYGROUND=true
   openapi [--vocabulary <name>] <out.json> <descriptor.service.json> <source.rgs...> | <document.json>
                                         the OpenAPI document of the service, byte for byte the one GET /openapi
                                         sends (the service built with markers allowed); --vocabulary names the
@@ -159,6 +162,8 @@ case "$command" in
   serve)
     [ $# -gt 0 ] || fail "serve: geen descriptor en geen bron opgegeven"
     start "$SERVICE" "$@" ;;
+  playground)
+    start "$SERVICE" --playground "$@" ;;
   openapi)
     vocabulary=()
     if [ "${1:-}" = --vocabulary ]; then

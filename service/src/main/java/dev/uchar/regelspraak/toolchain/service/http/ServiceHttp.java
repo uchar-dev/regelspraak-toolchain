@@ -148,6 +148,28 @@ public final class ServiceHttp {
     }
 
     /**
+     * Bind the playground alone on {@code host}:{@code port}, without a service: {@code GET /playground} and
+     * {@code POST /playground/analyse}, every other path a 404. It analyses the source each request posts and has no
+     * served model, so {@code ?via=service} is a 400 that says why, and the page says the same
+     * ({@code bin/regelspraak playground}). Call {@link #start()} to begin serving.
+     */
+    public static ServiceHttp playground(String host, int port) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress(host, port), 0);
+        server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
+        ServiceHttp service = new ServiceHttp(null, null, server);
+        server.createContext("/playground/analyse", service::processPlaygroundAnalysis);
+        server.createContext("/playground", service::processPlaygroundPage);
+        server.createContext("/", service::processUnknown);
+        return service;
+    }
+
+    /** Why a playground without a service computes no scenario through one: the 400 of {@code ?via=service} and the
+     *  line on the page say it. */
+    static final String NO_SERVICE = "deze playground is zonder dienst gestart (bin/regelspraak playground) en"
+            + " vergelijkt geen scenario met de antwoorden van een dienst; start daarvoor bin/regelspraak serve met"
+            + " PLAYGROUND=true en --detail";
+
+    /**
      * Test seam: bind with an EXPLICIT {@code playground} flag so a test can force the dev-workbench routes on
      * without setting a process env var. Production always derives the flag from {@link #playgroundEnabled()}.
      */
@@ -400,6 +422,11 @@ public final class ServiceHttp {
                         Violation.Kind.MALFORMED, "via", "via kent alleen de waarde 'service', niet '" + via + "'")))));
                 return;
             }
+            if (via != null && core == null) {
+                send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(Violation.of(
+                        Violation.Kind.UNSUPPORTED, "via", NO_SERVICE)))));
+                return;
+            }
             if (via != null && !core.detail()) {
                 send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(Violation.of(
                         Violation.Kind.UNSUPPORTED, "via", "de dienst is zonder DETAIL gestart en rekent geen"
@@ -443,7 +470,20 @@ public final class ServiceHttp {
         }
     }
 
-    /** {@code GET /playground}: serve the one self-contained HTML page (a classpath resource, no build tooling). */
+    /** The place on the page where a playground without a service says why it offers no comparison with one. */
+    static final String VIA_PLACE = "<span class=\"hint\" id=\"via\"></span>";
+
+    /** The page of a playground without a service: {@link #NO_SERVICE} at {@link #VIA_PLACE}. */
+    private static byte[] withoutService(byte[] html) {
+        String page = new String(html, StandardCharsets.UTF_8);
+        if (!page.contains(VIA_PLACE))
+            throw new IllegalStateException("playground.html heeft geen plaats " + VIA_PLACE);
+        return page.replace(VIA_PLACE, "<span class=\"hint\" id=\"via\">" + NO_SERVICE + "</span>")
+                .getBytes(StandardCharsets.UTF_8);
+    }
+
+    /** {@code GET /playground}: serve the one self-contained HTML page (a classpath resource, no build tooling); a
+     *  playground without a service ({@link #playground}) says on it why it offers no {@code ?via=service}. */
     private void processPlaygroundPage(HttpExchange ex) throws IOException {
         try {
             if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -456,6 +496,7 @@ public final class ServiceHttp {
                 if (in == null) { send(ex, 500, errorBody("playground.html niet gevonden", null)); return; }
                 html = in.readAllBytes();
             }
+            if (core == null) html = withoutService(html);
             ex.getResponseHeaders().set("Content-Type", "text/html; charset=UTF-8");
             // Lock the dev workbench to its own inline JS/CSS plus the pinned, SRI-checked Mermaid CDN origin, so a
             // compromised or tampered CDN path cannot inject anything the page does not already allow.

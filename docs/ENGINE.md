@@ -384,7 +384,11 @@ refuse the start as well.
   well-formed (uchar's WF-128): from RegelSpraak the frontend refuses it (RGS-378) and the service does not start with
   that resolver error; a `uchar-ir-v1` document, which the service does not verify, gets as far as uchar's branch,
   which refuses it (DROOLS-315, a `contract` of its register), and the entry point is a marker with that sentence.
-- `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`). A source with a
+- `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`);
+  `bin/regelspraak playground [--host H] [--port N]` (`ServiceMain --playground`) serves the same two routes alone,
+  without a descriptor and a source, and every other path is a 404. Both analyse the source a request posts; only
+  `?via=service` (below) needs the served model, so the playground alone answers it with a 400 `UNSUPPORTED` on
+  `field` `via` that says why, and its page says the same. A source with a
   parse or resolver error gets its diagnostics and nothing else: `parse.errors` are the syntax errors of uchar's parse
   (`Resolver.parse`, the one its resolver reads), each with `line`, `column`, `message`, the offending `token` and the
   `expected` tokens, an error of the lexer without `token` and with `expected` empty. A clean source gets the

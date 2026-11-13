@@ -51,6 +51,13 @@ import java.util.List;
  * whether uchar carries them or not, so it is the one a service started with {@code --allow-markers} serves, and a
  * service started without it serves the same one or does not start. A start that fails exits as above; an unknown
  * vocabulary exits <b>2</b>, a wrong invocation.
+ *
+ * <h2>The playground without a service</h2>
+ * <pre>{@code
+ *   ServiceMain --playground [--host H] [--port N]
+ * }</pre>
+ * serves the playground alone ({@link ServiceHttp#playground}), without a descriptor and a source: it analyses the
+ * source each request posts. It prints its two routes and blocks; a wrong invocation exits <b>2</b>.
  */
 public final class ServiceMain {
 
@@ -68,6 +75,10 @@ public final class ServiceMain {
         dev.uchar.regelspraak.toolchain.engine.MessageLanguage.apply(null);
         if (rawArgs.length > 0 && rawArgs[0].equals("--openapi")) {
             System.exit(openapi(java.util.Arrays.copyOfRange(rawArgs, 1, rawArgs.length)));
+            return;
+        }
+        if (rawArgs.length > 0 && rawArgs[0].equals("--playground")) {
+            System.exit(playground(java.util.Arrays.copyOfRange(rawArgs, 1, rawArgs.length)));
             return;
         }
         Args args;
@@ -156,6 +167,55 @@ public final class ServiceMain {
 
     private static String name(DecisionCore core) {
         return core.descriptor().service() == null ? "?" : core.descriptor().service().name();
+    }
+
+    /** Parsed arguments of {@code --playground}. */
+    record PlaygroundArgs(String host, int port) {}
+
+    /** {@code --playground}: serve the playground without a service until the process ends; returns the exit code of
+     *  a start that failed. */
+    static int playground(String[] raw) {
+        PlaygroundArgs args;
+        try {
+            args = parsePlaygroundArgs(raw);
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            System.err.println("usage: ServiceMain --playground [--host H] [--port N]");
+            return EXIT_USAGE;
+        }
+        try {
+            ServiceHttp playground = ServiceHttp.playground(args.host(), args.port()).start();
+            System.out.println("playground luistert op poort " + playground.port() + ":");
+            System.out.println("  GET  /playground");
+            System.out.println("  POST /playground/analyse");
+            Thread.currentThread().join();
+            return 0;
+        } catch (IOException | InterruptedException e) {
+            System.err.println("kon de HTTP-server niet starten: " + e.getMessage());
+            return EXIT_OTHER;
+        }
+    }
+
+    /** Parse {@code [--host H] [--port N]}, with the defaults of {@link #parseArgs}. */
+    static PlaygroundArgs parsePlaygroundArgs(String[] raw) {
+        String host = "0.0.0.0";
+        int port = 8080;
+        for (int i = 0; i < raw.length; i++) {
+            String a = raw[i];
+            if (a.equals("--host")) {
+                if (i + 1 >= raw.length) throw new IllegalArgumentException("--host verwacht een adres");
+                host = raw[++i];
+            } else if (a.equals("--port")) {
+                if (i + 1 >= raw.length) throw new IllegalArgumentException("--port verwacht een getal");
+                try { port = Integer.parseInt(raw[++i]); }
+                catch (NumberFormatException nfe) { throw new IllegalArgumentException("--port verwacht een getal, kreeg '" + raw[i] + "'"); }
+            } else if (a.startsWith("--")) {
+                throw new IllegalArgumentException("onbekende optie: " + a);
+            } else {
+                throw new IllegalArgumentException("playground neemt geen descriptor en geen bron: '" + a + "'");
+            }
+        }
+        return new PlaygroundArgs(host, port);
     }
 
     /** Parsed arguments of {@code --openapi}. */
