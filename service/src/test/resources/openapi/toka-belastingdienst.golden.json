@@ -3614,7 +3614,7 @@
                 "attributes": {
                   "type": "object",
                   "additionalProperties": true,
-                  "description": "attribuutnaam -> waarde (of null bij leeg); een attribuut op een tijdlijn als {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]}, from of to weggelaten voor een open grens."
+                  "description": "attribuutnaam -> waarde (of null bij leeg); een attribuut op een tijdlijn als {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]}, from of to weggelaten voor een open grens. Een getal staat in precies de decimalen van zijn type (25.00 bij 2 decimalen, 25 bij een geheel getal), een getal van de onbegrensde vorm (Numeriek (getal)) met zijn eigen schaal."
                 },
                 "characteristics": {
                   "type": "object",
@@ -3999,7 +3999,7 @@
       },
       "Fixpoint": {
         "type": "object",
-        "description": "met de vlag fixpoint: wat aan het fixpunt van de sessie staat. Een instantie van het verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het antwoord; waar de canonieke naam verschilt, staat die ernaast onder <key>Canonical. Een waarde is een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg); een tijdlijn staat onder timeline. Een gedimensioneerd attribuut heeft een rij per cel, met haar labels onder labels.",
+        "description": "met de vlag fixpoint: wat aan het fixpunt van de sessie staat. Een instantie van het verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het antwoord; waar de canonieke naam verschilt, staat die ernaast onder <key>Canonical. Een waarde is een tekst (een getal in precies de decimalen van zijn type, een getal van de onbegrensde vorm met zijn eigen schaal; een datum; een enumeratiewaarde), een boolean of null (leeg); een tijdlijn staat onder timeline. Een gedimensioneerd attribuut heeft een rij per cel, met haar labels onder labels.",
         "properties": {
           "objects": {
             "type": "array",

@@ -338,6 +338,13 @@ writes one does not start:
   `CHARACTERISTIC_PERIODS_FAULT`. A 422 `NO_FIXPOINT` carries `code` and `params` too: EF-015 at the creation budget.
   A cycle in the links of the switch relation of an instance-ordered cycle is a 422 EF-033, where it was a 500.
   `docs/ENGINE.md` has the codes; the OpenAPI schemas `EvaluationFault`, `NoFixpoint` and `Fixpoint` describe them.
+- **A number in the decimals of its type** (card `number-scale-in-answer`): the answer writes a number of a type with
+  a finite number of decimals in exactly those decimals, as uchar writes a number in text (RUNTIME-SEMANTICS ch. 1.2),
+  in `instances`, in a segment, in a cell and as the text of a value in `fixpoint`: `"kwart": 25.00` for a
+  `Numeriek (getal met 2 decimalen)` that `zijn opbrengst gedeeld door 4` gave, where it was `25`, and
+  `"opbrengst": 100` for a whole number the request wrote as `100.0`, where it was `100.0`. As JSON numbers they are
+  the same; a caller that reads them with `BigDecimal.equals` or as text sees the change. A number of the unbounded
+  form keeps its own scale (`docs/ENGINE.md`).
 
 ## The pin
 

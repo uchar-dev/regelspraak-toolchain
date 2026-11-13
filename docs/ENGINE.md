@@ -126,7 +126,14 @@ refuse the start as well.
   decimals) or a text of digits with at most one point, written into the case in that plain form. A number with an
   exponent in its text (`"1.25E1"`), one whose value has a negative scale (a JSON number `1E+3`) and one whose digits
   written out exceed the 1000 characters the parser reads of a number (a JSON number `1E-20000000`) are a 400
-  `WRONG_TYPE`. An enumeration value names a declared value as uchar compares declared names (case and spacing aside),
+  `WRONG_TYPE`. The answer writes a number in exactly the decimals of its type, as uchar writes a number in text
+  (RUNTIME-SEMANTICS ch. 1.2, "Text coercion"; `AnswerBuilder.inDecimalsOf`), in `instances`, in a segment of a
+  timeline, in a cell and, as its text, in `fixpoint`: a `Numeriek (getal met 2 decimalen)` is `25.00` whether a rule
+  gave it as `zijn opbrengst gedeeld door 4` or the request wrote `25`, and a whole number the request wrote as
+  `100.0` is `100`. A number of the unbounded form (`Numeriek (getal)`) keeps its own scale, and one that does not
+  terminate is the decimal uchar puts on the bean (`ComputeHelpers.collapse`). Nothing is rounded: uchar writes only a
+  value that fits its type (EF-006 for a write, EF-004 for an input, ch. 2.4), so a value that does not fit is a broken
+  promise of uchar's and fails the request with a 500. An enumeration value names a declared value as uchar compares declared names (case and spacing aside),
   and keeps its own spelling. A date-time is read as ISO `yyyy-MM-ddTHH:mm[:ss[.SSS]]`, without an offset, and leaves
   the service in the case lexeme (`ValueCoder.dateTimeLexeme`): the seconds always written, a fraction of whole
   milliseconds where there is one (`2026-07-01T08:29:00`, `2026-07-01T08:29:00.500`), in the answer, the fixpoint,

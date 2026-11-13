@@ -730,7 +730,9 @@ public final class OpenApiEmitter {
         instProps.putObject("type").put("type", "string");
         freeObject(instProps.putObject("attributes"), "attribuutnaam -> waarde (of null bij leeg); een attribuut op een"
                 + " tijdlijn als {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]},"
-                + " from of to weggelaten voor een open grens.");
+                + " from of to weggelaten voor een open grens. Een getal staat in precies de decimalen van zijn type"
+                + " (25.00 bij 2 decimalen, 25 bij een geheel getal), een getal van de onbegrensde vorm (Numeriek"
+                + " (getal)) met zijn eigen schaal.");
         freeObject(instProps.putObject("characteristics"), "kenmerknaam -> boolean.");
 
         ObjectNode inc = props.putObject("inconsistencies");
@@ -898,7 +900,8 @@ public final class OpenApiEmitter {
         s.put("description", "met de vlag fixpoint: wat aan het fixpunt van de sessie staat. Een instantie van het"
                 + " verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het"
                 + " antwoord; waar de canonieke naam verschilt, staat die ernaast onder <key>Canonical. Een waarde is"
-                + " een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg);"
+                + " een tekst (een getal in precies de decimalen van zijn type, een getal van de onbegrensde vorm met zijn"
+                + " eigen schaal; een datum; een enumeratiewaarde), een boolean of null (leeg);"
                 + " een tijdlijn staat onder timeline. Een gedimensioneerd attribuut heeft een rij per cel, met haar"
                 + " labels onder labels.");
         ObjectNode props = s.putObject("properties");
