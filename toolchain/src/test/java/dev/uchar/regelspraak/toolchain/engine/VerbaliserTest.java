@@ -232,13 +232,43 @@ class VerbaliserTest {
                 u.get(0).explanation());
     }
 
-    /** A negative value that rounds to zero at the declared scale is written as zero, without a sign: "-0,00" is no
-     *  number the engine holds. A negative value that stays negative keeps its sign. */
-    @Test void negative_value_rounding_to_zero_has_no_sign() {
+    /** A zero is written without a sign, also where it comes as "-0.00": "-0,00" is no number the engine holds. A
+     *  negative value keeps its sign and every decimal the engine read: padded to the declared scale, never rounded,
+     *  so a small negative value is never written as zero. */
+    @Test void zero_has_no_sign_and_a_negative_value_is_not_rounded() {
         Datatype twoDecimals = new Datatype.Numeric(false, 2, Datatype.Sign.ONBEPAALD, null);
-        assertEquals("0,00", Verbaliser.nlNumber(new BigDecimal("-0.004"), twoDecimals));
-        assertEquals("-0,01", Verbaliser.nlNumber(new BigDecimal("-0.005"), twoDecimals));
+        assertEquals("0,00", Verbaliser.nlNumber(new BigDecimal("-0.00"), twoDecimals));
+        assertEquals("0,00", Verbaliser.nlNumber(new BigDecimal("-0"), twoDecimals));
+        assertEquals("-0,004", Verbaliser.nlNumber(new BigDecimal("-0.004"), twoDecimals));
+        assertEquals("-0,005", Verbaliser.nlNumber(new BigDecimal("-0.005"), twoDecimals));
         assertEquals("-1.234,50", Verbaliser.nlNumber(new BigDecimal("-1234.5"), twoDecimals));
+    }
+
+    static final String HALF = """
+            Objecttype de Vondst (mv: Vondsten)
+                de waarde Numeriek (getal met 2 decimalen);
+                is ruim kenmerk (bijvoeglijk);
+            Regel ruim
+            geldig altijd
+            Een Vondst is ruim
+            indien zijn waarde gedeeld door 2 groter is dan 0,505.
+            """;
+
+    /** An operand stands with the value the engine read, padded to the decimals of its type and never rounded to
+     *  them: 1,01 / 2 is 0,505, which is not greater than 0,505, and "0,51" would contradict the verdict. */
+    @Test void operand_is_not_rounded_to_its_declared_decimals() throws Exception {
+        ExplanationSession engine = ExplanationSession.of(HALF);
+        Object v1 = engine.newInstance("Vondst");
+        RegelSpraakRuntime.set(v1, Namen.ident("waarde", false), new BigDecimal("1.01"));
+        Object v2 = engine.newInstance("Vondst");
+        RegelSpraakRuntime.set(v2, Namen.ident("waarde", false), new BigDecimal("1.2"));
+        Map<String, Object> beans = new java.util.LinkedHashMap<>();
+        beans.put("V1", v1);
+        beans.put("V2", v2);
+        assertEquals(List.of(
+                "V1 is niet ruim, want niet geldt: zijn waarde gedeeld door 2 (0,505) is groter dan 0,505",
+                "V2 is ruim, omdat zijn waarde gedeeld door 2 (0,60) is groter dan 0,505"),
+                engine.explain(Naming.CANONICAL, "Vondst", beans));
     }
 
     public static final class Bean {

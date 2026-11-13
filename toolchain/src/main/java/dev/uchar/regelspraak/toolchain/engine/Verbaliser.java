@@ -2767,9 +2767,10 @@ public final class Verbaliser {
         return null;
     }
 
-    /** Getal in NL-notatie: punt als duizendtal-scheider, komma als decimaalteken. Percentages en getallen met
-     *  vaste decimalen behouden hun schaal; anders, ook in de onbegrensde vorm ({@code getal}, die geen decimalen
-     *  declareert), wordt de natuurlijke schaal van de waarde getoond. */
+    /** Getal in NL-notatie: punt als duizendtal-scheider, komma als decimaalteken. Een percentage of getal met
+     *  gedeclareerde decimalen wordt aangevuld tot die decimalen en nooit erop afgerond: een waarde die de motor met
+     *  meer decimalen las, staat er met al haar decimalen, zonder nullen achteraan voorbij de gedeclareerde. Zonder
+     *  gedeclareerde decimalen, ook in de onbegrensde vorm ({@code getal}), de natuurlijke schaal van de waarde. */
     static String nlNumber(BigDecimal b, Datatype type) {
         BigDecimal w = b;
         int decimals = -1;
@@ -2777,7 +2778,9 @@ public final class Verbaliser {
         else if (type instanceof Datatype.Numeric n && !n.wholeNumber()) decimals = n.decimals();
         else if (type instanceof Datatype.Percentage p && !p.wholeNumber()) decimals = p.decimals();
         else if (type instanceof Datatype.Numeric n && n.wholeNumber()) decimals = 0;
-        if (decimals >= 0) w = w.setScale(decimals, java.math.RoundingMode.HALF_UP);
+        // een afronding hier zette een waarde in de zin die de motor niet vergeleek
+        if (decimals >= 0 && w.scale() > decimals) w = w.stripTrailingZeros();
+        if (decimals >= 0 && w.scale() < decimals) w = w.setScale(decimals);
         String plain = w.abs().toPlainString();
         String whole = plain, fraction = "";
         int point = plain.indexOf('.');
@@ -2788,7 +2791,7 @@ public final class Verbaliser {
             if (i > 0 && (n - i) % 3 == 0) grouped.append('.');
             grouped.append(whole.charAt(i));
         }
-        // het teken van de afgeronde waarde: wat op nul afrondt, is geen negatief getal
+        // nul heeft geen teken, ook waar zij als "-0.00" binnenkomt
         String sign = w.signum() < 0 ? "-" : "";
         return sign + grouped + (fraction.isEmpty() ? "" : "," + fraction);
     }
