@@ -33,9 +33,8 @@ help:
 	@echo "  make scenario FILE=\"[--trace] [--explanation] a.rgs …\"   PASS / FAIL / MARKER per scenario"
 	@echo "  make serve FILE=\"d.service.json a.rgs …\" [PORT=…]   The decision service on the JDK HttpServer;"
 	@echo "                                       POST /<path>?explanation=true adds the explanation to the answer,"
-	@echo "                                       DETAIL=true answers ?trace, ?coverage and ?fixpoint,"
-	@echo "                                       PLAYGROUND=true binds the dev-only /playground workbench routes,"
-	@echo "                                       with DETAIL=true also /playground/analyse?via=service"
+	@echo "                                       DETAIL=true answers ?trace, ?coverage and ?fixpoint;"
+	@echo "                                       the workbench: bin/regelspraak playground"
 	@echo "  make drl FILE=\"a.rgs …\"             The DRL text of uchar's DRL-text branch on stdout (exit 3 if uchar refuses)"
 	@echo "  make graph FILE=\"a.rgs …\" [OUT=… MMD=1]  The rule graph as HTML (or bare Mermaid with MMD=1)"
 	@echo "  make facts [FILE=\"a.rgs …\"]         The fact beans, javac'd (out/facts/); no FILE: the TOKA model foundation"
@@ -163,7 +162,7 @@ scenario-test:
 		--exclusions scripts/toka-manifest-exclusions.txt
 
 # The decision service on the JDK HttpServer over a descriptor and its sources (or one uchar-ir-v1 document), in
-# the foreground. PORT defaults to the service's own 8080; PLAYGROUND=true binds the dev-only workbench routes.
+# the foreground. PORT defaults to the service's own 8080.
 serve:
 	@$(REGELSPRAAK) serve $(FILE) $(if $(PORT),--port $(PORT))
 

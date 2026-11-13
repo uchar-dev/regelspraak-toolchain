@@ -285,7 +285,7 @@ refuse the start as well.
   written back. With the detail flags the 422 carries `trace`, `coverage` and `fixpoint`, the limit among its faults.
   The Quarkus adapter answers the same; the OpenAPI 422 is one of `EvaluationFault`, `NoFixpoint` and `Limit`.
 - The detail of a session. A service started with `--detail` or `DETAIL=true` (Quarkus: `DETAIL=true`; default off,
-  as `PLAYGROUND`, and no part of the container contract) answers three more query flags, read as `explanation` is (`true`
+  and no part of the container contract) answers three more query flags, read as `explanation` is (`true`
   or bare), each adding a field after `explanation`: `?trace=true` gives `trace: [{rule, labels, count}]`, per form that
   fired, in the order a rule of it first fired, the request ids its matches bound and how often its rules fired, as
   uchar's `DroolsBackend.Observer` records them on the request's session; `?coverage=true` gives `coverage: [{rule,
@@ -384,12 +384,14 @@ refuse the start as well.
   well-formed (uchar's WF-128): from RegelSpraak the frontend refuses it (RGS-378) and the service does not start with
   that resolver error; a `uchar-ir-v1` document, which the service does not verify, gets as far as uchar's branch,
   which refuses it (DROOLS-315, a `contract` of its register), and the entry point is a marker with that sentence.
-- `PLAYGROUND=true` binds the dev-only workbench (`GET /playground`, `POST /playground/analyse`);
-  `bin/regelspraak playground [--host H] [--port N]` (`ServiceMain --playground`) serves the same two routes alone,
-  without a descriptor and a source, and every other path is a 404. Both analyse the source a request posts; only
-  `?via=service` (below) needs the served model, so the playground alone answers it with a 400 `UNSUPPORTED` on
-  `field` `via` that says why, and its page says the same. A source with a
-  parse or resolver error gets its diagnostics and nothing else: `parse.errors` are the syntax errors of uchar's parse
+- The dev-only workbench (`GET /playground`, `POST /playground/analyse`) has a command of its own; `serve` binds
+  neither route. `bin/regelspraak playground [--host H] [--port N]` (`ServiceMain --playground`) serves the two
+  routes alone, without a descriptor and a source, and every other path is a 404. `bin/regelspraak playground
+  <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]`
+  builds the service as `serve` does, with the same exit codes, and serves its routes and the two of the workbench in
+  one process. Both analyse the source a request posts; only `?via=service` (below) needs the served model, so the
+  playground alone answers it with a 400 `UNSUPPORTED` on `field` `via` that says why, and its page says the same.
+  A source with a parse or resolver error gets its diagnostics and nothing else: `parse.errors` are the syntax errors of uchar's parse
   (`Resolver.parse`, the one its resolver reads), each with `line`, `column`, `message`, the offending `token` and the
   `expected` tokens, an error of the lexer without `token` and with `expected` empty. A clean source gets the
   `uchar-ir-v1` document, the exec-model verdict (`executable` with the `coverage` and `generated`, or uchar's

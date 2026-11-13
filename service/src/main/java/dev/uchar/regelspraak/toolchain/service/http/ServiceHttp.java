@@ -144,7 +144,17 @@ public final class ServiceHttp {
      * unchanged); only the POST handling is delegated.
      */
     static ServiceHttp bindWith(DecisionCore core, Processor processor, String host, int port) throws IOException {
-        return bindWith(core, processor, host, port, playgroundEnabled());
+        return routes(core, processor, host, port, false);
+    }
+
+    /**
+     * Bind the playground beside the service of {@code core} on {@code host}:{@code port}: the routes of
+     * {@link #bind(DecisionCore, String, int)} and {@code GET /playground} and {@code POST /playground/analyse}, so
+     * that {@code ?via=service} computes a scenario through the entry points this process serves
+     * ({@code bin/regelspraak playground} with a descriptor). Call {@link #start()} to begin serving.
+     */
+    public static ServiceHttp playground(DecisionCore core, String host, int port) throws IOException {
+        return routes(core, core::process, host, port, true);
     }
 
     /**
@@ -166,14 +176,12 @@ public final class ServiceHttp {
     /** Why a playground without a service computes no scenario through one: the 400 of {@code ?via=service} and the
      *  line on the page say it. */
     static final String NO_SERVICE = "deze playground is zonder dienst gestart (bin/regelspraak playground) en"
-            + " vergelijkt geen scenario met de antwoorden van een dienst; start daarvoor bin/regelspraak serve met"
-            + " PLAYGROUND=true en --detail";
+            + " vergelijkt geen scenario met de antwoorden van een dienst; start daarvoor bin/regelspraak playground"
+            + " met een descriptor, zijn bron en --detail";
 
-    /**
-     * Test seam: bind with an EXPLICIT {@code playground} flag so a test can force the dev-workbench routes on
-     * without setting a process env var. Production always derives the flag from {@link #playgroundEnabled()}.
-     */
-    static ServiceHttp bindWith(DecisionCore core, Processor processor, String host, int port, boolean playground)
+    /** The routes of the service of {@code core}, and with {@code playground} those of the playground beside them;
+     *  {@code serve} never binds the playground, so a production service carries no development route. */
+    private static ServiceHttp routes(DecisionCore core, Processor processor, String host, int port, boolean playground)
             throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(host, port), 0);
         server.setExecutor(Executors.newVirtualThreadPerTaskExecutor());
@@ -183,8 +191,7 @@ public final class ServiceHttp {
             server.createContext("/" + path, service::processPost);
         server.createContext("/info", service::processInfo);
         server.createContext("/openapi", service::processOpenapi);
-        // DEV-ONLY playground: register the workbench routes ONLY when PLAYGROUND=true (default off). A production
-        // deploy leaves them entirely unbound — the paths then 404 via the catch-all below.
+        // without the playground its paths 404 through the catch-all below
         if (playground) {
             server.createContext("/playground/analyse", service::processPlaygroundAnalysis);
             server.createContext("/playground", service::processPlaygroundPage);
@@ -386,17 +393,11 @@ public final class ServiceHttp {
         }
     }
 
-    // ---------------- DEV-ONLY playground (env PLAYGROUND=true) ----------------
+    // ---------------- the playground (bin/regelspraak playground) ----------------
 
     /** Per-request compile budget for the playground (ms). A learner's snippet is tiny; a runaway analysis (e.g. a
      *  pathological grammar input) is capped so the dev workbench never wedges a thread indefinitely. */
     static final long PLAYGROUND_TIMEOUT_MS = 15_000;
-
-    /** The workbench is bound ONLY when env {@code PLAYGROUND=true} — a dev switch, default OFF, so a production
-     *  service never exposes the compile-per-request surface. Read once at bind time, never persisted. */
-    static boolean playgroundEnabled() {
-        return "true".equalsIgnoreCase(System.getenv("PLAYGROUND"));
-    }
 
     /** {@code POST /playground/analyse}: the request body is the raw RegelSpraak source (text/plain). It is analyzed
      *  compile-per-request under a timeout with NO persistence, and the {@link Playground} answer tree is written

@@ -80,7 +80,7 @@ class PlaygroundVocabularyTest {
               "parameters": {} }""";
         DecisionCore core = DecisionCore.assemble(descriptor, Map.of("b.rgs", SOURCE.substring(0, SOURCE.indexOf("Scenario"))),
                 CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
-        ServiceHttp service = ServiceHttp.bindWith(core, core::process, "127.0.0.1", 0, true).start();
+        ServiceHttp service = ServiceHttp.playground(core, "127.0.0.1", 0).start();
         try {
             HttpResponse<String> r = HttpClient.newHttpClient().send(HttpRequest.newBuilder(
                             URI.create("http://127.0.0.1:" + service.port() + "/playground/analyse?vocabulary=wetboek"))

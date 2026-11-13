@@ -22,10 +22,10 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The env-gated wiring of the dev playground over a real {@link ServiceHttp}. With the workbench flag ON,
- * {@code GET /playground} serves the HTML page and {@code POST /playground/analyse} returns the analyzer tree; with
- * the flag OFF (the production default) both paths 404 through the catch-all — proving the surface is truly
- * dev-only. The bind flag is forced via the {@link ServiceHttp#bindWith} test seam, so no process env is touched.
+ * The wiring of the playground over a real {@link ServiceHttp}. Bound beside a service
+ * ({@link ServiceHttp#playground(DecisionCore, String, int)}), {@code GET /playground} serves the HTML page and
+ * {@code POST /playground/analyse} returns the analyzer tree; the service alone ({@link ServiceHttp#bind}, what
+ * {@code serve} binds) answers both paths with a 404 through the catch-all.
  */
 class PlaygroundHttpTest {
 
@@ -60,7 +60,8 @@ class PlaygroundHttpTest {
     }
 
     private void serveer(boolean playground) throws IOException {
-        service = ServiceHttp.bindWith(core(), core()::process, "127.0.0.1", 0, playground).start();
+        service = (playground ? ServiceHttp.playground(core(), "127.0.0.1", 0) : ServiceHttp.bind(core(), "127.0.0.1", 0))
+                .start();
     }
 
     private HttpResponse<String> post(String path, String body) throws Exception {
@@ -105,7 +106,7 @@ class PlaygroundHttpTest {
     @Test
     void routes_are_404_when_playground_off() throws Exception {
         serveer(false);
-        // both dev paths fall through to the catch-all 404 when the workbench is off (the production default).
+        // the service alone, as serve binds it: both paths fall through to the catch-all 404
         assertEquals(404, get("/playground").statusCode());
         assertEquals(404, post("/playground/analyse", "Objecttype de Persoon (mv: Personen)").statusCode());
     }

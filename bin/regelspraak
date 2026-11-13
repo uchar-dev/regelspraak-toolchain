@@ -26,12 +26,13 @@ usage: bin/regelspraak [--language nl|en] <command> [arguments]
                                         --vocabulary names the rules and declarations of trace and explanation in a
                                         vocabulary of the model (canonical: the canonical names)
   serve <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]
-                                        the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench;
-                                        --detail or DETAIL=true: ?trace, ?coverage and ?fixpoint, and the
-                                        workbench's ?via=service)
-  playground [--host H] [--port N]      the workbench alone, without a descriptor and a source: it analyses the
-                                        source the page posts; ?via=service, the comparison with a served model,
-                                        needs serve with PLAYGROUND=true
+                                        the decision service on the JDK HttpServer (--detail or DETAIL=true:
+                                        ?trace, ?coverage and ?fixpoint)
+  playground [--host H] [--port N]      the workbench: it analyses the source the page posts
+  playground <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]
+                                        the workbench beside the service of that model, in one process: with
+                                        --detail or DETAIL=true its ?via=service compares a scenario with the
+                                        answers of the served entry points
   openapi [--vocabulary <name>] <out.json> <descriptor.service.json> <source.rgs...> | <document.json>
                                         the OpenAPI document of the service, byte for byte the one GET /openapi
                                         sends (the service built with markers allowed); --vocabulary names the

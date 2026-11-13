@@ -170,10 +170,10 @@ class PlaygroundViaServiceTest {
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
         berging = DecisionCore.assemble(BERGING_DESCRIPTOR, Map.of("berging.rgs", BERGING), CoreConfig.strict().withDetail(),
                 cl);
-        withDetail = ServiceHttp.bindWith(berging, berging::process, "127.0.0.1", 0, true).start();
+        withDetail = ServiceHttp.playground(berging, "127.0.0.1", 0).start();
         DecisionCore without = DecisionCore.assemble(BERGING_DESCRIPTOR, Map.of("berging.rgs", BERGING),
                 CoreConfig.strict(), cl);
-        withoutDetail = ServiceHttp.bindWith(without, without::process, "127.0.0.1", 0, true).start();
+        withoutDetail = ServiceHttp.playground(without, "127.0.0.1", 0).start();
     }
 
     @AfterAll

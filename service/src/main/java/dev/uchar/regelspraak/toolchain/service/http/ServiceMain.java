@@ -18,8 +18,9 @@ import java.util.List;
  * picks the address to bind (default {@code 0.0.0.0}, every interface); a local caller that binds a free port
  * passes {@code 127.0.0.1}, because a port free on every interface can still be bound on the loopback address
  * alone by another process, which then answers on it. {@code --detail}, or {@code DETAIL=true} in the environment,
- * starts the core with the details of a session on request ({@link CoreConfig#detail()}); default off, as
- * {@code PLAYGROUND}, since they show every intermediate value.
+ * starts the core with the details of a session on request ({@link CoreConfig#detail()}); default off, since they
+ * show every intermediate value. The service binds no playground route; the playground has a command of its own
+ * (below).
  *
  * <pre>{@code
  *   ServiceMain <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H]
@@ -52,12 +53,18 @@ import java.util.List;
  * service started without it serves the same one or does not start. A start that fails exits as above; an unknown
  * vocabulary exits <b>2</b>, a wrong invocation.
  *
- * <h2>The playground without a service</h2>
+ * <h2>The playground</h2>
  * <pre>{@code
  *   ServiceMain --playground [--host H] [--port N]
+ *   ServiceMain --playground <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail]
+ *              [--host H] [--port N]
  * }</pre>
- * serves the playground alone ({@link ServiceHttp#playground}), without a descriptor and a source: it analyses the
- * source each request posts. It prints its two routes and blocks; a wrong invocation exits <b>2</b>.
+ * serves the playground ({@link ServiceHttp#playground(String, int)}): it analyses the source each request posts.
+ * Without a descriptor it serves nothing else, and {@code ?via=service} is a 400 that says why. With a descriptor it
+ * builds the core as a start of the service does, with the same exit codes, and serves that service's routes beside
+ * the playground's in one process ({@link ServiceHttp#playground(DecisionCore, String, int)}), so that
+ * {@code ?via=service} computes a scenario through them; that needs {@code --detail} or {@code DETAIL=true}. It prints
+ * its routes and blocks; a wrong invocation exits <b>2</b>.
  */
 public final class ServiceMain {
 
@@ -92,17 +99,11 @@ public final class ServiceMain {
             return;
         }
 
-        CoreConfig config = args.allowMarkers() ? CoreConfig.withMarkers() : CoreConfig.strict();
-        if (args.detail() || "true".equalsIgnoreCase(System.getenv("DETAIL"))) config = config.withDetail();
         DecisionCore core;
         try {
-            core = DecisionCore.assemble(args.descriptor(), args.sources(), config,
-                    Thread.currentThread().getContextClassLoader());
+            core = assemble(args);
         } catch (ServiceError error) {
-            int code = exitCodeFor(error);
-            if (code == EXIT_MARKER) printMarkers(error);
-            else printViolations(error);
-            System.exit(code);
+            System.exit(startFailed(error));
             return;
         } catch (IOException ioe) {
             System.err.println("kon de dienst niet bouwen: " + ioe.getMessage());
@@ -120,6 +121,24 @@ public final class ServiceMain {
             System.err.println("kon de HTTP-server niet starten: " + e.getMessage());
             System.exit(EXIT_OTHER);
         }
+    }
+
+    /** The core of the descriptor and sources of {@code args}: markers allowed with {@code --allow-markers}, the
+     *  details of a session with {@code --detail} or {@code DETAIL=true}. */
+    static DecisionCore assemble(Args args) throws IOException {
+        CoreConfig config = args.allowMarkers() ? CoreConfig.withMarkers() : CoreConfig.strict();
+        if (args.detail() || "true".equalsIgnoreCase(System.getenv("DETAIL"))) config = config.withDetail();
+        return DecisionCore.assemble(args.descriptor(), args.sources(), config,
+                Thread.currentThread().getContextClassLoader());
+    }
+
+    /** Print why the core did not start ({@link #printMarkers} or {@link #printViolations}); returns the exit code
+     *  ({@link #exitCodeFor}). */
+    static int startFailed(ServiceError error) {
+        int code = exitCodeFor(error);
+        if (code == EXIT_MARKER) printMarkers(error);
+        else printViolations(error);
+        return code;
     }
 
     /**
@@ -169,23 +188,35 @@ public final class ServiceMain {
         return core.descriptor().service() == null ? "?" : core.descriptor().service().name();
     }
 
-    /** Parsed arguments of {@code --playground}. */
-    record PlaygroundArgs(String host, int port) {}
-
-    /** {@code --playground}: serve the playground without a service until the process ends; returns the exit code of
-     *  a start that failed. */
+    /** {@code --playground}: serve the playground, with a descriptor beside the service of its model, until the
+     *  process ends; returns the exit code of a start that failed. */
     static int playground(String[] raw) {
-        PlaygroundArgs args;
+        Args args;
         try {
             args = parsePlaygroundArgs(raw);
         } catch (IllegalArgumentException e) {
             System.err.println(e.getMessage());
-            System.err.println("usage: ServiceMain --playground [--host H] [--port N]");
+            System.err.println("usage: ServiceMain --playground [<descriptor.service.json> <source.rgs...> | "
+                    + "<document.json> [--allow-markers] [--detail]] [--host H] [--port N]");
             return EXIT_USAGE;
         }
+        DecisionCore core = null;
+        if (args.descriptor() != null) {
+            try {
+                core = assemble(args);
+            } catch (ServiceError error) {
+                return startFailed(error);
+            } catch (IOException ioe) {
+                System.err.println("kon de dienst niet bouwen: " + ioe.getMessage());
+                return EXIT_OTHER;
+            }
+            printStartWarnings(core);
+        }
         try {
-            ServiceHttp playground = ServiceHttp.playground(args.host(), args.port()).start();
-            System.out.println("playground luistert op poort " + playground.port() + ":");
+            ServiceHttp playground = core == null ? ServiceHttp.playground(args.host(), args.port()).start()
+                    : ServiceHttp.playground(core, args.host(), args.port()).start();
+            if (core == null) System.out.println("playground luistert op poort " + playground.port() + ":");
+            else printServingLines(core, playground.port());
             System.out.println("  GET  /playground");
             System.out.println("  POST /playground/analyse");
             Thread.currentThread().join();
@@ -196,26 +227,14 @@ public final class ServiceMain {
         }
     }
 
-    /** Parse {@code [--host H] [--port N]}, with the defaults of {@link #parseArgs}. */
-    static PlaygroundArgs parsePlaygroundArgs(String[] raw) {
-        String host = "0.0.0.0";
-        int port = 8080;
-        for (int i = 0; i < raw.length; i++) {
-            String a = raw[i];
-            if (a.equals("--host")) {
-                if (i + 1 >= raw.length) throw new IllegalArgumentException("--host verwacht een adres");
-                host = raw[++i];
-            } else if (a.equals("--port")) {
-                if (i + 1 >= raw.length) throw new IllegalArgumentException("--port verwacht een getal");
-                try { port = Integer.parseInt(raw[++i]); }
-                catch (NumberFormatException nfe) { throw new IllegalArgumentException("--port verwacht een getal, kreeg '" + raw[i] + "'"); }
-            } else if (a.startsWith("--")) {
-                throw new IllegalArgumentException("onbekende optie: " + a);
-            } else {
-                throw new IllegalArgumentException("playground neemt geen descriptor en geen bron: '" + a + "'");
-            }
-        }
-        return new PlaygroundArgs(host, port);
+    /** Parse the arguments of {@code --playground}: those of {@link #parseArgs}, where the descriptor and its sources
+     *  may be absent; {@code --allow-markers} and {@code --detail} only with them, since they set the service. */
+    static Args parsePlaygroundArgs(String[] raw) {
+        Args args = parseOptionalDescriptor(raw);
+        if (args.descriptor() == null && (args.allowMarkers() || args.detail()))
+            throw new IllegalArgumentException("--allow-markers en --detail gelden de dienst van een descriptor;"
+                    + " playground zonder descriptor kent ze niet");
+        return args;
     }
 
     /** Parsed arguments of {@code --openapi}. */
@@ -240,10 +259,7 @@ public final class ServiceMain {
             core = DecisionCore.assemble(args.descriptor(), args.sources(), CoreConfig.withMarkers(),
                     Thread.currentThread().getContextClassLoader());
         } catch (ServiceError error) {
-            int code = exitCodeFor(error);
-            if (code == EXIT_MARKER) printMarkers(error);
-            else printViolations(error);
-            return code;
+            return startFailed(error);
         } catch (IOException ioe) {
             System.err.println("kon de dienst niet bouwen: " + ioe.getMessage());
             return EXIT_USAGE;
@@ -293,6 +309,13 @@ public final class ServiceMain {
 
     /** Parse {@code <descriptor> <source...> [--allow-markers] [--detail] [--host H] [--port N]}. */
     static Args parseArgs(String[] raw) {
+        Args args = parseOptionalDescriptor(raw);
+        if (args.descriptor() == null) throw new IllegalArgumentException("geen descriptor (.service.json) opgegeven");
+        return args;
+    }
+
+    /** {@link #parseArgs} where the descriptor may be absent; a descriptor without a source is refused. */
+    private static Args parseOptionalDescriptor(String[] raw) {
         Path descriptor = null;
         List<Path> sources = new ArrayList<>();
         boolean allowMarkers = false;
@@ -320,8 +343,7 @@ public final class ServiceMain {
                 sources.add(Path.of(a));
             }
         }
-        if (descriptor == null) throw new IllegalArgumentException("geen descriptor (.service.json) opgegeven");
-        if (sources.isEmpty())
+        if (descriptor != null && sources.isEmpty())
             throw new IllegalArgumentException("geen bron opgegeven: .rgs-bestanden of één uchar-ir-v1-document");
         return new Args(descriptor, sources, allowMarkers, detail, host, port);
     }

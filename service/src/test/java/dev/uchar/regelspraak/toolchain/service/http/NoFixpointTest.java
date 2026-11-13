@@ -75,7 +75,7 @@ class NoFixpointTest {
         fragment = "creation budget exhausted: ";
         core = DecisionCore.assemble(DESCRIPTOR, Map.of("bron.rgs", source), CoreConfig.strict().withDetail(),
                 Thread.currentThread().getContextClassLoader());
-        service = ServiceHttp.bindWith(core, core::process, "127.0.0.1", 0, true).start();
+        service = ServiceHttp.playground(core, "127.0.0.1", 0).start();
     }
 
     @AfterAll
