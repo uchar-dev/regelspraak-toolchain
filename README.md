@@ -446,6 +446,7 @@ of `scenario --manifest` and the messages the service itself writes keep their D
 | `scenario [--trace] [--explanation] [--vocabulary <name>] <source.rgs...>` | lowering, uchar's replay and the report: PASS, FAIL or MARKER per scenario; exit 1 on a FAIL and on a source without a Scenario block, 3 on a MARKER; `--vocabulary` names the rules of the trace and the declarations of the explanation in a vocabulary of the model |
 | `scenario --manifest <manifest> [--exclusions <list>]` | every line `<verwachte-exit> <scenario.rgs> <companion.rgs...>` of a manifest, in one JVM; exit 0 when no line mismatches |
 | `serve <descriptor.service.json> <source.rgs...> \| <document.json> [--allow-markers] [--detail] [--host H] [--port N]` | the decision service on the JDK `HttpServer` (`docs/ENGINE.md`); `PLAYGROUND=true` binds the workbench routes; `--detail` or `DETAIL=true` answers `?trace`, `?coverage` and `?fixpoint`, and the workbench's `?via=service` |
+| `openapi [--vocabulary <name>] <out.json> <descriptor.service.json> <source.rgs...> \| <document.json>` | the OpenAPI document of the service, byte for byte what its `GET /openapi` sends (`docs/ENGINE.md`): the service is built as `serve` builds it, with markers allowed; `--vocabulary` names the declarations in a vocabulary of the model (`canonical`: the canonical names), an unknown one is exit 2. The description of an object type, an attribute, a characteristic and a parameter starts with the comment above its declaration |
 | `drl <source.rgs...>` | the DRL text of uchar's DRL-text branch, or exit 3 with uchar's refusal; exit 1 with uchar's sentence when that text does not compile (a fault of uchar's rendering), and on a name the resolver bound to no declaration, as `check` |
 | `graph [--mmd] <out> <source.rgs...>` | uchar's rule graph as an HTML page, or as Mermaid text |
 | `facts <outdir> <source.rgs...>` | the fact beans uchar's generator writes for the model |
@@ -495,7 +496,14 @@ outside the scope write refuses the start, naming the reader by its kind and nam
 reads, by its text and path), unless the entry point declares that element in `inputElements` or sets
 `scopeCheckOptOut`. A descriptor with a key its form does not have, at any level, does not start (a `MALFORMED`
 violation on the key's path, `entrypoints[0].outputs`), nor one whose entry point paths are not each one segment of
-the URL of its own: a path twice, `info`, `playground` or a path with a `/`.
+the URL of its own: a path twice, `info`, `openapi`, `playground` or a path with a `/`.
+
+`GET /openapi` serves the service's OpenAPI document, `?vocabulary=<name>` in a vocabulary of the model; `bin/regelspraak
+openapi` writes the same bytes without a running service. A caller reads there per entry point the input object types
+and output selectors, and per object type its attributes and characteristics with datatype, unit, markers, timeline
+form and dimensions. The `description` of an object type, an attribute, a characteristic and a parameter starts with
+the comment the author wrote directly above its declaration, verbatim, and then says the form; a service started on a
+`uchar-ir-v1` document has no comment there, since the IR carries none.
 
 ## Vocabularies
 
@@ -517,8 +525,8 @@ rules are written and computed in the canonical names. The distribution uses the
 - **Complete or not.** A declaration without a designation in the chosen vocabulary keeps its canonical name. uchar
   requires a designation of every declaration only in the default vocabulary; `/info` lists per vocabulary whether it
   is complete and which declarations have none.
-- **One OpenAPI document per vocabulary.** `OpenApiEmitter.emit(descriptor, model, vocabulary)` writes the contract
-  in the names of one vocabulary (or canonically); each property, value and entry point lists its other spellings in
+- **One OpenAPI document per vocabulary.** `GET /openapi?vocabulary=<name>` (`OpenApiEmitter.emit(descriptor, model,
+  vocabulary)`) gives the contract in the names of one vocabulary (or canonically); each property, value and entry point lists its other spellings in
   `x-spellings` / `x-valueSpellings`, which the service accepts as well. A model without vocabularies gets the
   document it always had.
 - **A designation is part of the contract.** Changing a designation changes the names a consumer of that vocabulary

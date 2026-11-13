@@ -338,8 +338,24 @@ refuse the start as well.
   ["marker"], "additionalProperties": false, "properties": {"marker": {"type": "string", "enum": ["onbekend", "niet van
   toepassing"]}}}`, the `enum` the markers the attribute declares. Every operation documents the flags `explanation`,
   `explanationParts`, `trace`, `coverage` and `fixpoint`; `Answer` has the fields they add, `EvaluationFault` those of
-  the detail, with the components `ExplanationPart` (recursive through `parts`), `Trace`, `Coverage` and `Fixpoint`. The 422 is one of `EvaluationFault`, `NoFixpoint` and `Limit`. The documents are written by the emitter's API
-  (`write`, file `<service>.<vocabulary>.json`); the service serves no route for them.
+  the detail, with the components `ExplanationPart` (recursive through `parts`), `Trace`, `Coverage` and `Fixpoint`. The 422 is one of `EvaluationFault`, `NoFixpoint` and `Limit`.
+- The `description` of an object type, of an attribute and of a characteristic starts with the comment the source
+  writes directly above its declaration, verbatim, its lines joined with a space; the generated description follows
+  after a full stop (none is added where the comment ends with one), and the sentence of the other spellings comes
+  last. The `description` of `parameters` in `Request` starts so with `'<name>': <comment>` for each parameter that has
+  a comment, in declaration order. The comment is the one uchar's frontend records for the declaration
+  (`RegelSpraakModel.declaration`): the line comments right above its first token, without `//`, up to an empty
+  line or a line that holds more than a comment, as the playground shows it. A declaration without a comment keeps
+  the generated description. A service started on a `uchar-ir-v1` document (`serve <document.json>`) has no comment,
+  because the IR carries none: its document has the generated descriptions only.
+- `GET /openapi` serves the document over the service's own descriptor and model: `?vocabulary=<name>` or
+  `?vocabulary=canonical` chooses the names as at an entry point, without it the canonical document; an unknown
+  vocabulary is a 400 `UNKNOWN_VOCABULARY`, as at an entry point. The body is the emitter's canonical serialisation
+  (`OpenApiEmitter.toBytes`: two-space indent, `\n`, one trailing newline), the Quarkus adapter sends the same bytes
+  (`ServiceHttp.openapi`), and `bin/regelspraak openapi [--vocabulary <name>] <out.json> <descriptor.service.json>
+  <source.rgs...>` writes them without a running service: it builds the service as `serve` does, with markers allowed,
+  since the document describes the descriptor's entry points whether uchar carries them or not. The document itself
+  describes the entry points and `GET /info`, not `GET /openapi`. No entry point takes the path `openapi`.
 - A name the resolver bound to no declaration, an `Unresolved` node in the document an entry point builds or in the
   document the service is given, refuses the start, also with `--allow-markers` (exit 1, a `MALFORMED` violation on
   `source` per node: `onopgeloste naam 'hij een minderjarig is' in de regel 'bijvoeglijk', bronregel 6`): it is a fault
