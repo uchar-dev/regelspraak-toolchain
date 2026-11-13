@@ -235,11 +235,11 @@ class ExplanationComputationTest {
     }
 
     /** A rule on a timeline target writes a timeline: the sentence names the periods it decided with their values, as
-     *  uchar names them per period ({@code DroolsBackend.periodDecisionsOf}), and gives no computation. The day count
+     *  uchar names them per period ({@code DroolsBackend.periodDecisionsOf}), and its computation. The day count
      *  decides every day (uchar's RUNTIME-SEMANTICS ch. 3.1, 3.9): a month without a true day counts 0, open at both
      *  ends, so a jutter that is never borgplichtig has the timeline 0 on all time, not an empty one. */
     @Test
-    void a_timeline_target_gets_its_periods_and_no_computation() {
+    void a_timeline_target_gets_its_periods_and_its_computation() {
         String document = """
                 Objecttype de Jutter (mv: Jutters) (bezield)
                     is borgplichtig kenmerk (bijvoeglijk) voor elke maand;
@@ -263,15 +263,18 @@ class ExplanationComputationTest {
                 """;
         assertEquals(List.of(
                 "J1 heeft als borgdagen 0 tot 01-01-2024, 22 van 01-01-2024 tot 01-02-2024, 13 van 01-02-2024 tot"
-                        + " 01-03-2024 en 0 vanaf 01-03-2024 volgens de regel 'borgdagen' (onvoorwaardelijk)",
-                "J2 heeft als borgdagen altijd 0 volgens de regel 'borgdagen' (onvoorwaardelijk)"),
+                        + " 01-03-2024 en 0 vanaf 01-03-2024 volgens de regel 'borgdagen' (onvoorwaardelijk): het aantal"
+                        + " dagen in de maand dat hij borgplichtig is",
+                "J2 heeft als borgdagen altijd 0 volgens de regel 'borgdagen' (onvoorwaardelijk): het aantal dagen in"
+                        + " de maand dat hij borgplichtig is"),
                 explanation(document));
     }
 
     /** The total of a timeline of the subject is no fold over a set: it has no members. The engine reads the timeline
      *  under it whole (RUNTIME-SEMANTICS ch. 5.12), here one the period arithmetic of a time-dependent parameter
      *  wrote, with a 0 open before and after the parameter's periods (ch. 3.4), and the explanation writes it as
-     *  RegelSpraak writes periods. */
+     *  RegelSpraak writes periods. The bootheffing names per period it decided the havenheffing in that period, and
+     *  the aantal boten, which it read as one value, once. */
     @Test
     void a_total_over_a_timeline_names_its_periods_and_no_members() {
         String document = """
@@ -305,7 +308,10 @@ class ExplanationComputationTest {
                 """;
         assertEquals(List.of(
                 "J1 heeft als bootheffing 0,00 tot 01-12-2023, 5,00 van 01-12-2023 tot 01-01-2024, 6,00 van 01-01-2024"
-                        + " tot 01-03-2024 en 0,00 vanaf 01-03-2024 volgens de regel 'bootheffing' (onvoorwaardelijk)",
+                        + " tot 01-03-2024 en 0,00 vanaf 01-03-2024 volgens de regel 'bootheffing' (onvoorwaardelijk):"
+                        + " de havenheffing maal zijn aantal boten, met zijn aantal boten (2); tot 01-12-2023 met de"
+                        + " havenheffing (leeg); van 01-12-2023 tot 01-01-2024 met de havenheffing (2,50); van 01-01-2024"
+                        + " tot 01-03-2024 met de havenheffing (3,00); vanaf 01-03-2024 met de havenheffing (leeg)",
                 "J1 heeft als totale bootheffing 17,00 volgens de regel 'totale bootheffing' (onvoorwaardelijk): (het"
                         + " totaal van zijn bootheffing) rekenkundig afgerond op 2 decimalen, met het totaal van zijn"
                         + " bootheffing (17,00) en zijn bootheffing (0,00 tot 01-12-2023, 5,00 van 01-12-2023 tot"
@@ -313,6 +319,10 @@ class ExplanationComputationTest {
                         + " 17"),
                 explanation(document));
     }
+
+    /** The timeline the day count, the binder and the Let of the gedeeltelijke maand have alike (ch. 5.12). */
+    private static final String COUNTED = "0 tot 01-11-2025, 15 van 01-11-2025 tot 01-12-2025, 12 van 01-03-2026 tot"
+            + " 01-04-2026 en 0 vanaf 01-04-2026";
 
     /** A time-dependent characteristic a rule writes within a window holds in periods (RUNTIME-SEMANTICS ch. 3.10,
      *  3.11), and the sentence names them. Two rules write one timeline on their own days, each where its condition per
@@ -362,11 +372,13 @@ class ExplanationComputationTest {
         assertEquals(List.of(
                 "A1 is rentedragend van 16-11-2025 tot 13-03-2026 volgens de regel 'rentedragend'",
                 "A1 heeft als rentedagen 30 dg/mnd van 01-12-2025 tot 01-03-2026 volgens de regel 'rentedagen in een"
-                        + " gehele maand', omdat hij gedurende de gehele maand rentedragend is (van 01-12-2025 tot"
-                        + " 01-03-2026), en 0 dg/mnd tot 01-11-2025, 15 dg/mnd van 01-11-2025 tot 01-12-2025, 12 dg/mnd"
-                        + " van 01-03-2026 tot 01-04-2026 en 0 dg/mnd vanaf 01-04-2026 volgens de regel 'rentedagen in"
-                        + " een gedeeltelijke maand', omdat hij niet gedurende de gehele maand rentedragend is (tot"
-                        + " 01-12-2025 en vanaf 01-03-2026)"),
+                        + " gehele maand': 30 dg/mnd, omdat hij gedurende de gehele maand rentedragend is (van 01-12-2025"
+                        + " tot 01-03-2026), en 0 dg/mnd tot 01-11-2025, 15 dg/mnd van 01-11-2025 tot 01-12-2025, 12"
+                        + " dg/mnd van 01-03-2026 tot 01-04-2026 en 0 dg/mnd vanaf 01-04-2026 volgens de regel"
+                        + " 'rentedagen in een gedeeltelijke maand': de getelde dagen, met het aantal dagen in de maand"
+                        + " dat hij rentedragend is (" + COUNTED + ") en de getelde dagen is het aantal dagen in de maand"
+                        + " dat hij rentedragend is (" + COUNTED + "), omdat hij niet gedurende de gehele maand"
+                        + " rentedragend is (tot 01-12-2025 en vanaf 01-03-2026)"),
                 explanation(document));
     }
 

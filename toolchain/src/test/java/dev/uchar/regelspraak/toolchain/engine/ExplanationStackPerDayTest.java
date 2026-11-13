@@ -69,13 +69,13 @@ class ExplanationStackPerDayTest {
     @Test
     void an_initialisation_decides_per_period_the_days_the_rules_and_the_input_leave() {
         assertEquals(List.of(
-                "J2 heeft als voorjaarsloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'voorjaarsloon', omdat van"
+                "J2 heeft als voorjaarsloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'voorjaarsloon': 20, omdat van"
                         + " dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025), en 5 tot 01-01-2025 en 5"
-                        + " vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat de voorjaarsloon in de invoer"
+                        + " vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon': 5, omdat de voorjaarsloon in de invoer"
                         + " leeg was; de invoerwaarde 10 van 01-01-2025 tot 01-03-2025 bleef staan",
-                "J2 heeft als stormloon 3 van 01-02-2025 tot 01-04-2025 volgens de regel 'standaardstormloon', omdat hij"
+                "J2 heeft als stormloon 3 van 01-02-2025 tot 01-04-2025 volgens de regel 'standaardstormloon': 3, omdat hij"
                         + " stormwacht is (van 01-02-2025 tot 01-04-2025)",
-                "J2 heeft als wachtloon altijd 20 volgens de regel 'wachtloon' (onvoorwaardelijk); verdrongen: de regel"
+                "J2 heeft als wachtloon altijd 20 volgens de regel 'wachtloon' (onvoorwaardelijk): 20; verdrongen: de regel"
                         + " 'standaardwachtloon'"),
                 explained(INITIALISATION).explanation());
     }
@@ -134,19 +134,23 @@ class ExplanationStackPerDayTest {
         String made = "«\"meld de jutter\"»(J1)#1";
         assertEquals(List.of(
                 "J1 heeft als seizoensloontotaal 10 van 01-01-2025 tot 01-03-2025 en 20 van 01-03-2025 tot 01-09-2025"
-                        + " volgens de regel 'seizoensloontotaal' (onvoorwaardelijk)",
+                        + " volgens de regel 'seizoensloontotaal' (onvoorwaardelijk): de som van het seizoensloon van"
+                        + " alle meldingen van de Jutter (10 van 01-01-2025 tot 01-03-2025 en 20 van 01-03-2025 tot"
+                        + " 01-09-2025): over " + made + " (10 van 01-01-2025 tot 01-03-2025 en 20 van 01-03-2025 tot"
+                        + " 01-09-2025), het enige lid met een waarde",
                 "J1 heeft een Melding " + made + " volgens de regel 'meld de jutter' (onvoorwaardelijk): met als"
                         + " seizoensloon zijn strandloon (10 van 01-01-2025 tot 01-07-2025), als aanvulloon zijn"
                         + " strandloon (10 van 01-01-2025 tot 01-07-2025) en als meldloon zijn strandloon (10 van"
                         + " 01-01-2025 tot 01-07-2025)",
-                made + " heeft als seizoensloon 20 van 01-03-2025 tot 01-09-2025 volgens de regel 'seizoensloon', omdat van"
+                made + " heeft als seizoensloon 20 van 01-03-2025 tot 01-09-2025 volgens de regel 'seizoensloon': 20, omdat van"
                         + " dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de bij de objectcreatie"
                         + " toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan",
                 made + " heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf 01-07-2025 volgens de regel"
-                        + " 'standaardaanvulloon', omdat de aanvulloon bij de objectcreatie leeg was; de bij de"
+                        + " 'standaardaanvulloon': 5, omdat de aanvulloon bij de objectcreatie leeg was; de bij de"
                         + " objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025 bleef staan",
                 made + " houdt als meldloon de bij de objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025,"
-                        + " want de regel 'meldloon uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets"),
+                        + " want de regel 'meldloon uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets:"
+                        + " zijn toeslag (altijd leeg)"),
                 sentences);
     }
 

@@ -396,7 +396,7 @@ class TimelineHttpTest {
                 "J4 heeft als stormtoelage altijd 0 volgens 'geen stormtoelage': 0, omdat de stormtoelage in de invoer"
                         + " leeg was",
                 "J4 heeft als berekende strandloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'strandloon in"
-                        + " het voorjaar', omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025)",
+                        + " het voorjaar': 20, omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025)",
                 "J4 heeft geen berekende stormtoelage, want geen regel gold; de regel 'stormtoelage' gold op geen dag,"
                         + " want niet geldt: hij stormwacht is (altijd leeg)"),
                 sentences, r.body());
@@ -406,7 +406,8 @@ class TimelineHttpTest {
     }
 
     /** case6 of uchar's anchor/jutterswet-borgdeel with the explanation: the rule decides January and February, and
-     *  the sentence names those days with their value and the days on which the input 99 stood. */
+     *  the sentence names those days with their value, its computation with the borgtarief in those days, and the
+     *  days on which the input 99 stood. */
     @Test
     void the_explanation_of_an_ordinary_writer_beside_the_input_names_its_days_and_the_input() throws Exception {
         HttpResponse<String> r = post(borgdeel, "borgdeel", "explanation=true", """
@@ -418,7 +419,9 @@ class TimelineHttpTest {
         assertEquals(200, r.statusCode(), r.body());
         String sentence = tree(r.body()).at("/explanation/0").asText();
         assertEquals("J1 heeft als borgdeel 12,00 van 01-01-2024 tot 01-03-2024 volgens de regel 'borgdeel van een"
-                + " jutter' (onvoorwaardelijk); de invoerwaarde 99,00 van 01-03-2024 tot 01-04-2024 bleef staan",
+                + " jutter' (onvoorwaardelijk): het tijdsevenredig deel per maand van zijn borgtarief gedurende de tijd"
+                + " dat hij borgplichtig is, van 01-01-2024 tot 01-03-2024 met zijn borgtarief (12,00); de invoerwaarde"
+                + " 99,00 van 01-03-2024 tot 01-04-2024 bleef staan",
                 sentence, r.body());
     }
 

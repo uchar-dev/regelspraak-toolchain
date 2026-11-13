@@ -30,6 +30,7 @@ import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.transpiler.tms.Period;
 import dev.uchar.regelspraak.transpiler.tms.PeriodArithmetic;
 import dev.uchar.regelspraak.transpiler.tms.PeriodDecisions;
+import dev.uchar.regelspraak.transpiler.tms.Span;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -129,7 +130,9 @@ import java.util.regex.Pattern;
  * zonder voorwaarde heeft; wat het doel houdt waar geen regel schreef, komt uit uchars lezing van het fixpunt: de
  * invoerwaarde, of "de afgeleide waarde" waar iets anders dan de regels van de zin haar afleidde. Een tijdsafhankelijk
  * attribuut noemt per regel de perioden die zij besliste, met hun waarde, en de perioden waarin de invoer bleef staan,
- * uit {@link DroolsBackend#periodDecisionsOf}.
+ * uit {@link DroolsBackend#periodDecisionsOf}, en per periode die zij besliste haar operanden met hun tijdlijn in die
+ * periode. Een vouw over de tijdlijnen van leden noemt elk lid met wat het bijdroeg: zijn tijdlijn, of bij een totaal
+ * zijn totaal met de tijdlijn waaruit het kwam.
  *
  * <p><b>Bronverwijzing.</b> Een regel draagt de {@code // Bron:}-annotaties die direct boven haar kop staan
  * ({@link ResolvedRule#statuteAnnotations}; op de draad {@code statuteAnnotations}, uchars IR-SPEC ch. 3.1, WF-082),
@@ -1472,7 +1475,8 @@ public final class Verbaliser {
      * declaratie of vouwt zij over een verzameling, dan is die knoop de regeltekst zelf, met zijn waarde, en de
      * regeltekst van een {@code Let} is die van haar lichaam, want haar brontekst is de definitie van haar binder; een
      * binder staat er met de tekst van zijn definitie. Een vouw over een verzameling noemt haar leden met wat elk
-     * bijdroeg ({@link Part.Kind#MEMBERS}), en haar filter, als dat één kenmerkcheck of één lezing is, als regeltekst met
+     * bijdroeg ({@link Part.Kind#MEMBERS}; bij een totaal over de tijdlijnen van de leden ook de tijdlijn die elk lid
+     * aan het fixpunt houdt), en haar filter, als dat één kenmerkcheck of één lezing is, als regeltekst met
      * de sleutels van die declaratie. Na de waarden de waarde vóór elke afronding en vóór elke begrenzing. Een knoop die
      * de motor niet bereikte (de tak van een keuze) staat er zonder waarde. Elke waarde komt uit de lezing van de regel:
      * de knopen van haar waarde volgen in de nummering op die van haar voorwaarde (ch. 5.12), en een regel zonder
@@ -1480,8 +1484,8 @@ public final class Verbaliser {
      * fixpunt: de invoerwaarde, of de afgeleide waarde waar iets anders haar afleidde.
      *
      * <p>Een regel op een tijdlijn-doel schreef de perioden die zij besliste, met hun waarde ({@code timeline: true} op
-     * de waarde), zonder berekening; de zin noemt ook de perioden waarin de invoer bleef staan
-     * ({@link #timelineSentence}).
+     * de waarde), en haar berekening met per periode die zij besliste haar operanden ({@link #timelineComputation}); de
+     * zin noemt ook de perioden waarin de invoer bleef staan ({@link #timelineSentence}).
      *
      * <p>Een gedimensioneerd attribuut wordt per cel geschreven (uchars WF-125), dus elke cel die een regel schrijft
      * krijgt haar eigen zin, over de schrijvers van die cel, met de cel als naam ({@link #cellName}).
@@ -1641,7 +1645,7 @@ public final class Verbaliser {
                 else value(b, render(standing.value(), type.attribute(member)), false, standing.value());
                 for (int i = 0; i < wrote.size(); i++) {
                     b.text(i == 0 ? " volgens " : ", en volgens ");
-                    decider(b, wrote.get(i), member, false, false, false);
+                    decider(b, wrote.get(i), member, null, false, false);
                 }
                 for (Allocated a : allocationWrote) {
                     b.text(wrote.isEmpty() ? " volgens " : ", en volgens ");
@@ -1656,7 +1660,7 @@ public final class Verbaliser {
                 int i = 0;
                 for (Writer w : empty) {
                     if (i++ > 0) b.text(", en ");
-                    decider(b, w, member, false, true, stands);
+                    decider(b, w, member, null, true, stands);
                 }
                 for (Allocated a : allocationEmpty) {
                     if (i++ > 0) b.text(", en ");
@@ -1809,11 +1813,15 @@ public final class Verbaliser {
                         + label + ", een tijdsafhankelijk attribuut dat de regels van het document schrijven");
             Datatype datatype = type.attribute(member);
             Map<String, List<String>> periods = new LinkedHashMap<>();
+            Map<String, List<Period>> decided = new HashMap<>();
             List<String> input = new ArrayList<>();
             for (PeriodDecisions.Span s : p.spans()) {
-                for (DefaultsDecision.Decider r : s.rules())
+                for (DefaultsDecision.Decider r : s.rules()) {
                     periods.computeIfAbsent(r.pointer(), k -> new ArrayList<>())
                             .add(inPeriod(render(r.decision(), datatype), s.from(), s.to()));
+                    decided.computeIfAbsent(r.pointer(), k -> new ArrayList<>()).add(new Period(s.from(), s.to(),
+                            (Object) null));
+                }
                 if (s.input() != null) input.add(inPeriod(render(s.input(), datatype), s.from(), s.to()));
             }
             List<Writer> wrote = new ArrayList<>(), empty = new ArrayList<>();
@@ -1843,7 +1851,7 @@ public final class Verbaliser {
                     if (i > 0) b.text(", en ");
                     b.leaf(Part.Kind.VALUE, joined(periods.get(wrote.get(i).pointer())), Part.meta("timeline", true));
                     b.text(" volgens ");
-                    decider(b, wrote.get(i), member, true, false, false);
+                    decider(b, wrote.get(i), member, decided.get(wrote.get(i).pointer()), false, false);
                 }
                 if (!input.isEmpty())
                     b.text("; " + standingValue(bean) + " ")
@@ -1858,7 +1866,7 @@ public final class Verbaliser {
                     if (undecided(w) == Undecided.HELD_ON_DAYS_WITH_A_VALUE) {
                         b.text("de regel '").leaf(Part.Kind.RULE, formName(w)).text("' ");
                         onlyOnDaysWithAValue(b, w);
-                    } else decider(b, w, member, true, true, stands);
+                    } else decider(b, w, member, List.of(), true, stands);
                 }
             }
             for (Writer w : writers) if (!deciders.contains(w)) variant(b, w);
@@ -1923,9 +1931,12 @@ public final class Verbaliser {
          *  gaf, en met {@code inputStands} ook dat zij daarom niets besliste, waar het doel zijn invoerwaarde houdt
          *  (uchars RUNTIME-SEMANTICS ch. 3.11: een lege waarde beslist niets). Een initialisatie zonder voorwaarde gold
          *  omdat het doel in de invoer leeg was ({@link #emptyBefore}), zoals de zin van een initialisatie in een stapel
-         *  het zegt; op een tijdlijndoel beslist zij zo de dagen die de regels en de invoer leeg laten (ch. 7.8). */
-        private void decider(Sentence.Builder b, Writer w, String member, boolean timeline, boolean gaveNothing,
+         *  het zegt; op een tijdlijndoel beslist zij zo de dagen die de regels en de invoer leeg laten (ch. 7.8).
+         *  {@code decided} zijn op een tijdlijndoel de perioden die de regel besliste, waarin de zin haar berekening
+         *  noemt ({@link #timelineComputation}), en null op een doel zonder tijdlijn. */
+        private void decider(Sentence.Builder b, Writer w, String member, List<Period> decided, boolean gaveNothing,
                              boolean inputStands) {
+            boolean timeline = decided != null;
             ResolvedRule r = w.rule();
             b.text("de regel '").leaf(Part.Kind.RULE, formName(w)).text("'");
             if (gaveNothing) b.text(" gaf geen waarde");
@@ -1933,7 +1944,8 @@ public final class Verbaliser {
             boolean initialisation = r.kind() == ResolvedRule.Kind.INITIALISATIE;
             if (c == null && !initialisation) b.text(" (onvoorwaardelijk)");
             if (gaveNothing && inputStands) b.text(" en besliste niets");
-            if (!timeline) computation(b, r.value(), writtenByUchar(r), valueRead(w));
+            if (timeline) timelineComputation(b, w, decided);
+            else computation(b, r.value(), writtenByUchar(r), valueRead(w));
             if (c != null) {
                 Read conditionRead = read(w.pointer(), bean, label, c);
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
@@ -2055,11 +2067,9 @@ public final class Verbaliser {
             List<Object> nodes = document.positions().subtree(root);
             b.open(Part.Kind.COMPUTATION, Map.of()).text(": ");
             Map<Object, String> definitions = definitions(nodes);
-            String rootKind = kindOf(root);
             // een lezing, parameter of vouw over een verzameling of over cellen is de regeltekst zelf, met haar waarde;
             // een ingebouwde functie of een aggregatie over haar argumenten noemt wat zij las
-            boolean single = READ_KINDS.contains(rootKind) || overASet(root, read) || overCells(root);
-            if (single) {
+            if (single(root, read)) {
                 operand(b, root, read, ucharText, definitions);
             } else {
                 // de brontekst van een Let is de definitie van haar binder; de berekening is haar lichaam
@@ -2067,6 +2077,24 @@ public final class Verbaliser {
                 while (body instanceof Expr.Let l) body = l.body();
                 describe(b, body, ucharText);
             }
+            List<Expr> operands = operands(root, nodes, read);
+            for (int i = 0; i < operands.size(); i++) {
+                b.text(i == 0 ? ", met " : i == operands.size() - 1 ? " en " : ", ");
+                operand(b, operands.get(i), read, ucharText, definitions);
+            }
+            beforeRounding(b, nodes, read);
+            b.close(Part.Kind.COMPUTATION);
+        }
+
+        /** Of de waarde {@code root} één declaratie leest of over een verzameling of cellen vouwt: dan is die knoop
+         *  de regeltekst zelf, met zijn waarde. */
+        private boolean single(Expr root, Read read) {
+            return READ_KINDS.contains(kindOf(root)) || overASet(root, read) || overCells(root);
+        }
+
+        /** De knopen onder {@code root} die de berekening als operand noemt ({@link #OPERAND_KINDS}), met een eigen
+         *  lezing, elke brontekst één keer, in de volgorde van het document. */
+        private List<Expr> operands(Expr root, List<Object> nodes, Read read) {
             Set<Object> covered = java.util.Collections.newSetFromMap(new IdentityHashMap<>());
             if (root instanceof Expr.DimensionCellRead) covered.addAll(nodes);
             Set<String> seen = new HashSet<>();
@@ -2078,10 +2106,75 @@ public final class Verbaliser {
                 if (e instanceof Expr.DimensionCellRead) covered.addAll(document.positions().subtree(e));
                 if (seen.add(operandKey(e))) operands.add(e);
             }
-            for (int i = 0; i < operands.size(); i++) {
-                b.text(i == 0 ? ", met " : i == operands.size() - 1 ? " en " : ", ");
-                operand(b, operands.get(i), read, ucharText, definitions);
+            return operands;
+        }
+
+        /**
+         * Hoe een regel op een tijdlijndoel haar waarde berekende, met de dubbele punt ervoor, per periode die zij
+         * besliste ({@code decided}, de perioden van {@link DroolsBackend#periodDecisionsOf}): de regeltekst, dan de
+         * operanden die de motor als één waarde las één keer, zoals {@link #computation}, en per periode de operanden
+         * die hij als tijdlijn las of niet bereikte, elk met zijn tijdlijn in die periode ("tot 01-04-2024 met zijn
+         * strandloon (100 van 01-01-2024 tot 01-04-2024) en zijn stormtoeslag (leeg); van …"). De lezing van de regel
+         * draagt elke knoop onder de wortel als de tijdlijn die hij las of berekende (RUNTIME-SEMANTICS ch. 5.12); de
+         * zin snijdt die alleen op de perioden. Zonder besliste periode, waar de waarde (of het lichaam van haar
+         * {@code Let}) één declaratie of binder leest of over een verzameling of cellen vouwt, of zonder operand die
+         * een tijdlijn las, is het de berekening van {@link #computation}.
+         */
+        private void timelineComputation(Sentence.Builder b, Writer w, List<Period> decided) {
+            Expr root = w.rule().value();
+            Read read = valueRead(w);
+            boolean ucharText = writtenByUchar(w.rule());
+            List<Object> nodes = document.positions().subtree(root);
+            List<Expr> operands = operands(root, nodes, read);
+            // een operand die de motor niet bereikte, heeft in geen periode een waarde en staat bij die per periode
+            List<Expr> once = new ArrayList<>(), perPeriod = new ArrayList<>();
+            for (Expr e : operands)
+                (read.reached(e) && !(read.of(e).value() instanceof List<?>) ? once : perPeriod).add(e);
+            // de brontekst van een Let is de definitie van haar binder; de berekening is haar lichaam, en leest dat
+            // alleen de binder, dan heeft elke knoop de tijdlijn die de regel schrijft (ch. 5.12)
+            Expr body = root;
+            while (body instanceof Expr.Let l) body = l.body();
+            if (decided.isEmpty() || single(body, read) || perPeriod.stream().noneMatch(read::reached)) {
+                computation(b, root, ucharText, read);
+                return;
             }
+            Map<Object, String> definitions = definitions(nodes);
+            b.open(Part.Kind.COMPUTATION, Map.of()).text(": ");
+            describe(b, body, ucharText);
+            for (int i = 0; i < once.size(); i++) {
+                b.text(i == 0 ? ", met " : i == once.size() - 1 ? " en " : ", ");
+                operand(b, once.get(i), read, ucharText, definitions);
+            }
+            for (int p = 0; p < decided.size(); p++) {
+                Period in = decided.get(p);
+                b.text(p == 0 && once.isEmpty() ? ", " : "; ").text(periodText(in.from(), in.to()));
+                for (int i = 0; i < perPeriod.size(); i++) {
+                    b.text(i == 0 ? " met " : i == perPeriod.size() - 1 ? " en " : ", ");
+                    operandIn(b, perPeriod.get(i), read, ucharText, definitions, in);
+                }
+            }
+            beforeRounding(b, nodes, read);
+            b.close(Part.Kind.COMPUTATION);
+        }
+
+        /** Een operand die de motor als tijdlijn las, met die tijdlijn in periode {@code in} ({@link #within}): leeg
+         *  waar zij daar geen waarde heeft; een vouw over een verzameling met haar leden in die periode. Een operand
+         *  die de motor niet bereikte, staat er zonder waarde. */
+        private void operandIn(Sentence.Builder b, Expr e, Read read, boolean ucharText,
+                               Map<Object, String> definitions, Period in) {
+            Expr.FunctionCall fold = overASet(e, read) ? (Expr.FunctionCall) e : null;
+            if (fold != null) foldText(b, fold);
+            else if (definitions.containsKey(e)) b.leaf(Part.Kind.QUOTE, definitions.get(e));
+            else describe(b, e, ucharText, readOn(e, read));
+            if (!read.reached(e)) return;
+            ConditionReading.NodeReading n = read.of(e);
+            Object v = within((List<?>) n.value(), in);
+            reading(b, renderRead(e, v, n.unit()), v == null, v);
+            if (fold != null) contributors(b, fold, n, in);
+        }
+
+        /** Na de waarden de waarde vóór elke afronding en vóór elke begrenzing die de motor bereikte. */
+        private void beforeRounding(Sentence.Builder b, List<Object> nodes, Read read) {
             for (Object n : nodes) {
                 if (!read.has(n) || !read.reached(n)) continue;
                 if (n instanceof Expr.Rounding r) {
@@ -2092,7 +2185,6 @@ public final class Verbaliser {
                     value(b, unrounded(c.base(), read), read.of(c.base()).value() == null, read.of(c.base()).value());
                 }
             }
-            b.close(Part.Kind.COMPUTATION);
         }
 
         /** Per binder-lezing onder {@code nodes} de tekst van de definitie van haar binder ({@code Daarbij geldt}): de
@@ -2244,11 +2336,18 @@ public final class Verbaliser {
          *  die zij telt; die van elke andere vouw de leden met een waarde, want een lid met een lege waarde draagt niets
          *  bij (uchars RUNTIME-SEMANTICS ch. 5.12), dus zonder bijdrager zegt de zin niet dat er geen lid is. */
         private void contributors(Sentence.Builder b, Expr.FunctionCall f, ConditionReading.NodeReading n) {
+            contributors(b, f, n, null);
+        }
+
+        /** {@link #contributors(Sentence.Builder, Expr.FunctionCall, ConditionReading.NodeReading)}, met {@code in} de
+         *  periode waarin de zin de vouw noemt, of null voor al haar dagen: in een periode draagt een lid zijn tijdlijn
+         *  in die periode bij, en een lid wiens tijdlijn daar leeg is niets (RUNTIME-SEMANTICS ch. 3.5). Een totaal
+         *  zonder filter over een tijdlijn van zijn leden noemt bij elk lid naast zijn totaal de tijdlijn die het
+         *  aan het fixpunt houdt, waaruit dat totaal kwam. */
+        private void contributors(Sentence.Builder b, Expr.FunctionCall f, ConditionReading.NodeReading n, Period in) {
             boolean count = f.kind() == Expr.FunctionKind.AANTAL || f.kind() == Expr.FunctionKind.AANTAL_GEVULDE;
             String withValue = f.kind() == Expr.FunctionKind.AANTAL ? "" : " met een waarde";
-            // een totaal zonder filter over een tijdlijn van zijn leden: bij elk lid ook de tijdlijn waaruit zijn
-            // totaal kwam, zoals het die aan het fixpunt houdt
-            String totalled = f.kind() == Expr.FunctionKind.TOTAAL && f.filter() == null
+            String totalled = in == null && f.kind() == Expr.FunctionKind.TOTAAL && f.filter() == null
                     && f.arguments().size() == 1 && f.arguments().get(0) instanceof Expr.AttributeReference ref
                     && ref.objectType() != null && ref.objectType().granularityOf(ref.attribute()) != null
                     ? ref.attribute() : null;
@@ -2265,7 +2364,12 @@ public final class Verbaliser {
                             + label + " heeft geen naam: de uitleg noemt de objecten van de invoer en de gemaakte"
                             + " objecten van het fixpunt, en dit " + c.member().getClass().getSimpleName()
                             + " is geen van beide");
-                members.add(new java.util.AbstractMap.SimpleImmutableEntry<>(name, c.value()));
+                Object value = c.value();
+                if (in != null && value instanceof List<?> timeline) {
+                    value = within(timeline, in);
+                    if (value == null) continue;
+                }
+                members.add(new java.util.AbstractMap.SimpleImmutableEntry<>(name, value));
                 if (totalled != null) {
                     EndState.Member held = member(c.member(), totalled, false, null);
                     if (held != null) timelines.put(name, held.value());
@@ -2382,8 +2486,8 @@ public final class Verbaliser {
     /** Eén kenmerktoekenning op een tijdsafhankelijk kenmerk voor één instantie (RUNTIME-SEMANTICS ch. 3.10, 3.11): de
      *  regel kent het kenmerk toe in de perioden waarin haar voorwaarde geldt, en de bean houdt die ware perioden. De
      *  zin noemt ze zoals RegelSpraak een periode schrijft, met de regel: {@code "A1 is rentedragend van 16-11-2025 tot
-     *  13-03-2026 volgens de regel 'rentedragend'"}, zonder de voorwaarde, zoals de zin van een tijdlijndoel geen
-     *  berekening geeft. Zonder ware periode geldt het kenmerk op geen dag: {@code "… is niet rentedragend volgens de
+     *  13-03-2026 volgens de regel 'rentedragend'"}, zonder de voorwaarde.
+     *  Zonder ware periode geldt het kenmerk op geen dag: {@code "… is niet rentedragend volgens de
      *  regel '…'"}. */
     private Sentence periodAssignment(String label, Object bean, Expr.AttributeReference ref, ResolvedRule r) {
         String characteristic = ref.attribute();
@@ -3157,6 +3261,25 @@ public final class Verbaliser {
     private static String inPeriod(String value, LocalDate from, LocalDate to) {
         boolean always = from.equals(Period.OPEN_FROM) && to.equals(Period.OPEN_TO);
         return always ? periodText(from, to) + " " + value : value + " " + periodText(from, to);
+    }
+
+    /** Tijdlijn {@code timeline}, zoals de motor haar las, in periode {@code in}: null waar zij daar op geen dag een
+     *  waarde heeft, de ene waarde waar één segment de hele periode vult, en anders haar segmenten met een waarde in
+     *  die periode, afgesneden op haar grenzen. */
+    private static Object within(List<?> timeline, Period in) {
+        List<Span<?>> out = new ArrayList<>();
+        for (Object s : timeline) {
+            if (!(s instanceof Span<?> span))
+                throw new IllegalStateException("de motor las een tijdlijn met een segment van de vorm "
+                        + s.getClass().getName() + ", dat de uitleg niet kent");
+            if (span.value() == null) continue;
+            LocalDate from = span.from().isAfter(in.from()) ? span.from() : in.from();
+            LocalDate to = span.to().isBefore(in.to()) ? span.to() : in.to();
+            if (from.isBefore(to)) out.add(span.between(from, to));
+        }
+        if (out.isEmpty()) return null;
+        Span<?> first = out.get(0);
+        return out.size() == 1 && first.from().equals(in.from()) && first.to().equals(in.to()) ? first.value() : out;
     }
 
     /** Segmenten achter elkaar, met "en" voor het laatste. */

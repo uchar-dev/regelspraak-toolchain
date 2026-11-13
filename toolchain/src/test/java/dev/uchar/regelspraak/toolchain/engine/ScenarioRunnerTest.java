@@ -139,7 +139,8 @@ class ScenarioRunnerTest {
                 "J1 heeft als strandloon 20 van 01-03-2025 tot 01-06-2025 volgens 'berekende strandloon'"
                         + " (onvoorwaardelijk): zijn berekende strandloon (20 van 01-03-2025 tot 01-06-2025)",
                 "J1 heeft als berekende strandloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'strandloon in"
-                        + " het voorjaar', omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025)"),
+                        + " het voorjaar': 20, omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot"
+                        + " 01-06-2025)"),
                 u.get(0).explanation());
         assertNotNull(u.get(0).session(), u.get(0).sessionError());
     }

@@ -80,10 +80,10 @@ class ExplanationHeldOnNoDayTest {
         assertEquals(List.of(
                 "J1 houdt als stormloon de invoerwaarde 7 van 01-01-2025 tot 01-03-2025, want geen regel gold; de regel"
                         + " 'stormloon' gold op geen dag, want niet geldt: hij stormwacht is (altijd leeg)",
-                "J1 heeft als kustloon 30 van 01-03-2025 tot 01-06-2025 volgens de regel 'kustloon', omdat hij kustwacht"
+                "J1 heeft als kustloon 30 van 01-03-2025 tot 01-06-2025 volgens de regel 'kustloon': 30, omdat hij kustwacht"
                         + " is (van 01-03-2025 tot 01-06-2025); de regel 'standaardkustloon' gold op geen dag, want niet"
                         + " geldt: hij stormwacht is (altijd leeg)",
-                "J1 heeft geen havenloon, want de regel 'havenloon' gaf geen waarde, omdat hij kustwacht is (van"
+                "J1 heeft geen havenloon, want de regel 'havenloon' gaf geen waarde: zijn toeslag (altijd leeg), omdat hij kustwacht is (van"
                         + " 01-03-2025 tot 01-06-2025); de regel 'havenloon in de storm' gold op geen dag, want niet"
                         + " geldt: hij stormwacht is (altijd leeg)",
                 "J1 heeft geen wachtloon, want geen regel gold; de regel 'standaardwachtloon' gold op geen dag, want"
@@ -157,14 +157,14 @@ class ExplanationHeldOnNoDayTest {
     @Test
     void an_initialisation_whose_condition_holds_only_on_days_with_a_value_says_so() {
         assertEquals(List.of(
-                "J1 heeft als stormloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'stormloon', omdat van dd."
+                "J1 heeft als stormloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'stormloon': 20, omdat van dd."
                         + " 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025); de regel 'standaardstormloon'"
                         + " gold alleen op dagen die al een waarde hadden: hij stormwacht is (van 01-03-2025 tot"
                         + " 01-06-2025)",
                 "J1 houdt als kustloon de invoerwaarde 7 van 01-01-2025 tot 01-01-2026, want de regel"
                         + " 'standaardkustloon' gold alleen op dagen die al een waarde hadden: hij stormwacht is (van"
                         + " 01-03-2025 tot 01-06-2025)",
-                "J1 heeft als havenloon 20 van 01-03-2025 tot 01-04-2025 volgens de regel 'havenloon', omdat van dd."
+                "J1 heeft als havenloon 20 van 01-03-2025 tot 01-04-2025 volgens de regel 'havenloon': 20, omdat van dd."
                         + " 01-03-2025 tot dd. 01-04-2025 (van 01-03-2025 tot 01-04-2025); de regel 'standaardhavenloon'"
                         + " gaf geen waarde en besliste niets"),
                 explained(DAYS_WITH_A_VALUE).explanation());
