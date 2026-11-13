@@ -63,6 +63,13 @@ import java.util.List;
  * document's vocabulary in {@code x-vocabulaire}. A model without vocabularies gets none of this, so its document is
  * the one it always was.
  *
+ * <p><b>The comment of a declaration.</b> The description of an object type, of an attribute and of a characteristic
+ * starts with the comment the source writes directly above its declaration, verbatim, its lines joined with a space,
+ * and the generated description follows; the description of {@code parameters} starts so with the comment of each
+ * parameter, after its name. uchar's frontend records that comment in the model ({@link RegelSpraakModel#declaration});
+ * a model read from a {@code uchar-ir-v1} document has none, and its document carries the generated descriptions
+ * only.
+ *
  * <p><b>What a request asks beside its body.</b> Every operation documents the flags {@code explanation} and
  * {@code explanationParts} and the detail flags {@code trace}, {@code dekking} and {@code fixpunt}, which a service
  * gives only when it was started with detail ({@link CoreConfig#detail()}) and otherwise refuses with a 400; the fields
@@ -112,7 +119,7 @@ public final class OpenApiEmitter {
         ObjectNode schemas = components.putObject("schemas");
         for (ObjectType ot : model.objectTypes.values())
             schemas.set(componentName(ot, sp.in), objectTypeSchema(ot, model, sp));
-        schemas.set("Request", requestSchema());
+        schemas.set("Request", requestSchema(model, sp.in));
         schemas.set("Answer", answerSchema());
         schemas.set("Error", errorSchema());
         schemas.set("EvaluationFault", evaluationFaultSchema());
@@ -375,6 +382,7 @@ public final class OpenApiEmitter {
                     ? timelineSchema(e.getValue(), markers, ot.granularityOf(e.getKey()), sp)
                     : ot.dimensionsOf(e.getKey()).isEmpty() ? valueSchema(e.getValue(), markers, sp)
                     : cellsSchema(e.getValue(), markers, ot.dimensionsOf(e.getKey()), model, sp);
+            comment(attribute, model, Naming.attributeOf(ot, e.getKey()));
             if (sp.enabled()) spellings(attribute, sp.of(Naming.attributeOf(ot, e.getKey())));
             props.set(name, attribute);
         }
@@ -391,11 +399,13 @@ public final class OpenApiEmitter {
                 kn.put("description", "characteristic");
                 characteristics.add(name);
             }
+            comment(kn, model, Naming.characteristicOf(ot, k));
             if (sp.enabled()) spellings(kn, sp.of(Naming.characteristicOf(ot, k)));
             props.set(name, kn);
         }
         schema.set("properties", props);
         schema.put("description", objectTypeDescription(ot, sp.in, characteristics, withPeriods));
+        comment(schema, model, Designatable.objectType(ot.name));
         if (sp.enabled()) spellings(schema, sp.of(Designatable.objectType(ot.name)));
         return schema;
     }
@@ -405,8 +415,36 @@ public final class OpenApiEmitter {
     private static void spellings(ObjectNode node, ObjectNode spellings) {
         String sentence = Spellings.sentence(spellings);
         String own = node.has("description") ? node.get("description").asText() : "";
-        node.put("description", own.isEmpty() ? sentence : own + (own.endsWith(".") ? " " : ". ") + sentence);
+        node.put("description", joined(own, sentence));
         node.set("x-spellings", spellings);
+    }
+
+    /** The description of {@code node} starts with the comment the source writes directly above {@code element}
+     *  ({@link #comment(RegelSpraakModel, Designatable)}), the description it had behind it. The comment is what the
+     *  declaration means to its author (its source, its statute articles), which the generated sentence cannot say. */
+    private static void comment(ObjectNode node, RegelSpraakModel model, Designatable element) {
+        String comment = comment(model, element);
+        if (comment.isEmpty()) return;
+        String own = node.has("description") ? node.get("description").asText() : "";
+        node.put("description", joined(comment, own));
+    }
+
+    /** The comment directly above the declaration of {@code element}, as uchar's frontend records it
+     *  ({@link RegelSpraakModel#declaration}), its lines joined with a space; empty without one, and for a model read
+     *  from a {@code uchar-ir-v1} document, which carries no comment. An empty comment line adds nothing, so two
+     *  lines around it stay one space apart. */
+    private static String comment(RegelSpraakModel model, Designatable element) {
+        return model.declaration(element)
+                .map(d -> String.join(" ", d.comment().stream().filter(line -> !line.isEmpty()).toList()))
+                .orElse("");
+    }
+
+    /** {@code first} and then {@code second}, a full stop between them where {@code first} has none; either alone
+     *  where the other is empty. */
+    private static String joined(String first, String second) {
+        if (first.isEmpty()) return second;
+        if (second.isEmpty()) return first;
+        return first + (first.endsWith(".") ? " " : ". ") + second;
     }
 
     private static String objectTypeDescription(ObjectType ot, Naming in, List<String> characteristics,
@@ -599,8 +637,10 @@ public final class OpenApiEmitter {
     // ------------------------------------------------------------------ generic request/response/fout schemas
 
     /** The generic request schema, honest to {@link RequestMapper}: instanties[{type,id,attributen,kenmerken,
-     *  rollen}], relaties[{feittype,rollen}], parameters (free-form object), rekendatum (ISO date). */
-    private static ObjectNode requestSchema() {
+     *  rollen}], relaties[{feittype,rollen}], parameters (free-form object), rekendatum (ISO date). The description
+     *  of {@code parameters} starts with the comment above each parameter that has one, in declaration order, each
+     *  after the parameter's name in the document's names. */
+    private static ObjectNode requestSchema(RegelSpraakModel model, Naming in) {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "Een beslissingsverzoek: gelabelde object-instanties met attribuut-/kenmerk-waarden"
@@ -628,9 +668,14 @@ public final class OpenApiEmitter {
         ObjectNode parameters = props.putObject("parameters");
         parameters.put("type", "object");
         parameters.put("additionalProperties", true);
-        parameters.put("description", "parameternaam -> waarde; overschrijft de descriptor-defaults. Een"
-                + " tijdsafhankelijke parameter (voor elke maand) neemt zijn tijdlijn: {\"timeline\": [{\"from\": <datum>,"
-                + " \"to\": <datum>, \"value\": <waarde>}, ...]}, from of to weggelaten voor een open grens.");
+        String commented = "";
+        for (String p : model.parameters.keySet()) {
+            String comment = comment(model, Designatable.parameter(p));
+            if (!comment.isEmpty()) commented = joined(commented, "'" + in.parameter(p) + "': " + comment);
+        }
+        parameters.put("description", joined(commented, "parameternaam -> waarde; overschrijft de descriptor-defaults."
+                + " Een tijdsafhankelijke parameter (voor elke maand) neemt zijn tijdlijn: {\"timeline\": [{\"from\":"
+                + " <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]}, from of to weggelaten voor een open grens."));
 
         // instanties[]
         ObjectNode instances = props.putObject("instances");

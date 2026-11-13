@@ -1,0 +1,974 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Jutterswet commentaar",
+    "version": "1",
+    "description": "De namen in dit document zijn die van het vocabulaire 'handboek'. De dienst neemt in een verzoek elke naam aan: canoniek of als benaming in het vocabulaire 'handboek', ook gemengd; x-spellings en x-valueSpellings noemen ze. Een naam die zo twee declaraties noemt is een 400 (AMBIGUOUS_NAME), tenzij de queryparameter inputVocabulary het vocabulaire vastzet; de queryparameter vocabulary kiest de namen van het antwoord. Een gewijzigde benaming is een wijziging van dit contract.",
+    "x-vocabulary": "handboek"
+  },
+  "paths": {
+    "/premie": {
+      "post": {
+        "operationId": "premie",
+        "summary": "premie",
+        "description": "Entrypoint 'premie'. Invoer-objecttypen: strandjutter, Vondst. Uitvoer-selectoren: Vondst.premie, strandjutter.totale premie, strandjutter:premiewaardig. De dienst neemt ook de spellingen van x-spellings aan.",
+        "x-spellings": {
+          "canonical": {
+            "input": [
+              "Jutter",
+              "Vondst"
+            ],
+            "output": [
+              "Vondst.premie",
+              "Jutter.vondstbedrag",
+              "Jutter:premiewaardig"
+            ]
+          }
+        },
+        "parameters": [
+          {
+            "name": "vocabulary",
+            "in": "query",
+            "required": false,
+            "description": "Het vocabulaire waarin het antwoord de declaraties noemt; zonder: de canonieke namen. Een declaratie zonder benaming in het gekozen vocabulaire draagt haar canonieke naam; GET /info noemt die declaraties per vocabulaire. Een onbekend vocabulaire is een 400 (UNKNOWN_VOCABULARY).",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "canonical",
+                "handboek"
+              ]
+            }
+          },
+          {
+            "name": "inputVocabulary",
+            "in": "query",
+            "required": false,
+            "description": "Zet het vocabulaire vast waarin de namen van het verzoek gelezen worden; zonder wordt elke naam gelezen als canonieke naam of als benaming in elk vocabulaire.",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "canonical",
+                "handboek"
+              ]
+            }
+          },
+          {
+            "name": "explanation",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation, een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "explanationParts",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt explanation en daarnaast explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat, elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "trace",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (UNSUPPORTED, met de naam van de vlag als field). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "coverage",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt coverage (schema Coverage): per vorm van dit entrypoint of een regel ervan vuurde. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (UNSUPPORTED, met de naam van de vlag als field). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          },
+          {
+            "name": "fixpoint",
+            "in": "query",
+            "required": false,
+            "description": "true: het antwoord krijgt fixpoint (schema Fixpoint): wat aan het fixpunt staat, met de instanties van het verzoek als invoer. De dienst geeft dit alleen als hij met DETAIL gestart is; anders is de vlag een 400 (UNSUPPORTED, met de naam van de vlag als field). Een 422 krijgt het veld ook.",
+            "schema": {
+              "type": "boolean"
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Request"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "beslissing berekend",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Answer"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "verzoek valideert niet — het antwoord noemt het foutieve veld",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "onbekend pad",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "de regels geven op deze invoer een evaluatiefout: status EVALUATION_FAULT, per fout code, params en error (uchars zin); of de sessie bereikt geen fixpunt: status NO_FIXPOINT, met uchars zin, code en params; of uchars Drools-tak houdt een waarde niet: status LIMIT, met code en uchars zin",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/EvaluationFault"
+                    },
+                    {
+                      "$ref": "#/components/schemas/NoFixpoint"
+                    },
+                    {
+                      "$ref": "#/components/schemas/Limit"
+                    }
+                  ]
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "uchar draagt dit entrypoint niet: status MARKER, met uchars reden",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "interne fout (geen stacktrace gelekt)",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Error"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/info": {
+      "get": {
+        "operationId": "info",
+        "summary": "dienst-info",
+        "description": "De dienst-identiteit, de per-regel Coverage-verdicten, de overgeslagen (marker) regels en de parameter-defaults.",
+        "responses": {
+          "200": {
+            "description": "dienst-info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Info"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Strandjutter": {
+        "type": "object",
+        "properties": {
+          "totale premie": {
+            "type": "number",
+            "description": "het totaal van de premies van de vondsten die de jutter aanmeldde. De dienst neemt ook 'vondstbedrag' (canonical) aan.",
+            "x-spellings": {
+              "canonical": "vondstbedrag"
+            }
+          },
+          "naam": {
+            "type": "string",
+            "description": "De dienst neemt ook 'naam' (canonical) aan.",
+            "x-spellings": {
+              "canonical": "naam"
+            }
+          },
+          "premiewaardig": {
+            "type": "boolean",
+            "description": "Bron: Jutterswet art. 5 lid 2 · lemma's: premiewaardig. characteristic. De dienst neemt ook 'premiewaardig' (canonical) aan.",
+            "x-spellings": {
+              "canonical": "premiewaardig"
+            }
+          },
+          "ingeschreven": {
+            "type": "boolean",
+            "description": "characteristic. De dienst neemt ook 'ingeschreven' (canonical) aan.",
+            "x-spellings": {
+              "canonical": "ingeschreven"
+            }
+          }
+        },
+        "description": "Bron: Jutterswet art. 2 · lemma's: jutter iemand die het strand afzoekt naar aangespoelde voorwerpen. Objecttype 'strandjutter'. Kenmerken (boolean-eigenschappen): premiewaardig, ingeschreven. De dienst neemt ook 'Jutter' (canonical) aan.",
+        "x-spellings": {
+          "canonical": "Jutter"
+        }
+      },
+      "Vondst": {
+        "type": "object",
+        "properties": {
+          "gewicht": {
+            "type": "number",
+            "description": "De dienst neemt ook 'gewicht' (canonical) aan.",
+            "x-spellings": {
+              "canonical": "gewicht"
+            }
+          },
+          "premie": {
+            "type": "number",
+            "description": "De dienst neemt ook 'premie' (canonical) aan.",
+            "x-spellings": {
+              "canonical": "premie"
+            }
+          }
+        },
+        "description": "Objecttype 'Vondst'. De dienst neemt ook 'Vondst' (canonical) aan.",
+        "x-spellings": {
+          "canonical": "Vondst"
+        }
+      },
+      "Request": {
+        "type": "object",
+        "description": "Een beslissingsverzoek: gelabelde object-instanties met attribuut-/kenmerk-waarden en rol-relaties, plus optionele parameter-overrides en rekendatum.",
+        "required": [
+          "instances"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "asOfDate": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO-datum (yyyy-MM-dd); optioneel. De ÉÉN datumautoriteit: dezelfde datum selecteert de parameterset-vintage EN is de rekendatum-global. Gelijk aan 'rekendatum' (alias); beide meegeven met verschillende waarden is een 400."
+          },
+          "rekendatum": {
+            "type": "string",
+            "format": "date",
+            "description": "ISO-datum (yyyy-MM-dd); optioneel. Alias van 'asOfDate' (dezelfde datumautoriteit)."
+          },
+          "parameters": {
+            "type": "object",
+            "additionalProperties": true,
+            "description": "'tarief per kilogram': Bron: Jutterswet art. 3 lid 1 · lemma's: vondsttarief het bedrag per kilogram dat de gemeente voor een vondst betaalt. parameternaam -> waarde; overschrijft de descriptor-defaults. Een tijdsafhankelijke parameter (voor elke maand) neemt zijn tijdlijn: {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]}, from of to weggelaten voor een open grens."
+          },
+          "instances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "type",
+                "id"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "type": {
+                  "type": "string"
+                },
+                "id": {
+                  "type": "string"
+                },
+                "attributes": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "attribuutnaam -> waarde (per het objecttype-schema); een tijdsafhankelijk attribuut neemt zijn tijdlijn: {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]}, met from of to weggelaten voor een open grens."
+                },
+                "characteristics": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "kenmerknaam -> boolean; een tijdsafhankelijk kenmerk neemt de perioden waarin het geldt: {\"periods\": [{\"from\": <datum>, \"to\": <datum>}, ...]}."
+                },
+                "roles": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "rolnaam -> doel-id of lijst van doel-ids."
+                }
+              }
+            }
+          },
+          "relations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "factType",
+                "roles"
+              ],
+              "additionalProperties": false,
+              "properties": {
+                "factType": {
+                  "type": "string"
+                },
+                "roles": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "rolnaam -> id of lijst van ids; hoogstens één rol noemt een lijst, met een link per id; de ene rol van een wederkerig feittype noemt zijn twee ids in een lijst."
+                }
+              }
+            }
+          }
+        }
+      },
+      "Answer": {
+        "type": "object",
+        "description": "Het beslissingsantwoord: per instantie de gevraagde uitvoer-attributen/-kenmerken, plus de namen van de regels waarvan een consistentietoets faalde.",
+        "properties": {
+          "instances": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "id": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": "string"
+                },
+                "attributes": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "attribuutnaam -> waarde (of null bij leeg); een attribuut op een tijdlijn als {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]}, from of to weggelaten voor een open grens."
+                },
+                "characteristics": {
+                  "type": "object",
+                  "additionalProperties": true,
+                  "description": "kenmerknaam -> boolean."
+                }
+              }
+            }
+          },
+          "inconsistencies": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "de namen van de regels waarvan een consistentietoets INCONSISTENT opleverde."
+          },
+          "inconsistencyDetails": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rule": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            },
+            "description": "dezelfde inconsistenties met hun subject: het id van de instantie waarover de toets ging, of null als dat geen instantie van het verzoek is."
+          },
+          "explanation": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "met de vlag explanation: een zin per toegekend of onthouden kenmerk van een instantie van het verzoek, met de waarden waarop hij rust."
+          },
+          "explanationParts": {
+            "type": "array",
+            "items": {
+              "type": "array",
+              "items": {
+                "$ref": "#/components/schemas/ExplanationPart"
+              }
+            },
+            "description": "met de vlag explanationParts: per zin van explanation, in dezelfde volgorde, de stukken aan haar wortel; de teksten van de bladeren achter elkaar zijn de zin."
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "fixpoint": {
+            "$ref": "#/components/schemas/Fixpoint"
+          },
+          "fixpointError": {
+            "type": "string",
+            "description": "met de vlag fixpoint, in plaats van fixpoint: waarom een waarde van het fixpunt niet getoond kan worden."
+          }
+        }
+      },
+      "Error": {
+        "type": "object",
+        "description": "Een dienst-fout; noemt waar mogelijk het foutieve veld/pad.",
+        "required": [
+          "error"
+        ],
+        "properties": {
+          "error": {
+            "type": "string"
+          },
+          "field": {
+            "type": "string"
+          },
+          "violations": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "field",
+                "kind",
+                "error"
+              ],
+              "properties": {
+                "field": {
+                  "type": "string"
+                },
+                "kind": {
+                  "type": "string",
+                  "enum": [
+                    "UNKNOWN_REFERENCE",
+                    "MARKER",
+                    "UNKNOWN_FIELD",
+                    "WRONG_TYPE",
+                    "WRONG_UNIT",
+                    "UNKNOWN_ENUM_VALUE",
+                    "UNKNOWN_MARKER",
+                    "AMBIGUOUS_NAME",
+                    "UNKNOWN_VOCABULARY",
+                    "UNSUPPORTED",
+                    "MISSING_INSTANCE",
+                    "INCOMPLETE_SCOPE",
+                    "MALFORMED"
+                  ]
+                },
+                "error": {
+                  "type": "string"
+                }
+              }
+            },
+            "description": "de verzameling schendingen, elk met field/kind/error."
+          }
+        }
+      },
+      "EvaluationFault": {
+        "type": "object",
+        "description": "De regels geven op deze invoer geen antwoord: aan het fixpunt staan een of meer evaluatiefouten, of een getal van het verzoek past niet in zijn declaratie, of een cel van het verzoek bestaat niet of staat er twee keer in; elke fout met de code en de parameters van haar foutsoort en uchars zin.",
+        "required": [
+          "status",
+          "error",
+          "faults"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "EVALUATION_FAULT"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "zegt dat de regels op deze invoer een evaluatiefout geven, of hoeveel."
+          },
+          "faults": {
+            "type": "array",
+            "description": "een element per fout, in uchars volgorde.",
+            "items": {
+              "type": "object",
+              "required": [
+                "code",
+                "params",
+                "error"
+              ],
+              "properties": {
+                "code": {
+                  "type": "string",
+                  "nullable": true,
+                  "pattern": "^EF-[0-9]{3}$",
+                  "description": "de code van de foutsoort (uchars RUNTIME-SEMANTICS ch. 5.7b), zoals een rode case van uchar haar vastlegt in expectedFault; null waar uchar voor de fout geen soort noemt."
+                },
+                "params": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "de parameters van de foutsoort, elk een tekst, met de namen van ch. 5.7b; leeg waar de soort er geen heeft of waar uchar geen soort noemt."
+                },
+                "error": {
+                  "type": "string",
+                  "description": "uchars zin; een object van het verzoek heet daarin naar zijn id."
+                }
+              }
+            }
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "fixpoint": {
+            "$ref": "#/components/schemas/Fixpoint"
+          },
+          "fixpointError": {
+            "type": "string",
+            "description": "met de vlag fixpoint, in plaats van fixpoint: waarom een waarde van het fixpunt niet getoond kan worden."
+          }
+        }
+      },
+      "Info": {
+        "type": "object",
+        "description": "De dienst-info: identiteit, per-regel coverage, overgeslagen markers, parameters.",
+        "properties": {
+          "service": {
+            "type": "object"
+          },
+          "coverage": {
+            "type": "object"
+          },
+          "skipped": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "parameters": {
+            "type": "object"
+          },
+          "parameterSets": {
+            "type": "array"
+          },
+          "periodWarnings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "vocabularies": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            },
+            "description": "per vocabulaire: name, default, language, complete, en de declaraties zonder benaming (die draagt een antwoord in dat vocabulaire bij hun canonieke naam)."
+          }
+        }
+      },
+      "ExplanationPart": {
+        "type": "object",
+        "description": "Een stuk van een uitlegzin: een blad met text, of een groep (CONDITION, MEMBERS, COMPUTATION, VARIANT, READING, GROUND) met parts, waarvan de tekst die van haar stukken achter elkaar is. Een groep MEMBERS, VARIANT met decided: false en READING draagt haar eigen lijm, zodat de zin zonder zo'n groep een zin blijft. Per kind: SUBJECT het label van een instantie, het onderwerp of een lid van een kwantorvouw; NAME een gedeclareerde naam in het vocabulaire van het antwoord, met declaration (ATTRIBUUT, KENMERK, ROL, PARAMETER of OBJECTTYPE), owner en canonical, de sleutels kind, owner en canonical van een element van vocabularies, en bij een attribuut of kenmerk waarvan de zin de waarde van één object noemt object: het label van dat object zoals SUBJECT het noemt (de kopnaam van een zin het onderwerp, een lezing het object waarop de motor haar las, ook over een rol), null waar een link op de rol ontbreekt; geen object bij een parameter, een rol, de tekst en het filter van een vouw over een verzameling (per lid gelezen; de leden staan in MEMBERS) en een lezing die de motor niet bereikte; QUOTE regeltekst zoals geschreven, met dezelfde drie waar het operand één declaratie leest, en object zoals bij NAME; VALUE een waarde met haar eenheid, met empty: true bij een lege, marker, de naam van een afwezigheidsmarker in de gedeclareerde spelling, bij een marker, en timeline: true bij de waarde van een tijdlijn-doel, haar perioden met hun waarden, en bij de perioden van een tijdsafhankelijk kenmerk; RULE de naam van een regel of van een variant van een defaults-groep; CONNECTIVE een woord dat de logica tussen de delen draagt (omdat, want, maar, en, of, en niet, niet geldt, gold niet); TEXT lijm; CONDITION een voorwaarde, met holds, het oordeel van de motor (ontbreekt waar de motor de knoop zonder oordeel bereikte), en bij een samenstelling of een kwantorvouw quantifier (all, none, atLeast, atMost, exactly, the) met threshold bij een telling; MEMBERS de leden van een kwantorvouw die haar uitkomst dragen, met de dubbele punt ervoor, met members (m), holding (k) en unjudged, of de leden van een vouw in een berekening met wat elk bijdroeg of de ontvangers van een verdeling met het aandeel dat elk houdt, met alleen members; COMPUTATION hoe de regel van een berekende waarde, of de variant die een defaults-groep op een attribuut besliste, de waarde berekende, hoe een verdeling verdeelde, of de waardetoekenningen van een objectcreatie, na haar naam en met de dubbele punt: de regeltekst van haar waarde, elke waarde die de berekening las of vouwde, en de waarde vóór een afronding en vóór een begrenzing; VARIANT een schrijver die de waarde van de zin niet schreef, met de scheiding ervoor ('; ', of ', ' tussen verdrongen varianten), met decided: false, en displaced: true bij een variant van een defaults-groep na de beslisser en bij een initialisatie die niet aan de beurt was: in de zin van een defaults-groep elke variant behalve de beslisser, in die van een berekende waarde elke schrijver behalve die schreef; een verdrongen variant van een defaults-groep zegt wat zij vond, uit de lezing van de motor: '(gold, <waarde>)', '(gold, gaf geen waarde)', '(gold niet)', bij een kenmerk '(gold, toekennen)' of '(gold, niet toekennen)', zonder voorwaarde '(onvoorwaardelijk, …)', met holds (niet zonder voorwaarde), decision bij een kenmerk, en unreadable: true waar de lezing een fout droeg (dan de naam alleen); READING de waarde die de motor las voor het operand of het lid ervoor, met haar haakjes: ' (', VALUE, ')'; GROUND de grondslag, het laatste stuk van de zin, met de punt en 'Grondslag: ' als TEXT ervoor, en met de beslisser waarvan het de statuteAnnotations zijn, in de termen van het IR: bij een regel rule, de naam van haar vorm in rules.rules; bij een default group, de naam van zijn groep in rules.prioritizedDefaults (null waar het document de groep geen naam geeft), pointer, de JSON Pointer van de default in die groep (/defaults/1, of dieper /defaults/0/exceptions/members/0/defaults/0), position, zijn plaats in zijn keten (1-gebaseerd, zoals de zin 'de variant op plaats n' telt), en variant, zijn naam, waar hij er een heeft; STATUTE een Juriconnect-anker, met bwb, article en, waar het ze noemt, paragraph en part; LEMMA een lemma; DEVIATION een deviatie, met between, de lagen waartussen zij ligt in de volgorde van het register (de eerste is de laag waarvan de tweede afwijkt), of de ene laag waarbinnen zij ligt, en follows, de laag die de regelset volgt (ontbreekt bij een deviatie binnen één laag); NOTE elk ander segment van een annotatie.",
+        "required": [
+          "kind"
+        ],
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "SUBJECT",
+              "NAME",
+              "QUOTE",
+              "VALUE",
+              "RULE",
+              "CONNECTIVE",
+              "TEXT",
+              "CONDITION",
+              "MEMBERS",
+              "COMPUTATION",
+              "VARIANT",
+              "READING",
+              "GROUND",
+              "STATUTE",
+              "LEMMA",
+              "DEVIATION",
+              "NOTE"
+            ]
+          },
+          "text": {
+            "type": "string"
+          },
+          "parts": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ExplanationPart"
+            }
+          },
+          "declaration": {
+            "type": "string"
+          },
+          "canonical": {
+            "type": "string"
+          },
+          "quantifier": {
+            "type": "string"
+          },
+          "bwb": {
+            "type": "string"
+          },
+          "article": {
+            "type": "string"
+          },
+          "paragraph": {
+            "type": "string"
+          },
+          "part": {
+            "type": "string"
+          },
+          "rule": {
+            "type": "string"
+          },
+          "pointer": {
+            "type": "string"
+          },
+          "variant": {
+            "type": "string"
+          },
+          "follows": {
+            "type": "string"
+          },
+          "marker": {
+            "type": "string"
+          },
+          "between": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "owner": {
+            "type": "string",
+            "nullable": true
+          },
+          "group": {
+            "type": "string",
+            "nullable": true
+          },
+          "object": {
+            "type": "string",
+            "nullable": true
+          },
+          "empty": {
+            "type": "boolean"
+          },
+          "timeline": {
+            "type": "boolean"
+          },
+          "holds": {
+            "type": "boolean"
+          },
+          "decided": {
+            "type": "boolean"
+          },
+          "displaced": {
+            "type": "boolean"
+          },
+          "decision": {
+            "type": "boolean"
+          },
+          "unreadable": {
+            "type": "boolean"
+          },
+          "threshold": {
+            "type": "integer"
+          },
+          "members": {
+            "type": "integer"
+          },
+          "holding": {
+            "type": "integer"
+          },
+          "unjudged": {
+            "type": "integer"
+          },
+          "position": {
+            "type": "integer"
+          }
+        }
+      },
+      "Trace": {
+        "type": "array",
+        "description": "met de vlag trace: per vorm die vuurde, in de volgorde waarin een regel ervan het eerst vuurde, de ids van het verzoek die haar regels bonden en hoe vaak ze vuurden. Een vorm heet in het vocabulaire van het antwoord.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "rule": {
+              "type": "string"
+            },
+            "labels": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "count": {
+              "type": "integer"
+            }
+          }
+        }
+      },
+      "Coverage": {
+        "type": "array",
+        "description": "met de vlag coverage: per vorm van het entrypoint, in de volgorde van zijn manifest, of een regel ervan vuurde. Een vorm heet in het vocabulaire van het antwoord.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "rule": {
+              "type": "string"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "FIRED",
+                "NOT_FIRED"
+              ]
+            }
+          }
+        }
+      },
+      "Fixpoint": {
+        "type": "object",
+        "description": "met de vlag fixpoint: wat aan het fixpunt van de sessie staat. Een instantie van het verzoek heet naar haar id, een gemaakt object #<n>. Een naam staat in het vocabulaire van het antwoord; waar de canonieke naam verschilt, staat die ernaast onder <key>Canonical. Een waarde is een tekst (een getal met zijn schaal, een datum, een enumeratiewaarde), een boolean of null (leeg); een tijdlijn staat onder timeline. Een gedimensioneerd attribuut heeft een rij per cel, met haar labels onder labels.",
+        "properties": {
+          "objects": {
+            "type": "array",
+            "description": "elke instantie van het verzoek, in de volgorde van het verzoek, dan elk gemaakt object, met zijn waarden en kenmerken in de declaratievolgorde van zijn type.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "object": {
+                  "type": "string"
+                },
+                "objectType": {
+                  "type": "string"
+                },
+                "values": {
+                  "type": "array",
+                  "description": "attribute, labels (bij een cel, één label per dimensie), value (of timeline), origin (input, derived of creation: op een gemaakt object de bij de objectcreatie toegekende waarde), input (bij een afgeleide waarde de invoerwaarde die zij verving, op een gemaakt object de bij de objectcreatie toegekende waarde), inputOrigin (creation naast de bij de objectcreatie toegekende waarde) en unit.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "characteristics": {
+                  "type": "array",
+                  "description": "elk kenmerk dat geldt: characteristic, origin (input of derived), en input: true als ook de invoer het zette; een tijdsafhankelijk kenmerk met periods, de perioden waarin het geldt (from, to, zoals het verzoek ze geeft): die een regel schreef, of anders die van de invoer.",
+                  "items": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                }
+              }
+            }
+          },
+          "madeObjects": {
+            "type": "array",
+            "description": "de objecten die een objectcreatie maakte.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "object": {
+                  "type": "string"
+                },
+                "objectType": {
+                  "type": "string"
+                },
+                "creation": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "links": {
+            "type": "array",
+            "description": "de koppelingen die een creatie legde.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "factType": {
+                  "type": "string"
+                },
+                "firstRole": {
+                  "type": "string"
+                },
+                "first": {
+                  "type": "string"
+                },
+                "secondRole": {
+                  "type": "string"
+                },
+                "second": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "faults": {
+            "type": "array",
+            "description": "de evaluatiefouten die aan het fixpunt staan, elk met de vorm die haar gaf, het object waarover zij gaat, de code en de parameters van haar foutsoort en uchars zin.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rule": {
+                  "type": "string"
+                },
+                "subject": {
+                  "type": "string"
+                },
+                "code": {
+                  "type": "string",
+                  "nullable": true,
+                  "pattern": "^EF-[0-9]{3}$",
+                  "description": "de code van de foutsoort (uchars RUNTIME-SEMANTICS ch. 5.7b), zoals een rode case van uchar haar vastlegt in expectedFault; null waar uchar voor de fout geen soort noemt."
+                },
+                "params": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "string"
+                  },
+                  "description": "de parameters van de foutsoort, elk een tekst, met de namen van ch. 5.7b; leeg waar de soort er geen heeft of waar uchar geen soort noemt."
+                },
+                "sentence": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "inconsistencies": {
+            "type": "array",
+            "description": "de gefaalde consistentietoetsen met hun rule en subject, elk null als er geen is.",
+            "items": {
+              "type": "object",
+              "properties": {
+                "rule": {
+                  "type": "string",
+                  "nullable": true
+                },
+                "subject": {
+                  "type": "string",
+                  "nullable": true
+                }
+              }
+            }
+          }
+        }
+      },
+      "NoFixpoint": {
+        "type": "object",
+        "description": "De regels geven op deze invoer geen antwoord: de sessie bereikte geen fixpunt, want uchars vuurplafond of creatiebudget is bereikt. Er staat dan niets om te lezen.",
+        "required": [
+          "status",
+          "error",
+          "code",
+          "params"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "NO_FIXPOINT"
+            ]
+          },
+          "error": {
+            "type": "string",
+            "description": "uchars zin: welk plafond of budget bereikt is."
+          },
+          "code": {
+            "type": "string",
+            "nullable": true,
+            "pattern": "^EF-[0-9]{3}$",
+            "description": "de code van de foutsoort (uchars RUNTIME-SEMANTICS ch. 5.7b), zoals een rode case van uchar haar vastlegt in expectedFault; null waar uchar voor de fout geen soort noemt."
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            },
+            "description": "de parameters van de foutsoort, elk een tekst, met de namen van ch. 5.7b; leeg waar de soort er geen heeft of waar uchar geen soort noemt."
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "fixpointError": {
+            "type": "string",
+            "description": "met de vlag fixpoint: uchars zin, want er is geen fixpunt om te tonen."
+          }
+        }
+      },
+      "Limit": {
+        "type": "object",
+        "description": "uchars Drools-tak houdt een waarde van deze invoer niet, zoals een segment van de onbegrensde vorm waarvan de waarde niet eindigt: een grens van de tak, geen fout van de regels of van de invoer. Er wordt niets teruggeschreven.",
+        "required": [
+          "status",
+          "error",
+          "code",
+          "reason"
+        ],
+        "properties": {
+          "status": {
+            "type": "string",
+            "enum": [
+              "LIMIT"
+            ]
+          },
+          "error": {
+            "type": "string"
+          },
+          "code": {
+            "type": "string",
+            "description": "uchars registercode van de grens, zoals DROOLS-312."
+          },
+          "reason": {
+            "type": "string",
+            "description": "uchars zin."
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "coverage": {
+            "$ref": "#/components/schemas/Coverage"
+          },
+          "fixpoint": {
+            "$ref": "#/components/schemas/Fixpoint"
+          },
+          "fixpointError": {
+            "type": "string",
+            "description": "met de vlag fixpoint, in plaats van fixpoint: waarom een waarde van het fixpunt niet getoond kan worden."
+          }
+        }
+      }
+    }
+  }
+}

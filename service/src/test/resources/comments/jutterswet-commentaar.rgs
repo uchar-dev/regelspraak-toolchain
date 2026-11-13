@@ -1,0 +1,38 @@
+Vocabulaire handboek (taal: nl)
+
+// Bron: Jutterswet art. 3 lid 1 · lemma's: vondsttarief
+// het bedrag per kilogram dat de gemeente voor een vondst betaalt
+Parameter het vondsttarief (handboek: tarief per kilogram) : Numeriek (geheel getal)
+
+Parameter de premiedrempel : Numeriek (getal met 2 decimalen)
+
+// Bron: Jutterswet art. 2 · lemma's: jutter
+// iemand die het strand afzoekt naar aangespoelde voorwerpen
+Objecttype de Jutter (mv: Jutters) (bezield) (handboek: strandjutter)
+    // het totaal van de premies van de vondsten die de jutter aanmeldde
+    het vondstbedrag (handboek: totale premie) Numeriek (getal met 2 decimalen);
+    de naam Tekst;
+    // Bron: Jutterswet art. 5 lid 2 · lemma's: premiewaardig
+    is premiewaardig kenmerk (bijvoeglijk);
+    is ingeschreven kenmerk (bijvoeglijk);
+
+Objecttype de Vondst (mv: Vondsten)
+    het gewicht Numeriek (getal met 2 decimalen);
+    de premie Numeriek (getal met 2 decimalen);
+
+Feittype vondstaanmelding
+    de aanmelder Jutter
+    de vondst (mv: vondsten) Vondst
+Eén aanmelder heeft meerdere vondsten
+
+Regel premie van een vondst
+    geldig altijd
+        De premie van een Vondst moet berekend worden als zijn gewicht maal het vondsttarief.
+
+Regel vondstbedrag van een jutter
+    geldig altijd
+        Het vondstbedrag van een Jutter moet berekend worden als de som van de premie van alle vondsten van de Jutter of 0 als die er niet zijn.
+
+Regel premiewaardigheid
+    geldig altijd
+        Een Jutter is premiewaardig indien zijn vondstbedrag groter is dan de premiedrempel.

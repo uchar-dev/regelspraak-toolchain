@@ -1,0 +1,13 @@
+{
+  "service": { "name": "Jutterswet commentaar", "version": "1" },
+  "entrypoints": [
+    {
+      "name": "premie",
+      "path": "premie",
+      "scope": { "ruleNames": ["premie van een vondst", "vondstbedrag van een jutter", "premiewaardigheid"] },
+      "input": ["Jutter", "Vondst"],
+      "output": ["Vondst.premie", "Jutter.vondstbedrag", "Jutter:premiewaardig"]
+    }
+  ],
+  "parameters": { "vondsttarief": 3, "premiedrempel": 10.00 }
+}
