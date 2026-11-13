@@ -17,6 +17,7 @@ import dev.uchar.regelspraak.transpiler.tms.ComputeHelpers;
 import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
@@ -32,7 +33,8 @@ import java.util.Map;
  * written against its supertype, exactly as the supertype's rules fire on it) in uchar's end state of the session
  * ({@link Executor.Outcome#endState}, {@code DroolsBackend.endStateOf}): the derived value where a rule derived one,
  * the input elsewhere, and none where the member is leeg. It renders it:
- * a {@link BigDecimal} as an EXACT JSON number (Jackson renders BigDecimal natively — never a double), a
+ * a {@link BigDecimal} as an EXACT JSON number (Jackson renders BigDecimal natively — never a double) in the decimals
+ * of its type ({@link #inDecimalsOf}), a
  * {@code null}/leeg as JSON {@code null}, a kenmerk as a boolean, a date as an ISO string. It also emits the
  * {@code inconsistencies} array — the rule of every §9.5 fact of the end state ({@link EndState#channel}), one per
  * rule and subject however often the rule deposited (RUNTIME-SEMANTICS ch. 5.6) — because the golden verwachtingen
@@ -230,26 +232,49 @@ public final class AnswerBuilder {
      *  constructor value on an attribute without markers is a broken promise, and fails. */
     private JsonNode rend(Object exact, ObjectType ot, String attribute) {
         Object v = ComputeHelpers.collapse(exact);
-        if (!(v instanceof ConstructorValue c)) return rend(v, ot.attribute(attribute));
+        String place = "het attribuut '" + attribute + "' van " + ot.name;
+        if (!(v instanceof ConstructorValue c)) return rend(v, ot.attribute(attribute), place);
         Markers markers = Markers.of(ot, attribute);
         if (markers == null)
-            throw new IllegalStateException("het attribuut '" + attribute + "' van " + ot.name + " heeft de waarde " + c
+            throw new IllegalStateException(place + " heeft de waarde " + c
                     + " van een sum type, die het antwoord alleen geeft voor een attribuut met markers");
-        return c.payload() != null ? rend(c.payload(), markers.payload())
+        return c.payload() != null ? rend(c.payload(), markers.payload(), place)
                 : NF.objectNode().put(Markers.KEY, c.constructor());
     }
 
-    /** Render an attribute value of datatype {@code dt} as an EXACT JSON node: BigDecimal as a number (no double),
-     *  date as ISO string, boolean as boolean, tekst as string, an enumeration value by its name in the chosen
-     *  vocabulary, null as JSON null. */
-    private JsonNode rend(Object v, Datatype dt) {
+    /** Render an attribute value of datatype {@code dt} as an EXACT JSON node: BigDecimal as a number (no double) in
+     *  the decimals of its type ({@link #inDecimalsOf}), date as ISO string, boolean as boolean, tekst as string, an
+     *  enumeration value by its name in the chosen vocabulary, null as JSON null. */
+    private JsonNode rend(Object v, Datatype dt, String place) {
         if (v == null) return NF.nullNode();
-        if (v instanceof BigDecimal b) return NF.numberNode(b);          // EXACT (no double)
+        if (v instanceof BigDecimal b) return NF.numberNode(inDecimalsOf(b, dt, place));   // EXACT (no double)
         if (v instanceof Boolean b) return NF.booleanNode(b);
         if (v instanceof LocalDate d) return NF.textNode(d.toString());
         if (v instanceof LocalDateTime d) return NF.textNode(ValueCoder.dateTimeLexeme(d));
         if (v instanceof String s) return NF.textNode(dt instanceof Datatype.Enumeration e ? naming.value(e, s) : s);
         return NF.textNode(v.toString());
+    }
+
+    /**
+     * The number {@code b} of datatype {@code dt} at exactly the decimals of its type, as uchar writes a number in text
+     * (RUNTIME-SEMANTICS ch. 1.2, "Text coercion"): 25 in a type of 2 decimals is {@code 25.00}, 25.00 in a whole type
+     * is {@code 25}. A number of the unbounded form, or of no number type, keeps its scale. No rounding: every value
+     * that reaches the answer fits its type (ch. 2.4: a write that does not fit is EF-006, an input EF-004), so one
+     * that does not is a broken promise and fails, naming {@code place}.
+     */
+    public static BigDecimal inDecimalsOf(BigDecimal b, Datatype dt, String place) {
+        if (dt == null || dt.unbounded()) return b;
+        int decimals;
+        if (dt instanceof Datatype.Numeric n) decimals = n.wholeNumber() ? 0 : n.decimals();
+        else if (dt instanceof Datatype.Percentage p) decimals = p.wholeNumber() ? 0 : p.decimals();
+        else return b;
+        try {
+            return b.setScale(decimals, RoundingMode.UNNECESSARY);
+        } catch (ArithmeticException notFit) {
+            throw new IllegalStateException(place + " heeft de waarde " + b.toPlainString() + ", die niet past in de "
+                    + decimals + " decimalen van zijn type " + dt.name() + "; een waarde die uchar schrijft, past"
+                    + " in haar type", notFit);
+        }
     }
 
     /** The value of the dimensioned attribute {@code attribute} of {@code ot} as its cells, {@code {"cells":

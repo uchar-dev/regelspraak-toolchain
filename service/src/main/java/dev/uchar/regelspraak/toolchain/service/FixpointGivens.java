@@ -45,7 +45,8 @@ import java.util.function.Function;
  *
  * <p><b>Names</b> are those of the chosen {@link Naming}; where a name there differs from the canonical one, the
  * canonical name stands beside it under the key with {@code Canoniek} appended ({@code attribuut} and
- * {@code attribuutCanoniek}). <b>A value</b> is a JSON string for a number (plain decimal, with its scale), a date, a
+ * {@code attribuutCanoniek}). <b>A value</b> is a JSON string for a number (plain decimal, in exactly the decimals of
+ * its type, a number of the unbounded form with its own scale), a date, a
  * date-time, a text and an enumeration value (in the chosen vocabulary), a JSON boolean for a truth value and null for
  * leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}, an open bound left out. A dimensioned
  * attribute has a row per cell, with the cell's {@code labels} after the attribute, one per dimension in their declared
@@ -160,10 +161,10 @@ public final class FixpointGivens {
                         if (w == null) continue;
                         ObjectNode cell = cells.addObject();
                         labels(cell, labels);
-                        java(cell, w, ot.attribute(a), ng);
+                        java(cell, w, ot.attribute(a), a, ng);
                     }
                 } else {
-                    java(n, v, ot.attribute(a), ng);
+                    java(n, v, ot.attribute(a), a, ng);
                 }
                 attributes.put(a, n);
             }
@@ -354,7 +355,7 @@ public final class FixpointGivens {
             ObjectNode rn = sink.addObject();
             name(rn, "attribute", ng.attribute(ot, a), a);
             if (isDerived) {
-                java(rn, cells.get(List.of()), dt, ng);
+                java(rn, cells.get(List.of()), dt, a, ng);
                 rn.put("origin", "derived");
                 if (in != null) beside(rn, in.has("timeline") ? in.get("timeline") : in.get("value"), made);
             } else {
@@ -395,7 +396,7 @@ public final class FixpointGivens {
             name(rn, "attribute", ng.attribute(ot, a), a);
             labels(rn, labels);
             if (isDerived) {
-                java(rn, derived.get(labels), dt, ng);
+                java(rn, derived.get(labels), dt, a, ng);
                 rn.put("origin", "derived");
                 if (cellIn != null) beside(rn, cellIn.get("value"), made);
             } else {
@@ -474,8 +475,8 @@ public final class FixpointGivens {
         for (Object seg : segments) {
             ObjectNode p = sink.addObject();
             Object from = CaseSession.read(seg, "getVan"), to = CaseSession.read(seg, "getTot");
-            if (from != null) p.set("from", scalar(from, null));
-            if (to != null) p.set("to", scalar(to, null));
+            if (from != null) p.set("from", scalar(from, null, null));
+            if (to != null) p.set("to", scalar(to, null, null));
         }
         return sink;
     }
@@ -520,36 +521,50 @@ public final class FixpointGivens {
     /** A value in the form its bean field takes it: under {@code value}, a timeline under {@code timeline}, a segment
      *  without {@code from} or {@code to} where its bound is open (null on the bean, left out in uchar's case). The
      *  value of a cell is one of these; a dimensioned attribute has a row per cell ({@link #cellRows}). */
-    private static void java(ObjectNode n, Object v, Datatype dt, Naming ng) {
+    private static void java(ObjectNode n, Object v, Datatype dt, String attribute, Naming ng) {
         if (v instanceof List<?> segments) {
             ArrayNode tl = n.putArray("timeline");
             for (Object seg : segments) {
                 ObjectNode sn = tl.addObject();
                 Object from = CaseSession.read(seg, "getVan"), to = CaseSession.read(seg, "getTot");
-                if (from != null) sn.set("from", scalar(from, null));
-                if (to != null) sn.set("to", scalar(to, null));
-                sn.set("value", scalar(CaseSession.read(seg, "getWaarde"), dt));
+                if (from != null) sn.set("from", scalar(from, null, null));
+                if (to != null) sn.set("to", scalar(to, null, null));
+                sn.set("value", scalar(CaseSession.read(seg, "getWaarde"), dt, attribute));
             }
         } else if (v instanceof String s && dt instanceof Datatype.Enumeration) {
             enumValue(n, s, dt, ng);
         } else {
-            n.set("value", scalar(v, dt));
+            n.set("value", scalar(v, dt, attribute));
         }
     }
 
-    /** A scalar value as the fixpoint shows it; uchar's constructor value of an attribute with absence markers in the
-     *  form of the answer ({@link Markers}): {@code waarde(…)} as its payload, a marker as {@code {"marker": <naam>}}. */
-    private static JsonNode scalar(Object v, Datatype dt) {
+    /** A scalar value as the fixpoint shows it, a number in the decimals of its type
+     *  ({@link AnswerBuilder#inDecimalsOf}); uchar's constructor value of an attribute with absence markers in the
+     *  form of the answer ({@link Markers}): {@code waarde(…)} as its payload, a marker as {@code {"marker": <naam>}}.
+     *  {@code attribute} names the attribute of the value, null for a bound of a segment. */
+    private static JsonNode scalar(Object v, Datatype dt, String attribute) {
         if (v == null) return NF.nullNode();
         if (v instanceof ConstructorValue c)
-            return c.payload() != null ? scalar(c.payload(), dt) : NF.objectNode().put(Markers.KEY, c.constructor());
-        if (v instanceof BigDecimal b) return NF.textNode(b.toPlainString());
+            return c.payload() != null ? scalar(c.payload(), payloadOf(dt, c.constructor()), attribute)
+                    : NF.objectNode().put(Markers.KEY, c.constructor());
+        if (v instanceof BigDecimal b)
+            return NF.textNode(AnswerBuilder.inDecimalsOf(b, dt, "het attribuut '" + attribute + "'").toPlainString());
         if (v instanceof LocalDate d) return NF.textNode(d.toString());
         if (v instanceof LocalDateTime d) return NF.textNode(ValueCoder.dateTimeLexeme(d));
         if (v instanceof Boolean b) return NF.booleanNode(b);
         if (v instanceof String s) return NF.textNode(s);
         throw new UnrenderableValue("een waarde van de vorm " + v.getClass().getName() + " ("
                 + (dt == null ? "zonder datatype" : dt.name()) + ") toont het fixpunt niet");
+    }
+
+    /** The datatype of the payload of {@code constructor}: the model of a RegelSpraak source gives an attribute with
+     *  markers the datatype of its value, the model uchar's loader reads from a document the sum type itself
+     *  ({@link Markers}). */
+    private static Datatype payloadOf(Datatype dt, String constructor) {
+        if (!(dt instanceof Datatype.SumType sum)) return dt;
+        for (Datatype.Constructor c : sum.constructors()) if (c.name().equals(constructor)) return c.payload();
+        throw new IllegalStateException("het sum type '" + sum.domain() + "' declareert de constructor '" + constructor
+                + "' niet");
     }
 
     /** An enumeration value under {@code waarde}, in the chosen vocabulary, with its canonical spelling beside it. */

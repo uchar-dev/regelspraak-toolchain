@@ -21,10 +21,12 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.toolchain.service.AnswerBuilder;
 import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
 import dev.uchar.regelspraak.toolchain.service.Markers;
 import dev.uchar.regelspraak.toolchain.service.ValueCoder;
 
+import java.math.BigDecimal;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -75,9 +77,9 @@ final class ScenarioData {
                 ObjectNode an = attributes.addObject();
                 name(an, "attribute", ng.attribute(ot, a.attribute()), a.attribute());
                 Datatype dt = ot.attribute(a.attribute());
-                if (a.timeline() != null) an.set("timeline", timeline(a.timeline(), dt, ng));
-                else if (a.cells() != null) an.set("cells", cells(a, ot, model, ng));
-                else value(an, a.value(), dt, ng);
+                if (a.timeline() != null) an.set("timeline", timeline(a.timeline(), dt, false, ng));
+                else if (a.cells() != null) an.set("cells", cells(a, ot, model, false, ng));
+                else value(an, a.value(), dt, false, ng);
                 unit(an, dt);
                 an.put("line", a.line());
             }
@@ -109,8 +111,8 @@ final class ScenarioData {
             ObjectNode pn = parameters.addObject();
             name(pn, "parameter", ng.parameter(p.parameter()), p.parameter());
             Datatype dt = parameterType(model, p.parameter());
-            if (p.timeline() != null) pn.set("timeline", timeline(p.timeline(), dt, ng));
-            else value(pn, p.value(), dt, ng);
+            if (p.timeline() != null) pn.set("timeline", timeline(p.timeline(), dt, false, ng));
+            else value(pn, p.value(), dt, false, ng);
             unit(pn, dt);
             pn.put("line", p.line());
         }
@@ -152,9 +154,9 @@ final class ScenarioData {
             for (AttributeValue a : i.attributes()) {
                 Datatype dt = ot.attribute(a.attribute());
                 ObjectNode an = NF.objectNode();
-                if (a.timeline() != null) an.set("timeline", timeline(a.timeline(), dt, ng));
-                else if (a.cells() != null) an.set("cells", cells(a, ot, model, ng));
-                else value(an, a.value(), dt, ng);
+                if (a.timeline() != null) an.set("timeline", timeline(a.timeline(), dt, true, ng));
+                else if (a.cells() != null) an.set("cells", cells(a, ot, model, true, ng));
+                else value(an, a.value(), dt, true, ng);
                 attributes.put(a.attribute(), an);
             }
             Set<String> characteristics = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
@@ -177,18 +179,20 @@ final class ScenarioData {
         FixpointGivens.name(n, key, chosen, canonical);
     }
 
-    /** A value of the situation under {@code waarde}: the case value as uchar's resolver normalised it; a constructor
-     *  value of an attribute with absence markers in the form of the request, a marker as {@code {"marker": <naam>}} and
-     *  the payload of {@code waarde} as the value it holds, {@code dt} being the datatype of that payload. */
-    private static void value(ObjectNode n, ScenarioValue w, Datatype dt, Naming ng) {
-        if (w.number() != null) n.put("value", w.number());
+    /** A value of the situation under {@code waarde}: the case value as uchar's resolver normalised it, a number for the
+     *  fixpoint ({@code inType}) in the decimals of its type as {@link FixpointGivens} writes every number there; a
+     *  constructor value of an attribute with absence markers in the form of the request, a marker as
+     *  {@code {"marker": <naam>}} and the payload of {@code waarde} as the value it holds, {@code dt} being the datatype
+     *  of that payload. */
+    private static void value(ObjectNode n, ScenarioValue w, Datatype dt, boolean inType, Naming ng) {
+        if (w.number() != null) n.put("value", inType ? inType(w.number(), dt) : w.number());
         else if (w.date() != null) n.put("value", w.date().toString());
         else if (w.dateTime() != null) n.put("value", ValueCoder.dateTimeLexeme(w.dateTime()));
         else if (w.bool() != null) n.put("value", w.bool());
         else if (w.text() != null) n.put("value", w.text());
         else if (w.enumValue() != null) enumValue(n, w.enumValue(), dt, ng);
         else if (w.constructor() != null && w.payload() == null) n.putObject("value").put(Markers.KEY, w.constructor());
-        else if (RegelSpraakModel.VALUE_CONSTRUCTOR.equals(w.constructor())) value(n, w.payload(), dt, ng);
+        else if (RegelSpraakModel.VALUE_CONSTRUCTOR.equals(w.constructor())) value(n, w.payload(), dt, inType, ng);
         else if (w.constructor() != null)
             throw new IllegalStateException("uchars resolver gaf de constructorwaarde '" + w.constructor() + "' met een"
                     + " payload; een attribuut met markers heeft alleen '" + RegelSpraakModel.VALUE_CONSTRUCTOR
@@ -199,7 +203,8 @@ final class ScenarioData {
     /** The cells of dimensioned attribute {@code a} of {@code ot}, in the order of the situation, each with its
      *  {@code labels} as uchar keys a cell ({@link FactModelGenerator#cellKey}, the key {@link FixpointGivens} reads a
      *  cell of the input by) and its value. */
-    private static ArrayNode cells(AttributeValue a, ObjectType ot, RegelSpraakModel model, Naming ng) {
+    private static ArrayNode cells(AttributeValue a, ObjectType ot, RegelSpraakModel model, boolean inType,
+                                Naming ng) {
         Datatype dt = ot.attribute(a.attribute());
         ArrayNode sink = NF.arrayNode();
         for (Cell c : a.cells()) {
@@ -210,20 +215,28 @@ final class ScenarioData {
             ObjectNode cn = sink.addObject();
             ArrayNode labels = cn.putArray("labels");
             key.forEach(labels::add);
-            value(cn, c.value(), dt, ng);
+            value(cn, c.value(), dt, inType, ng);
         }
         return sink;
     }
 
-    private static ArrayNode timeline(List<Segment> segments, Datatype dt, Naming ng) {
+    private static ArrayNode timeline(List<Segment> segments, Datatype dt, boolean inType, Naming ng) {
         ArrayNode sink = NF.arrayNode();
         for (Segment seg : segments) {
             ObjectNode sn = sink.addObject();
             sn.put("from", seg.van().toString());
             sn.put("to", seg.until().toString());
-            value(sn, seg.value(), dt, ng);
+            value(sn, seg.value(), dt, inType, ng);
         }
         return sink;
+    }
+
+    /** The number {@code lexeme} of the situation in the decimals of its type {@code dt}
+     *  ({@link AnswerBuilder#inDecimalsOf}); a number of the unbounded form, which may be a fraction {@code p/q}, as
+     *  written. */
+    private static String inType(String lexeme, Datatype dt) {
+        if (dt == null || dt.unbounded() || !dt.isNumberLike()) return lexeme;
+        return AnswerBuilder.inDecimalsOf(new BigDecimal(lexeme), dt, "de situatie").toPlainString();
     }
 
     private static void enumValue(ObjectNode n, String value, Datatype dt, Naming ng) {

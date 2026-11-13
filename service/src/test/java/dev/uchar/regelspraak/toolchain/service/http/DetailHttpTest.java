@@ -165,7 +165,7 @@ class DetailHttpTest {
         for (JsonNode w : b.get("values"))
             rows.add(w.get("attribute").asText() + "=" + w.get("value").asText() + " " + w.get("origin").asText());
         assertEquals(List.of("opbrengst=100 input", "helpersaantal=2 input", "helpersdeel=50 derived",
-                "premie=20 derived"), rows);
+                "premie=20.00 derived"), rows);
         assertEquals("EUR", b.at("/values/0/unit").asText(), b.toString());
     }
 
@@ -277,10 +277,11 @@ class DetailHttpTest {
             assertEquals(200, r.statusCode(), r.body());
             JsonNode objects = ServiceHttp.MAPPER.readTree(r.body()).at("/fixpoint/objects");
             assertEquals(List.of("J1", "#1"), text(objects, "object"));
-            assertEquals(List.of("vondstgewicht [voorjaar] 2 input", "vondstgewicht [zomer] 0 derived",
-                    "vondstgewicht [najaar] 4 derived", "jaargewicht 6 derived", "geboekte gewicht 4 derived"),
-                    rows(objects.get(0)));
-            assertEquals(List.of("vangstgewicht [najaar] 4 creation", "vangsttotaal 4 derived"), rows(objects.get(1)));
+            assertEquals(List.of("vondstgewicht [voorjaar] 2.00 input", "vondstgewicht [zomer] 0.00 derived",
+                    "vondstgewicht [najaar] 4.00 derived", "jaargewicht 6.00 derived",
+                    "geboekte gewicht 4.00 derived"), rows(objects.get(0)));
+            assertEquals(List.of("vangstgewicht [najaar] 4.00 creation", "vangsttotaal 4.00 derived"),
+                    rows(objects.get(1)));
             assertEquals("kg", objects.at("/0/values/0/unit").asText(), objects.toString());
         } finally {
             seizoen.stop(0);
@@ -345,8 +346,8 @@ class DetailHttpTest {
             JsonNode objects = ServiceHttp.MAPPER.readTree(r.body()).at("/fixpoint/objects");
             assertEquals(List.of("J1", "#1"), text(objects, "object"));
             assertEquals(ServiceHttp.MAPPER.readTree("""
-                    [{"attribute":"vangstgewicht","labels":["voorjaar"],"value":"2","origin":"creation","unit":"kg"},
-                     {"attribute":"vangstgewicht","labels":["najaar"],"value":"9","origin":"derived","input":"4",
+                    [{"attribute":"vangstgewicht","labels":["voorjaar"],"value":"2.00","origin":"creation","unit":"kg"},
+                     {"attribute":"vangstgewicht","labels":["najaar"],"value":"9.00","origin":"derived","input":"4.00",
                       "inputOrigin":"creation","unit":"kg"}]"""), objects.at("/1/values"));
         } finally {
             cells.stop(0);
@@ -377,7 +378,7 @@ class DetailHttpTest {
             JsonNode fixpoint = ServiceHttp.MAPPER.readTree(r.body()).get("fixpoint");
             assertEquals("EF-016", fixpoint.at("/faults/0/code").asText(), r.body());
             assertEquals(ServiceHttp.MAPPER.readTree("""
-                    {"attribute":"vangstgewicht","labels":["voorjaar"],"value":"2","origin":"creation","unit":"kg"}"""),
+                    {"attribute":"vangstgewicht","labels":["voorjaar"],"value":"2.00","origin":"creation","unit":"kg"}"""),
                     fixpoint.at("/objects/1/values/0"), r.body());
         } finally {
             cells.stop(0);

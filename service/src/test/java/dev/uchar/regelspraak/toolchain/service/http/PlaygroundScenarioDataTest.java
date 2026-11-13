@@ -110,7 +110,7 @@ class PlaygroundScenarioDataTest {
         for (JsonNode w : fb.get("values"))
             rows.add(w.get("attribute").asText() + "=" + w.get("value").asText() + " " + w.get("origin").asText());
         assertEquals(List.of("opbrengst=100 input", "helpersaantal=2 input", "helpersdeel=50 derived",
-                "premie=20 derived"), rows);
+                "premie=20.00 derived"), rows);
         assertEquals("EUR", fb.at("/values/3/unit").asText(), fb.toString());
         for (String list : new String[]{"madeObjects", "links", "faults", "inconsistencies"})
             assertEquals(0, f.get(list).size(), list + ": " + f);
