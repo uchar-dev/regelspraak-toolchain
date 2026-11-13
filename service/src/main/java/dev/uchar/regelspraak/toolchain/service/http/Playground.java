@@ -197,7 +197,7 @@ public final class Playground {
         }
         if (!model.isOk()) return root;
         Naming naming = Naming.of(model, vocabulary);
-        root.set("vocabularies", vocabularies(model, naming, parseResult));
+        root.set("vocabularies", vocabularies(model, naming));
 
         // 3. IR and the verdict of the branch that fires
         com.fasterxml.jackson.databind.JsonNode ir = null;
@@ -232,7 +232,7 @@ public final class Playground {
             // only a refusal of the branch names a form it does not lower; the emitter's names an allocation that is
             // no form of the model
             Integer line = e.getCause() instanceof CaseRunner.Excluded
-                    ? formLine(e.construct(), model, parseResult) : null;
+                    ? formLine(e.construct(), model) : null;
             if (line != null) root.put("refusalLine", line);
         }
 
@@ -530,11 +530,10 @@ public final class Playground {
      *  model's order ({@link RegelSpraakModel#designatable}) with its kind, its owner and canonical name as declared, its
      *  {@code designations}: per declared vocabulary its designation there, or null where it has none and goes by its
      *  canonical name (an empty object without a declared vocabulary), and, where it has a declaration in the source,
-     *  its {@code position} and the {@code comment} directly above it, read from the parse in {@code parseResult}
-     *  ({@link Declarations}). An element or a declaration that does not couple puts {@code declarationError} with the
-     *  reason, and then no element carries {@code position} or {@code comment}. An element uchar's frontend made itself
-     *  carries {@code generatedFrom}, the element it comes from ({@link RegelSpraakModel#generatedFrom}). */
-    static ObjectNode vocabularies(RegelSpraakModel model, Naming naming, ParseResult parseResult) {
+     *  its {@code line} and the {@code comment} directly above it, as uchar's frontend records them
+     *  ({@link RegelSpraakModel#declaration}). An element uchar's frontend made itself carries {@code generatedFrom},
+     *  the element it comes from ({@link RegelSpraakModel#generatedFrom}). */
+    static ObjectNode vocabularies(RegelSpraakModel model, Naming naming) {
         ObjectNode n = NF.objectNode();
         n.put("chosen", naming.choice());
         ArrayNode declared = n.putArray("declared");
@@ -545,13 +544,6 @@ public final class Playground {
             vn.put("default", v.isDefault());
             if (v.language() == null) vn.putNull("language"); else vn.put("language", v.language());
             per.add(Naming.of(model, v.name()));
-        }
-        Map<Designatable, Declarations.Declaration> declarations = Map.of();
-        String declarationError = null;
-        try {
-            declarations = Declarations.of(parseResult.document(), parseResult.tokens(), model);
-        } catch (Declarations.Unlinkable o) {
-            declarationError = o.getMessage();
         }
         ArrayNode elements = n.putArray("elements");
         for (Designatable b : model.designatable()) {
@@ -564,15 +556,13 @@ public final class Playground {
                 String t = g.designation(b);
                 if (t == null) designations.putNull(g.choice()); else designations.put(g.choice(), t);
             }
-            Declarations.Declaration d = declarations.get(b);
-            if (d != null) {
+            model.declaration(b).ifPresent(d -> {
                 enumArray.put("line", d.line());
                 ArrayNode comment = enumArray.putArray("comment");
                 for (String c : d.comment()) comment.add(c);
-            }
+            });
             model.generatedFrom(b).ifPresent(g -> enumArray.set("generatedFrom", generatedFrom(g)));
         }
-        if (declarationError != null) n.put("declarationError", declarationError);
         return n;
     }
 
@@ -580,24 +570,16 @@ public final class Playground {
      * The source line of {@code Regel <naam>} for the form {@code construct} names (the
      * {@link UcharBuild.NotCarried#construct()} of a refusal of the exec-model branch), as {@link #vocabularies} gives
      * it for that form. Null when {@code construct} is null, when the model has no form of that name or more than one
-     * under uchar's name identity, when that form has no declaration in the source (uchar's frontend made it), and when
-     * the declarations do not couple, which {@link #vocabularies} reports as {@code declarationError}. uchar's refusal
-     * carries a name and no place, so a line that is not certain is left out rather than guessed.
+     * under uchar's name identity, and when that form has no single declaration in the source (uchar's frontend made
+     * it). uchar's refusal carries a name and no place, so a line that is not certain is left out rather than guessed.
      */
-    private static Integer formLine(String construct, RegelSpraakModel model, ParseResult parseResult) {
+    private static Integer formLine(String construct, RegelSpraakModel model) {
         if (construct == null) return null;
         List<Designatable> forms = model.designatable().stream()
                 .filter(b -> b.kind() == Designatable.Kind.VORM && Namen.norm(b.name()).equals(Namen.norm(construct)))
                 .toList();
         if (forms.size() != 1) return null;
-        Map<Designatable, Declarations.Declaration> declarations;
-        try {
-            declarations = Declarations.of(parseResult.document(), parseResult.tokens(), model);
-        } catch (Declarations.Unlinkable o) {
-            return null;
-        }
-        Declarations.Declaration d = declarations.get(forms.get(0));
-        return d == null ? null : d.line();
+        return model.declaration(forms.get(0)).map(RegelSpraakModel.Declaration::line).orElse(null);
     }
 
     /** Where an element uchar made comes from, as {@code {soort, eigenaar, naam, vorm}}: the kind, owner and name of the
@@ -969,8 +951,7 @@ public final class Playground {
      *  Resolver drops. */
     record ParseError(int position, int column, String notice, String token, List<String> expected) {}
 
-    /** The parse of a source: its syntax errors, the tree of its entry rule and the token stream under it, whose
-     *  HIDDEN channel holds the line comments ({@link Declarations}). */
+    /** The parse of a source: its syntax errors, the tree of its entry rule and the token stream under it,. */
     record ParseResult(List<ParseError> errors, ParserRuleContext document, CommonTokenStream tokens) {}
 
     /**

@@ -17,7 +17,6 @@ import java.util.ArrayList;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Stream;
 
@@ -28,10 +27,10 @@ import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * The line and the comment of each declaration in {@code vocabularies.elements} ({@link Declarations}): read from
- * uchar's parse, keyed by owner and name, with a member of an extension at its line there and the type the extension
+ * The line and the comment of each declaration in {@code vocabularies.elements}, as uchar's frontend records them
+ * ({@code RegelSpraakModel.declaration}), with a member of an extension at its line there and the type the extension
  * names as its owner. The list is filled without a declared vocabulary too. An element uchar's frontend wrote has no
- * line; an element that couples to no single declaration gives {@code declarationError}.
+ * line.
  */
 class PlaygroundDeclarationsTest {
 
@@ -195,9 +194,9 @@ class PlaygroundDeclarationsTest {
         expected(voc, "VORM", null, "premie van een vondst", 29);
     }
 
-    /** Every golden of uchar's corpus with a source couples: no element or declaration is left over, every object
-     *  type, fact type, role, parameter, enumeration value and rule group has its declaration (uchar's frontend writes
-     *  none of these in the corpus), and the line of each declaration carries the name it declares. */
+    /** Over every golden of uchar's corpus with a source, every object type, fact type, role, parameter, enumeration
+     *  value and rule group has its declaration (uchar's frontend writes none of these in the corpus), and the line of
+     *  each declaration carries the name it declares. */
     @Test
     void every_golden_links() throws IOException {
         Set<Designatable.Kind> always = EnumSet.of(Designatable.Kind.OBJECTTYPE, Designatable.Kind.FEITTYPE,
@@ -212,21 +211,12 @@ class PlaygroundDeclarationsTest {
         List<String> errors = new ArrayList<>();
         for (Path p : sources) {
             String source = Files.readString(p);
-            boolean scenario = Playground.containsScenario(source);
-            Playground.ParseResult parseResult = Playground.parse(source, scenario);
-            RegelSpraakModel model = scenario
+            RegelSpraakModel model = Playground.containsScenario(source)
                     ? ScenarioResolver.resolve(source).model() : Resolver.resolve(source);
             if (!model.isOk()) continue;
-            Map<Designatable, Declarations.Declaration> d;
-            try {
-                d = Declarations.of(parseResult.document(), parseResult.tokens(), model);
-            } catch (Declarations.Unlinkable o) {
-                errors.add(p.getParent().getFileName() + ": " + o.getMessage());
-                continue;
-            }
             List<String> lines = ScenarioData.lines(source);
             for (Designatable b : model.designatable()) {
-                Declarations.Declaration x = d.get(b);
+                RegelSpraakModel.Declaration x = model.declaration(b).orElse(null);
                 if (x == null) {
                     if (always.contains(b.kind()))
                         errors.add(p.getParent().getFileName() + ": " + b + " heeft geen declaratie");

@@ -235,12 +235,11 @@ class PlaygroundGeneratedFromTest {
         for (Path p : sources) {
             String source = Files.readString(p);
             String golden = p.getParent().getFileName().toString();
-            boolean scenario = Playground.containsScenario(source);
-            RegelSpraakModel model = scenario ? ScenarioResolver.resolve(source).model() : Resolver.resolve(source);
+            RegelSpraakModel model = Playground.containsScenario(source)
+                    ? ScenarioResolver.resolve(source).model() : Resolver.resolve(source);
             if (!model.isOk()) continue;
             Naming naming = Naming.of(model, null);
-            JsonNode voc = Playground.vocabularies(model, naming, Playground.parse(source, scenario));
-            if (voc.has("declarationError")) errors.add(golden + ": " + voc.get("declarationError").asText());
+            JsonNode voc = Playground.vocabularies(model, naming);
             Set<String> forms = new HashSet<>();
             for (JsonNode e : voc.get("elements")) {
                 elements++;

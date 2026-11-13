@@ -369,12 +369,12 @@ refuse the start as well.
   `drlRules` beside it (below), uchar's rule graph of the document its loader reads back, as Mermaid
   (`graph`) and as `graphJson` (`{nodes:[{id,label,kind,endOutput}], edges:[{from,to}]}`), the `vocabularies` of the
   source (the declared ones, the chosen one, and per declaration its designation in each, with its source line `line`
-  and the `comment` directly above it, read from uchar's parse; the list `elements` is always filled, also without
-  a declared vocabulary, and a declaration uchar's frontend wrote itself has no line; `declarationError` names an
-  element that does not couple to one declaration). An element uchar's frontend made itself, under a name no
-  declaration carries (`berekende maxdatum`), has instead `generatedFrom: {kind, owner, name, form}`: the element
-  it comes from, canonical like an element's own `kind`, `owner` and `canonical`, and uchar's fixed key of the form
-  that made it (`opgave-boven-berekening`, `uitzondering-voor-subtype`, `beslistabelrij`, `stappen-na-de-verzameling`,
+  and the `comment` directly above it, as uchar's frontend records them; the list `elements` is always filled, also
+  without a declared vocabulary, and a declaration uchar's frontend wrote itself has no line). An element uchar's
+  frontend made itself, under a name no declaration carries (`berekende maxdatum`), has instead `generatedFrom: {kind,
+  owner, name, form}`: the element it comes from, canonical like an element's own `kind`, `owner` and `canonical`,
+  and uchar's fixed key of the form that made it (`opgave-boven-berekening`, `uitzondering-voor-subtype`,
+  `beslistabelrij`, `stappen-na-de-verzameling`,
   `startpunt`). Beside the `coverage`, `generated` lists each name of it that is no element (an effective defaults
   stack `defaults A:<type>.<member>` or `defaults K:<type>.<member>`, a version `<form> #<k>`) as `{name, kind,
   generatedFrom}` (a stack as `{name, kind, type, generatedFrom, composition}`), with the key `defaultsstapel` or
@@ -429,9 +429,9 @@ refuse the start as well.
   exec-model branch does not lower (`transpiler SKIP: regel: <naam> — …`, or `MARKER`) it is the line `Regel <naam>`
   stands on, the `line` `vocabularies` gives that form, when the model has exactly one form of that name and that form
   has a declaration in the source. There is no `refusalLine` for a refusal of the emitter or the loader, a document
-  error, a refusal of the build that names no form (a cycle, two rules of one name), a form uchar's frontend made
-  itself, and declarations that do not couple (`declarationError`): uchar's refusal names a form and no place, and a
-  line that is not certain is left out. `refusal` keeps uchar's sentence; `drlError` has no line beside it.
+  error, a refusal of the build that names no form (a cycle, two rules of one name), and a form uchar's frontend made
+  itself: uchar's refusal names a form and no place, and a line that is not certain is left out. `refusal` keeps
+  uchar's sentence; `drlError` has no line beside it.
 - `drlRules` (card `drl-rule-provenance`) has one entry per rule of `drl`, in the order of its headers: `name`, the
   rule's name, unescaped (the header `rule "…"` spells it as a DRL string literal, with `\\`, `\"`, `\n` and `\r`), and
   what uchar says the rule lowers (`TmsTranspiler.originOf`), in the keys of the decider of a ground (below, "The
