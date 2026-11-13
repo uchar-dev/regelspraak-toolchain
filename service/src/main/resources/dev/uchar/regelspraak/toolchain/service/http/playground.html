@@ -283,9 +283,13 @@ function scalar(w) {
   if (typeof w === "object" && typeof w.marker === "string") return '<span class="muted">' + esc(w.marker) + "</span>";
   return esc(w);
 }
+// A segment or a period leaves out an open bound: it begins before every day, or runs past every day.
+function interval(s) {
+  return (s.from == null ? "(−∞" : "[" + esc(s.from)) + ", " + (s.to == null ? "∞" : esc(s.to)) + ")";
+}
 function timelineHtml(tl) {
   if (!tl.length) return '<span class="muted">leeg</span>';
-  return tl.map((s) => "[" + esc(s.from) + ", " + esc(s.to) + ") " + scalar(s.value)).join("<br>");
+  return tl.map((s) => interval(s) + " " + scalar(s.value)).join("<br>");
 }
 function valueHtml(o) {
   let h;
@@ -394,7 +398,7 @@ function situationHtml(sit) {
     for (const k of o.characteristics)
       if (whole || matches(k.characteristic, k.characteristicCanonical))
         rows.push("<tr><td>" + nameOf(k, "characteristic") + "</td><td>" + (k.periods
-          ? k.periods.map((p) => "[" + esc(p.from) + ", " + esc(p.to) + ")").join("<br>") : "waar")
+          ? k.periods.map(interval).join("<br>") : "waar")
           + '</td><td class="num">' + k.line + "</td></tr>");
     for (const r of o.roles)
       if (whole || matches(r.role, r.roleCanonical) || (r.labels.length && matchesLabel(...r.labels)))
@@ -452,7 +456,7 @@ function fixpointHtml(r) {
     for (const k of o.characteristics)
       if (visible(k.origin) && (whole || matches(k.characteristic, k.characteristicCanonical)))
         rows.push("<tr><td>" + nameOf(k, "characteristic") + "</td><td>"
-          + (k.periods ? k.periods.map((p) => "[" + esc(p.from) + ", " + esc(p.to) + ")").join("<br>") : "waar")
+          + (k.periods ? k.periods.map(interval).join("<br>") : "waar")
           + (k.input ? ' <span class="small">(ook invoer)</span>' : "")
           + '</td><td><span class="origin ' + esc(k.origin) + '">' + esc(k.origin) + "</span></td></tr>");
     if (!rows.length) continue;
