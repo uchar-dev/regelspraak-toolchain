@@ -20,3 +20,9 @@ served model. README, `docs/ENGINE.md` and `bin/regelspraak --help` describe the
 - A test that starts `playground` without arguments, analyses a source through `/playground/analyse` and gets no
   `via=service`; the existing playground tests stay green.
 - `make gates` green.
+
+Result (2026-11-13):
+- `bin/regelspraak playground [--host H] [--port N]` starts the playground without a descriptor and without a source:
+  `GET /playground` and `POST /playground/analyse` only; `?via=service` is a 400 `UNSUPPORTED` with its reason, which the
+  page shows. README, `docs/ENGINE.md` and `--help` describe it. Witness `PlaygroundCommandTest`.
+- `make gates` green.

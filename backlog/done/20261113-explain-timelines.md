@@ -27,3 +27,15 @@ file, after the card `binding-parse-catala-explanation` of uchar).*
   of uchar's card `scenario-for-member-timeline-folds`, the same through `bin/regelspraak scenario --explanation`).
 - The explanation over every golden case file compared old against new: every difference is one of the intended ones.
 - `make gates` green.
+
+Result (2026-11-13):
+- A total over the timelines of members names its members with what each contributed ("over V1 (36 EUR uit 12 EUR/mnd
+  van 01-01-2026 tot 01-04-2026), V2 (…) en V3 (0 EUR)"); the explanation read the range of the fold from the record,
+  where uchar's loader keeps it in `roleBindings`/`sourcePaths`. A rule with a timeline target names its computation:
+  operands read as one value once, operands read as a timeline per decided period, cut to it; a fold over a set per
+  period the members that contributed there. Witnesses `ExplanationTimelinesTest` (tempovouw, tempototaal,
+  rekenen-per-dag); through `bin/regelspraak scenario --explanation` on tempovouw and tempototaal since the pin of uchar
+  `202d6f10e`. Old against new over 1113 golden cases: 316 sentences changed, text only added (299 computations on a
+  timeline target, 17 members of a fold over timelines). README and `docs/ENGINE.md` describe the forms. Provisional:
+  every decided period is named; beside a member's total its timeline only for a fold without a filter.
+- `make gates` green.
