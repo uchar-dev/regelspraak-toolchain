@@ -2153,9 +2153,12 @@ public final class Verbaliser {
 
         /** Of {@code f} het eigen totaal van een tijdlijn is (RUNTIME-SEMANTICS ch. 3.6): het totaal van één attribuut
          *  op een tijdlijn van het onderwerp zelf, zonder rol. Het telt de perioden van die tijdlijn en heeft geen leden;
-         *  het attribuut eronder is een eigen operand, met de tijdlijn die de motor las. */
-        private static boolean ownTotal(Expr.FunctionCall f) {
+         *  het attribuut eronder is een eigen operand, met de tijdlijn die de motor las. Een totaal met een bereik
+         *  (IR-SPEC ch. 4.3), dat uchars lader naast het model legt ({@code Loaded.roleBindings},
+         *  {@code Loaded.sourcePaths}), loopt over de tijdlijnen van zijn leden en is een vouw over een verzameling. */
+        private boolean ownTotal(Expr.FunctionCall f) {
             if (f.kind() != Expr.FunctionKind.TOTAAL || f.arguments().size() != 1
+                    || document.loaded().roleBindings().containsKey(f) || document.loaded().sourcePaths().containsKey(f)
                     || !(f.arguments().get(0) instanceof Expr.AttributeReference ref)) return false;
             boolean ownMember = !ref.set() && (ref.navigationPath() == null || ref.navigationPath().isEmpty())
                     && ref.navigationRole() == null;
@@ -2243,7 +2246,14 @@ public final class Verbaliser {
         private void contributors(Sentence.Builder b, Expr.FunctionCall f, ConditionReading.NodeReading n) {
             boolean count = f.kind() == Expr.FunctionKind.AANTAL || f.kind() == Expr.FunctionKind.AANTAL_GEVULDE;
             String withValue = f.kind() == Expr.FunctionKind.AANTAL ? "" : " met een waarde";
+            // een totaal zonder filter over een tijdlijn van zijn leden: bij elk lid ook de tijdlijn waaruit zijn
+            // totaal kwam, zoals het die aan het fixpunt houdt
+            String totalled = f.kind() == Expr.FunctionKind.TOTAAL && f.filter() == null
+                    && f.arguments().size() == 1 && f.arguments().get(0) instanceof Expr.AttributeReference ref
+                    && ref.objectType() != null && ref.objectType().granularityOf(ref.attribute()) != null
+                    ? ref.attribute() : null;
             List<Map.Entry<String, Object>> members = new ArrayList<>();
+            Map<String, Object> timelines = new HashMap<>();
             for (ConditionReading.Contributor c : n.contributors()) {
                 if (c.fault() != null)
                     throw new IllegalStateException("een lid van de vouw \"" + f.source().snippet().trim() + "\" op "
@@ -2256,6 +2266,10 @@ public final class Verbaliser {
                             + " objecten van het fixpunt, en dit " + c.member().getClass().getSimpleName()
                             + " is geen van beide");
                 members.add(new java.util.AbstractMap.SimpleImmutableEntry<>(name, c.value()));
+                if (totalled != null) {
+                    EndState.Member held = member(c.member(), totalled, false, null);
+                    if (held != null) timelines.put(name, held.value());
+                }
             }
             members.sort(Map.Entry.comparingByKey());
             int m = members.size();
@@ -2270,7 +2284,21 @@ public final class Verbaliser {
                     Map.Entry<String, Object> member = members.get(i);
                     b.leaf(Part.Kind.SUBJECT, member.getKey());
                     if (count) continue;
-                    reading(b, renderRead(f, member.getValue(), n.unit()), member.getValue() == null, member.getValue());
+                    Object v = member.getValue(), held = timelines.get(member.getKey());
+                    if (held == null) {
+                        reading(b, renderRead(f, v, n.unit()), v == null, v);
+                        continue;
+                    }
+                    if (!(held instanceof List<?> segments))
+                        throw new IllegalStateException("het tijdsafhankelijke attribuut '" + totalled + "' staat op "
+                                + member.getKey() + " als " + held.getClass().getName() + ", niet als lijst segmenten");
+                    Datatype datatype = ((Expr.AttributeReference) f.arguments().get(0)).objectType()
+                            .attribute(totalled);
+                    b.open(Part.Kind.READING, Map.of()).text(" (");
+                    value(b, renderRead(f, v, n.unit()), v == null, v);
+                    b.text(" uit ").leaf(Part.Kind.VALUE, renderPeriods(Period.list(segments), null,
+                            x -> render(x, datatype)), Part.meta("timeline", true));
+                    b.text(")").close(Part.Kind.READING);
                 }
                 if (m > 5) b.text(" en nog " + (m - 5));
                 b.text(m == 1 ? ", het enige lid" + withValue : " (" + m + " leden" + withValue + ")");
