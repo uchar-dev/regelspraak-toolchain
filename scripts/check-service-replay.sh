@@ -269,7 +269,7 @@ REPLAY_EXCLUDED=(
   "jutterswet-keurlast/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-muntbewaring/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-penningjaar/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
-  "jutterswet-tempototaal/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-tempototaal/case1-totaal-en-som-naast-elkaar.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-vast-startpunt/case5-geklemde-maand.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-vast-startpunt/case7-week-en-kwartaal.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-voorwaarde-buiten-de-beurt/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"

@@ -50,7 +50,7 @@ class ExplanationTimelinesTest {
                         + " tot 01-04-2026), V2 (12 EUR uit 7 EUR/mnd van 01-01-2026 tot 01-02-2026 en 5 EUR/mnd van"
                         + " 01-02-2026 tot 01-03-2026) en V3 (0 EUR) (3 leden met een waarde)",
                 "J2 heeft als bewaarlast 0 EUR" + rule + " (0 EUR): geen lid droeg een waarde bij"),
-                explanation("jutterswet-tempovouw", "case.json"));
+                explanation("jutterswet-tempovouw", "case1-drie-vondsten-over-drie-maanden.json"));
     }
 
     /** The two readings of "het totaal van" side by side: over a set of scalar members it names its members, as
@@ -64,7 +64,7 @@ class ExplanationTimelinesTest {
                 "J1 heeft als bewaargeld 10 EUR volgens de regel 'bewaargeld van een jutter' (onvoorwaardelijk): het"
                         + " totaal van zijn bewaarvergoeding per maand, met zijn bewaarvergoeding per maand (10 EUR/mnd"
                         + " van 01-03-2026 tot 01-04-2026)"),
-                explanation("jutterswet-tempototaal", "case.json").stream()
+                explanation("jutterswet-tempototaal", "case1-totaal-en-som-naast-elkaar.json").stream()
                         .filter(s -> s.startsWith("J1 heeft als bewaarlast") || s.startsWith("J1 heeft als bewaargeld"))
                         .toList());
     }
