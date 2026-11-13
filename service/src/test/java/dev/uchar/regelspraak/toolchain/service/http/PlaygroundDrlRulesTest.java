@@ -814,25 +814,29 @@ class PlaygroundDrlRulesTest {
     void pieces_that_do_not_fit_the_text_are_a_fault() {
         String drl = "package p;\n\nrule \"a\"\nend\n\nrule \"b\"\nend\n\n";
         int a = drl.indexOf("rule \"a\""), b = drl.indexOf("rule \"b\""), last = drl.length();
-        List<String> names = List.of("a", "b");
+        List<String> base = List.of("b", "a");
         TmsTranspiler.DrlPiece pa = new TmsTranspiler.DrlPiece("a", a, a, b, List.of());
         TmsTranspiler.DrlPiece pb = new TmsTranspiler.DrlPiece("b", b, b, last, List.of());
-        Playground.checkPieces(drl, names, List.of(pa, pb));
-        // one piece fewer than the text has headers
-        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(pa)))
+        Playground.checkPieces(drl, List.of(pa, pb), base);
+        // one piece fewer than the KieBase has rules
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, List.of(pa), base))
                 .getMessage().contains("1 stuk"));
-        // a piece of another rule than the header it lies on, in the same order
-        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(pa,
-                new TmsTranspiler.DrlPiece("c", b, b, last, List.of())))).getMessage().contains("'c'"));
+        // a piece of a rule the KieBase does not have, on the header of one it has
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, List.of(pa,
+                new TmsTranspiler.DrlPiece("c", b, b, last, List.of())), base)).getMessage().contains("[a, c]"));
+        // the pieces of the KieBase's rules, each on the header of the other
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, List.of(
+                new TmsTranspiler.DrlPiece("b", a, a, b, List.of()),
+                new TmsTranspiler.DrlPiece("a", b, b, last, List.of())), base)).getMessage().contains("kop"));
         // a gap between two pieces, and a text that goes on after the last
-        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(
-                new TmsTranspiler.DrlPiece("a", a, a, b - 1, List.of()), pb))).getMessage().contains("eindigt"));
-        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(pa,
-                new TmsTranspiler.DrlPiece("b", b, b, last - 1, List.of())))).getMessage().contains("tekst"));
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, List.of(
+                new TmsTranspiler.DrlPiece("a", a, a, b - 1, List.of()), pb), base)).getMessage().contains("eindigt"));
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, List.of(pa,
+                new TmsTranspiler.DrlPiece("b", b, b, last - 1, List.of())), base)).getMessage().contains("tekst"));
         // a rule start that is not on its header
-        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, names, List.of(
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(drl, List.of(
                 new TmsTranspiler.DrlPiece("a", a, a, b + 1, List.of()),
-                new TmsTranspiler.DrlPiece("b", b + 1, b + 1, last, List.of())))).getMessage().contains("kop"));
+                new TmsTranspiler.DrlPiece("b", b + 1, b + 1, last, List.of())), base)).getMessage().contains("kop"));
     }
 
     /** Floors of the sweep below, measured 2026-10-24 on uchar's corpus at the pin of card drl-rule-functions-fields:
@@ -871,13 +875,23 @@ class PlaygroundDrlRulesTest {
                 + " stukken, " + f + " functies; de vloeren " + List.of(MIN_BUILT, MIN_PIECES, MIN_FUNCTIONS));
     }
 
+    /** A piece names its rule unescaped, and its header spells the name as a DRL string literal: the four escapes of
+     *  {@code Namen.drlString} ({@code \\}, {@code \"}, {@code \r}, {@code \n}) stand at {@code ruleStart}. */
     @Test
-    void a_header_is_read_back_as_the_name_it_escapes() {
+    void a_piece_lies_on_the_header_that_escapes_its_name() {
+        String odd = "a \"b\" c\\d\ne\rf";
         String drl = "function int f() {\n    return 1;\n}\n"
                 + "rule \"a \\\"b\\\" c\\\\d\\ne\\rf\"\n    dialect \"mvel\"\nwhen\nthen\nend\n\n"
                 + "rule \"gewoon\"\n    dialect \"mvel\"\nwhen\nthen\nend\n\n";
-        assertEquals(List.of("a \"b\" c\\d\ne\rf", "gewoon"), Playground.drlRuleNames(drl));
-        assertThrows(IllegalStateException.class, () -> Playground.drlRuleNames("rule \"open\n"));
-        assertThrows(IllegalStateException.class, () -> Playground.drlRuleNames("rule \"a\\tb\"\n"));
+        int first = drl.indexOf("rule \"a "), second = drl.indexOf("rule \"gewoon\"");
+        Playground.checkPieces(drl, List.of(new TmsTranspiler.DrlPiece(odd, first, first, second, List.of()),
+                new TmsTranspiler.DrlPiece("gewoon", second, second, drl.length(), List.of())), List.of(odd, "gewoon"));
+        // the same name unescaped in the header is not its header
+        String plain = drl.replace("rule \"a \\\"b\\\" c\\\\d\\ne\\rf\"", "rule \"" + odd + "\"");
+        int plainSecond = plain.indexOf("rule \"gewoon\"");
+        assertTrue(assertThrows(IllegalStateException.class, () -> Playground.checkPieces(plain, List.of(
+                new TmsTranspiler.DrlPiece(odd, first, first, plainSecond, List.of()),
+                new TmsTranspiler.DrlPiece("gewoon", plainSecond, plainSecond, plain.length(), List.of())),
+                List.of(odd, "gewoon"))).getMessage().contains("kop"));
     }
 }

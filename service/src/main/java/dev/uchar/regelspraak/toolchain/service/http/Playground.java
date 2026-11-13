@@ -689,7 +689,8 @@ public final class Playground {
      *       ({@link #piece}). The places are indices of the {@code drl} of the same answer in UTF-16 code units, as a
      *       Java {@code String} and JavaScript count; they are checked against the text ({@link #checkPieces}).</li>
      * </ul>
-     * {@code name} is the name of the rule, unescaped: the header {@code rule "…"} spells it as a DRL string literal.
+     * {@code name} is the name of the rule as uchar's piece gives it, unescaped: the header {@code rule "…"} spells it
+     * as a DRL string literal.
      * {@code ir} is the document the emitter writes of {@code model}, the one the build was built from, on which the
      * pointers of uchar lie.
      */
@@ -698,22 +699,15 @@ public final class Playground {
         if (ir == null)
             throw new IllegalStateException("de DRL-teksttak bouwde een model waarvan de emitter geen document"
                     + " schreef");
-        List<String> names = drlRuleNames(build.drl());
         List<String> inBase = new ArrayList<>();
         for (org.kie.api.definition.KiePackage p : build.kieBase().getKiePackages())
             for (org.kie.api.definition.rule.Rule r : p.getRules()) inBase.add(r.getName());
-        List<String> inText = new ArrayList<>(names);
-        java.util.Collections.sort(inText);
-        java.util.Collections.sort(inBase);
-        if (!inText.equals(inBase))
-            throw new IllegalStateException("de koppen van de DRL-tekst noemen " + inText.size() + " regel(s), de"
-                    + " KieBase van die tekst " + inBase.size() + ": " + inText + " tegen " + inBase);
         List<TmsTranspiler.DrlPiece> pieces = build.execModelTranspiler().drlPieces();
-        checkPieces(build.drl(), names, pieces);
+        checkPieces(build.drl(), pieces, inBase);
         Verbaliser.Document document = Verbaliser.Document.of(IrLoader.loadWithPositions(ir));
         ArrayNode sink = NF.arrayNode();
-        for (int i = 0; i < names.size(); i++) {
-            String name = names.get(i);
+        for (TmsTranspiler.DrlPiece piece : pieces) {
+            String name = piece.rule();
             TmsTranspiler.RuleOrigin o = build.execModelTranspiler().originOf(name);
             ObjectNode n = sink.addObject();
             n.put("name", name);
@@ -731,26 +725,29 @@ public final class Playground {
                         + " een soort die de playground niet kent: " + o);
             }
             if (o.fold() != null) n.put("fold", fold(n, o.fold(), ir));
-            n.set("piece", piece(pieces.get(i)));
+            n.set("piece", piece(piece));
         }
         return sink;
     }
 
     /**
-     * Fails unless the pieces of uchar ({@code DrlPiece}) lie where the headers of {@code drl} say: as many pieces as
-     * headers, the i-th piece of the rule of the i-th header, each beginning where the one before it ends, the last
-     * ending with the text, and each {@code ruleStart} on the header of its rule. A reader cuts {@code drl} at the
-     * places, and a place that is off would cut another text without saying so.
+     * Fails unless the pieces of uchar ({@code DrlPiece}) are those of the rules of the text {@code drl} and lie where
+     * its headers stand: a piece per rule of the KieBase built from the text ({@code inBase}), each beginning where the
+     * one before it ends, the last ending with the text, and each {@code ruleStart} on the header {@code rule "…"} of
+     * its rule. A reader cuts {@code drl} at the places, and a place that is off would cut another text without saying
+     * so. uchar's corpus witness holds the same over its goldens; a posted source is none of them.
      */
-    static void checkPieces(String drl, List<String> names, List<TmsTranspiler.DrlPiece> pieces) {
-        if (pieces.size() != names.size())
+    static void checkPieces(String drl, List<TmsTranspiler.DrlPiece> pieces, List<String> inBase) {
+        List<String> ofPieces = new ArrayList<>();
+        for (TmsTranspiler.DrlPiece p : pieces) ofPieces.add(p.rule());
+        java.util.Collections.sort(ofPieces);
+        List<String> base = new ArrayList<>(inBase);
+        java.util.Collections.sort(base);
+        if (!ofPieces.equals(base))
             throw new IllegalStateException("uchar geeft " + pieces.size() + " stuk(ken) van de DRL-tekst, en de"
-                    + " koppen van die tekst noemen " + names.size() + " regel(s)");
+                    + " KieBase van die tekst heeft " + base.size() + " regel(s): " + ofPieces + " tegen " + base);
         for (int i = 0; i < pieces.size(); i++) {
             TmsTranspiler.DrlPiece p = pieces.get(i);
-            if (!p.rule().equals(names.get(i)))
-                throw new IllegalStateException("het stuk " + i + " van uchar is van de regel '" + p.rule()
-                        + "', en de kop op die plaats van de DRL-tekst noemt '" + names.get(i) + "'");
             if (i > 0 && p.start() != pieces.get(i - 1).end())
                 throw new IllegalStateException("het stuk van de regel '" + p.rule() + "' begint op " + p.start()
                         + ", en het vorige stuk eindigt op " + pieces.get(i - 1).end());
@@ -823,46 +820,6 @@ public final class Playground {
         Object form = decider.containsKey("rule") ? decider.get("rule") : decider.get("group");
         if (form instanceof String f)
             model.generatedFrom(Designatable.form(f)).ifPresent(g -> n.set("generatedFrom", generatedFrom(g)));
-    }
-
-    /** The header of a rule in uchar's DRL text: {@code rule} and the name as a DRL string literal
-     *  ({@code Namen.drlString}), alone on its line. */
-    private static final java.util.regex.Pattern RULE_HEADER =
-            java.util.regex.Pattern.compile("^rule \"((?:[^\"\\\\]|\\\\.)*)\"$", java.util.regex.Pattern.MULTILINE);
-
-    /**
-     * The names of the rules of {@code drl}, uchar's DRL text, in its order, unescaped: the four escapes
-     * {@code Namen.drlString} writes in a header ({@code \\}, {@code \"}, {@code \r}, {@code \n}) are undone. A
-     * line that begins with {@code rule "} and is no such header, or another escape, fails: uchar wrote a header this
-     * reading does not know.
-     */
-    static List<String> drlRuleNames(String drl) {
-        List<String> names = new ArrayList<>();
-        int headers = 0;
-        for (String line : drl.split("\n", -1)) if (line.startsWith("rule \"")) headers++;
-        java.util.regex.Matcher m = RULE_HEADER.matcher(drl);
-        while (m.find()) names.add(unescape(m.group(1)));
-        if (names.size() != headers)
-            throw new IllegalStateException("de DRL-tekst heeft " + headers + " regel(s) die met 'rule \"' beginnen,"
-                    + " en " + names.size() + " daarvan zijn een kop met een naam als stringliteral");
-        return names;
-    }
-
-    private static String unescape(String literal) {
-        StringBuilder b = new StringBuilder();
-        for (int i = 0; i < literal.length(); i++) {
-            char c = literal.charAt(i);
-            if (c != '\\') { b.append(c); continue; }
-            char next = literal.charAt(++i);
-            switch (next) {
-                case '\\', '"' -> b.append(next);
-                case 'n' -> b.append('\n');
-                case 'r' -> b.append('\r');
-                default -> throw new IllegalStateException("de kop van een regel in de DRL-tekst draagt de escape \\"
-                        + next + ", die uchar niet schrijft: " + literal);
-            }
-        }
-        return b.toString();
     }
 
     /** The rule graph as {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, each label in the names of
