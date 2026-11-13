@@ -60,7 +60,9 @@ import java.util.regex.Pattern;
  *   <li>afgesloten met een bronverwijzing wanneer de IR die als optionele regelbron-annotatie draagt.</li>
  * </ul>
  *
- * <p><b>De waarden komen van de motor.</b> Of een kenmerk is toegekend, staat op de bean na de terugschrijving. Hoe
+ * <p><b>De waarden komen van de motor.</b> Of een kenmerk is toegekend en wat een lid houdt, staat in uchars lezing van
+ * het fixpunt ({@link EndState}, {@code DroolsBackend.standingOf}): per lid de waarde, of iets haar afleidde, en wat de
+ * invoer of de objectcreatie gaf. Hoe
  * de voorwaarde van een vorm uitkwam en wat elke knoop ervan vond, leest de uitleg uit de lezingen van een build met
  * lezingen ({@link DroolsBackend#readingsOf}: per vorm, op haar pointer, en object de status en per knoop bereikt of
  * niet, oordeel of waarde met eenheid). De uitleg rekent niets na: zij legt elke lezing op de knopen van het document
@@ -121,7 +123,8 @@ import java.util.regex.Pattern;
  * vouwde, de leden van een vouw met wat elk bijdroeg, en de waarde vóór een afronding en vóór een begrenzing) en
  * waarom zij gold; daarna elke andere schrijver met de reden dat zij niet schreef. Alle waarden komen uit de lezing van
  * de regel ({@link DroolsBackend#readingsOf}), die sinds uchars kaart readings-of-unconditional-forms ook een regel
- * zonder voorwaarde heeft; alleen een invoerwaarde, waar geen regel schreef, staat op de bean. Een tijdsafhankelijk
+ * zonder voorwaarde heeft; wat het doel houdt waar geen regel schreef, komt uit uchars lezing van het fixpunt: de
+ * invoerwaarde, of "de afgeleide waarde" waar iets anders dan de regels van de zin haar afleidde. Een tijdsafhankelijk
  * attribuut noemt per regel de perioden die zij besliste, met hun waarde, en de perioden waarin de invoer bleef staan,
  * uit {@link DroolsBackend#periodDecisionsOf}.
  *
@@ -169,6 +172,8 @@ public final class Verbaliser {
     private final Map<Object, String> labels = new IdentityHashMap<>();
     /** De objecten die de creaties van de sessie maakten, in de volgorde van uchars lezing van de sessie. */
     private final List<EndState.EndObject> made;
+    /** Elk object van de sessie zoals uchar het aan het fixpunt las, met de leden die een waarde houden. */
+    private final Map<Object, EndState.EndObject> ends = new IdentityHashMap<>();
 
     /**
      * Een verbalisator voor één sessie van een build met lezingen: {@code document} is het document van die build zoals
@@ -185,6 +190,7 @@ public final class Verbaliser {
         this.naming = Objects.requireNonNull(naming, "naming");
         this.made = Objects.requireNonNull(standing, "standing").objects().stream()
                 .filter(o -> o.creation() != null).toList();
+        for (EndState.EndObject o : standing.objects()) ends.put(o.object(), o);
         for (ConditionReading r : readings)
             if (this.readings.computeIfAbsent(r.form(), k -> new IdentityHashMap<>()).put(r.object(), r) != null)
                 throw new IllegalStateException("de motor gaf twee lezingen van " + r.form() + " op één object");
@@ -682,7 +688,8 @@ public final class Verbaliser {
             }
             for (int i = 0; i < after.size(); i++)
                 displacedVariant(b, after.get(i), i == 0 ? "; verdrongen: " : ", ", d);
-            if (d.characteristic() && Boolean.FALSE.equals(d.decider().decision()) && readBoolean(bean, d.member()))
+            if (d.characteristic() && Boolean.FALSE.equals(d.decider().decision())
+                    && given(member(bean, d.member(), true, null)) != null)
                 b.text("; de invoer kende het kenmerk toe, en dat blijft staan");
             ground(b, groundOf(decider), deciderOf(decider));
             return b.build();
@@ -895,9 +902,14 @@ public final class Verbaliser {
          *  leeg. */
         private void standing(Sentence.Builder b, String member, boolean characteristic) {
             if (characteristic) {
-                boolean present = readBoolean(bean, member);
-                predicateOf(member, present).mainClause(b, new On(label));
-                if (present) b.text(" uit de invoer");
+                EndState.Member m = member(bean, member, true, null);
+                predicateOf(member, m != null).mainClause(b, new On(label));
+                if (m == null) return;
+                // the group wrote nothing here, so a characteristic that holds came from the input
+                if (given(m) == null)
+                    throw new IllegalStateException("het kenmerk '" + member + "' van " + label + " staat aan het"
+                            + " fixpunt zonder invoer, en de groep die het schrijft besliste niets");
+                b.text(" uit de invoer");
                 return;
             }
             attributeStanding(b, bean, label, type, member);
@@ -1009,13 +1021,14 @@ public final class Verbaliser {
         }
 
         private void initialisationNotDecided(Sentence.Builder b, String member) {
-            if (readRaw(bean, Namen.getter(member)) == null) {
+            EndState.Member m = member(bean, member, false, null);
+            if (m == null) {
                 b.text("gaf geen waarde");
                 return;
             }
             didNotHoldBecause(b).text(" de ");
             attributeName(b, type, member, new On(label));
-            b.text(" had een invoerwaarde");
+            b.text(m.derived() ? " had al een waarde" : " had een invoerwaarde");
         }
 
         // ---- namen ----
@@ -1220,8 +1233,8 @@ public final class Verbaliser {
      *       geen waarde", haar berekening en waarom zij gold; houdt het doel een invoerwaarde, dan "gaf geen waarde en
      *       besliste niets", want een lege waarde beslist niets (ch. 3.11);</li>
      *   <li>geen regel gold en het doel is leeg: "heeft geen X, want geen regel gold";</li>
-     *   <li>geen regel gold en het doel houdt een invoerwaarde: "houdt als X de invoerwaarde W, want geen regel
-     *       gold".</li>
+     *   <li>geen regel gold en het doel houdt een waarde: "houdt als X de invoerwaarde W, want geen regel
+     *       gold", of "de afgeleide waarde W" waar iets anders dan de regels van de zin haar afleidde.</li>
      * </ul>
      *
      * <p>Daarna elke andere schrijver als groep {@link Part.Kind#VARIANT}, met de reden dat zij niet schreef: haar
@@ -1240,7 +1253,8 @@ public final class Verbaliser {
      * de sleutels van die declaratie. Na de waarden de waarde vóór elke afronding en vóór elke begrenzing. Een knoop die
      * de motor niet bereikte (de tak van een keuze) staat er zonder waarde. Elke waarde komt uit de lezing van de regel:
      * de knopen van haar waarde volgen in de nummering op die van haar voorwaarde (ch. 5.12), en een regel zonder
-     * voorwaarde heeft alleen die van haar waarde. Alleen de invoerwaarde, waar geen regel schreef, staat op de bean.
+     * voorwaarde heeft alleen die van haar waarde. Wat het doel houdt waar geen regel schreef, staat in uchars lezing van het
+     * fixpunt: de invoerwaarde, of de afgeleide waarde waar iets anders haar afleidde.
      *
      * <p>Een regel op een tijdlijn-doel schreef de perioden die zij besliste, met hun waarde ({@code timeline: true} op
      * de waarde), zonder berekening; de zin noemt ook de perioden waarin de invoer bleef staan
@@ -1456,37 +1470,33 @@ public final class Verbaliser {
             return valueRead(w).of(w.rule().value()).value();
         }
 
-        /** Wat tijdsafhankelijk attribuut {@code member} houdt waar geen regel een dag besliste: leeg, of de invoer,
-         *  van de bean gelezen als haar perioden. Geeft of er een invoerwaarde staat. */
+        /** Wat tijdsafhankelijk attribuut {@code member} houdt waar geen regel een dag besliste: leeg, of de waarde
+         *  die het aan het fixpunt houdt als haar perioden ({@link #standingWord}). Geeft of er een waarde staat. */
         private boolean timelineStanding(Sentence.Builder b, String member) {
-            Object v = readRaw(bean, Namen.getter(member));
-            if (v == null) return attributeStanding(b, bean, label, type, member);
-            if (!(v instanceof List<?> segments))
+            EndState.Member m = member(bean, member, false, null);
+            if (m == null) return attributeStanding(b, bean, label, type, member);
+            if (!(m.value() instanceof List<?> segments))
                 throw new IllegalStateException("het tijdsafhankelijke attribuut '" + member + "' staat op " + label
-                        + " als " + v.getClass().getName() + ", niet als lijst segmenten");
+                        + " als " + m.value().getClass().getName() + ", niet als lijst segmenten");
             Datatype datatype = type.attribute(member);
             b.text("houdt als ");
             attributeName(b, type, member, new On(label));
-            b.text(" " + standingValue(bean) + " ").leaf(Part.Kind.VALUE,
+            b.text(" " + standingWord(bean, m) + " ").leaf(Part.Kind.VALUE,
                     renderPeriods(Period.list(segments), null, x -> render(x, datatype)), Part.meta("timeline", true));
             return true;
         }
 
-        /** Wat cel {@code cell} van {@code member} houdt waar geen regel een waarde schreef: leeg of de invoerwaarde
-         *  ({@link #standingValue}), uit uchars kaart van cellen op de bean. Geeft of er een invoerwaarde staat. */
+        /** Wat cel {@code cell} van {@code member} houdt waar geen regel een waarde schreef: leeg of de waarde die zij
+         *  aan het fixpunt houdt ({@link #standingWord}). Geeft of er een waarde staat. */
         private boolean cellStanding(Sentence.Builder b, String member, List<String> cell) {
-            Object map = readRaw(bean, Namen.getter(member));
-            if (map != null && !(map instanceof Map<?, ?>))
-                throw new IllegalStateException("het gedimensioneerde attribuut '" + member + "' van " + label
-                        + " staat op de bean als " + map.getClass().getName() + ", niet als uchars kaart van cellen");
-            Object v = map == null ? null : ((Map<?, ?>) map).get(cell);
-            b.text(v == null ? "heeft geen " : "houdt als ");
+            EndState.Member m = member(bean, member, false, cell);
+            b.text(m == null ? "heeft geen " : "houdt als ");
             cellName(b, type, member, cell, new On(label));
-            if (v != null) {
-                b.text(" " + standingValue(bean) + " ");
-                value(b, render(v, type.attribute(member)), false, v);
+            if (m != null) {
+                b.text(" " + standingWord(bean, m) + " ");
+                value(b, render(m.value(), type.attribute(member)), false, m.value());
             }
-            return v != null;
+            return m != null;
         }
 
         /** Het doel van de zin: attribuut {@code member}, of zijn cel {@code cell}, op het object van de zin. */
@@ -1881,7 +1891,7 @@ public final class Verbaliser {
         if (subject.characteristicGranularityOf(characteristic) != null
                 || subject.characteristicTimelineCountOf(characteristic) != null)
             return periodAssignment(label, bean, ref, r);
-        boolean present = readBoolean(bean, characteristic);
+        boolean present = member(bean, characteristic, true, null) != null;
         Condition v = r.condition();
         if (!present && v == null) return null;   // onvoorwaardelijk maar afwezig: niets te verantwoorden
         // de conclusie van de regel ("Een … heeft de uitkeringsduur verstreken") draagt het lidwoord
@@ -1935,7 +1945,8 @@ public final class Verbaliser {
      *  regel '…'"}. */
     private Sentence periodAssignment(String label, Object bean, Expr.AttributeReference ref, ResolvedRule r) {
         String characteristic = ref.attribute();
-        Object held = readRaw(bean, Namen.getter(characteristic));
+        EndState.Member m = member(bean, characteristic, true, null);
+        Object held = m == null ? null : m.value();
         if (held != null && !(held instanceof List<?>))
             throw new IllegalStateException("het tijdsafhankelijke kenmerk '" + characteristic + "' staat op " + label
                     + " als " + held.getClass().getName() + ", niet als lijst perioden");
@@ -2085,20 +2096,46 @@ public final class Verbaliser {
     }
 
     /** Wat attribuut {@code member} van {@code bean}, van objecttype {@code type} en met naam {@code label}, houdt waar
-     *  niemand het schreef: leeg, of de invoerwaarde ({@link #standingValue}), van de bean gelezen. Geeft of er een
-     *  invoerwaarde staat. */
+     *  niemand die de zin noemt het schreef: leeg, of de waarde die het aan het fixpunt houdt
+     *  ({@link #standingWord}). Geeft of er een waarde staat. */
     private boolean attributeStanding(Sentence.Builder b, Object bean, String label, ObjectType type, String member) {
-        Object v = readRaw(bean, Namen.getter(member));
-        if (v == null) {
+        EndState.Member m = member(bean, member, false, null);
+        if (m == null) {
             b.text("heeft geen ");
             attributeName(b, type, member, new On(label));
             return false;
         }
         b.text("houdt als ");
         attributeName(b, type, member, new On(label));
-        b.text(" " + standingValue(bean) + " ");
-        value(b, render(v, type.attribute(member)), false, v);
+        b.text(" " + standingWord(bean, m) + " ");
+        value(b, render(m.value(), type.attribute(member)), false, m.value());
         return true;
+    }
+
+    /** Lid {@code name} van {@code bean} zoals uchar het aan het fixpunt las ({@link EndState.Member}): een kenmerk of
+     *  een attribuut, bij een gedimensioneerd attribuut de cel {@code cell}; null waar het geen waarde houdt. De
+     *  waarde is de afgeleide waar iets haar afleidde, anders wat de invoer of de objectcreatie gaf. */
+    private EndState.Member member(Object bean, String name, boolean characteristic, List<String> cell) {
+        EndState.EndObject o = ends.get(bean);
+        if (o == null)
+            throw new IllegalStateException("uchars lezing van het fixpunt noemt het object met lid '" + name + "' niet:"
+                    + " de uitleg leest de standing van dezelfde sessie");
+        String key = Namen.norm(name);
+        for (EndState.Member m : o.members())
+            if (m.characteristic() == characteristic && Namen.norm(m.name()).equals(key)
+                    && Objects.equals(m.cell(), cell)) return m;
+        return null;
+    }
+
+    /** Wat de invoer of de objectcreatie lid {@code m} gaf; null zonder lid of waar zij het niets gaf. */
+    private static Object given(EndState.Member m) {
+        return m == null ? null : m.given();
+    }
+
+    /** Hoe de zin de waarde {@code m} noemt die op {@code bean} staat waar geen schrijver die de zin noemt besliste: een
+     *  waarde die iets anders afleidde "de afgeleide waarde", anders die van {@link #standingValue}. */
+    private String standingWord(Object bean, EndState.Member m) {
+        return m.derived() ? "de afgeleide waarde" : standingValue(bean);
     }
 
     /** Of {@code bean} een object is dat een creatie van de sessie maakte ({@link EndState.EndObject#creation}). */
@@ -2975,30 +3012,6 @@ public final class Verbaliser {
             case LATER -> "ligt na";
             case LATER_OF_GELIJK -> "ligt op of na";
         };
-    }
-
-    // ---------------- bean-reads ----------------
-
-    private static boolean readBoolean(Object bean, String characteristic) {
-        return Boolean.TRUE.equals(readRaw(bean, Namen.getter(characteristic)));
-    }
-
-    /** Een getter-read op een bean; probeert getX en isX (kenmerken lezen soms als isX). Null alleen als de getter
-     *  null geeft, een afwezige waarde; een bean zonder de getter of een getter die faalt is een fout. */
-    static Object readRaw(Object bean, String getter) {
-        Class<?> type = bean.getClass();
-        for (String m : new String[]{ getter, "is" + getter.substring(3) }) {
-            java.lang.reflect.Method method;
-            try { method = type.getMethod(m); }
-            catch (NoSuchMethodException ignore) { continue; }
-            try { return method.invoke(bean); }
-            catch (ReflectiveOperationException e) {
-                throw new IllegalStateException("de uitleg kon " + m + " van " + type.getName() + " niet lezen: "
-                        + (e.getCause() != null ? e.getCause() : e), e);
-            }
-        }
-        throw new IllegalStateException("de bean " + type.getName() + " heeft geen getter " + getter + " of is"
-                + getter.substring(3) + ": de uitleg leest een lid dat het fact-model niet draagt");
     }
 
     /** De bronverwijzing van een regel: haar niet-lege {@code // Bron:}-annotaties in bronvolgorde, getrimd; de zin
