@@ -404,7 +404,6 @@ public final class Verbaliser {
     /** De pointer van een default, met als groep 1 zijn pointer in zijn groep. */
     private static final Pattern IN_GROUP = Pattern.compile(
             "/rules/prioritizedDefaults/[0-9]+(/defaults/[0-9]+(?:/exceptions/members/[0-9]+/defaults/[0-9]+)*)");
-    private static final Pattern VERSION = Pattern.compile("([\\s\\S]*) #([0-9]+)");
 
     /** Een variant van een stapel: een default van een groep van het document, of een gewone regel die de stapel van
      *  een subtype als basis opneemt (ch. 7.10). {@code holder} is de default die haar in een uitzonderingsgroep
@@ -477,29 +476,14 @@ public final class Verbaliser {
             }
             return v;
         }
-        Matcher rm = RULE_POINTER.matcher(pointer);
-        if (rm.matches())
-            return ruleVariant(document, pointer, Integer.parseInt(rm.group(1)), Integer.parseInt(rm.group(2)));
-        throw unresolved(pointer, "dat is geen pointer naar een default of een regelversie");
-    }
-
-    /** De regelversie {@code /rules/rules/k/versions/v}: het document schrijft de regels als vormen, een vorm met
-     *  meer versies als de opeenvolgende regels "… #1" tot en met "… #n" van het model, zoals uchar de pointer
-     *  maakt. */
-    private static Variant ruleVariant(Document document, String pointer, int form, int version) {
-        int k = -1, w = 0;
-        String previous = null;
-        for (ResolvedRule r : document.rules()) {
-            if (r.name() == null)
-                throw unresolved(pointer,
-                        "een regel zonder naam laat open bij welke vorm van het document hij hoort");
-            if (previous != null && nextVersion(previous, r.name())) w++;
-            else { k++; w = 0; }
-            previous = r.name();
-            if (k == form && w == version) return new Variant(pointer, null, r, null, null, -1, 0, false);
-            if (k > form) break;
+        if (RULE_POINTER.matcher(pointer).matches()) {
+            // the loader recorded the pointer of every rule version it read
+            for (ResolvedRule r : document.rules())
+                if (pointer.equals(document.positions().versionOf(r)))
+                    return new Variant(pointer, null, r, null, null, -1, 0, false);
+            throw unresolved(pointer, "het document heeft geen regelversie op die pointer");
         }
-        throw unresolved(pointer, "het document heeft geen vorm " + form + " met een versie " + version);
+        throw unresolved(pointer, "dat is geen pointer naar een default of een regelversie");
     }
 
     private static IllegalStateException unresolved(String pointer, String why) {
@@ -1900,13 +1884,6 @@ public final class Verbaliser {
             if (a instanceof BigDecimal x && b instanceof BigDecimal y) return x.compareTo(y) == 0;
             return Objects.equals(a, b);
         }
-    }
-
-    /** Of {@code name} de versie na die van {@code previous} noemt, van één vorm. */
-    private static boolean nextVersion(String previous, String name) {
-        Matcher a = VERSION.matcher(previous), b = VERSION.matcher(name);
-        return a.matches() && b.matches() && a.group(1).equals(b.group(1))
-                && Integer.parseInt(b.group(2)) == Integer.parseInt(a.group(2)) + 1;
     }
 
     /** Één kenmerktoekenningsregel voor één instantie: is het kenmerk toegekend → "waarom (voorwaarden)"; is het
