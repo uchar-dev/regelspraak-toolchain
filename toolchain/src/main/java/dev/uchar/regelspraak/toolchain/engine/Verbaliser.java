@@ -190,24 +190,6 @@ public final class Verbaliser {
                 throw new IllegalStateException("de motor gaf twee lezingen van " + r.form() + " op één object");
     }
 
-    /** {@link #verbalise(Map, Map, List, List)} zonder de defaults-groepen en zonder de vormen buiten de scope: de
-     *  kenmerktoekenningen alleen. */
-    public List<String> verbalise(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
-        return texts(sentences(instances, typePerLabel));
-    }
-
-    /** {@link #verbalise(Map, Map)} als zinnen met hun stukken. */
-    public List<Sentence> sentences(Map<String, Object> instances, Map<String, ObjectType> typePerLabel) {
-        Subjects subjects = subjects(instances, typePerLabel);
-        List<Sentence> sink = new ArrayList<>();
-        for (Map.Entry<String, Object> e : subjects.beans().entrySet()) {
-            ObjectType ot = subjects.types().get(e.getKey());
-            if (ot == null || e.getValue() == null) continue;
-            assignments(e.getKey(), e.getValue(), ot, sink);
-        }
-        return sink;
-    }
-
     /**
      * Bouw de uitleg voor een gedraaide wereld. {@code instances} mapt een LABEL (het scenario-label of het
      * dienst-verzoek-id) op de bijbehorende, gevuurde en teruggeschreven bean; {@code typePerLabel} het objecttype per

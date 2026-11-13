@@ -52,9 +52,10 @@ final class ExplanationSession {
                 .getConstructor().newInstance();
     }
 
-    /** The attribution sentences ({@link Verbaliser#verbalise(Map, Map)}) of {@code beans}, all of object type
-     *  {@code type}, and of the objects the creations made, after a session that fired them to the fixpoint, in
-     *  vocabulary {@code vocabulary}. The session is read with the labels of {@code beans}, before the write-back. */
+    /** The explanation ({@link Verbaliser#verbalise}) of {@code beans}, all of object type {@code type}, and of the
+     *  objects the creations made, after a session that fired them to the fixpoint, in vocabulary {@code vocabulary},
+     *  with the decisions of its defaults groups. The session is read with the labels of {@code beans}, before the
+     *  write-back. */
     List<String> explain(String vocabulary, String type, Map<String, Object> beans) {
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(build.beanLoader());
@@ -66,13 +67,15 @@ final class ExplanationSession {
             Map<Object, String> labelOf = new IdentityHashMap<>();
             beans.forEach((label, bean) -> labelOf.put(bean, label));
             EndState standing = DroolsBackend.standingOf(build, session, labelOf::get);
+            var decisions = DroolsBackend.decisionsOf(build, session);
+            var periodDecisions = DroolsBackend.periodDecisionsOf(build, session);
             DroolsBackend.setDerivedValues(build, session);
             RegelSpraakModel model = document.model();
             ObjectType ot = model.objectTypeByName(type);
             Map<String, ObjectType> types = new LinkedHashMap<>();
             for (String label : beans.keySet()) types.put(label, ot);
             return new Verbaliser(document, Naming.of(model, vocabulary), DroolsBackend.readingsOf(build, session),
-                    standing).verbalise(beans, types);
+                    standing).verbalise(beans, types, decisions, periodDecisions);
         } finally {
             session.dispose();
             Thread.currentThread().setContextClassLoader(previous);

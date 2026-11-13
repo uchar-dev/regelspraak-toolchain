@@ -201,7 +201,11 @@ class ExplanationGeneratedRuleInVocabularyTest {
         assertEquals(List.of(
                 "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (leeg) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
-                        + " vondst (leeg) gevuld is"),
+                        + " vondst (leeg) gevuld is",
+                "V2 heeft als Datum melding vondst 13-03-2026 volgens 'berekende Datum melding vondst'"
+                        + " (onvoorwaardelijk): zijn berekende Datum melding vondst (13-03-2026); 'opgegeven Datum"
+                        + " melding vondst' gaf geen waarde",
+                melding("V2", "Datum melding vondst")),
                 engine.explain("cgm", "Vondst", Map.of("V2", v2)));
     }
 }

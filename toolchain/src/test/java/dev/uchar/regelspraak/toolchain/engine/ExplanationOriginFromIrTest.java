@@ -60,9 +60,21 @@ class ExplanationOriginFromIrTest {
                         + " (12-03-2026) gevuld is en zijn berekende Datum melding vondst (13-03-2026) gevuld is en"
                         + " zijn opgegeven Datum melding vondst (12-03-2026) is ongelijk aan zijn berekende Datum"
                         + " melding vondst (13-03-2026)",
+                "V1 heeft als Datum melding vondst 12-03-2026 volgens 'opgegeven Datum melding vondst'"
+                        + " (onvoorwaardelijk): zijn opgegeven Datum melding vondst (12-03-2026); verdrongen: 'berekende"
+                        + " Datum melding vondst' (onvoorwaardelijk, 13-03-2026)",
+                "V1 heeft als berekende Datum melding vondst 13-03-2026 volgens de regel 'melding'"
+                        + " (onvoorwaardelijk): de vinddag van de Vondst plus 3 dagen, met de vinddag van de Vondst"
+                        + " (10-03-2026)",
                 "V2 is niet eigenhandig gemeld, want niet geldt: zijn opgegeven meldingsdatum (leeg) gevuld is",
                 "V2 heeft geen afwijkende opgave Datum melding vondst, want niet geldt: zijn opgegeven Datum melding"
-                        + " vondst (leeg) gevuld is");
+                        + " vondst (leeg) gevuld is",
+                "V2 heeft als Datum melding vondst 13-03-2026 volgens 'berekende Datum melding vondst'"
+                        + " (onvoorwaardelijk): zijn berekende Datum melding vondst (13-03-2026); 'opgegeven Datum"
+                        + " melding vondst' gaf geen waarde",
+                "V2 heeft als berekende Datum melding vondst 13-03-2026 volgens de regel 'melding'"
+                        + " (onvoorwaardelijk): de vinddag van de Vondst plus 3 dagen, met de vinddag van de Vondst"
+                        + " (10-03-2026)");
         // since card explanation-from-readings every route explains on the model uchar's loader reads from the
         // document, with the readings of the engine; the frontend's model is no longer a route of the explanation
         assertEquals(expected, engine.explain("cgm", "Vondst", beans), "op het model uit het IR-document");
