@@ -84,3 +84,18 @@ regelspraak-rules `1e50982` zette de tekst in de README van de regelset.
 - Een meting op `v2/herleving-ww` van regelspraak-rules: `GET /openapi` geeft bij `beoordeel-herleving` voor
   `aow-datum` het commentaar hierboven.
 - `make gates` groen.
+
+Result (2026-11-13):
+- `GET /openapi` on both adapters through one function (`ServiceHttp.openapi`), with `?vocabulary=<naam>`/`canonical`
+  and a 400 `UNKNOWN_VOCABULARY`; `openapi` is a reserved path; `bin/regelspraak openapi` writes the same bytes
+  (`OpenApiRouteTest`, `OpenApiParityTest`).
+- The comment above an object type, an attribute and a characteristic opens its `description` letterlijk, the
+  generated sentence follows; a parameter's comment opens its line in the description of `parameters`
+  (`OpenApiCommentTest`, goldens `jutterswet-commentaar` canonical and handboek). A service started on an IR
+  document has no comment. The existing OpenAPI goldens did not change (their sources have no comment above a
+  declaration).
+- Measured on `v2/herleving-ww` (regelspraak-rules `1e50982`, in the werkbank's submodule): the description of
+  `aow-datum` at `beoordeel-herleving` starts with its `Bron:` comment; route and command byte-equal.
+- Provisional: parameters get no property of their own; the route sends the emitter's indented bytes so the command
+  matches it; the document does not describe `GET /openapi` itself; `openapi` builds as `serve` with markers allowed.
+- `make gates` green (replay 373/1042).
