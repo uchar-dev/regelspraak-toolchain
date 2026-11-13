@@ -6,6 +6,9 @@ import dev.uchar.regelspraak.ir.Default;
 import dev.uchar.regelspraak.ir.ExceptionGroup;
 import dev.uchar.regelspraak.ir.Expr;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
+import dev.uchar.regelspraak.ir.ResolvedAllocation;
+import dev.uchar.regelspraak.ir.ResolvedFactCreation;
+import dev.uchar.regelspraak.ir.ResolvedObjectCreation;
 import dev.uchar.regelspraak.ir.ResolvedRule;
 import dev.uchar.regelspraak.ir.Spelling;
 import dev.uchar.regelspraak.loader.IrLoader;
@@ -146,6 +149,14 @@ import java.util.regex.Pattern;
  * waarde", ook per periode; een initialisatie besliste daar omdat het doel "bij de objectcreatie leeg was". De woorden
  * zijn die van de RegelSpraak-specificatie: het construct heet objectcreatie, en elk lid ervan een waardetoekenning.
  *
+ * <p><b>Verdelingen en creaties.</b> Een verdeling schrijft het aandeel van elke ontvanger die haar koppeling met haar
+ * bron verbindt en de onverdeelde rest van die bron; zij is een schrijver van dezelfde rang als een gewone regel op
+ * hetzelfde doel (uchars RUNTIME-SEMANTICS ch. 7.8), dus staan aandeel en rest in de zin van een berekende waarde, met
+ * de verdeling als schrijver en hoe zij verdeelde als berekening ("W verdeelde zijn meldgeld (10) in gelijke delen, …,
+ * over M1 (3), M2 (3) en M3 (3) (3 leden)"). Een objectcreatie en een feitcreatie krijgen een zin op hun onderwerp,
+ * zoals een gewone regel: wat zij maakten of legden, en waarom; of waarom niet ({@link #objectCreation},
+ * {@link #factCreation}).
+ *
  * <p><b>Stukken.</b> Elke zin schrijft de verbalisator op één {@link Sentence.Builder}, als een ondiepe boom van
  * {@link Part}s met een soort: het onderwerp, de namen met hun declaratie, de regeltekst, de waarden, de regelnamen, de
  * verbindingswoorden en de lijm, een voorwaarde als groep met het oordeel van de motor op haar knoop, de leden van een
@@ -174,6 +185,8 @@ public final class Verbaliser {
     private final List<EndState.EndObject> made;
     /** Elk object van de sessie zoals uchar het aan het fixpunt las, met de leden die een waarde houden. */
     private final Map<Object, EndState.EndObject> ends = new IdentityHashMap<>();
+    /** Elke koppeling van de sessie aan het fixpunt, ook die een creatie legde. */
+    private final List<EndState.Link> links;
 
     /**
      * Een verbalisator voor één sessie van een build met lezingen: {@code document} is het document van die build zoals
@@ -191,6 +204,7 @@ public final class Verbaliser {
         this.made = Objects.requireNonNull(standing, "standing").objects().stream()
                 .filter(o -> o.creation() != null).toList();
         for (EndState.EndObject o : standing.objects()) ends.put(o.object(), o);
+        this.links = standing.links();
         for (ConditionReading r : readings)
             if (this.readings.computeIfAbsent(r.form(), k -> new IdentityHashMap<>()).put(r.object(), r) != null)
                 throw new IllegalStateException("de motor gaf twee lezingen van " + r.form() + " op één object");
@@ -238,6 +252,7 @@ public final class Verbaliser {
                     periodDecisions);
             new DefaultsExplanation(document, label, bean, ot, decisions, periodDecisions, computations).sentences(sink);
             computations.sentences(sink);
+            creations(label, bean, ot, sink);
             document.outside().forEach((rule, type) -> {
                 for (ObjectType t : ot.chain()) if (t.name.equalsIgnoreCase(type)) outside.add(rule);
             });
@@ -334,6 +349,208 @@ public final class Verbaliser {
             if (bean.equals(FactModelGenerator.PACKAGE + "." + Namen.ident(ot.name, true))) return ot;
         throw new IllegalStateException("het gemaakte object " + name + " is een " + bean + ", de bean van geen"
                 + " objecttype van het model van de uitleg");
+    }
+
+    /** De zinnen over de objectcreaties en de feitcreaties van het document op één object, als onderwerp, in de
+     *  volgorde van het document ({@link #objectCreation}, {@link #factCreation}). Van de versies van één vorm, die
+     *  elk een eigen geldigheid hebben, spreekt een versie buiten haar geldigheid alleen waar geen andere versie
+     *  spreekt, en dan één keer: anders zei de zin dat de vorm niets maakte naast de versie die wel maakte. */
+    private void creations(String label, Object bean, ObjectType ot, List<Sentence> sink) {
+        Map<String, List<Creation>> perForm = new LinkedHashMap<>();
+        for (ResolvedObjectCreation c : model.objectCreations)
+            if (c.subject() != null && ot.isA(c.subject()))
+                perForm.computeIfAbsent("o" + RegelSpraakModel.formName(c.name()), k -> new ArrayList<>())
+                        .add(objectCreation(label, bean, c));
+        for (ResolvedFactCreation c : model.factCreations)
+            if (c.anchor() != null && ot.isA(c.anchor()))
+                perForm.computeIfAbsent("f" + RegelSpraakModel.formName(c.name()), k -> new ArrayList<>())
+                        .add(factCreation(label, bean, c));
+        for (List<Creation> versions : perForm.values()) {
+            boolean spoken = versions.stream().anyMatch(v -> v.sentence() != null && !v.outside());
+            boolean outside = false;
+            for (Creation v : versions) {
+                if (v.sentence() == null || v.outside() && (spoken || outside)) continue;
+                outside |= v.outside();
+                sink.add(v.sentence());
+            }
+        }
+    }
+
+    /** De zin van één versie van een creatie op één object, of null; {@code outside} waar die versie buiten haar
+     *  geldigheid valt. */
+    private record Creation(Sentence sentence, boolean outside) {}
+
+    /**
+     * Eén objectcreatie voor één onderwerp, zoals een gewone regel haar zin krijgt. Maakte zij een object voor het
+     * onderwerp ({@link EndState.EndObject#creation}): "J1 heeft een Penning «"…"»(J1)#1 volgens de regel '…'", met
+     * " (onvoorwaardelijk)" of waarom zij gold, en als {@link Part.Kind#COMPUTATION} haar waardetoekenningen met de
+     * waarde die elk het gemaakte object gaf ("met als bedrag zijn vangst (30 EUR)"). Maakte zij er geen: "J2 heeft
+     * geen Penning volgens de regel '…', want" met de reden uit haar lezing (haar voorwaarde gold niet, zij valt buiten
+     * haar geldigheid, of de koppeling van het onderwerp stond al in de invoer). Een objectcreatie zonder voorwaarde
+     * die niets maakte, heeft geen lezing en geen zin, zoals een kenmerktoekenning zonder voorwaarde die niet toekent.
+     */
+    private Creation objectCreation(String label, Object bean, ResolvedObjectCreation c) {
+        String pointer = document.positions().versionOf(c);
+        if (pointer == null)
+            throw new IllegalStateException("de objectcreatie '" + c.name() + "' staat niet als versie in het document"
+                    + " van de uitleg");
+        if (c.createdType() == null)
+            throw new IllegalStateException("de objectcreatie '" + c.name() + "' noemt het objecttype dat zij maakt niet");
+        List<EndState.EndObject> mine = made.stream()
+                .filter(o -> o.subject() == bean && c.name().equals(o.creation())).toList();
+        if (mine.size() > 1)
+            throw new IllegalStateException("het fixpunt geeft twee objecten van de creatie '" + c.name() + "' voor "
+                    + label + ", en een creatie maakt één object per onderwerp (RUNTIME-SEMANTICS ch. 5.5)");
+        Condition condition = c.condition();
+        ConditionReading reading = condition == null ? null : reading(pointer, bean, label);
+        if (reading != null && reading.status() == ConditionReading.Status.FAULTS) throw faulted(pointer, label);
+        Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+        String rule = RegelSpraakModel.formName(c.name());
+        if (!mine.isEmpty()) {
+            if (reading != null && reading.status() != ConditionReading.Status.HOLDS)
+                throw new IllegalStateException("de objectcreatie '" + c.name() + "' maakte een object voor " + label
+                        + ", en haar lezing daar is " + reading.status());
+            EndState.EndObject o = mine.get(0);
+            b.text("heeft een ");
+            objectTypeName(b, c.createdType());
+            b.text(" ").leaf(Part.Kind.SUBJECT, nameOf(o.object())).text(" volgens de regel '")
+                    .leaf(Part.Kind.RULE, rule).text("'");
+            if (condition == null) b.text(" (onvoorwaardelijk)");
+            memberAssignments(b, c, o);
+            if (condition != null) {
+                b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
+                verbaliseCondition(b, condition, read(pointer, bean, label, condition), c.subject(), false);
+            }
+            return new Creation(b.build(), false);
+        }
+        if (reading == null) return new Creation(null, false);
+        b.text("heeft geen ");
+        objectTypeName(b, c.createdType());
+        b.text(" volgens de regel '").leaf(Part.Kind.RULE, rule).text("', ").leaf(Part.Kind.CONNECTIVE, "want")
+                .text(" ");
+        switch (reading.status()) {
+            case FAILS -> firstFailing(b, condition, read(pointer, bean, label, condition), c.subject(), false);
+            case OUTSIDE_VALIDITY -> b.text("de regel valt op de rekendatum buiten haar geldigheid");
+            // the 1:1 shape creates nothing for a subject the input already links (ch. 5.5)
+            case DISPLACED -> b.text("de koppeling stond al in de invoer");
+            case HOLDS -> throw new IllegalStateException("de voorwaarde van de objectcreatie '" + c.name() + "' geldt"
+                    + " op " + label + ", en het fixpunt noemt geen object dat zij voor " + label + " maakte");
+            case FAULTS -> throw faulted(pointer, label);
+        }
+        return new Creation(b.build(), reading.status() == ConditionReading.Status.OUTSIDE_VALIDITY);
+    }
+
+    /** De waardetoekenningen van objectcreatie {@code c} als groep {@link Part.Kind#COMPUTATION}, met de dubbele punt
+     *  ervoor: per lid "als" de naam en de regeltekst van de waarde met de waarde die het gemaakte object {@code o}
+     *  ervan kreeg ({@link EndState.Member#given}), een literal alleen als waarde. Een waardetoekenning wordt bij de
+     *  creatie gelezen, niet aan het fixpunt, dus noemt de zin geen operand ervan. */
+    private void memberAssignments(Sentence.Builder b, ResolvedObjectCreation c, EndState.EndObject o) {
+        if (c.assignments().isEmpty()) return;
+        String name = nameOf(o.object());
+        ObjectType created = typeOf(o.object());
+        b.open(Part.Kind.COMPUTATION, Map.of()).text(": met");
+        for (int i = 0; i < c.assignments().size(); i++) {
+            ResolvedObjectCreation.MemberAssignment x = c.assignments().get(i);
+            b.text(i == 0 ? " als " : i == c.assignments().size() - 1 ? " en als " : ", als ");
+            List<String> cell = x.labels() == null ? null
+                    : FactModelGenerator.cellKey(model, created.dimensionsOf(x.attribute()), x.labels());
+            if (x.characteristic())
+                b.leaf(Part.Kind.NAME, naming.characteristic(created, x.attribute()),
+                        declaration(Naming.characteristicOf(created, x.attribute()), new On(name)));
+            else if (cell != null) cellName(b, created, x.attribute(), cell, new On(name));
+            else attributeName(b, created, x.attribute(), new On(name));
+            b.text(" ");
+            EndState.Member m = member(o.object(), x.attribute(), x.characteristic(), cell);
+            Object given = given(m);
+            String text = x.characteristic() ? (given == null ? "onwaar" : "waar")
+                    : renderHeld(given, created.attribute(x.attribute()));
+            // a literal, a marker or a value of a literal is its own rule text: once, as the value
+            boolean literal = x.value() instanceof Expr.Literal
+                    || x.value() instanceof Expr.Construct k && (k.argument() == null || k.argument() instanceof Expr.Literal)
+                    || x.value().source() == null || x.value().source().snippet() == null
+                    || x.value().source().snippet().isBlank();
+            if (literal) {
+                value(b, text, given == null && !x.characteristic(), given);
+                continue;
+            }
+            b.leaf(Part.Kind.QUOTE, x.value().source().snippet().trim());
+            reading(b, text, given == null && !x.characteristic(), given);
+        }
+        b.close(Part.Kind.COMPUTATION);
+    }
+
+    /** Een waarde die een lid houdt: een tijdlijn als haar perioden, een andere als {@link #render}. */
+    private String renderHeld(Object v, Datatype type) {
+        if (v instanceof List<?> segments) return renderPeriods(Period.list(segments), null, x -> render(x, type));
+        return render(v, type);
+    }
+
+    /** Objecttype {@code t} in het vocabulaire, met de sleutels van zijn declaratie. */
+    private void objectTypeName(Sentence.Builder b, ObjectType t) {
+        declaredName(b, naming.objectType(t.name), Designatable.objectType(t.name));
+    }
+
+    /**
+     * Eén feitcreatie voor één anker, zoals een gewone regel haar zin krijgt. Legde zij koppelingen van haar feittype
+     * vanaf het anker ({@link EndState.Link#made}): "H1 heeft S1 en S2 als winterschuit volgens de regel '…'", met
+     * " (onvoorwaardelijk)" of waarom zij gold. Legde zij er geen: "H2 heeft geen winterschuit volgens de regel '…',
+     * want" met de reden uit haar lezing (haar voorwaarde gold niet, of zij valt buiten haar geldigheid). Een
+     * voorwaarde op het doel heeft geen lezing op het anker (uchars RUNTIME-SEMANTICS ch. 5.12): dan noemt de zin haar
+     * niet, en zonder koppeling heeft de feitcreatie dan geen zin, zoals een zonder voorwaarde die niets legde.
+     */
+    private Creation factCreation(String label, Object bean, ResolvedFactCreation c) {
+        String pointer = document.positions().versionOf(c);
+        if (pointer == null)
+            throw new IllegalStateException("de feitcreatie '" + c.name() + "' staat niet als versie in het document"
+                    + " van de uitleg");
+        if (c.factType() == null || c.anchorRole() == null || c.targetRole() == null)
+            throw new IllegalStateException("de feitcreatie '" + c.name() + "' noemt haar feittype en rollen niet");
+        String factType = Namen.norm(c.factType()), anchorRole = Namen.norm(c.anchorRole());
+        List<String> targets = new ArrayList<>();
+        for (EndState.Link k : links) {
+            if (!k.made() || !Namen.norm(k.factType()).equals(factType)) continue;
+            if (k.first() == bean && Namen.norm(k.firstRole()).equals(anchorRole)) targets.add(nameOf(k.second()));
+            else if (k.second() == bean && Namen.norm(k.secondRole()).equals(anchorRole)) targets.add(nameOf(k.first()));
+        }
+        targets.sort(String::compareTo);
+        Condition condition = c.condition();
+        ConditionReading reading = condition == null ? null : readings.getOrDefault(pointer, Map.of()).get(bean);
+        if (reading != null && reading.status() == ConditionReading.Status.FAULTS) throw faulted(pointer, label);
+        String rule = RegelSpraakModel.formName(c.name());
+        Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
+        if (!targets.isEmpty()) {
+            if (reading != null && reading.status() != ConditionReading.Status.HOLDS)
+                throw new IllegalStateException("de feitcreatie '" + c.name() + "' legde koppelingen vanaf " + label
+                        + ", en haar lezing daar is " + reading.status());
+            b.text("heeft ");
+            int shown = Math.min(targets.size(), 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) b.text(i == shown - 1 && targets.size() <= 5 ? " en " : ", ");
+                b.leaf(Part.Kind.SUBJECT, targets.get(i));
+            }
+            if (targets.size() > 5) b.text(" en nog " + (targets.size() - 5));
+            b.text(" als ");
+            declaredName(b, naming.role(c.factType(), c.targetRole()), Designatable.role(c.factType(), c.targetRole()));
+            b.text(" volgens de regel '").leaf(Part.Kind.RULE, rule).text("'");
+            if (condition == null) b.text(" (onvoorwaardelijk)");
+            else if (reading != null) {
+                b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
+                verbaliseCondition(b, condition, read(pointer, bean, label, condition), c.anchor(), false);
+            }
+            return new Creation(b.build(), false);
+        }
+        if (reading == null || reading.status() == ConditionReading.Status.HOLDS) return new Creation(null, false);
+        b.text("heeft geen ");
+        declaredName(b, naming.role(c.factType(), c.targetRole()), Designatable.role(c.factType(), c.targetRole()));
+        b.text(" volgens de regel '").leaf(Part.Kind.RULE, rule).text("', ").leaf(Part.Kind.CONNECTIVE, "want")
+                .text(" ");
+        switch (reading.status()) {
+            case FAILS -> firstFailing(b, condition, read(pointer, bean, label, condition), c.anchor(), false);
+            case OUTSIDE_VALIDITY -> b.text("de regel valt op de rekendatum buiten haar geldigheid");
+            default -> throw new IllegalStateException("de motor noemt de feitcreatie '" + c.name() + "' op " + label
+                    + " " + reading.status() + ", en een feitcreatie wacht niet op haar beurt");
+        }
+        return new Creation(b.build(), reading.status() == ConditionReading.Status.OUTSIDE_VALIDITY);
     }
 
     private void assignments(String label, Object bean, ObjectType ot, List<Sentence> sink) {
@@ -1218,9 +1435,15 @@ public final class Verbaliser {
     private record Writer(ResolvedRule rule, Expr.AttributeReference target, List<String> labels, String pointer,
                           ConditionReading reading) {}
 
+    /** Een verdeling als schrijver van lid {@code member} van één object: haar onverdeelde rest op haar bron, of het
+     *  aandeel van een ontvanger; {@code source} het object waarvan zij het bedrag verdeelde en waarop haar voorwaarde
+     *  gelezen wordt, {@code pointer} haar versie in het document. */
+    private record Allocated(ResolvedAllocation allocation, String pointer, Object source, String member) {}
+
     /**
-     * De zinnen over de attributen die de gewone regels van het document op één object schrijven: een gelijkstelling,
-     * een berekening en een initialisatie, op het type van het object of een supertype ervan (IR-SPEC ch. 2.2). Een
+     * De zinnen over de attributen die de gewone regels en de verdelingen van het document op één object schrijven: een
+     * gelijkstelling, een berekening en een initialisatie, op het type van het object of een supertype ervan (IR-SPEC
+     * ch. 2.2), en het aandeel of de rest van een verdeling ({@link #allocations}). Een
      * regel die ch. 7.10 in een stapel van het object opnam, telt niet mee: zij staat in de zin van haar stapel (haar
      * pointer staat in {@link DefaultsDecision#rootChains}). Een regel op een supertype die de motor op het object niet
      * las, terwijl het type van het object een stapel op haar doel heeft, telt ook niet mee: die stapel beslist het doel
@@ -1321,16 +1544,58 @@ public final class Verbaliser {
                 perTarget.computeIfAbsent(labels == null ? target : target + labels, k -> new ArrayList<>())
                         .add(new Writer(r, ref, labels, pointer, reading(pointer, bean, label)));
             }
-            for (List<Writer> writers : perTarget.values())
-                sink.add(type.granularityOf(writers.get(0).target().attribute()) != null ? timelineSentence(writers)
-                        : sentence(writers));
+            Map<String, List<Allocated>> allocated = allocations();
+            for (String target : allocated.keySet()) perTarget.putIfAbsent(target, new ArrayList<>());
+            for (Map.Entry<String, List<Writer>> e : perTarget.entrySet()) {
+                List<Writer> writers = e.getValue();
+                List<Allocated> allocations = allocated.getOrDefault(e.getKey(), List.of());
+                String member = writers.isEmpty() ? allocations.get(0).member() : writers.get(0).target().attribute();
+                if (type.granularityOf(member) == null) {
+                    sink.add(sentence(member, writers.isEmpty() ? null : writers.get(0).labels(), writers,
+                            allocations));
+                    continue;
+                }
+                if (!allocations.isEmpty())
+                    throw new IllegalStateException("de verdeling '" + allocations.get(0).allocation().name()
+                            + "' schrijft het tijdsafhankelijke attribuut '" + member + "', en de uitleg kent een"
+                            + " verdeling alleen op een attribuut met één waarde");
+                sink.add(timelineSentence(writers));
+            }
         }
 
-        /** De zin over een attribuut zonder tijdlijn, of een cel ervan (IR-SPEC §3.2.1: een gedimensioneerd attribuut
-         *  heeft geen tijdlijn). */
-        private Sentence sentence(List<Writer> writers) {
-            String member = writers.get(0).target().attribute();
-            List<String> cell = writers.get(0).labels();
+        /** De verdelingen van het document die een attribuut van dit object schrijven, per doel in kleine letters: op een
+         *  ontvanger het aandeel, met de bron waarmee de koppeling van de verdeling het verbindt; op een bron de
+         *  onverdeelde rest. Een ontvanger zonder bron krijgt van een verdeling niets, en een doel dat een stapel
+         *  van dit object beslist, staat in de zin van die stapel. */
+        private Map<String, List<Allocated>> allocations() {
+            Map<String, List<Allocated>> out = new LinkedHashMap<>();
+            for (ResolvedAllocation a : model.allocations) {
+                String pointer = document.positions().versionOf(a);
+                if (pointer == null)
+                    throw new IllegalStateException("de verdeling '" + a.name() + "' staat niet als versie in het"
+                            + " document van de uitleg");
+                if (a.remainderAttribute() != null && type.isA(a.sourceType()))
+                    add(out, new Allocated(a, pointer, bean, a.remainderAttribute()));
+                if (!type.isA(a.targetType())) continue;
+                List<Object> sources = joined(a, bean, false);
+                if (sources.size() > 1)
+                    throw new IllegalStateException(label + " ontvangt van de verdeling '" + a.name() + "' uit "
+                            + sources.size() + " bronnen, en de uitleg kent een aandeel uit één bron");
+                if (sources.size() == 1) add(out, new Allocated(a, pointer, sources.get(0), a.targetAttribute()));
+            }
+            return out;
+        }
+
+        private void add(Map<String, List<Allocated>> out, Allocated a) {
+            String target = a.member().toLowerCase(Locale.ROOT);
+            if (stackTargets.contains(target)) return;
+            out.computeIfAbsent(target, k -> new ArrayList<>()).add(a);
+        }
+
+        /** De zin over attribuut {@code member} zonder tijdlijn, of zijn cel {@code cell} (IR-SPEC §3.2.1: een
+         *  gedimensioneerd attribuut heeft geen tijdlijn), over de gewone regels {@code writers} en de verdelingen
+         *  {@code allocations} die het schrijven: schrijvers van één rang (uchars RUNTIME-SEMANTICS ch. 7.8). */
+        private Sentence sentence(String member, List<String> cell, List<Writer> writers, List<Allocated> allocations) {
             List<Writer> wrote = new ArrayList<>(), empty = new ArrayList<>();
             Object written = null;
             for (Writer w : writers) {
@@ -1350,31 +1615,180 @@ public final class Verbaliser {
                 if (wrote.isEmpty()) written = v;
                 wrote.add(w);
             }
+            if (cell != null && !allocations.isEmpty())
+                throw new IllegalStateException("de verdeling '" + allocations.get(0).allocation().name() + "' schrijft"
+                        + " de cel " + cell + " van '" + member + "', en een verdeling schrijft geen cel");
+            EndState.Member standing = cell == null ? member(bean, member, false, null) : null;
+            List<Allocated> allocationWrote = new ArrayList<>(), allocationEmpty = new ArrayList<>(),
+                    allocationNot = new ArrayList<>();
+            for (Allocated a : allocations) {
+                ConditionReading.Status status = status(a);
+                if (status == ConditionReading.Status.FAILS || status == ConditionReading.Status.OUTSIDE_VALIDITY)
+                    allocationNot.add(a);
+                else (wrote(a, standing) ? allocationWrote : allocationEmpty).add(a);
+            }
+            if (allocationWrote.size() > 1)
+                throw new IllegalStateException("de verdelingen '" + allocationWrote.get(0).allocation().name() + "' en '"
+                        + allocationWrote.get(1).allocation().name() + "' schrijven beide '" + member + "' van " + label
+                        + ", en de uitleg volgt een sessie zonder fout");
             Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
-            List<Writer> deciders = wrote.isEmpty() ? empty : wrote;
-            if (!wrote.isEmpty()) {
+            List<Writer> deciders = wrote.isEmpty() && allocationWrote.isEmpty() ? empty : wrote;
+            if (!wrote.isEmpty() || !allocationWrote.isEmpty()) {
                 b.text("heeft als ");
                 targetName(b, member, cell);
                 b.text(" ");
-                value(b, written(wrote.get(0), member), false, writtenValue(wrote.get(0)));
+                if (!wrote.isEmpty()) value(b, written(wrote.get(0), member), false, writtenValue(wrote.get(0)));
+                else value(b, render(standing.value(), type.attribute(member)), false, standing.value());
                 for (int i = 0; i < wrote.size(); i++) {
                     b.text(i == 0 ? " volgens " : ", en volgens ");
                     decider(b, wrote.get(i), member, false, false, false);
                 }
+                for (Allocated a : allocationWrote) {
+                    b.text(wrote.isEmpty() ? " volgens " : ", en volgens ");
+                    allocationDecider(b, a, false, false);
+                }
+                allocationNot.addAll(allocationEmpty);
             } else {
                 boolean stands = cell == null ? attributeStanding(b, bean, label, type, member)
                         : cellStanding(b, member, cell);
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" ");
-                if (empty.isEmpty()) b.text("geen regel gold");
-                for (int i = 0; i < empty.size(); i++) {
-                    if (i > 0) b.text(", en ");
-                    decider(b, empty.get(i), member, false, true, stands);
+                if (empty.isEmpty() && allocationEmpty.isEmpty()) b.text("geen regel gold");
+                int i = 0;
+                for (Writer w : empty) {
+                    if (i++ > 0) b.text(", en ");
+                    decider(b, w, member, false, true, stands);
+                }
+                for (Allocated a : allocationEmpty) {
+                    if (i++ > 0) b.text(", en ");
+                    allocationDecider(b, a, true, stands);
                 }
             }
             for (Writer w : writers) if (!deciders.contains(w)) variant(b, w);
+            for (Allocated a : allocationNot) allocationVariant(b, a);
             if (!deciders.isEmpty())
                 ground(b, sourceAnnotations(deciders.get(0).rule()), ruleDecider(deciders.get(0).rule()));
             return b.build();
+        }
+
+        /** Hoe verdeling {@code a} uitkwam op haar bron: de status van haar lezing daar, of null zonder voorwaarde,
+         *  want een verdeling zonder voorwaarde heeft geen lezing (uchars RUNTIME-SEMANTICS ch. 5.12). */
+        private ConditionReading.Status status(Allocated a) {
+            if (a.allocation().condition() == null) return null;
+            ConditionReading.Status status = reading(a.pointer(), a.source(), nameOf(a.source())).status();
+            if (status == ConditionReading.Status.FAULTS) throw faulted(a.pointer(), nameOf(a.source()));
+            if (status == ConditionReading.Status.DISPLACED)
+                throw new IllegalStateException("de motor noemt de verdeling '" + a.allocation().name() + "' op "
+                        + nameOf(a.source()) + " niet aan de beurt, en een verdeling wacht niet op haar beurt");
+            return status;
+        }
+
+        /** Of verdeling {@code a}, die op haar bron gold of geen voorwaarde heeft, het lid van de zin schreef: het lid
+         *  {@code standing} houdt een afgeleide waarde en haar bron een bedrag om te verdelen. Een gewone regel die
+         *  hetzelfde lid schreef, schreef dezelfde waarde, want twee waarden zijn de fout van ch. 5.7. */
+        private boolean wrote(Allocated a, EndState.Member standing) {
+            return standing != null && standing.derived()
+                    && member(a.source(), a.allocation().sourceAttribute(), false, null) != null;
+        }
+
+        /** Verdeling {@code a} als schrijver: haar naam, met {@code gaveNothing} dat zij geen waarde gaf en met
+         *  {@code inputStands} dat zij daarom niets besliste, haar berekening ({@link #allocationComputation}) en waarom
+         *  zij gold, gelezen op haar bron; zoals {@link #decider} een gewone regel noemt. */
+        private void allocationDecider(Sentence.Builder b, Allocated a, boolean gaveNothing, boolean inputStands) {
+            ResolvedAllocation v = a.allocation();
+            b.text("de regel '").leaf(Part.Kind.RULE, RegelSpraakModel.formName(v.name())).text("'");
+            if (gaveNothing) b.text(" gaf geen waarde");
+            if (v.condition() == null) b.text(" (onvoorwaardelijk)");
+            if (gaveNothing && inputStands) b.text(" en besliste niets");
+            allocationComputation(b, a);
+            if (v.condition() == null) return;
+            b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
+            verbaliseCondition(b, v.condition(), read(a.pointer(), a.source(), nameOf(a.source()), v.condition()),
+                    v.sourceType(), false);
+        }
+
+        /** Verdeling {@code a} als schrijver die het lid van de zin niet schreef, als groep met de "; " ervoor: haar
+         *  voorwaarde gold niet op haar bron, zij valt buiten haar geldigheid, of zij gaf hier geen waarde. */
+        private void allocationVariant(Sentence.Builder b, Allocated a) {
+            ResolvedAllocation v = a.allocation();
+            b.open(Part.Kind.VARIANT, Part.meta("decided", false)).text("; de regel '")
+                    .leaf(Part.Kind.RULE, RegelSpraakModel.formName(v.name())).text("' ");
+            ConditionReading.Status status = status(a);
+            if (status == ConditionReading.Status.FAILS) {
+                didNotHoldBecause(b).text(" ");
+                firstFailing(b, v.condition(), read(a.pointer(), a.source(), nameOf(a.source()), v.condition()),
+                        v.sourceType(), false);
+            } else if (status == ConditionReading.Status.OUTSIDE_VALIDITY) {
+                didNotHoldBecause(b).text(" zij valt op de rekendatum buiten haar geldigheid");
+            } else {
+                b.text("gaf geen waarde en besliste niets");
+            }
+            b.close(Part.Kind.VARIANT);
+        }
+
+        /**
+         * Hoe verdeling {@code a} verdeelde, als groep {@link Part.Kind#COMPUTATION} met de dubbele punt ervoor: haar
+         * bron met het bedrag dat zij verdeelde ("W verdeelde zijn meldgeld (10)"), de methode en de afronding zoals
+         * RegelSpraak ze schrijft (§9.7), en als groep {@link Part.Kind#MEMBERS} de ontvangers die de koppeling van de
+         * verdeling met de bron verbindt, elk met het aandeel dat het houdt. Het IR draagt de tekst van een verdeling
+         * niet, dus komen de woorden uit haar velden.
+         */
+        private void allocationComputation(Sentence.Builder b, Allocated a) {
+            ResolvedAllocation v = a.allocation();
+            String source = nameOf(a.source());
+            b.open(Part.Kind.COMPUTATION, Map.of()).text(": ").leaf(Part.Kind.SUBJECT, source).text(" verdeelde zijn ");
+            attributeName(b, v.sourceType(), v.sourceAttribute(), new On(source));
+            EndState.Member amount = member(a.source(), v.sourceAttribute(), false, null);
+            Object total = amount == null ? null : amount.value();
+            reading(b, render(total, v.sourceType().attribute(v.sourceAttribute())), total == null, total);
+            switch (v.method()) {
+                case GELIJKE_DELEN -> b.text(" in gelijke delen");
+                case NAAR_RATO -> {
+                    b.text(" naar rato van hun ");
+                    attributeName(b, v.targetType(), v.ratioAttribute());
+                }
+                case OP_VOLGORDE -> {
+                    b.text(" op volgorde van " + (v.descending() ? "afnemende " : "toenemende "));
+                    attributeName(b, v.targetType(), v.orderingAttribute());
+                    b.text(", bij een even groot criterium ");
+                    if (v.ratioAttribute() == null) b.text("in gelijke delen");
+                    else {
+                        b.text("naar rato van hun ");
+                        attributeName(b, v.targetType(), v.ratioAttribute());
+                    }
+                }
+                case COMPLEX -> throw new IllegalStateException("de verdeling '" + v.name() + "' heeft een methode die"
+                        + " uchar niet draagt");
+            }
+            if (v.maximumAttribute() != null) {
+                b.text(", met een maximum van hun ");
+                attributeName(b, v.targetType(), v.maximumAttribute());
+            }
+            if (v.roundingDecimals() != null)
+                b.text(", afgerond op " + v.roundingDecimals() + " decimalen naar beneden");
+            List<Object> recipients = joined(v, a.source(), true);
+            List<String> names = new ArrayList<>();
+            Map<String, Object> shares = new HashMap<>();
+            for (Object r : recipients) {
+                String name = nameOf(r);
+                names.add(name);
+                EndState.Member share = member(r, v.targetAttribute(), false, null);
+                shares.put(name, share == null ? null : share.value());
+            }
+            names.sort(String::compareTo);
+            int m = names.size();
+            b.open(Part.Kind.MEMBERS, Part.meta("members", m)).text(", over ");
+            if (m == 0) b.text("geen enkel lid");
+            int shown = Math.min(m, 5);
+            for (int i = 0; i < shown; i++) {
+                if (i > 0) b.text(i == shown - 1 && m <= 5 ? " en " : ", ");
+                Object share = shares.get(names.get(i));
+                b.leaf(Part.Kind.SUBJECT, names.get(i));
+                reading(b, render(share, v.targetType().attribute(v.targetAttribute())), share == null, share);
+            }
+            if (m > 5) b.text(" en nog " + (m - 5));
+            if (m > 0) b.text(m == 1 ? ", het enige lid" : " (" + m + " leden)");
+            b.close(Part.Kind.MEMBERS);
+            b.close(Part.Kind.COMPUTATION);
         }
 
         /**
@@ -2125,6 +2539,47 @@ public final class Verbaliser {
             if (m.characteristic() == characteristic && Namen.norm(m.name()).equals(key)
                     && Objects.equals(m.cell(), cell)) return m;
         return null;
+    }
+
+    /** De objecten die de koppeling van verdeling {@code a} ({@code connectingRole}, de rol van de ontvanger) met
+     *  {@code o} verbindt, in de volgorde van uchars lezing van de koppelingen: met {@code recipients} de ontvangers
+     *  van bron {@code o}, anders de bronnen van ontvanger {@code o}. */
+    private List<Object> joined(ResolvedAllocation a, Object o, boolean recipients) {
+        RoleBindingRef join = document.loaded().roleBindings().get(a);
+        if (join == null)
+            throw new IllegalStateException("de verdeling '" + a.name() + "' heeft in het document geen koppeling naar"
+                    + " haar ontvangers");
+        String factType = Namen.norm(join.factType()), role = Namen.norm(join.role());
+        List<Object> out = new ArrayList<>();
+        for (EndState.Link k : links) {
+            if (!Namen.norm(k.factType()).equals(factType)) continue;
+            boolean secondReceives = Namen.norm(k.secondRole()).equals(role);
+            Object recipient = secondReceives ? k.second() : k.first(), source = secondReceives ? k.first() : k.second();
+            if (!secondReceives && !Namen.norm(k.firstRole()).equals(role)) continue;
+            Object mine = recipients ? source : recipient, other = recipients ? recipient : source;
+            ObjectType expected = recipients ? a.targetType() : a.sourceType();
+            if (mine == o && typeOf(other).isA(expected) && !out.contains(other)) out.add(other);
+        }
+        return out;
+    }
+
+    /** Het objecttype van object {@code o} van de sessie, zoals uchars lezing van het fixpunt het noemt. */
+    private ObjectType typeOf(Object o) {
+        EndState.EndObject e = ends.get(o);
+        ObjectType t = e == null ? null : model.objectTypeByName(e.type());
+        if (t == null)
+            throw new IllegalStateException("uchars lezing van het fixpunt noemt een object zonder objecttype van het"
+                    + " model van de uitleg");
+        return t;
+    }
+
+    /** De naam van object {@code o} van de sessie ({@link #labels}). */
+    private String nameOf(Object o) {
+        String name = labels.get(o);
+        if (name == null)
+            throw new IllegalStateException("een " + o.getClass().getSimpleName() + " van de sessie heeft geen naam: de"
+                    + " uitleg noemt de objecten van de invoer en de gemaakte objecten van het fixpunt");
+        return name;
     }
 
     /** Wat de invoer of de objectcreatie lid {@code m} gaf; null zonder lid of waar zij het niets gaf. */

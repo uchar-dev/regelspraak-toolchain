@@ -122,6 +122,29 @@ class ExplanationMadeObjectsTest {
     private static final String AT_LEAST_ONE =
             "aan de voorwaarde \"ten minste één van de penningen van de Jutter waardevol is\"";
 
+    /** The sentences of the object creations: a creation gets its sentence on its subject, as an ordinary rule does,
+     *  where it made an object and where its condition kept it from making one. */
+    static final String MADE_CATCH_J1 = "J1 heeft een Penning " + "«\"geef een vangstpenning\"»(J1)#1" + " volgens de regel"
+            + " 'geef een vangstpenning': met als bedrag zijn vangst (30 EUR), omdat zijn vangst (30 EUR) is groter dan 0"
+            + " EUR";
+    static final String MADE_BONUS_J1 = "J1 heeft een Penning " + "«\"geef een bonuspenning\"»(J1)#1" + " volgens de regel"
+            + " 'geef een bonuspenning': met als bedrag 5 EUR, omdat zijn vangst (30 EUR) is groter dan 20 EUR";
+    static final String MADE_CATCH_J2 = "J2 heeft een Penning " + "«\"geef een vangstpenning\"»(J2)#1" + " volgens de regel"
+            + " 'geef een vangstpenning': met als bedrag zijn vangst (8 EUR), omdat zijn vangst (8 EUR) is groter dan 0"
+            + " EUR";
+    static final String NO_BONUS_J2 = "J2 heeft geen Penning volgens de regel 'geef een bonuspenning', want niet geldt:"
+            + " zijn vangst (8 EUR) is groter dan 20 EUR";
+    static final String MADE_RECEIPT_P1 = "P1 heeft een Kwitantie " + "«\"schrijf een kwitantie\"»(P1)#1" + " volgens de"
+            + " regel 'schrijf een kwitantie': met als bedrag zijn bedrag (15 EUR), omdat zijn bedrag (15 EUR) is groter"
+            + " dan 10 EUR";
+    static final String NO_RECEIPT_BONUS_J1 = "«\"geef een bonuspenning\"»(J1)#1" + " heeft geen Kwitantie volgens de regel"
+            + " 'schrijf een kwitantie', want niet geldt: zijn bedrag (5 EUR) is groter dan 10 EUR";
+    static final String MADE_RECEIPT_CATCH_J1 = "«\"geef een vangstpenning\"»(J1)#1" + " heeft een Kwitantie "
+            + "«\"schrijf een kwitantie\"»(«\"geef een vangstpenning\"»(J1)#1)#1" + " volgens de regel 'schrijf een"
+            + " kwitantie': met als bedrag zijn bedrag (30 EUR), omdat zijn bedrag (30 EUR) is groter dan 10 EUR";
+    static final String NO_RECEIPT_CATCH_J2 = "«\"geef een vangstpenning\"»(J2)#1" + " heeft geen Kwitantie volgens de"
+            + " regel 'schrijf een kwitantie', want niet geldt: zijn bedrag (8 EUR) is groter dan 10 EUR";
+
     /** The sentences about J1, J2 and the objects made for them, without P1 and what was made for it. */
     private static final List<String> MADE_FOR_THE_JUTTERS = List.of(
             BONUS_J1 + " is niet waardevol, want niet geldt: zijn bedrag (5 EUR) is groter dan 10 EUR",
@@ -131,12 +154,20 @@ class ExplanationMadeObjectsTest {
     static final List<String> EXPECTED = List.of(
             "J1 is niet beloond, want " + ALL + " is niet voldaan: niet voor " + BONUS_J1 + " (1 van de 2)",
             "J1 is rijk, omdat " + AT_LEAST_ONE + " is voldaan: voor 1 van de 2 (" + CATCH_J1 + ")",
+            MADE_CATCH_J1,
+            MADE_BONUS_J1,
             "J2 is niet beloond, want " + ALL + " is niet voldaan: niet voor " + CATCH_J2 + " (1 van de 2)",
             "J2 is rijk, omdat " + AT_LEAST_ONE + " is voldaan: voor 1 van de 2 (P1)",
+            MADE_CATCH_J2,
+            NO_BONUS_J2,
             "P1 is waardevol, omdat zijn bedrag (15 EUR) is groter dan 10 EUR",
+            MADE_RECEIPT_P1,
             MADE_FOR_THE_JUTTERS.get(0),
+            NO_RECEIPT_BONUS_J1,
             MADE_FOR_THE_JUTTERS.get(1),
+            MADE_RECEIPT_CATCH_J1,
             MADE_FOR_THE_JUTTERS.get(2),
+            NO_RECEIPT_CATCH_J2,
             RECEIPT_P1 + " is geldig, omdat zijn bedrag (15 EUR) is groter dan 0 EUR",
             RECEIPT_CATCH_J1 + " is geldig, omdat zijn bedrag (30 EUR) is groter dan 0 EUR");
 
@@ -148,7 +179,7 @@ class ExplanationMadeObjectsTest {
         assertEquals(Status.PASS, u.get(0).result().status(), () -> u.get(0).result().diagnostic());
         assertNull(u.get(0).explanationError(), u.get(0)::explanationError);
         assertEquals(EXPECTED, u.get(0).explanation());
-        Part subject = u.get(0).sentences().get(9).parts().get(0);
+        Part subject = u.get(0).sentences().get(17).parts().get(0);
         assertEquals(new Part(Part.Kind.SUBJECT, RECEIPT_CATCH_J1, Map.of(), List.of()), subject,
                 "het onderwerp is het gemaakte object, bij zijn naam");
     }
@@ -167,13 +198,20 @@ class ExplanationMadeObjectsTest {
         assertEquals(List.of(
                         "J1 is niet beloond, want " + ALL + " is niet voldaan: niet voor " + BONUS_J1 + " (1 van de 2)",
                         "J1 is rijk, omdat " + AT_LEAST_ONE + " is voldaan: voor 1 van de 2 (" + CATCH_J1 + ")",
+                        MADE_CATCH_J1,
+                        MADE_BONUS_J1,
                         "J2 is niet beloond, want " + ALL + " is niet voldaan: niet voor " + CATCH_J2
                                 + ", het enige lid",
                         "J2 is niet rijk, want " + AT_LEAST_ONE + " is niet voldaan: niet voor " + CATCH_J2
                                 + ", het enige lid",
+                        MADE_CATCH_J2,
+                        NO_BONUS_J2,
                         MADE_FOR_THE_JUTTERS.get(0),
+                        NO_RECEIPT_BONUS_J1,
                         MADE_FOR_THE_JUTTERS.get(1),
+                        MADE_RECEIPT_CATCH_J1,
                         MADE_FOR_THE_JUTTERS.get(2),
+                        NO_RECEIPT_CATCH_J2,
                         RECEIPT_CATCH_J1 + " is geldig, omdat zijn bedrag (30 EUR) is groter dan 0 EUR"),
                 engine.explain(Naming.CANONICAL, "Jutter", beans));
     }

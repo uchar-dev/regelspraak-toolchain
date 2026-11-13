@@ -115,12 +115,28 @@ class ExplanationMadeObjectsServiceTest {
     private static final List<String> EXPECTED = List.of(
             "J1 is niet beloond, want " + ALL + " is niet voldaan: niet voor " + BONUS_J1 + " (1 van de 2)",
             "J1 is rijk, omdat " + AT_LEAST_ONE + " is voldaan: voor 1 van de 2 (" + CATCH_J1 + ")",
+            "J1 heeft een Penning " + CATCH_J1 + " volgens de regel 'geef een vangstpenning': met als bedrag zijn"
+                    + " vangst (30 EUR), omdat zijn vangst (30 EUR) is groter dan 0 EUR",
+            "J1 heeft een Penning " + BONUS_J1 + " volgens de regel 'geef een bonuspenning': met als bedrag 5 EUR,"
+                    + " omdat zijn vangst (30 EUR) is groter dan 20 EUR",
             "J2 is niet beloond, want " + ALL + " is niet voldaan: niet voor " + CATCH_J2 + " (1 van de 2)",
             "J2 is rijk, omdat " + AT_LEAST_ONE + " is voldaan: voor 1 van de 2 (P1)",
+            "J2 heeft een Penning " + CATCH_J2 + " volgens de regel 'geef een vangstpenning': met als bedrag zijn"
+                    + " vangst (8 EUR), omdat zijn vangst (8 EUR) is groter dan 0 EUR",
+            "J2 heeft geen Penning volgens de regel 'geef een bonuspenning', want niet geldt: zijn vangst (8 EUR) is"
+                    + " groter dan 20 EUR",
             "P1 is waardevol, omdat zijn bedrag (15 EUR) is groter dan 10 EUR",
+            "P1 heeft een Kwitantie " + RECEIPT_P1 + " volgens de regel 'schrijf een kwitantie': met als bedrag zijn"
+                    + " bedrag (15 EUR), omdat zijn bedrag (15 EUR) is groter dan 10 EUR",
             BONUS_J1 + " is niet waardevol, want niet geldt: zijn bedrag (5 EUR) is groter dan 10 EUR",
+            BONUS_J1 + " heeft geen Kwitantie volgens de regel 'schrijf een kwitantie', want niet geldt: zijn bedrag"
+                    + " (5 EUR) is groter dan 10 EUR",
             CATCH_J1 + " is waardevol, omdat zijn bedrag (30 EUR) is groter dan 10 EUR",
+            CATCH_J1 + " heeft een Kwitantie " + RECEIPT_CATCH_J1 + " volgens de regel 'schrijf een kwitantie': met"
+                    + " als bedrag zijn bedrag (30 EUR), omdat zijn bedrag (30 EUR) is groter dan 10 EUR",
             CATCH_J2 + " is niet waardevol, want niet geldt: zijn bedrag (8 EUR) is groter dan 10 EUR",
+            CATCH_J2 + " heeft geen Kwitantie volgens de regel 'schrijf een kwitantie', want niet geldt: zijn bedrag"
+                    + " (8 EUR) is groter dan 10 EUR",
             RECEIPT_P1 + " is geldig, omdat zijn bedrag (15 EUR) is groter dan 0 EUR",
             RECEIPT_CATCH_J1 + " is geldig, omdat zijn bedrag (30 EUR) is groter dan 0 EUR");
 
@@ -132,7 +148,7 @@ class ExplanationMadeObjectsServiceTest {
                     + " QUOTE«alle penningen van de Jutter waardevol zijn» «\" is niet voldaan»"
                     + " MEMBERS{members=2, holding=1, unjudged=0}[«: niet voor » SUBJECT«" + BONUS_J1 + "»"
                     + " « (1 van de 2)»]]",
-            9, "SUBJECT«" + RECEIPT_CATCH_J1 + "» « is » NAME{declaration=KENMERK, owner=Kwitantie,"
+            17, "SUBJECT«" + RECEIPT_CATCH_J1 + "» « is » NAME{declaration=KENMERK, owner=Kwitantie,"
                     + " canonical=geldig, object=" + RECEIPT_CATCH_J1 + "}«geldig» «, » CONNECTIVE«omdat» « »"
                     + " CONDITION{holds=true}[QUOTE{declaration=ATTRIBUUT, owner=Kwitantie, canonical=bedrag, object="
                     + RECEIPT_CATCH_J1 + "}«zijn bedrag» READING[« (» VALUE«30 EUR» «)»] « is groter dan » VALUE«0 EUR»]");

@@ -579,15 +579,15 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | kind | leaf or group | what | meta |
 |---|---|---|---|
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
-| `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below); `labels` where it names a cell of a dimensioned attribute, one label per dimension in their declared spelling |
+| `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter, the object type an object creation made) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`, `OBJECTTYPE`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below); `labels` where it names a cell of a dimensioned attribute, one label per dimension in their declared spelling |
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
 | `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`), a value of an attribute with absence markers as its payload or the name of its marker; a literal | `empty: true` for an empty one ("leeg", on every attribute); `marker`, the name of the absence marker in its declared spelling, for a marker (`"marker": "onbekend"`), in the head of a sentence, as a value read and as the literal of a comparison, never on a payload or an enumeration value; `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic, which carries no `marker` |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, gold op geen dag, gold alleen op dagen die al een waarde hadden | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
-| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
-| `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, after its name, with its colon (below) | — |
+| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
+| `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, how an allocation divided, or the waardetoekenningen of an object creation, after its name, with its colon (below) | — |
 | `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn; on a displaced variant of a defaults group `holds` (absent without a condition), `decision` for a characteristic, `unreadable: true` where its reading carried a fault (below) |
 | `READING` | group | the value the engine read for the operand or the member right before it, with its brackets: `" ("`, the `VALUE`, `")"` | — |
 | `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | the decider whose annotations they are (below): `rule`, or `group`, `pointer`, `position` and `variant` where it has a name |
@@ -647,13 +647,20 @@ once, with the value the engine read there; where the value reads one declaratio
 cells of a dimensioned attribute, that node is the rule text itself, with its value (`de som van zijn vondstgewicht over
 alle seizoenen (4,50 kg)`; the engine's reading of a fold over cells carries no member, also where the cells are those
 of the object a role reaches). A fold over a set has its `MEMBERS` ("over I4 (01-04-2026) en I5 (01-05-2026) (2
-leden)", a count without a value per member); its text carries the keys of the attribute it folds, and for a cell of
+leden met een waarde)"; a count without a value per member, "(2 leden)"): a member whose value is leeg contributes
+nothing to a value fold (uchar's RUNTIME-SEMANTICS ch. 5.12), so a value fold counts the members with a value and,
+without one, says "geen lid droeg een waarde bij", where a count without a member says "er is geen enkel lid"; its text carries the keys of the attribute it folds, and for a cell of
 each member (`de som van het vondstgewicht in voorjaar van alle leden van de Ploeg`) the cell under `labels`; and its
 filter, where it is one characteristic check or one read, is a `QUOTE` of its own with the keys of that declaration. Last come the value before each rounding (`"; vóór de afronding
 "`) and before each bound (`"; vóór de begrenzing "`). Every value is the engine's: the reading of the rule
 (`DroolsBackend.readingsOf`) carries the nodes of its value after those of its condition, and since uchar's card
-`readings-of-unconditional-forms` a rule without a condition has a reading of its value too; only the input value of
-the fourth form is read on the bean. A writer of a timeline target, also its only one, decides the days on which its
+`readings-of-unconditional-forms` a rule without a condition has a reading of its value too; what the target holds in
+the fourth form comes from uchar's reading of the fixpoint (`DroolsBackend.standingOf`, `EndState.Member`), never from
+the bean after the write-back: the input value, or "de afgeleide waarde" where something the sentence does not name
+derived it. A number stands as the engine read it, padded to the decimals its type declares and never rounded to
+them: an operand of 0,505 against 0,505 is "0,505", not "0,51". "numeriek met exact N cijfers" stands as the rule writes
+it, with its negation, its digits and the period of the form "gedurende het gehele jaar"; a whole-period form of
+"leeg" and "gevuld" keeps its period too. A writer of a timeline target, also its only one, decides the days on which its
 timeline reads a value, and on the other days the target keeps its input (uchar's RUNTIME-SEMANTICS ch. 3.11); who
 decided which days comes from uchar's `DroolsBackend.periodDecisionsOf`. The sentence of a timeline target gives each
 rule that decided the periods it decided with their values, and has no computation; the condition of a rule, where it
@@ -695,6 +702,42 @@ writes in a window has its own sentence, with the periods the bean holds: `"A1 i
 '…'"` where it holds on no day. A rule
 outside the scope of an entry point gets the one sentence "de regel '…' staat buiten deze berekening", like an
 attribution rule.
+
+**An allocation.** An allocation writes the share of every recipient its join (`connectingRole`) links to its source,
+and the undivided rest of the source where it has one; an ordinary rule on the same target is a writer of the same
+rank (uchar's RUNTIME-SEMANTICS ch. 7.8). Share and rest each get the sentence of a computed value, with the
+allocation as a writer beside the ordinary rules of that target: `"M1 heeft als meldaandeel 3 volgens de regel
+'verdeel het meldgeld' (onvoorwaardelijk): W verdeelde zijn meldgeld (10) in gelijke delen, afgerond op 0 decimalen
+naar beneden, over M1 (3), M2 (3) en M3 (3) (3 leden); de regel 'vast meldaandeel' gold niet, want niet geldt: zijn
+ernst (4) is groter dan 10"`, and on the source `"W heeft als meldrest 1 volgens de regel 'verdeel het meldgeld'
+(onvoorwaardelijk): W verdeelde …"`. The `COMPUTATION` names the source (`SUBJECT`), the amount it divided (`NAME`
+with `object`, and `READING`), the method as RegelSpraak writes it (`in gelijke delen`, `naar rato van hun <NAME>`, `op
+volgorde van toenemende|afnemende <NAME>, bij een even groot criterium …`), the maximum and the rounding, and the
+recipients as `MEMBERS`, each with the share it holds. The IR carries no text of an allocation, so these words come
+from its fields. Its condition is read on the source, after `omdat`. An allocation that ran and wrote nothing, a source
+without recipients for one, says so as an ordinary rule does: `"G2 houdt als onverdeelde rest de invoerwaarde 9, want
+de regel '…' gaf geen waarde (onvoorwaardelijk) en besliste niets: G2 verdeelde zijn opbrengst (50) in gelijke delen,
+…, over geen enkel lid"`; one whose condition did not hold on the source is a `VARIANT` with the reason. A recipient
+that no source links gets no sentence of the allocation. That the allocation wrote a target is read from uchar's
+reading of the fixpoint: the target holds a derived value and the source an amount; beside an ordinary rule that wrote
+the same target, both are named (`", en volgens de regel '…'"`).
+
+**A creation.** An object creation and a fact creation get a sentence on their subject, after the sentences of its
+computed values, as an ordinary rule does. An object creation that made an object for the subject:
+`"H1 heeft een Premiepot «"premiepot"»(H1)#1 volgens de regel 'premiepot' (onvoorwaardelijk): met als pot het aantal
+havenjutters van de Haven maal de premie per havenjutter (100)"`, the created type a `NAME` with the keys of its
+declaration (`OBJECTTYPE`), the made object a `SUBJECT`, and the waardetoekenningen a `COMPUTATION`, each with the rule
+text of its value and the value the made object got from it (`EndState.Member.given`; a literal or a marker once, as
+its value); with a condition `", omdat <CONDITION>"`. One that made none: `"J2 heeft geen Penning volgens de regel
+'geef een bonuspenning', want niet geldt: zijn vangst (8 EUR) is groter dan 20 EUR"`, or `"…, want de regel valt op de
+rekendatum buiten haar geldigheid"`, or, for the 1:1 shape on a subject the input already links, `"…, want de koppeling
+stond al in de invoer"`. A fact creation that laid links from its anchor: `"H1 heeft S1 en S2 als winterschuit volgens
+de regel 'winterberging door de haven', omdat het onderwerp veilig is"`, the targets as `SUBJECT`s and their role a
+`NAME`; one that laid none: `"H2 heeft geen keurschuit volgens de regel 'keurberging door de haven', want niet geldt:
+…"`. A creation without a condition that made nothing has no reading and no sentence, as an attribution without a
+condition that does not attribute; a fact creation whose condition checks the target has no reading on the anchor
+(RUNTIME-SEMANTICS ch. 5.12), so its sentence names no condition, and without a link it has none. Of the versions of
+one creation, a version outside its validity speaks only where no other version does, and then once.
 
 **The value the creation assigned** (card `timeline-stack-in-service`). An object a creation made has no input: in the place
 the input has on an object of the request, it holds the member value its creation gave it (rank 2 of uchar's stack,

@@ -135,6 +135,10 @@ class ExplanationStackPerDayTest {
         assertEquals(List.of(
                 "J1 heeft als seizoensloontotaal 10 van 01-01-2025 tot 01-03-2025 en 20 van 01-03-2025 tot 01-09-2025"
                         + " volgens de regel 'seizoensloontotaal' (onvoorwaardelijk)",
+                "J1 heeft een Melding " + made + " volgens de regel 'meld de jutter' (onvoorwaardelijk): met als"
+                        + " seizoensloon zijn strandloon (10 van 01-01-2025 tot 01-07-2025), als aanvulloon zijn"
+                        + " strandloon (10 van 01-01-2025 tot 01-07-2025) en als meldloon zijn strandloon (10 van"
+                        + " 01-01-2025 tot 01-07-2025)",
                 made + " heeft als seizoensloon 20 van 01-03-2025 tot 01-09-2025 volgens de regel 'seizoensloon', omdat van"
                         + " dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de bij de objectcreatie"
                         + " toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan",
@@ -199,8 +203,12 @@ class ExplanationStackPerDayTest {
         assertEquals(List.of(
                 "J1 heeft als terug 3 volgens de regel 'terug van een jutter' (onvoorwaardelijk): de som van de opslag van"
                         + " alle meldingen van de Jutter (3): over «\"meld de vangst\"»(J1)#1 (3), het enige lid met een waarde",
+                "J1 heeft een Melding «\"meld de vangst\"»(J1)#1 volgens de regel 'meld de vangst' (onvoorwaardelijk):"
+                        + " met als meldwaarde zijn vangst (7) en als opslag zijn borg (leeg)",
                 "J2 heeft als terug 9 volgens de regel 'terug van een jutter' (onvoorwaardelijk): de som van de opslag van"
                         + " alle meldingen van de Jutter (9): over «\"meld de vangst\"»(J2)#1 (9), het enige lid met een waarde",
+                "J2 heeft een Melding «\"meld de vangst\"»(J2)#1 volgens de regel 'meld de vangst' (onvoorwaardelijk):"
+                        + " met als meldwaarde zijn vangst (4) en als opslag zijn borg (9)",
                 "«\"meld de vangst\"»(J1)#1 houdt als meldwaarde de bij de objectcreatie toegekende waarde 7, want de"
                         + " regel 'meldwaarde uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets: zijn"
                         + " toeslag (leeg)",
@@ -308,6 +316,10 @@ class ExplanationStackPerDayTest {
         List<String> sentences = explained(MADE_DEFAULTS).explanation();
         String made = "«\"meld de jutter\"»(J1)#1";
         assertEquals(List.of(
+                "J1 heeft een Melding " + made + " volgens de regel 'meld de jutter' (onvoorwaardelijk): met als toelage"
+                        + " zijn strandloon (20 van 01-01-2025 tot 01-03-2025 en 10 van 01-03-2025 tot 01-07-2025) en als"
+                        + " meldloon zijn strandloon (20 van 01-01-2025 tot 01-03-2025 en 10 van 01-03-2025 tot"
+                        + " 01-07-2025)",
                 made + " heeft als toelage 50 van 01-01-2025 tot 01-03-2025 volgens de regel 'toelage bij hoog meldloon':"
                         + " 50,"
                         + " omdat zijn meldloon groter is dan 15 (van 01-01-2025 tot 01-03-2025)",
@@ -365,6 +377,8 @@ class ExplanationStackPerDayTest {
         assertEquals(List.of(
                 "J1 heeft als terug 3 volgens de regel 'terug van een jutter' (onvoorwaardelijk): de som van de toelage"
                         + " van alle meldingen van de Jutter (3): over " + made + " (3), het enige lid met een waarde",
+                "J1 heeft een Melding " + made + " volgens de regel 'meld de vangst' (onvoorwaardelijk): met als"
+                        + " meldwaarde zijn vangst (10)",
                 made + " heeft geen afwijkende opgave toelage, want niet geldt: zijn opgegeven toelage (leeg) gevuld is",
                 made + " heeft als toelage 3 volgens 'standaardtoelage': 3, omdat de toelage bij de objectcreatie leeg"
                         + " was; 'opgegeven toelage' gaf geen waarde; 'berekende toelage' gaf geen waarde",

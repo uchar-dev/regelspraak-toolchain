@@ -124,6 +124,22 @@ writes one does not start:
   `(gold niet)`, `(gold, toekennen)`/`(gold, niet toekennen)` or `(onvoorwaardelijk, …)` (`docs/ENGINE.md`, "What a
   displaced variant found"). This changes existing sentences: `"…; verdrongen: de regel 'premie'"` is now `"…;
   verdrongen: de regel 'premie' (gold, 100,00)"`.
+- **Allocations and creations are explained**: the share an allocation writes on a recipient and the rest it writes on
+  its source get the sentence of a computed value, with the allocation as a writer beside the ordinary rules of that
+  target and how it divided as its `COMPUTATION` (`"M1 heeft als meldaandeel 3 volgens de regel 'verdeel het meldgeld'
+  (onvoorwaardelijk): W verdeelde zijn meldgeld (10) in gelijke delen, afgerond op 0 decimalen naar beneden, over M1
+  (3), M2 (3) en M3 (3) (3 leden)"`); an object creation and a fact creation get a sentence on their subject (`"H1
+  heeft een Premiepot «"premiepot"»(H1)#1 volgens de regel 'premiepot' (onvoorwaardelijk): met als pot …"`, `"H1 heeft
+  S1 en S2 als winterschuit volgens de regel '…', omdat …"`), and a `NAME` can carry `declaration: OBJECTTYPE`
+  (`docs/ENGINE.md`, "An allocation", "A creation"). The sentences that were there keep their order; the new ones
+  follow the computed values of their subject, and an attribute an allocation wrote, which had a sentence of its
+  ordinary rules, now names the allocation as its writer.
+- **Corrections in the explanation**: a value that something other than the writers of a sentence derived is "de
+  afgeleide waarde", no longer "de invoerwaarde" (the standing is read from uchar's `EndState`, not from the bean
+  after the write-back); "numeriek met exact N cijfers" keeps its negation, digits and whole-period form, where it was
+  "voldoet aan numeriek_met_exact"; a number is padded to its declared decimals and never rounded to them ("0,505", not
+  "0,51"; "2,8 km", not "3 km"); a value fold counts "leden met een waarde" and says "geen lid droeg een waarde bij"
+  where it said "er is geen enkel lid" of members that were all leeg.
 - **A deviation names its layers** (card `ground-deviation`): a `DEVIATION` part carries `between` (the layers of
   the pair in the order of the register, or the one layer of `deviatie binnen`) and `follows` (the layer the rule
   set follows; absent within one layer) in place of `followed`. The old forms `afwijking: ` and `afwijking, niet
