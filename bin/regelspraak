@@ -29,6 +29,10 @@ usage: bin/regelspraak [--language nl|en] <command> [arguments]
                                         the decision service on the JDK HttpServer (PLAYGROUND=true: the workbench;
                                         --detail or DETAIL=true: ?trace, ?coverage and ?fixpoint, and the
                                         workbench's ?via=service)
+  openapi [--vocabulary <name>] <out.json> <descriptor.service.json> <source.rgs...> | <document.json>
+                                        the OpenAPI document of the service, byte for byte the one GET /openapi
+                                        sends (the service built with markers allowed); --vocabulary names the
+                                        declarations in a vocabulary of the model (canonical: the canonical names)
   drl <source.rgs...>                   the DRL text of uchar's DRL-text branch
   graph [--mmd] <out> <source.rgs...>   the rule graph as an HTML page, or with --mmd as Mermaid text
   facts <outdir> <source.rgs...>        the fact beans uchar's generator writes for the model
@@ -155,6 +159,19 @@ case "$command" in
   serve)
     [ $# -gt 0 ] || fail "serve: geen descriptor en geen bron opgegeven"
     start "$SERVICE" "$@" ;;
+  openapi)
+    vocabulary=()
+    if [ "${1:-}" = --vocabulary ]; then
+      [ $# -ge 2 ] || fail "openapi: --vocabulary verwacht een naam"
+      vocabulary=(--vocabulary "$2"); shift 2
+    fi
+    [ $# -ge 1 ] || fail "openapi: geen uit.json opgegeven"
+    out=$1; shift
+    case "$out" in -*) fail "openapi: onbekende optie $out" ;; esac
+    check_out_dir openapi "$out"
+    [ $# -ge 2 ] || fail "openapi: geen descriptor en bron opgegeven"
+    check_sources openapi "$@"
+    start "$SERVICE" --openapi "$out" ${vocabulary[@]+"${vocabulary[@]}"} "$@" ;;
   drl)
     check_sources drl "$@"
     start "$CLI" --drl "$@" ;;

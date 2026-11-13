@@ -40,9 +40,9 @@ public final class DescriptorLoader {
             .setNodeFactory(JsonNodeFactory.withExactBigDecimals(true))
             .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true);
 
-    /** The paths of the routes beside the entry points ({@code GET /info}, the playground's): no entry point takes
-     *  one. */
-    private static final List<String> RESERVED_PATHS = List.of("info", "playground");
+    /** The paths of the routes beside the entry points ({@code GET /info}, {@code GET /openapi}, the playground's): no
+     *  entry point takes one. */
+    private static final List<String> RESERVED_PATHS = List.of("info", "openapi", "playground");
 
     private DescriptorLoader() {}
 

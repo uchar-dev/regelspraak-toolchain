@@ -6,6 +6,7 @@ import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 
 import java.io.IOException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
@@ -34,12 +35,22 @@ import java.util.List;
  *   <li>Any other startup failure (unknown rule or object type, a source that does not resolve, a name the resolver
  *       bound to no declaration, an incomplete scope, a bad descriptor) → print the violations and exit
  *       <b>1</b>.</li>
- *   <li>Success → print one serving line per entry point ({@code POST /<pad>}) plus {@code GET /info}, then
- *       block. With {@code --allow-markers} the same descriptor starts, {@code /info} lists the markers, and a
+ *   <li>Success → print one serving line per entry point ({@code POST /<pad>}) plus {@code GET /info} and
+ *       {@code GET /openapi}, then block. With {@code --allow-markers} the same descriptor starts, {@code /info} lists the markers, and a
  *       request to an entry point with a marker is refused with 503: uchar built no KieBase for it.</li>
  * </ul>
  * The marker-vs-other classification lives in {@link #exitCodeFor(ServiceError)} so it is unit-testable without
  * forking a JVM.
+ *
+ * <h2>The OpenAPI document without a running service</h2>
+ * <pre>{@code
+ *   ServiceMain --openapi <out.json> [--vocabulary <name>] <descriptor.service.json> <source.rgs...> | <document.json>
+ * }</pre>
+ * builds the core as a start does and writes the bytes {@code GET /openapi} sends ({@link ServiceHttp#openapi}) to
+ * {@code out.json}. The core is built with markers allowed: the document describes the descriptor's entry points
+ * whether uchar carries them or not, so it is the one a service started with {@code --allow-markers} serves, and a
+ * service started without it serves the same one or does not start. A start that fails exits as above; an unknown
+ * vocabulary exits <b>2</b>, a wrong invocation.
  */
 public final class ServiceMain {
 
@@ -55,6 +66,10 @@ public final class ServiceMain {
 
     public static void main(String[] rawArgs) {
         dev.uchar.regelspraak.toolchain.engine.MessageLanguage.apply(null);
+        if (rawArgs.length > 0 && rawArgs[0].equals("--openapi")) {
+            System.exit(openapi(java.util.Arrays.copyOfRange(rawArgs, 1, rawArgs.length)));
+            return;
+        }
         Args args;
         try {
             args = parseArgs(rawArgs);
@@ -136,10 +151,84 @@ public final class ServiceMain {
             System.out.println("  POST /" + ep.descriptor().path() + "   (" + ep.descriptor().name() + ")"
                     + (ep.executable() ? "" : "   niet uitvoerbaar: " + ep.refusal()));
         System.out.println("  GET  /info");
+        System.out.println("  GET  /openapi");
     }
 
     private static String name(DecisionCore core) {
         return core.descriptor().service() == null ? "?" : core.descriptor().service().name();
+    }
+
+    /** Parsed arguments of {@code --openapi}. */
+    record OpenapiArgs(Path out, String vocabulary, Path descriptor, List<Path> sources) {}
+
+    /** Exit code 2: a wrong invocation, an unknown vocabulary among them. */
+    static final int EXIT_USAGE = 2;
+
+    /** {@code --openapi}: write the document {@code GET /openapi} sends; returns the exit code. */
+    static int openapi(String[] raw) {
+        OpenapiArgs args;
+        try {
+            args = parseOpenapiArgs(raw);
+        } catch (IllegalArgumentException e) {
+            System.err.println(e.getMessage());
+            System.err.println("usage: ServiceMain --openapi <out.json> [--vocabulary <naam>] <descriptor.service.json>"
+                    + " <source.rgs...> | <document.json>");
+            return EXIT_USAGE;
+        }
+        DecisionCore core;
+        try {
+            core = DecisionCore.assemble(args.descriptor(), args.sources(), CoreConfig.withMarkers(),
+                    Thread.currentThread().getContextClassLoader());
+        } catch (ServiceError error) {
+            int code = exitCodeFor(error);
+            if (code == EXIT_MARKER) printMarkers(error);
+            else printViolations(error);
+            return code;
+        } catch (IOException ioe) {
+            System.err.println("kon de dienst niet bouwen: " + ioe.getMessage());
+            return EXIT_USAGE;
+        }
+        printStartWarnings(core);
+        ServiceHttp.Document document = ServiceHttp.openapi(core, args.vocabulary());
+        if (document.status() != 200) {
+            System.err.println(new String(document.body(), java.nio.charset.StandardCharsets.UTF_8));
+            return EXIT_USAGE;
+        }
+        try {
+            Files.write(args.out(), document.body());
+        } catch (IOException ioe) {
+            System.err.println("kon " + args.out() + " niet schrijven: " + ioe.getMessage());
+            return EXIT_USAGE;
+        }
+        return 0;
+    }
+
+    /** Parse {@code <out.json> [--vocabulary V] <descriptor> <source...>}. */
+    static OpenapiArgs parseOpenapiArgs(String[] raw) {
+        Path out = null;
+        String vocabulary = null;
+        Path descriptor = null;
+        List<Path> sources = new ArrayList<>();
+        for (int i = 0; i < raw.length; i++) {
+            String a = raw[i];
+            if (a.equals("--vocabulary")) {
+                if (i + 1 >= raw.length) throw new IllegalArgumentException("--vocabulary verwacht een naam");
+                vocabulary = raw[++i];
+            } else if (a.startsWith("--")) {
+                throw new IllegalArgumentException("onbekende optie: " + a);
+            } else if (out == null) {
+                out = Path.of(a);
+            } else if (descriptor == null) {
+                descriptor = Path.of(a);
+            } else {
+                sources.add(Path.of(a));
+            }
+        }
+        if (out == null) throw new IllegalArgumentException("geen uitvoerbestand (.json) opgegeven");
+        if (descriptor == null) throw new IllegalArgumentException("geen descriptor (.service.json) opgegeven");
+        if (sources.isEmpty())
+            throw new IllegalArgumentException("geen bron opgegeven: .rgs-bestanden of één uchar-ir-v1-document");
+        return new OpenapiArgs(out, vocabulary, descriptor, sources);
     }
 
     /** Parse {@code <descriptor> <source...> [--allow-markers] [--detail] [--host H] [--port N]}. */

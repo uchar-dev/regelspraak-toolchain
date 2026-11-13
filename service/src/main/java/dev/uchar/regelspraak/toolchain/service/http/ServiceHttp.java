@@ -22,6 +22,7 @@ import dev.uchar.regelspraak.toolchain.service.ServiceError;
 import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
 import dev.uchar.regelspraak.toolchain.service.Limit;
 import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
+import dev.uchar.regelspraak.toolchain.service.OpenApiEmitter;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 import dev.uchar.regelspraak.toolchain.service.ValueCoder;
 import dev.uchar.regelspraak.toolchain.service.RequestOptions;
@@ -48,8 +49,8 @@ import java.util.concurrent.TimeoutException;
 /**
  * The HTTP contract of the decision service over the framework-agnostic {@link DecisionCore}, and its adapter on the
  * JDK {@link HttpServer}. It owns no RegelSpraak meaning: it marshals JSON in and out and maps the core's typed
- * outcomes onto HTTP status codes. The Quarkus adapter sends the same answers through {@link #post} and
- * {@link #info}, so the two cannot drift.
+ * outcomes onto HTTP status codes. The Quarkus adapter sends the same answers through {@link #post}, {@link #info}
+ * and {@link #openapi}, so the two cannot drift.
  *
  * <h2>Routes</h2>
  * <ul>
@@ -68,6 +69,11 @@ import java.util.concurrent.TimeoutException;
  *       descriptor {@code parameters} defaults verbatim, the {@code parameterSets} and the {@code periodWarnings}. A
  *       model with vocabularies adds {@code vocabularies} ({@link Completeness}), and an entry point with a default
  *       vocabulary names it.</li>
+ *   <li>{@code GET /openapi}: the OpenAPI document of the service ({@link #openapi}), the one
+ *       {@link OpenApiEmitter#emit} writes over the core's descriptor and model, in {@link OpenApiEmitter#toBytes}'s
+ *       canonical bytes, so that {@code bin/regelspraak openapi} writes the same file. {@code ?vocabulary=<name>}
+ *       or {@code ?vocabulary=canonical} chooses the names, as at an entry point; without it the canonical names. An
+ *       unknown vocabulary is a {@code 400} {@code UNKNOWN_VOCABULARY}.</li>
  * </ul>
  *
  * <h2>Errors — always a JSON body, never a leaked stacktrace</h2>
@@ -154,6 +160,7 @@ public final class ServiceHttp {
         for (String path : core.entrypoints().keySet())
             server.createContext("/" + path, service::processPost);
         server.createContext("/info", service::processInfo);
+        server.createContext("/openapi", service::processOpenapi);
         // DEV-ONLY playground: register the workbench routes ONLY when PLAYGROUND=true (default off). A production
         // deploy leaves them entirely unbound — the paths then 404 via the catch-all below.
         if (playground) {
@@ -298,6 +305,49 @@ public final class ServiceHttp {
         } catch (Exception intern) {
             intern.printStackTrace(System.err);
             send(ex, 500, errorBody("interne fout", null));
+        }
+    }
+
+    // ---------------- GET /openapi ----------------
+
+    private void processOpenapi(HttpExchange ex) throws IOException {
+        try {
+            if (!"GET".equalsIgnoreCase(ex.getRequestMethod())) {
+                send(ex, 405, errorBody("methode '" + ex.getRequestMethod()
+                        + "' niet toegestaan op '/openapi' (gebruik GET)", null));
+                return;
+            }
+            Document document = openapi(core, queryValue(ex.getRequestURI().getRawQuery(), "vocabulary"));
+            ex.getResponseHeaders().set("Content-Type", JSON);
+            ex.sendResponseHeaders(document.status(), document.body().length);
+            try (OutputStream os = ex.getResponseBody()) { os.write(document.body()); }
+        } catch (Exception intern) {
+            intern.printStackTrace(System.err);
+            send(ex, 500, errorBody("interne fout", null));
+        }
+    }
+
+    /** What an adapter sends for {@code GET /openapi}: the HTTP status and the bytes of the body. */
+    public record Document(int status, byte[] body) {}
+
+    /**
+     * The answer to {@code GET /openapi} on {@code core} in {@code vocabulary} (null, the query without it, or
+     * {@code canonical} for the canonical names): {@code 200} with the canonical bytes of {@link OpenApiEmitter#emit}
+     * over the core's descriptor and model, or {@code 400} {@code UNKNOWN_VOCABULARY} on {@code vocabulary} when the
+     * model declares no such vocabulary. Both adapters and {@code bin/regelspraak openapi} send these bytes.
+     */
+    public static Document openapi(DecisionCore core, String vocabulary) {
+        try {
+            return new Document(200, OpenApiEmitter.toBytes(
+                    OpenApiEmitter.emit(core.descriptor(), core.model(), vocabulary)));
+        } catch (Naming.VocabularyError unknown) {
+            try {
+                return new Document(400, MAPPER.writeValueAsBytes(requestErrorBody(new ServiceError(
+                        "verzoek valideert niet", List.of(Violation.of(Violation.Kind.UNKNOWN_VOCABULARY,
+                                "vocabulary", unknown.getMessage()))))));
+            } catch (JsonProcessingException e) {
+                throw new IllegalStateException("een foutlichaam laat zich altijd schrijven", e);
+            }
         }
     }
 

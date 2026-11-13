@@ -23,8 +23,8 @@ import dev.uchar.regelspraak.toolchain.service.http.ServiceHttp;
 
 /**
  * The Quarkus JAX-RS adapter over {@link DecisionCore}. The answers are those of the JDK adapter: {@code POST /<path>}
- * sends what {@link ServiceHttp#post} gives and {@code GET /info} the manifest of {@link ServiceHttp#info}, so the HTTP
- * contract has one implementation. Any exception those do not map is a {@code 500} {@code {"error":"interne fout"}},
+ * sends what {@link ServiceHttp#post} gives, {@code GET /info} the manifest of {@link ServiceHttp#info} and
+ * {@code GET /openapi} the bytes of {@link ServiceHttp#openapi}, so the HTTP contract has one implementation. Any exception those do not map is a {@code 500} {@code {"error":"interne fout"}},
  * its stacktrace in the log and never in the answer.
  *
  * <p>The query parameters are {@code ServiceHttp}'s, read as it reads them ({@link ServiceHttp#isSet}). The body is
@@ -88,6 +88,24 @@ public class DecideResource {
             return response(200, ServiceHttp.info(core));
         } catch (RuntimeException intern) {
             LOG.error("interne fout bij GET /info", intern);
+            return response(500, ServiceHttp.errorBody("interne fout", null));
+        }
+    }
+
+    // ---------------- GET /openapi ----------------
+
+    @GET
+    @Path("openapi")
+    @Produces(MediaType.APPLICATION_JSON)
+    public Response openapi(@QueryParam("vocabulary") String vocabulary) {
+        try {
+            ServiceHttp.Document document = ServiceHttp.openapi(core, vocabulary);
+            return Response.status(document.status())
+                    .type(MediaType.APPLICATION_JSON + "; charset=UTF-8")
+                    .entity(document.body())
+                    .build();
+        } catch (RuntimeException intern) {
+            LOG.error("interne fout bij GET /openapi", intern);
             return response(500, ServiceHttp.errorBody("interne fout", null));
         }
     }
