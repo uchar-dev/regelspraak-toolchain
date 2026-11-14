@@ -15,12 +15,12 @@ import java.util.List;
  * The CLI entry point for the decision service. It builds a {@link DecisionCore} from a descriptor + the
  * service's {@code .rgs} sources, or one {@code uchar-ir-v1} document ({@code .json}), then serves it over
  * {@link ServiceHttp}. {@code --port 0} binds a free port; the serving line names the port bound. {@code --host}
- * picks the address to bind (default {@code 0.0.0.0}, every interface); a local caller that binds a free port
- * passes {@code 127.0.0.1}, because a port free on every interface can still be bound on the loopback address
- * alone by another process, which then answers on it. {@code --detail}, or {@code DETAIL=true} in the environment,
- * starts the core with the details of a session on request ({@link CoreConfig#detail()}); default off, since they
- * show every intermediate value. The service binds no playground route; the playground has a command of its own
- * (below).
+ * picks the address to bind (default {@code 0.0.0.0}, every interface, where the container and the chart reach the
+ * service); a local caller that binds a free port passes {@code 127.0.0.1}, because a port free on every interface
+ * can still be bound on the loopback address alone by another process, which then answers on it. {@code --detail},
+ * or {@code DETAIL=true} in the environment, starts the core with the details of a session on request
+ * ({@link CoreConfig#detail()}); default off, since they show every intermediate value. The service binds no
+ * playground route; the playground has a command of its own (below).
  *
  * <pre>{@code
  *   ServiceMain <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H]
@@ -63,8 +63,11 @@ import java.util.List;
  * Without a descriptor it serves nothing else, and {@code ?via=service} is a 400 that says why. With a descriptor it
  * builds the core as a start of the service does, with the same exit codes, and serves that service's routes beside
  * the playground's in one process ({@link ServiceHttp#playground(DecisionCore, String, int)}), so that
- * {@code ?via=service} computes a scenario through them; that needs {@code --detail} or {@code DETAIL=true}. It prints
- * its routes and blocks; a wrong invocation exits <b>2</b>.
+ * {@code ?via=service} computes a scenario through them; that needs {@code --detail} or {@code DETAIL=true}. Its
+ * {@code --host} defaults to {@code 127.0.0.1}, the loopback address, with and without a descriptor (the served
+ * entry points share the playground's address): it compiles whatever source a page posts, so it is reachable from
+ * this machine alone unless {@code --host 0.0.0.0} opens it to other machines. It prints its routes and blocks; a
+ * wrong invocation exits <b>2</b>.
  */
 public final class ServiceMain {
 
@@ -77,6 +80,13 @@ public final class ServiceMain {
     static final int EXIT_MARKER = 3;
     /** Exit code 1: any other startup failure. */
     static final int EXIT_OTHER = 1;
+
+    /** The address {@code serve} binds without {@code --host}: every interface, since the container and the chart
+     *  reach the service there. */
+    static final String SERVICE_HOST = "0.0.0.0";
+    /** The address the playground binds without {@code --host}: the loopback address, since it compiles whatever
+     *  source a page posts; {@code --host 0.0.0.0} opens it to other machines. */
+    static final String PLAYGROUND_HOST = "127.0.0.1";
 
     public static void main(String[] rawArgs) {
         dev.uchar.regelspraak.toolchain.engine.MessageLanguage.apply(null);
@@ -113,7 +123,7 @@ public final class ServiceMain {
 
         printStartWarnings(core);
         try {
-            ServiceHttp service = ServiceHttp.bind(core, args.host(), args.port()).start();
+            ServiceHttp service = startService(core, args);
             printServingLines(core, service.port());
             // block forever — the server runs on its own executor threads
             Thread.currentThread().join();
@@ -121,6 +131,18 @@ public final class ServiceMain {
             System.err.println("kon de HTTP-server niet starten: " + e.getMessage());
             System.exit(EXIT_OTHER);
         }
+    }
+
+    /** The service of {@code core} on the address and port of {@code args}, started. */
+    static ServiceHttp startService(DecisionCore core, Args args) throws IOException {
+        return ServiceHttp.bind(core, args.host(), args.port()).start();
+    }
+
+    /** The playground on the address and port of {@code args}, beside the service of {@code core} when there is one,
+     *  started. */
+    static ServiceHttp startPlayground(DecisionCore core, Args args) throws IOException {
+        return (core == null ? ServiceHttp.playground(args.host(), args.port())
+                : ServiceHttp.playground(core, args.host(), args.port())).start();
     }
 
     /** The core of the descriptor and sources of {@code args}: markers allowed with {@code --allow-markers}, the
@@ -213,8 +235,7 @@ public final class ServiceMain {
             printStartWarnings(core);
         }
         try {
-            ServiceHttp playground = core == null ? ServiceHttp.playground(args.host(), args.port()).start()
-                    : ServiceHttp.playground(core, args.host(), args.port()).start();
+            ServiceHttp playground = startPlayground(core, args);
             if (core == null) System.out.println("playground luistert op poort " + playground.port() + ":");
             else printServingLines(core, playground.port());
             System.out.println("  GET  /playground");
@@ -228,9 +249,10 @@ public final class ServiceMain {
     }
 
     /** Parse the arguments of {@code --playground}: those of {@link #parseArgs}, where the descriptor and its sources
-     *  may be absent; {@code --allow-markers} and {@code --detail} only with them, since they set the service. */
+     *  may be absent and the host is {@link #PLAYGROUND_HOST} unless {@code --host} names another; {@code
+     *  --allow-markers} and {@code --detail} only with them, since they set the service. */
     static Args parsePlaygroundArgs(String[] raw) {
-        Args args = parseOptionalDescriptor(raw);
+        Args args = parseOptionalDescriptor(raw, PLAYGROUND_HOST);
         if (args.descriptor() == null && (args.allowMarkers() || args.detail()))
             throw new IllegalArgumentException("--allow-markers en --detail gelden de dienst van een descriptor;"
                     + " playground zonder descriptor kent ze niet");
@@ -307,20 +329,22 @@ public final class ServiceMain {
         return new OpenapiArgs(out, vocabulary, descriptor, sources);
     }
 
-    /** Parse {@code <descriptor> <source...> [--allow-markers] [--detail] [--host H] [--port N]}. */
+    /** Parse {@code <descriptor> <source...> [--allow-markers] [--detail] [--host H] [--port N]}; the host is
+     *  {@link #SERVICE_HOST} unless {@code --host} names another. */
     static Args parseArgs(String[] raw) {
-        Args args = parseOptionalDescriptor(raw);
+        Args args = parseOptionalDescriptor(raw, SERVICE_HOST);
         if (args.descriptor() == null) throw new IllegalArgumentException("geen descriptor (.service.json) opgegeven");
         return args;
     }
 
-    /** {@link #parseArgs} where the descriptor may be absent; a descriptor without a source is refused. */
-    private static Args parseOptionalDescriptor(String[] raw) {
+    /** {@link #parseArgs} where the descriptor may be absent and the host is {@code defaultHost} unless {@code --host}
+     *  names another; a descriptor without a source is refused. */
+    private static Args parseOptionalDescriptor(String[] raw, String defaultHost) {
         Path descriptor = null;
         List<Path> sources = new ArrayList<>();
         boolean allowMarkers = false;
         boolean detail = false;
-        String host = "0.0.0.0";
+        String host = defaultHost;
         int port = 8080;
         for (int i = 0; i < raw.length; i++) {
             String a = raw[i];

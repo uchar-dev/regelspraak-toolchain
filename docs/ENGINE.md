@@ -78,6 +78,9 @@ bin/regelspraak serve <descriptor.service.json> <source.rgs…> | <document.json
                       [--port N]
 ```
 
+The service binds `0.0.0.0`, every interface, unless `--host` names another address: the container and the chart
+reach it there.
+
 The descriptor is bound to its form strictly (`DescriptorLoader.read`): a key the form does not have, at any level,
 refuses the start with a `MALFORMED` violation on its path (`entrypoints[0].outputs`, `service.versie`), where the
 entry point would otherwise start and answer nothing. An entry point's `path` is one segment of the URL of its own:
@@ -389,8 +392,11 @@ refuse the start as well.
   routes alone, without a descriptor and a source, and every other path is a 404. `bin/regelspraak playground
   <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]`
   builds the service as `serve` does, with the same exit codes, and serves its routes and the two of the workbench in
-  one process. Both analyse the source a request posts; only `?via=service` (below) needs the served model, so the
-  playground alone answers it with a 400 `UNSUPPORTED` on `field` `via` that says why, and its page says the same.
+  one process. Both bind `127.0.0.1` unless `--host` names another address: the workbench compiles whatever source a
+  page posts, so it and the entry points beside it are reachable from this machine alone, and `--host 0.0.0.0` opens
+  them to other machines. Both analyse the source a request posts; only `?via=service` (below) needs the served
+  model, so the playground alone answers it with a 400 `UNSUPPORTED` on `field` `via` that says why, and its page
+  says the same.
   A source with a parse or resolver error gets its diagnostics and nothing else: `parse.errors` are the syntax errors of uchar's parse
   (`Resolver.parse`, the one its resolver reads), each with `line`, `column`, `message`, the offending `token` and the
   `expected` tokens, an error of the lexer without `token` and with `expected` empty. A clean source gets the

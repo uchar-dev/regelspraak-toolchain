@@ -216,6 +216,9 @@ public final class ServiceHttp {
     /** The actually-bound port (resolved even when bound with poort 0). */
     public int port() { return server.getAddress().getPort(); }
 
+    /** The actually-bound address: which interfaces the server is reachable on. */
+    InetSocketAddress address() { return server.getAddress(); }
+
     // ---------------- POST /<pad> ----------------
 
     private void processPost(HttpExchange ex) throws IOException {

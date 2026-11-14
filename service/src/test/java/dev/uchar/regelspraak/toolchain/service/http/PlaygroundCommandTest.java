@@ -2,6 +2,8 @@ package dev.uchar.regelspraak.toolchain.service.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import dev.uchar.regelspraak.toolchain.service.DecisionCore;
+
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -12,6 +14,7 @@ import org.junit.jupiter.api.io.TempDir;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
+import java.net.InetAddress;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
@@ -38,6 +41,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * request posts; it has no served model, so {@code ?via=service} is a 400 that says why, the page says the same, and
  * the routes of a service are not there. With a descriptor and its source it serves that model's entry points beside
  * it, and {@code ?via=service} computes through them. {@code serve} binds no playground, whatever its environment.
+ * The playground binds the loopback address unless {@code --host} names another; {@code serve} every interface.
  */
 class PlaygroundCommandTest {
 
@@ -64,7 +68,7 @@ class PlaygroundCommandTest {
     @BeforeAll
     static void start() throws IOException {
         ServiceMain.Args args = ServiceMain.parsePlaygroundArgs(new String[]{});
-        assertEquals(new ServiceMain.Args(null, List.of(), false, false, "0.0.0.0", 8080), args);
+        assertEquals(new ServiceMain.Args(null, List.of(), false, false, "127.0.0.1", 8080), args);
         playground = ServiceHttp.playground("127.0.0.1", 0).start();
     }
 
@@ -77,9 +81,11 @@ class PlaygroundCommandTest {
     void it_takes_a_descriptor_and_its_sources_or_neither() {
         assertEquals(new ServiceMain.Args(null, List.of(), false, false, "127.0.0.1", 0),
                 ServiceMain.parsePlaygroundArgs(new String[]{"--host", "127.0.0.1", "--port", "0"}));
-        assertEquals(new ServiceMain.Args(Path.of("d.service.json"), List.of(Path.of("x.rgs")), true, true, "0.0.0.0",
-                        8080),
+        assertEquals(new ServiceMain.Args(Path.of("d.service.json"), List.of(Path.of("x.rgs")), true, true,
+                        "127.0.0.1", 8080),
                 ServiceMain.parsePlaygroundArgs(new String[]{"d.service.json", "x.rgs", "--allow-markers", "--detail"}));
+        assertEquals(new ServiceMain.Args(null, List.of(), false, false, "0.0.0.0", 8080),
+                ServiceMain.parsePlaygroundArgs(new String[]{"--host", "0.0.0.0"}));
         assertThrows(IllegalArgumentException.class,
                 () -> ServiceMain.parsePlaygroundArgs(new String[]{"d.service.json"}));
         // --detail and --allow-markers set the service, which a playground without a descriptor does not have
@@ -189,6 +195,58 @@ class PlaygroundCommandTest {
             HttpResponse<String> page = playground.get("/playground");
             assertEquals(200, page.statusCode());
             assertTrue(page.body().contains(ServiceHttp.VIA_PLACE), "met een dienst blijft de plaats leeg");
+        }
+    }
+
+    /** The playground compiles whatever source a page posts: without {@code --host} it binds the loopback address
+     *  alone, with and without a descriptor, whose entry points share its address; {@code --host 0.0.0.0} binds every
+     *  interface. */
+    @Test
+    @Timeout(180)
+    void the_playground_binds_the_loopback_address_unless_host_names_another(@TempDir Path dir) throws Exception {
+        Path descriptor = Files.writeString(dir.resolve("vlucht.service.json"), MODEL_DESCRIPTOR);
+        Path source = Files.writeString(dir.resolve("vlucht.rgs"), MODEL);
+        ServiceMain.Args beside = ServiceMain.parsePlaygroundArgs(new String[]{
+                descriptor.toString(), source.toString(), "--port", "0"});
+        DecisionCore core = ServiceMain.assemble(beside);
+
+        InetAddress alone = boundAddress(null, ServiceMain.parsePlaygroundArgs(new String[]{"--port", "0"}));
+        assertTrue(alone.isLoopbackAddress(), "playground zonder descriptor bindt " + alone);
+        InetAddress withService = boundAddress(core, beside);
+        assertTrue(withService.isLoopbackAddress(), "playground met descriptor bindt " + withService);
+
+        InetAddress openAlone = boundAddress(null, ServiceMain.parsePlaygroundArgs(new String[]{
+                "--host", "0.0.0.0", "--port", "0"}));
+        assertTrue(openAlone.isAnyLocalAddress(), "playground --host 0.0.0.0 bindt " + openAlone);
+        InetAddress openWithService = boundAddress(core, ServiceMain.parsePlaygroundArgs(new String[]{
+                descriptor.toString(), source.toString(), "--host", "0.0.0.0", "--port", "0"}));
+        assertTrue(openWithService.isAnyLocalAddress(), "playground met descriptor --host 0.0.0.0 bindt "
+                + openWithService);
+    }
+
+    /** {@code serve} binds every interface without {@code --host}: the container and the chart reach it there. */
+    @Test
+    @Timeout(180)
+    void serve_binds_every_interface_by_default(@TempDir Path dir) throws Exception {
+        Path descriptor = Files.writeString(dir.resolve("vlucht.service.json"), MODEL_DESCRIPTOR);
+        Path source = Files.writeString(dir.resolve("vlucht.rgs"), MODEL);
+        ServiceMain.Args args = ServiceMain.parseArgs(new String[]{descriptor.toString(), source.toString(),
+                "--port", "0"});
+        ServiceHttp service = ServiceMain.startService(ServiceMain.assemble(args), args);
+        try {
+            assertTrue(service.address().getAddress().isAnyLocalAddress(), "serve bindt " + service.address());
+        } finally {
+            service.stop(0);
+        }
+    }
+
+    /** The address {@link ServiceMain#startPlayground} binds for {@code core} and {@code args}; stopped again. */
+    private static InetAddress boundAddress(DecisionCore core, ServiceMain.Args args) throws IOException {
+        ServiceHttp started = ServiceMain.startPlayground(core, args);
+        try {
+            return started.address().getAddress();
+        } finally {
+            started.stop(0);
         }
     }
 

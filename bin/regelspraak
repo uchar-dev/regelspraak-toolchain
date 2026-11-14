@@ -27,10 +27,14 @@ usage: bin/regelspraak [--language nl|en] <command> [arguments]
                                         vocabulary of the model (canonical: the canonical names)
   serve <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]
                                         the decision service on the JDK HttpServer (--detail or DETAIL=true:
-                                        ?trace, ?coverage and ?fixpoint)
-  playground [--host H] [--port N]      the workbench: it analyses the source the page posts
+                                        ?trace, ?coverage and ?fixpoint); it binds 0.0.0.0, every interface,
+                                        unless --host names another address
+  playground [--host H] [--port N]      the workbench: it analyses the source the page posts; it binds 127.0.0.1,
+                                        this machine alone, unless --host names another address (--host 0.0.0.0:
+                                        every interface)
   playground <descriptor.service.json> <source.rgs...> | <document.json> [--allow-markers] [--detail] [--host H] [--port N]
-                                        the workbench beside the service of that model, in one process: with
+                                        the workbench beside the service of that model, in one process and on the
+                                        address of the workbench (127.0.0.1 unless --host names another): with
                                         --detail or DETAIL=true its ?via=service compares a scenario with the
                                         answers of the served entry points
   openapi [--vocabulary <name>] <out.json> <descriptor.service.json> <source.rgs...> | <document.json>
