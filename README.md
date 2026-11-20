@@ -269,7 +269,8 @@ writes one does not start:
 - **A marker as opgave** (card `marker-as-opgave-in-service`, on uchar's card `absence-markers-with-opgave`): an
   attribute carries an absence marking and the opgave marker together, the absence marking first (`de teruggavedatum
   Datum in dagen (of onbekend of niet van toepassing) (mag opgegeven worden);`), where uchar's frontend refused that
-  as a syntax error and the service did not start on it; the other order stays a syntax error. `opgegeven X` and
+  as a syntax error and the service did not start on it; the other order is refused with a message that names this
+  one (uchar's RGS-461), where it was the bare syntax error. `opgegeven X` and
   `berekende X` carry X's markers, so a request gives `opgegeven X` a value or a marker, `{"marker": "niet van
   toepassing"}`, also as the `value` of a segment, and the answer, the `fixpoint` and the OpenAPI document give X,
   `opgegeven X` and `berekende X` in the form of an attribute with markers. The opgave decides above the computation, a
