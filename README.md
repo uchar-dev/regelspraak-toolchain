@@ -289,6 +289,13 @@ writes one does not start:
   object a creation made, where it wrote `omdat de <attribuut> …` for every attribute, a het-word included (`omdat de
   bergloon in de invoer leeg was`). uchar's model keeps no article for an attribute, and the sentence needs none: a
   reading in it already says `zijn opgegeven teruggavedatum`.
+- **A characteristic check over a role reads `zijn`** (card `role-check-reads-zijn`, on uchar's card
+  `role-article-in-explanation`): the explanation names the role of such a check as `zijn <rol>` (`"W3 is niet
+  aangemeld, want niet geldt: zijn jutter ingezetene is"`), where it wrote `de <rol>` for every role, a het-word
+  included (`niet geldt: de recht de indicatie herleving recht op uitkering heeft`). The IR document carries no
+  article of a role's declaration, and a check navigates one hop (uchar's IR-SPEC ch. 4.1a), so `zijn` fits every
+  role a check reaches. The reason an initialisation did not decide reads `zijn` too: `gold niet, want zijn
+  <attribuut> had een invoerwaarde`, or `… had al een waarde`, where it wrote `de <attribuut>`.
 - **The stack per day** (card `timeline-stack-in-service`, on uchar's card `timeline-initialisation-allocation-creation`):
   uchar reads the stack of a timeline target per day (RUNTIME-SEMANTICS ch. 7.8): the writers decide their days, the
   input stands on the other days, and the initialisation decides the days that leaves empty, over all time. A model

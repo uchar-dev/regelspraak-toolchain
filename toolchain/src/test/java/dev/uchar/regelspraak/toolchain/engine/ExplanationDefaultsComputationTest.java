@@ -156,6 +156,43 @@ class ExplanationDefaultsComputationTest {
         assertEquals(EXPECTED, explanation(MODEL + SCENARIO));
     }
 
+    /** An initialisation below the opgave and the computation, on an attribute its declaration writes with "het"; the
+     *  input gives V1 a bergloon, so no variant decides and the initialisation waits. */
+    private static final String INITIALISATION_BESIDE_INPUT = """
+            Objecttype de Vondst (mv: Vondsten)
+                het gewicht Numeriek (getal met 2 decimalen);
+                het bergloon Numeriek (getal met 2 decimalen) (mag opgegeven worden);
+
+            Regel bergloon
+                geldig altijd
+                    Het bergloon van een Vondst moet berekend worden als zijn gewicht maal 2
+                    indien zijn gewicht gevuld is.
+
+            Regel bergloon zonder gewicht
+                geldig altijd
+                    Het bergloon van een Vondst moet geïnitialiseerd worden op 25,00.
+
+            Scenario invoer
+            Gegeven is de volgende situatie:
+            een Vondst V1
+            - het bergloon is 50,00
+            Met als verwacht resultaat:
+            - het bergloon van V1 is 50,00
+            """;
+
+    /** The reason an initialisation did not decide names the attribute with "zijn", as the reason it did decide. */
+    @Test
+    void an_initialisation_that_waits_for_the_input_names_its_attribute_with_zijn() {
+        assertEquals(List.of(
+                "V1 heeft geen afwijkende opgave bergloon, want niet geldt: zijn opgegeven bergloon (leeg) gevuld is",
+                "V1 houdt als bergloon de invoerwaarde 50,00, want geen variant besliste; 'opgegeven bergloon' gaf geen"
+                        + " waarde; 'berekende bergloon' gaf geen waarde; 'bergloon zonder gewicht' gold niet, want"
+                        + " zijn bergloon had een invoerwaarde",
+                "V1 heeft geen berekende bergloon, want geen regel gold; de regel 'bergloon' gold niet, want niet"
+                        + " geldt: zijn gewicht (leeg) gevuld is"),
+                explanation(INITIALISATION_BESIDE_INPUT));
+    }
+
     private static List<String> explanation(String document) {
         List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(document));
         assertEquals(1, u.size());

@@ -107,6 +107,39 @@ class ExplanationFollowsCharacteristicKindTest {
             - R1 is uitgesloten
             """;
 
+    /** A check over a role its declaration writes with "het", in a condition that holds on one object and not on
+     *  another. */
+    private static final String DOCUMENT_HET_ROLE = """
+            Objecttype het Recht (mv: Rechten)
+                de indicatie herleving kenmerk (bezittelijk);
+
+            Objecttype de Uitkeringsperiode (mv: Uitkeringsperioden)
+                is herleefd kenmerk (bijvoeglijk);
+
+            Feittype uitkeringsperiode van een recht
+                het recht Recht
+                de uitkeringsperiode Uitkeringsperiode
+            Eén recht heeft één uitkeringsperiode
+
+            Regel herleefd
+                geldig altijd
+                    Een Uitkeringsperiode is herleefd
+                    indien het recht van de Uitkeringsperiode de indicatie herleving heeft.
+
+            Scenario het-woord
+            Gegeven is de volgende situatie:
+            een Recht R1
+            - heeft de indicatie herleving
+            - de uitkeringsperiode is P1
+            een Recht R2
+            - de uitkeringsperiode is P2
+            een Uitkeringsperiode P1
+            een Uitkeringsperiode P2
+            Met als verwacht resultaat:
+            - P1 is herleefd
+            - P2 is niet herleefd
+            """;
+
     private static List<String> explanation(String document, String vocabulary) {
         List<ScenarioRunner.Explained> u = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(document), vocabulary);
         assertEquals(1, u.size());
@@ -164,7 +197,17 @@ class ExplanationFollowsCharacteristicKindTest {
     @Test
     void without_kind_the_condition_stands_like_the_rule_writes_it() {
         assertEquals(List.of(
-                "R1 is uitgesloten, omdat de samenloop een wia-recht heeft"),
+                "R1 is uitgesloten, omdat zijn samenloop een wia-recht heeft"),
                 explanation(DOCUMENT_ROLE, Naming.CANONICAL));
+    }
+
+    /** The model uchar's loader reads carries no article of a role's declaration, so the uitleg names the role with
+     *  "zijn", which fits a role declared with "het" as it fits one declared with "de". */
+    @Test
+    void a_role_declared_with_het_stands_after_zijn() {
+        assertEquals(List.of(
+                "P1 is herleefd, omdat zijn recht de indicatie herleving heeft",
+                "P2 is niet herleefd, want niet geldt: zijn recht de indicatie herleving heeft"),
+                explanation(DOCUMENT_HET_ROLE, Naming.CANONICAL));
     }
 }

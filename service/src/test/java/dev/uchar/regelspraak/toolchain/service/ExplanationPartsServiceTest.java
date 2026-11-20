@@ -161,8 +161,8 @@ public class ExplanationPartsServiceTest {
             "J4 heeft geen premie, want geen variant besliste; 'jeugdpremie' gold niet, want niet geldt: het onderwerp"
                     + " ervaren is; de regel 'premie' gold niet, want niet geldt: het onderwerp ervaren is",
             noMeldpremie("J4"),
-            "V1 is aangemeld, omdat de jutter ingezetene is",
-            "V2 is aangemeld, omdat de jutter ingezetene is");
+            "V1 is aangemeld, omdat zijn jutter ingezetene is",
+            "V2 is aangemeld, omdat zijn jutter ingezetene is");
 
     /** No rule writes the meldpremie of a Jutter who is not ingezetene. */
     private static String noMeldpremie(String label) {
@@ -235,7 +235,7 @@ public class ExplanationPartsServiceTest {
                     + " is groter dan » "
                     + MINIMUMLEEFTIJD + " READING[« (» VALUE«17» «)»]] " + GROUND_PARTS,
             20, "SUBJECT«V1» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=aangemeld, object=V1}«aangemeld»"
-                    + " «, » CONNECTIVE«omdat» « » CONDITION{holds=true}[«de » NAME{declaration=ROL, owner=vondst van"
+                    + " «, » CONNECTIVE«omdat» « » CONDITION{holds=true}[«zijn » NAME{declaration=ROL, owner=vondst van"
                     + " een jutter, canonical=jutter}«jutter» « » NAME{declaration=KENMERK, owner=Jutter,"
                     + " canonical=ingezetene, object=J1}«ingezetene» « is»]");
 

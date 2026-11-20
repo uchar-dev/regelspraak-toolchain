@@ -171,9 +171,9 @@ class ExplanationReadingsServiceTest {
             "J2 is kustjutter, omdat zijn afstand tot de kust (300 m) is kleiner dan 0,5 km",
             "J2 is minderjarig, omdat de tijdsduur van zijn geboortedatum tot zijn peildatum in hele jaren (16 jr) is kleiner dan 18 jr",
             "J2 is niet premiewaardig, want niet geldt: zijn premie (20,00 EUR) is groter dan 30,00 EUR",
-            "W1 is aangemeld, omdat de jutter ingezetene is",
-            "W2 is aangemeld, omdat de jutter ingezetene is",
-            "W3 is niet aangemeld, want niet geldt: de jutter ingezetene is");
+            "W1 is aangemeld, omdat zijn jutter ingezetene is",
+            "W2 is aangemeld, omdat zijn jutter ingezetene is",
+            "W3 is niet aangemeld, want niet geldt: zijn jutter ingezetene is");
 
     private static DecisionCore fromSources(String descriptor) {
         return DecisionCore.assemble(descriptor, Map.of("bron.rgs", SOURCE), CoreConfig.strict(),

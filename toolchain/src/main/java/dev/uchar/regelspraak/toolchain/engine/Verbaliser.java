@@ -80,7 +80,9 @@ import java.util.regex.Pattern;
  *
  * <p><b>Over een rol.</b> Een operand over een rolpad ("de herlevingsgrens van het recht van het Inkomen") heeft de
  * waarde die de motor op het bereikte object las. Een kenmerkcheck over een rol ("de jutter van de Vondst ingezetene
- * is") heet naar de wandeling die de lader naast de check gaf ({@code Loaded.navigationBindings}).
+ * is") heet naar de wandeling die de lader naast de check gaf ({@code Loaded.navigationBindings}), met "zijn" vóór de
+ * rol ("zijn jutter ingezetene is"): dat klopt voor een de-woord en een het-woord, en het model draagt het lidwoord
+ * van de declaratie niet.
  *
  * <p><b>Vocabulaire.</b> Met een {@link Naming} noemt het verhaal de gedeclareerde namen — objecttypen,
  * attributen, kenmerken, rollen, parameters en enumeratiewaarden — in het gekozen vocabulaire; de brontekst van een
@@ -997,7 +999,7 @@ public final class Verbaliser {
                 case DISPLACED -> { }
             }
             // een initialisatie waarvan de invoer het doel vulde, las de motor niet: zij gold niet, zoals vóór de
-            // beslisser ("de X had een invoerwaarde")
+            // beslisser ("zijn X had een invoerwaarde")
             if (r.nodes().isEmpty() && isInitialisation(v)) {
                 meta.put("holds", false);
                 b.open(Part.Kind.VARIANT, meta).text(separator);
@@ -1246,7 +1248,7 @@ public final class Verbaliser {
                 b.text("gaf geen waarde");
                 return;
             }
-            didNotHoldBecause(b).text(" de ");
+            didNotHoldBecause(b).text(" zijn ");
             attributeName(b, type, member, new On(label));
             b.text(m.derived() ? " had al een waarde" : " had een invoerwaarde");
         }
@@ -3157,17 +3159,20 @@ public final class Verbaliser {
         throw new IllegalStateException("de wandeling " + walk + " eindigt op een rol die het model niet kent");
     }
 
-    /** Wie een kenmerkcheck draagt: het onderwerp, of de rollen van de wandeling, de laatste eerst. */
+    /** Wie een kenmerkcheck draagt: het onderwerp, of over een rol "zijn &lt;rol&gt;". "Zijn" klopt voor elke rol: het
+     *  model dat uchars lader leest, draagt het lidwoord van haar declaratie niet. De wandeling van een check is één
+     *  stap (uchars IR-SPEC ch. 4.1a); een rol verder dan de eerste zou wel een lidwoord vragen. */
     private void who(Sentence.Builder b, List<RoleBindingRef> walk) {
         if (walk.isEmpty()) {
             b.text("het onderwerp");
             return;
         }
-        for (int i = walk.size() - 1; i >= 0; i--) {
-            RoleBindingRef step = walk.get(i);
-            b.text(i == walk.size() - 1 ? "de " : " van de ");
-            declaredName(b, naming.role(step.factType(), step.role()), Designatable.role(step.factType(), step.role()));
-        }
+        if (walk.size() > 1)
+            throw new IllegalStateException("de wandeling " + walk + " van een kenmerkcheck heeft meer dan één stap:"
+                    + " de uitleg kent het lidwoord van een rol na de eerste niet");
+        RoleBindingRef step = walk.get(0);
+        b.text("zijn ");
+        declaredName(b, naming.role(step.factType(), step.role()), Designatable.role(step.factType(), step.role()));
     }
 
     private static String summary(Condition c) { return c.source() == null ? "?" : c.source().snippet().trim(); }
