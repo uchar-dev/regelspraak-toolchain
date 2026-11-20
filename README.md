@@ -266,6 +266,23 @@ writes one does not start:
   a cell of a dimensioned attribute with markers, which a rule now writes and a condition tests, goes in the request,
   the answer, the `fixpoint` and the explanation as a marker on a scalar does (`"V1 heeft als gewicht in voorjaar
   onbekend volgens de regel 'voorjaarsgewicht onbekend': onbekend, …"`).
+- **A marker as opgave** (card `marker-as-opgave-in-service`, on uchar's card `absence-markers-with-opgave`): an
+  attribute carries an absence marking and the opgave marker together, the absence marking first (`de teruggavedatum
+  Datum in dagen (of onbekend of niet van toepassing) (mag opgegeven worden);`), where uchar's frontend refused that
+  as a syntax error and the service did not start on it; the other order stays a syntax error. `opgegeven X` and
+  `berekende X` carry X's markers, so a request gives `opgegeven X` a value or a marker, `{"marker": "niet van
+  toepassing"}`, also as the `value` of a segment, and the answer, the `fixpoint` and the OpenAPI document give X,
+  `opgegeven X` and `berekende X` in the form of an attribute with markers. The opgave decides above the computation, a
+  marker included, and differs from a filled computation also where one of the two is a marker or the two are
+  different markers (`afwijkende opgave X` and the inconsistency `controle opgave X`); two equal markers do not differ.
+  The explanation names the marker in the sentence of the default that decides (`"V heeft als teruggavedatum niet van
+  toepassing volgens 'opgegeven teruggavedatum' (onvoorwaardelijk): zijn opgegeven teruggavedatum (niet van
+  toepassing); verdrongen: 'berekende teruggavedatum' (onvoorwaardelijk, 24-03-2026)"`) and in that of the deviation
+  (`"… zijn opgegeven teruggavedatum (niet van toepassing) is ongelijk aan zijn berekende teruggavedatum
+  (24-03-2026)"`). A marker X does not declare is the 400 `UNKNOWN_MARKER` on `opgegeven X` too, and a marker on the
+  `opgegeven X` of an attribute without markers the 400 `WRONG_TYPE`. With the same pin a number in another unit that a
+  rule writes into an attribute with markers stands in the declared unit (uchar's RUNTIME-SEMANTICS ch. 9.1): 2 t into
+  a `gewicht` in kg is answered `2000`, where uchar's branch wrote `2`.
 - **The stack per day** (card `timeline-stack-in-service`, on uchar's card `timeline-initialisation-allocation-creation`):
   uchar reads the stack of a timeline target per day (RUNTIME-SEMANTICS ch. 7.8): the writers decide their days, the
   input stands on the other days, and the initialisation decides the days that leaves empty, over all time. A model

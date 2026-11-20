@@ -236,7 +236,15 @@ refuse the start as well.
   "2025-01-01", "to": "2025-03-01", "value": {"marker": "onbekend"}}, {"from": "2025-03-01", "to": "2025-06-01",
   "value": 10}, …]}`) and per cell, and so does the `fixpoint` of the detail. A marker decides as a value does (uchar's
   ch. 9.5): it displaces an input, and a writer that writes a marker and one that writes a value on the same day are a
-  fault EF-016 (two writers that disagree). An attribute of another sum type, which only an IR document of another
+  fault EF-016 (two writers that disagree). A number in another unit that a rule writes as the value is in the
+  declared unit (ch. 9.1). With the opgave marker beside the absence marking (`(of onbekend) (mag opgegeven worden)`,
+  uchar's grammar/DIVERGENCES.md §7) `opgegeven X` and `berekende X` carry X's markers and X's sum type: the request
+  gives `opgegeven X` a marker as it gives X one, also per segment, with the same violations, and the answer, the
+  `fixpoint` and the OpenAPI document give the three members in the same form. The group `opgave boven berekening X`
+  passes a marker on as it passes a value, and `afwijkende opgave X` holds where a filled opgave and a filled
+  computation differ, a marker against a date or two different markers (uchar's ch. 9.5, "An opgave above a
+  computation"); the explanation names the marker in the sentence of the deciding default and in that of the
+  deviation. An attribute of another sum type, which only an IR document of another
   producer declares, has no form in the service: a value on it is a 400 `UNSUPPORTED`, and in `output` it refuses the
   start (`UNSUPPORTED`).
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
