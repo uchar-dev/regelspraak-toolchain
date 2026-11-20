@@ -393,7 +393,7 @@ class TimelineHttpTest {
                 "J4 heeft als strandloon 20 van 01-03-2025 tot 01-06-2025 volgens 'berekende strandloon'"
                         + " (onvoorwaardelijk): zijn berekende strandloon (20 van 01-03-2025 tot 01-06-2025)",
                 "J4 houdt als strandloon de invoerwaarde 99 van 01-06-2025 tot 01-01-2026, want geen variant besliste",
-                "J4 heeft als stormtoelage altijd 0 volgens 'geen stormtoelage': 0, omdat de stormtoelage in de invoer"
+                "J4 heeft als stormtoelage altijd 0 volgens 'geen stormtoelage': 0, omdat zijn stormtoelage in de invoer"
                         + " leeg was",
                 "J4 heeft als berekende strandloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'strandloon in"
                         + " het voorjaar': 20, omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025)",

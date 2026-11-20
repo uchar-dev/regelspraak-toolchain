@@ -141,7 +141,7 @@ class ExplanationDefaultsComputationTest {
             "V2 heeft geen berekende waarde, want geen regel gold; de regel 'waarde' gold niet, want niet geldt: zijn"
                     + " taxatie (leeg) gevuld is",
             "V3 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (leeg) gevuld is",
-            "V3 heeft als waarde 25,00 volgens 'waarde bij onbekende taxatie': 25,00, omdat de waarde in de invoer leeg"
+            "V3 heeft als waarde 25,00 volgens 'waarde bij onbekende taxatie': 25,00, omdat zijn waarde in de invoer leeg"
                     + " was; 'opgegeven waarde' gaf geen waarde; 'berekende waarde' gaf geen waarde",
             "V3 heeft geen berekende waarde, want geen regel gold; de regel 'waarde' gold niet, want niet geldt: zijn"
                     + " taxatie (leeg) gevuld is",

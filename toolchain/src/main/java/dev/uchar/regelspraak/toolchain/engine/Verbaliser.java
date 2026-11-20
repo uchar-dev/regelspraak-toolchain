@@ -1155,7 +1155,7 @@ public final class Verbaliser {
                 b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
                 if (characteristic) b.text("het kenmerk");
                 else {
-                    b.text("de ");
+                    b.text("zijn ");
                     attributeName(b, type, targetOf(v), new On(label));
                 }
                 b.text(emptyBefore(bean));
@@ -1952,7 +1952,7 @@ public final class Verbaliser {
                 if (!(timeline && heldInPeriods(b, c, conditionRead)))
                     verbaliseCondition(b, c, conditionRead, w.target().objectType(), writtenByUchar(r));
             } else if (initialisation) {
-                b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" de ");
+                b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" zijn ");
                 targetName(b, member, w.labels());
                 b.text(emptyBefore(bean));
             }

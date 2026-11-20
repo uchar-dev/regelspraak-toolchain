@@ -669,7 +669,7 @@ regel 'najaarsgewicht van een jutter' (onvoorwaardelijk): …`, `aanvoer op zuid
 prepositions are `TEXT`, the `NAME` carries the cell under `labels`. The four forms:
 
 - a rule held and wrote a value: `<SUBJECT> heeft als <NAME> <VALUE> volgens de regel '<RULE>'<COMPUTATION>, omdat
-  <CONDITION>`, or ` (onvoorwaardelijk)<COMPUTATION>` without a condition, or `<COMPUTATION>, omdat de <NAME> in de
+  <CONDITION>`, or ` (onvoorwaardelijk)<COMPUTATION>` without a condition, or `<COMPUTATION>, omdat zijn <NAME> in de
   invoer leeg was` for an initialisation without one;
 - a rule held and gave no value: `<SUBJECT> heeft geen <NAME>, want de regel '<RULE>' gaf geen waarde<COMPUTATION>,
   omdat <CONDITION>`; an empty value decides nothing (uchar's RUNTIME-SEMANTICS ch. 3.11), so where the target keeps
@@ -737,10 +737,10 @@ holds on some day and whose value is leeg there gave no value: `"…; de regel '
 niets"`. A default of a group on a timeline target that holds on no day is not named, as every variant that decided no
 period (below). An initialisation of a timeline target is the lowest layer of
 that stack (uchar's RUNTIME-SEMANTICS ch. 7.8): uchar names it among the rules on the days it decided, the days the
-other rules and the input leave empty, over all time, so the sentence gives it those periods with `omdat de <NAME> in
+other rules and the input leave empty, over all time, so the sentence gives it those periods with `omdat zijn <NAME> in
 de invoer leeg was`, or its condition with the periods it holds in, as the first form gives an initialisation:
 `"J2 heeft als voorjaarsloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'voorjaarsloon', omdat …, en 5 tot
-01-01-2025 en 5 vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat de voorjaarsloon in de invoer leeg
+01-01-2025 en 5 vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat zijn voorjaarsloon in de invoer leeg
 was; de invoerwaarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`. Where the rules and the input leave it no day,
 its reading is `DISPLACED` and it is `; verdrongen: de regel '…'`. Where they leave it days, but its condition holds
 only on days they filled (every day of the periods of its condition lies in a span of `periodDecisionsOf` with a rule
@@ -799,12 +799,12 @@ one creation, a version outside its validity speaks only where no other version 
 the input has on an object of the request, it holds the member value its creation gave it (rank 2 of uchar's stack,
 RUNTIME-SEMANTICS ch. 7.8), a scalar on every day or a timeline per period. Every sentence names that value `de bij
 de objectcreatie toegekende waarde` where it names an input value `de invoerwaarde`, on a target with one value, on a
-cell, per period and in the sentence of a defaults group, and an initialisation decided there `omdat de <NAME> bij de
+cell, per period and in the sentence of a defaults group, and an initialisation decided there `omdat zijn <NAME> bij de
 objectcreatie leeg was`. The words are those of the RegelSpraak specification, which calls the construct
 objectcreatie and each of its members a waardetoekenning: `"«"meld de jutter"»(J1)#1 heeft als seizoensloon 20 van
 01-03-2025 tot 01-09-2025 volgens de regel 'seizoensloon', omdat …; de bij de objectcreatie toegekende waarde 10 van
 01-01-2025 tot 01-03-2025 bleef staan"`, `"«"meld de jutter"»(J1)#1 heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf
-01-07-2025 volgens de regel 'standaardaanvulloon', omdat de aanvulloon bij de objectcreatie leeg was; de bij de
+01-07-2025 volgens de regel 'standaardaanvulloon', omdat zijn aanvulloon bij de objectcreatie leeg was; de bij de
 objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025 bleef staan"`, `"«"meld de vangst"»(J1)#1 houdt als
 meldwaarde de bij de objectcreatie toegekende waarde 7, want de regel 'meldwaarde uit toeslag' gaf geen waarde
 (onvoorwaardelijk) en besliste niets: zijn toeslag (leeg)"`. The sentence names the value the creation assigned on

@@ -71,7 +71,7 @@ class ExplanationStackPerDayTest {
         assertEquals(List.of(
                 "J2 heeft als voorjaarsloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'voorjaarsloon': 20, omdat van"
                         + " dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025), en 5 tot 01-01-2025 en 5"
-                        + " vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon': 5, omdat de voorjaarsloon in de invoer"
+                        + " vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon': 5, omdat zijn voorjaarsloon in de invoer"
                         + " leeg was; de invoerwaarde 10 van 01-01-2025 tot 01-03-2025 bleef staan",
                 "J2 heeft als stormloon 3 van 01-02-2025 tot 01-04-2025 volgens de regel 'standaardstormloon': 3, omdat hij"
                         + " stormwacht is (van 01-02-2025 tot 01-04-2025)",
@@ -146,7 +146,7 @@ class ExplanationStackPerDayTest {
                         + " dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de bij de objectcreatie"
                         + " toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan",
                 made + " heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf 01-07-2025 volgens de regel"
-                        + " 'standaardaanvulloon': 5, omdat de aanvulloon bij de objectcreatie leeg was; de bij de"
+                        + " 'standaardaanvulloon': 5, omdat zijn aanvulloon bij de objectcreatie leeg was; de bij de"
                         + " objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025 bleef staan",
                 made + " houdt als meldloon de bij de objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025,"
                         + " want de regel 'meldloon uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets:"
@@ -216,7 +216,7 @@ class ExplanationStackPerDayTest {
                 "«\"meld de vangst\"»(J1)#1 houdt als meldwaarde de bij de objectcreatie toegekende waarde 7, want de"
                         + " regel 'meldwaarde uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets: zijn"
                         + " toeslag (leeg)",
-                "«\"meld de vangst\"»(J1)#1 heeft als opslag 3 volgens de regel 'standaardopslag': 3, omdat de opslag"
+                "«\"meld de vangst\"»(J1)#1 heeft als opslag 3 volgens de regel 'standaardopslag': 3, omdat zijn opslag"
                         + " bij de objectcreatie leeg was",
                 "«\"meld de vangst\"»(J2)#1 houdt als meldwaarde de bij de objectcreatie toegekende waarde 4, want de"
                         + " regel 'meldwaarde uit toeslag' gaf geen waarde (onvoorwaardelijk) en besliste niets: zijn"
@@ -384,7 +384,7 @@ class ExplanationStackPerDayTest {
                 "J1 heeft een Melding " + made + " volgens de regel 'meld de vangst' (onvoorwaardelijk): met als"
                         + " meldwaarde zijn vangst (10)",
                 made + " heeft geen afwijkende opgave toelage, want niet geldt: zijn opgegeven toelage (leeg) gevuld is",
-                made + " heeft als toelage 3 volgens 'standaardtoelage': 3, omdat de toelage bij de objectcreatie leeg"
+                made + " heeft als toelage 3 volgens 'standaardtoelage': 3, omdat zijn toelage bij de objectcreatie leeg"
                         + " was; 'opgegeven toelage' gaf geen waarde; 'berekende toelage' gaf geen waarde",
                 made + " heeft geen berekende toelage, want geen regel gold; de regel 'toelage bij hoge meldwaarde' gold"
                         + " niet, want niet geldt: zijn meldwaarde (10) is groter dan 15"),

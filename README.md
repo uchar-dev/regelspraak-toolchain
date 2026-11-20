@@ -284,18 +284,23 @@ writes one does not start:
   `opgegeven X` of an attribute without markers the 400 `WRONG_TYPE`. With the same pin a number in another unit that a
   rule writes into an attribute with markers stands in the declared unit (uchar's RUNTIME-SEMANTICS ch. 9.1): 2 t into
   a `gewicht` in kg is answered `2000`, where uchar's branch wrote `2`.
+- **The sentence of an initialisation reads `zijn`** (card `initialisation-reason-reads-zijn`): the explanation of an
+  initialisation says `omdat zijn <attribuut> in de invoer leeg was`, and `… bij de objectcreatie leeg was` on an
+  object a creation made, where it wrote `omdat de <attribuut> …` for every attribute, a het-word included (`omdat de
+  bergloon in de invoer leeg was`). uchar's model keeps no article for an attribute, and the sentence needs none: a
+  reading in it already says `zijn opgegeven teruggavedatum`.
 - **The stack per day** (card `timeline-stack-in-service`, on uchar's card `timeline-initialisation-allocation-creation`):
   uchar reads the stack of a timeline target per day (RUNTIME-SEMANTICS ch. 7.8): the writers decide their days, the
   input stands on the other days, and the initialisation decides the days that leaves empty, over all time. A model
   with an initialisation of a time-dependent attribute, or with a creation that gives one a value, is served and
   answered per day, where uchar's branch refused it and the entry point was a marker (DROOLS-118 for the
   initialisation, DROOLS-103 for it beside a computing rule, DROOLS-271 for the value of a creation). The explanation names the initialisation per period among the rules (`"… en 5 tot 01-01-2025 en 5
-  vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat de voorjaarsloon in de invoer leeg was; de
+  vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon', omdat zijn voorjaarsloon in de invoer leeg was; de
   invoerwaarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`). An object a creation made has no input, and every
   sentence names what stands there the value the creation assigned, per period and on a target with one value, in the words
   of the RegelSpraak specification (the construct objectcreatie, each of its members a waardetoekenning): `"; de bij
   de objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`, `"houdt als meldwaarde de bij de
-  objectcreatie toegekende waarde 7"`, `"omdat de aanvulloon bij de objectcreatie leeg was"`, where a sentence on an
+  objectcreatie toegekende waarde 7"`, `"omdat zijn aanvulloon bij de objectcreatie leeg was"`, where a sentence on an
   object of the request says `de invoerwaarde` and `in de invoer leeg was`. A
   value of an initialisation or a creation on a timeline target that is neither period arithmetic nor the constructor
   of a literal makes the entry point a marker with uchar's sentence (DROOLS-316); an allocation that names a

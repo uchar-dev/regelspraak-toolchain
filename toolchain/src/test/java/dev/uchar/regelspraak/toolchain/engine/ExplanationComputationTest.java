@@ -183,7 +183,7 @@ class ExplanationComputationTest {
                     + " over V3 (0,00), het enige lid met een waarde",
             "J2 heeft geen premie, want geen regel gold; de regel 'premie' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is",
-            "J2 heeft als bonus 5,00 volgens de regel 'bonus zonder voorwaarde': 5,00, omdat de bonus in de invoer leeg"
+            "J2 heeft als bonus 5,00 volgens de regel 'bonus zonder voorwaarde': 5,00, omdat zijn bonus in de invoer leeg"
                     + " was; de regel 'bonus voor ingezetenen' gold niet, want niet geldt: het onderwerp ingezetene is",
             "J2 heeft geen toelage, want geen regel gold; de regel 'toelage' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is",

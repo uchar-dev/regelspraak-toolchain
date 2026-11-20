@@ -191,7 +191,7 @@ class ExplanationComputationServiceTest {
                     + " over V3 (0,00), het enige lid met een waarde",
             "J2 heeft geen premie, want geen regel gold; de regel 'premie' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is",
-            "J2 heeft als bonus 5,00 volgens de regel 'bonus zonder voorwaarde': 5,00, omdat de bonus in de invoer leeg"
+            "J2 heeft als bonus 5,00 volgens de regel 'bonus zonder voorwaarde': 5,00, omdat zijn bonus in de invoer leeg"
                     + " was; de regel 'bonus voor ingezetenen' gold niet, want niet geldt: het onderwerp ingezetene is",
             "J2 heeft geen toelage, want geen regel gold; de regel 'toelage' gold niet, want niet geldt: het onderwerp"
                     + " ingezetene is",
@@ -530,7 +530,7 @@ class ExplanationComputationServiceTest {
         assertEquals(List.of(
                 "J1" + najaar,
                 "J1 heeft als vondstgewicht in zomer 0,00 kg volgens de regel 'zomergewicht van een jutter': 0 kg, omdat"
-                        + " de vondstgewicht in zomer in de invoer leeg was",
+                        + " zijn vondstgewicht in zomer in de invoer leeg was",
                 "J1 heeft als jaargewicht 4,50 kg volgens de regel 'jaargewicht van een jutter' (onvoorwaardelijk): de som"
                         + " van zijn vondstgewicht over alle seizoenen (4,50 kg)",
                 "J2" + najaar,

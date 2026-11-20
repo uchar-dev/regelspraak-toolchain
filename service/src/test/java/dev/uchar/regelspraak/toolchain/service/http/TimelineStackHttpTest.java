@@ -156,7 +156,7 @@ class TimelineStackHttpTest {
         List<String> sentences = sentences(r.body());
         assertTrue(sentences.contains("J2 heeft als voorjaarsloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel"
                 + " 'voorjaarsloon': 20, omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025),"
-                + " en 5 tot 01-01-2025 en 5 vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon': 5, omdat de"
+                + " en 5 tot 01-01-2025 en 5 vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon': 5, omdat zijn"
                 + " voorjaarsloon in de invoer leeg was; de invoerwaarde 10 van 01-01-2025 tot 01-03-2025 bleef"
                 + " staan"), r.body());
         assertTrue(sentences.contains("J2 heeft als stormloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel"
@@ -183,20 +183,20 @@ class TimelineStackHttpTest {
         assertEquals(200, r.statusCode(), r.body());
         assertPins(INITIALISATION.resolve("case3-zonder-stormwacht.json"), "J3", tree(r.body()));
         assertEquals(List.of(
-                "J3 heeft als strandloon altijd 5 volgens de regel 'standaardstrandloon': 5, omdat de strandloon in de"
+                "J3 heeft als strandloon altijd 5 volgens de regel 'standaardstrandloon': 5, omdat zijn strandloon in de"
                         + " invoer leeg was",
                 "J3 heeft als voorjaarsloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'voorjaarsloon': 20, omdat van"
                         + " dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025), en 5 tot 01-03-2025 en 5"
-                        + " vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon': 5, omdat de voorjaarsloon in de invoer"
+                        + " vanaf 01-06-2025 volgens de regel 'standaardvoorjaarsloon': 5, omdat zijn voorjaarsloon in de invoer"
                         + " leeg was",
                 "J3 heeft als zomerloon 5 tot 01-03-2025 en 5 vanaf 01-06-2025 volgens de regel 'standaardzomerloon': 5,"
-                        + " omdat de zomerloon in de invoer leeg was, en 20 van 01-03-2025 tot 01-06-2025 volgens de regel"
+                        + " omdat zijn zomerloon in de invoer leeg was, en 20 van 01-03-2025 tot 01-06-2025 volgens de regel"
                         + " 'zomerloon': 20, omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025)",
-                "J3 heeft als wachtloon altijd 5 volgens de regel 'standaardwachtloon': 5, omdat de wachtloon in de invoer"
+                "J3 heeft als wachtloon altijd 5 volgens de regel 'standaardwachtloon': 5, omdat zijn wachtloon in de invoer"
                         + " leeg was",
-                "J3 heeft als kustloon altijd 5 volgens de regel 'standaardkustloon': 5, omdat de kustloon in de invoer"
+                "J3 heeft als kustloon altijd 5 volgens de regel 'standaardkustloon': 5, omdat zijn kustloon in de invoer"
                         + " leeg was; de regel 'kustloon' gaf geen waarde en besliste niets",
-                "J3 heeft als havenloon altijd 5 volgens de regel 'standaardhavenloon': 5, omdat de havenloon in de invoer"
+                "J3 heeft als havenloon altijd 5 volgens de regel 'standaardhavenloon': 5, omdat zijn havenloon in de invoer"
                         + " leeg was; de regel 'havenloon' gaf geen waarde en besliste niets",
                 "J3 heeft als stormloon 20 van 01-03-2025 tot 01-06-2025 volgens de regel 'stormloon': 20, omdat van dd."
                         + " 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025), en 30 van 01-09-2025 tot"
@@ -228,7 +228,7 @@ class TimelineStackHttpTest {
                         + " van dd. 01-03-2025 tot dd. 01-09-2025 (van 01-03-2025 tot 01-09-2025); de bij de objectcreatie"
                         + " toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan",
                 made + " heeft als aanvulloon 5 tot 01-01-2025 en 5 vanaf 01-07-2025 volgens de regel"
-                        + " 'standaardaanvulloon': 5, omdat de aanvulloon bij de objectcreatie leeg was; de bij de"
+                        + " 'standaardaanvulloon': 5, omdat zijn aanvulloon bij de objectcreatie leeg was; de bij de"
                         + " objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-07-2025 bleef staan"),
                 sentences.stream().filter(s -> s.startsWith(made)).toList(), r.body());
     }
@@ -322,7 +322,7 @@ class TimelineStackHttpTest {
         assertEquals(List.of(
                 "V2 heeft als opslagkosten 10 van 01-03-2025 tot 01-06-2025 volgens de regel 'opslag in het voorjaar': 10,"
                         + " omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025), en onbekend tot"
-                        + " 01-01-2025 en onbekend vanaf 01-06-2025 volgens de regel 'opslag onbekend': onbekend, omdat de"
+                        + " 01-01-2025 en onbekend vanaf 01-06-2025 volgens de regel 'opslag onbekend': onbekend, omdat zijn"
                         + " opslagkosten in de invoer leeg was; de invoerwaarde niet van toepassing van 01-01-2025 tot"
                         + " 01-03-2025 bleef staan",
                 "V2 houdt als keurkosten de invoerwaarde 4 van 01-01-2025 tot 01-01-2026, want geen regel gold; de"

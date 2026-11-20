@@ -134,7 +134,7 @@ class ExplanationDefaultsComputationServiceTest {
             "V2 heeft geen berekende waarde, want geen regel gold; de regel 'waarde' gold niet, want niet geldt: zijn"
                     + " taxatie (leeg) gevuld is",
             "V3 heeft geen afwijkende opgave waarde, want niet geldt: zijn opgegeven waarde (leeg) gevuld is",
-            "V3 heeft als waarde 25,00 volgens 'waarde bij onbekende taxatie': 25,00, omdat de waarde in de invoer leeg"
+            "V3 heeft als waarde 25,00 volgens 'waarde bij onbekende taxatie': 25,00, omdat zijn waarde in de invoer leeg"
                     + " was; 'opgegeven waarde' gaf geen waarde; 'berekende waarde' gaf geen waarde",
             "V3 heeft geen berekende waarde, want geen regel gold; de regel 'waarde' gold niet, want niet geldt: zijn"
                     + " taxatie (leeg) gevuld is",
@@ -168,7 +168,7 @@ class ExplanationDefaultsComputationServiceTest {
                     + " onbekende taxatie» «' (onvoorwaardelijk, » VALUE«25,00» «)»]",
             9, "SUBJECT«V3» « heeft als » NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=waarde,"
                     + " object=V3}«waarde» « » VALUE«25,00» « volgens '» RULE«waarde bij onbekende taxatie» «'»"
-                    + " COMPUTATION[«: » QUOTE«25,00»] «, » CONNECTIVE«omdat» « de » NAME{declaration=ATTRIBUUT,"
+                    + " COMPUTATION[«: » QUOTE«25,00»] «, » CONNECTIVE«omdat» « zijn » NAME{declaration=ATTRIBUUT,"
                     + " owner=Vondst, canonical=waarde, object=V3}«waarde» « in de invoer leeg was»"
                     + " VARIANT{decided=false}[«; '» NAME{declaration=ATTRIBUUT, owner=Vondst, canonical=opgegeven"
                     + " waarde}«opgegeven waarde» «' gaf geen waarde»] VARIANT{decided=false}[«; '»"
