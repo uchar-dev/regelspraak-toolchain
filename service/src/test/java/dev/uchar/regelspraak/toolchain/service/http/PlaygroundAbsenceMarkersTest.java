@@ -60,6 +60,13 @@ class PlaygroundAbsenceMarkersTest {
         bothRoutesPass("jutterswet-afwezigheidsmarkers-creatie");
     }
 
+    /** The golden of a marker as opgave: a marker in the situation on {@code opgegeven X}, scalar and in a segment, and
+     *  as the expectation on X and {@code berekende X}. */
+    @Test
+    void the_test_document_of_the_opgave_golden_passes_on_both_routes() throws IOException {
+        bothRoutesPass("jutterswet-opgave-afwezigheidsmarkers");
+    }
+
     /** Every scenario of the golden's test document passes on the ordinary route, one per case file of the golden, and
      *  via a service over its {@code source.rgs} with the same expectations, situation, fixpoint and explanation. */
     private static void bothRoutesPass(String golden) throws IOException {

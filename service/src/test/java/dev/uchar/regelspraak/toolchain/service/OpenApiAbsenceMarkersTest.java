@@ -32,6 +32,13 @@ class OpenApiAbsenceMarkersTest {
             "input": ["Vondst"], "output": ["Vondst.taxatie"] } ],
           "parameters": {} }""";
 
+    private static final String OPGAVE_DESCRIPTOR = """
+        { "service": {"name":"opgave","version":"1"},
+          "entrypoints": [ { "name":"opgave","path":"opgave",
+            "scope": {"ruleNames": ["teruggave na de claimdatum"]},
+            "input": ["Vondst"], "output": ["Vondst.teruggavedatum"] } ],
+          "parameters": {} }""";
+
     private static final String MARKER = """
         {"type":"object","required":["marker"],"additionalProperties":false,
          "properties":{"marker":{"type":"string","enum":["onbekend","niet van toepassing"]}}}""";
@@ -58,8 +65,38 @@ class OpenApiAbsenceMarkersTest {
         assertEquals(vondst(source).at("/properties/opslagkosten"), vondst(document).at("/properties/opslagkosten"));
     }
 
+    /** On uchar's golden jutterswet-opgave-afwezigheidsmarkers, where the attributes with markers carry the opgave marker
+     *  too: {@code opgegeven X} and {@code berekende X} have the contract of X, the markers X declares, scalar and per
+     *  segment; the model of the document gives the same. */
+    @Test
+    void the_opgave_and_the_computation_have_the_contract_of_their_attribute() throws Exception {
+        Path golden = TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-opgave-afwezigheidsmarkers");
+        RegelSpraakModel source = Resolver.resolve(Files.readString(golden.resolve("source.rgs")));
+        JsonNode vondst = vondst(source, OPGAVE_DESCRIPTOR);
+        JsonNode supplied = vondst.at("/properties/opgegeven teruggavedatum");
+        assertEquals("date", supplied.at("/oneOf/0/format").asText(), supplied.toString());
+        assertEquals(DescriptorLoader.MAPPER.readTree(MARKER), supplied.at("/oneOf/1"), supplied.toString());
+        assertEquals(vondst.at("/properties/teruggavedatum"), supplied);
+        assertEquals(vondst.at("/properties/teruggavedatum"), vondst.at("/properties/berekende teruggavedatum"));
+        assertEquals("[\"niet van toepassing\"]",
+                vondst.at("/properties/opgegeven afhaaldatum/oneOf/1/properties/marker/enum").toString(), vondst.toString());
+        JsonNode segment = vondst.at("/properties/opgegeven opslagkosten/properties/timeline/items/properties/value");
+        assertEquals("integer", segment.at("/oneOf/0/type").asText(), segment.toString());
+        assertEquals("[\"onbekend\"]", segment.at("/oneOf/1/properties/marker/enum").toString(), segment.toString());
+        RegelSpraakModel document = IrLoader.loadAll(DescriptorLoader.MAPPER.readTree(
+                Files.readString(golden.resolve("ir.json")))).model();
+        for (String member : new String[]{"opgegeven teruggavedatum", "berekende teruggavedatum",
+                "opgegeven afhaaldatum", "opgegeven opslagkosten"})
+            assertEquals(vondst.at("/properties/" + member),
+                    vondst(document, OPGAVE_DESCRIPTOR).at("/properties/" + member), member);
+    }
+
     private static JsonNode vondst(RegelSpraakModel model) throws Exception {
-        ServiceDescriptor descriptor = DescriptorLoader.MAPPER.readValue(DESCRIPTOR, ServiceDescriptor.class);
+        return vondst(model, DESCRIPTOR);
+    }
+
+    private static JsonNode vondst(RegelSpraakModel model, String descriptorText) throws Exception {
+        ServiceDescriptor descriptor = DescriptorLoader.MAPPER.readValue(descriptorText, ServiceDescriptor.class);
         return OpenApiEmitter.emit(descriptor, model).at("/components/schemas/Vondst");
     }
 }
