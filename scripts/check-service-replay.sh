@@ -240,7 +240,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # jutterswet-percentage-plus-percentage spelen door de dienst.
 # Pin uchar c24de6c58: 373 — jutterswet-vondsten-van-de-meester (een bereik van één stap met een rol als anker loopt
 # door die rol) speelt door de dienst.
-EXPECTED_REPLAY_PLAYED=373
+# Pin uchar 2e54dd254: 374 — de set van gate 12 groeit van 382 naar 383 met jutterswet-opgave-afwezigheidsmarkers (een
+# afwezigheidsmarkering naast de opgavemarkering: een marker als opgave, als berekende waarde en als afwijking), en die
+# speelt door de dienst.
+EXPECTED_REPLAY_PLAYED=374
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -254,7 +257,8 @@ EXPECTED_REPLAY_PLAYED=373
 # 1041 (pin uchar 72df0d028): de twee cases van fractional-power-negative-base en de case van
 # jutterswet-percentage-plus-percentage.
 # 1042 (pin uchar c24de6c58): de case van jutterswet-vondsten-van-de-meester.
-EXPECTED_REPLAY_CASES=1042
+# 1057 (pin uchar 2e54dd254): de vijftien cases van jutterswet-opgave-afwezigheidsmarkers.
+EXPECTED_REPLAY_CASES=1057
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
