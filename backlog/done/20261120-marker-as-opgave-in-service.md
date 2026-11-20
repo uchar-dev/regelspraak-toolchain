@@ -228,3 +228,33 @@ gates: 6 image      GROEN     39s  decision-service:dev
 gates: 7 kind-smoke GROEN   1m22s  H2 PASS, H3 PASS, H4 PASS
 gates: GROEN — 7 stappen in 6m36s; de uitvoer staat in out/gates/
 ```
+
+## Landing (hoofdsessie, 2026-11-20)
+
+De hoofdsessie las het Result en de diff: de pin, twaalf tests en de tekst in README en `docs/ENGINE.md`; geen
+productiecode veranderde, omdat `Markers.of` de markers van `opgegeven X` en `berekende X` al uit uchars model leest.
+
+- **De pin ging daarna nog één commit verder, naar uchar `2c883ab74`** (`21ac0c836`). Na de pin van deze kaart kreeg
+  uchar twee wijzigingen. Wie `(mag opgegeven worden) (of onbekend)` schrijft, krijgt de goede volgorde te lezen in
+  plaats van de kale syntaxfout (besluit van de eigenaar); gemeten met `bin/regelspraak check`: "ERROR (line 2):
+  attribuut 'taxatie' van Vondst: '(of onbekend)' staat vóór '(mag opgegeven worden)', niet erna — schrijf '(of
+  onbekend) (mag opgegeven worden)' (dialect §7)" (RGS-461). En uchars clingo-backend weigert een payload in een andere
+  eenheid ook in een fold, wat de toolchain niet raakt. De README noemt de melding (`fc8f8fcb1`); geen replay-pin
+  bewoog.
+- **Open punt 1 (het lidwoord in de zin van een initialisatie)** is aan de eigenaar voorgelegd en zit niet in deze
+  landing.
+
+`make gates` op `fc8f8fcb1`, groen (`werk/marker-as-opgave-in-service/logs/gates-2.log`):
+
+```
+gates: 1 pin        GROEN      1s
+gates: 2 reactor    GROEN   3m21s  testgevallen per module 206/585/62
+gates: 3 twins      GROEN      5s
+gates: 4 replay     GROEN   3m05s  374 goldens (pin 374), 1057 cases (pin 1057)
+gates: 5 manifest   GROEN      3s  32 regels, 29 ok, 3 uitgesloten, 0 mismatch
+gates: 6 image      GROEN     42s
+gates: 7 kind-smoke GROEN   1m25s  H2 PASS, H3 PASS, H4 PASS
+gates: GROEN — 7 stappen in 8m34s
+```
+
+De commit hierna raakt alleen deze kaart.
