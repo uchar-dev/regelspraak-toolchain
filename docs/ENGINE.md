@@ -411,7 +411,8 @@ refuse the start as well.
   `uchar-ir-v1` document, the exec-model verdict (`executable` with the `coverage` and `generated`, or uchar's
   `refusal`, with `refusalLine` beside it where the refusal has a place in the source, below), the DRL of the
   DRL-text branch as a view (not the verdict: `drl`, or `drlError` with uchar's sentence and `drl` empty) with
-  `drlRules` beside it (below), uchar's rule graph of the document its loader reads back, as Mermaid
+  `drlRules` beside it (below), unless the request asks the analysis without that view (`?drl=false`, below), uchar's
+  rule graph of the document its loader reads back, as Mermaid
   (`graph`) and as `graphJson` (`{nodes:[{id,label,kind,endOutput}], edges:[{from,to}]}`), the `vocabularies` of the
   source (the declared ones, the chosen one, and per declaration its designation in each, with its source line `line`
   and the `comment` directly above it, as uchar's frontend records them; the list `elements` is always filled, also
@@ -569,6 +570,16 @@ refuse the start as well.
   variant is the entries with its `group` and `pointer`: its own decision has the role `own` (or `fallback`), a
   collection step for its justification `fold-contribution` with the `fold` it collects for. With `drlError` there is
   no text and `drlRules` is an empty list.
+- `?drl=false` (card `drl-view-on-request`) asks the analysis without the DRL view: the DRL-text branch is not built,
+  and the answer has no `drl`, no `drlRules` and no `drlError`. Every other key stands in its place with the bytes the
+  full analysis gives it, on the ordinary route and with `?via=service`: the verdict, the coverage and `generated`
+  come from the exec-model branch, and no scenario reads the DRL text. Without the parameter, with `drl=true` or with a
+  bare `drl`, the answer has the view; another value is a 400 `MALFORMED` on `field` `drl`. The view is the one part
+  of the answer the Drools compiler compiles a DRL text for, and on a large model that is most of the time of an
+  analysis, so a caller that reads neither `drl` nor `drlRules` asks without it. Each request still builds what it
+  answers with: nothing of an analysis is kept between requests. The OpenAPI document describes the entry points of the
+  served model and `/info`, and no route of the workbench; this parameter is described here, as `via` and
+  `vocabulary` of the route are.
 - `POST /playground/analyse?via=service` gives the same answer, except that the service the process runs computes the
   scenarios, so that a PASS says: this service gives this answer. It shows the session of each scenario, so a service
   started without `DETAIL` answers it with a 400 that names `DETAIL` (`field` `via`), and another value of `via` is a

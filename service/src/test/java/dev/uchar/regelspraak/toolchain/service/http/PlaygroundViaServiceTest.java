@@ -49,6 +49,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * on. A source that is not the service's own, a service without {@code DETAIL} and another value of {@code via} are a
  * 400; a scenario no entry point carries, and a situation a request cannot carry, are a MARKER with the sentence; an
  * evaluation fault is a FAIL with the diagnose of uchar's report.
+ *
+ * <p>{@code ?drl=false} (card drl-view-on-request), on either route: the answer without the DRL view, every other key
+ * as the full analysis gives it.
  */
 class PlaygroundViaServiceTest {
 
@@ -578,6 +581,75 @@ class PlaygroundViaServiceTest {
         assertEquals(withPath, keys(d));
         assertEquals(g.path("status"), d.path("status"));
         assertNotNull(d.get("fixpoint"));
+    }
+
+    // ---------------- the DRL view on request (card drl-view-on-request) ----------------
+
+    /** Without {@code drl} in the query the answer has the DRL view, as before the parameter existed; {@code drl=true}
+     *  and a bare {@code drl} say the same. */
+    @Test
+    void without_the_choice_the_drl_view_is_there() throws Exception {
+        String source = BERGING + "\n" + SCENARIO.formatted("4", "20,00");
+        for (String query : List.of("", "?drl=true", "?drl", "?via=service", "?via=service&drl=true")) {
+            HttpResponse<String> r = post(withDetail, query, source);
+            assertEquals(200, r.statusCode(), query + ": " + r.body());
+            JsonNode a = ServiceHttp.MAPPER.readTree(r.body());
+            assertTrue(a.path("drl").asText().contains("rule \""), query + ": " + keys(a));
+            assertFalse(a.path("drlRules").isEmpty(), query + ": " + keys(a));
+            assertFalse(a.has("drlError"), query + ": " + a.path("drlError").asText());
+        }
+    }
+
+    /** {@code drl=false} leaves the DRL-text branch unbuilt: the answer has no {@code drl} and no {@code drlRules},
+     *  and every other key in its place with the bytes the full analysis gives it, on the ordinary route and via the
+     *  service. */
+    @Test
+    void drl_false_leaves_the_drl_view_out_and_nothing_else() throws Exception {
+        String source = BERGING + "\n" + SCENARIO.formatted("4", "20,00");
+        for (String via : List.of("", "via=service&")) {
+            HttpResponse<String> with = post(withDetail, "?" + via + "drl=true", source);
+            HttpResponse<String> without = post(withDetail, "?" + via + "drl=false", source);
+            assertEquals(200, without.statusCode(), without.body());
+            ObjectNode expected = (ObjectNode) ServiceHttp.MAPPER.readTree(with.body());
+            assertTrue(expected.has("drl") && expected.has("drlRules"), keys(expected).toString());
+            expected.remove(List.of("drl", "drlRules"));
+            JsonNode actual = ServiceHttp.MAPPER.readTree(without.body());
+            assertEquals(keys(expected), keys(actual), via);
+            assertEquals(ServiceHttp.MAPPER.writeValueAsString(expected), ServiceHttp.MAPPER.writeValueAsString(actual),
+                    via);
+            assertEquals("PASS", actual.path("scenario").path("results").get(0).path("status").asText(), via);
+        }
+    }
+
+    /** A model the DRL-text branch refuses has {@code drlError} beside the refusal of the branch that fires; with
+     *  {@code drl=false} nothing asks that branch, so the refusal stands alone. */
+    @Test
+    void drl_false_leaves_the_refusal_of_the_drl_view_out() throws Exception {
+        String unresolved = """
+                Objecttype de Passagier
+                    is minderjarig kenmerk (bijvoeglijk);
+                    is kind kenmerk;
+                Regel bijvoeglijk
+                    geldig altijd
+                        Een passagier is kind indien hij een minderjarig is.
+                """;
+        JsonNode with = ServiceHttp.MAPPER.readTree(post(withDetail, "", unresolved).body());
+        assertEquals(with.path("refusal").asText(), with.path("drlError").asText(), with.toString());
+        JsonNode without = ServiceHttp.MAPPER.readTree(post(withDetail, "?drl=false", unresolved).body());
+        assertEquals(with.path("refusal"), without.path("refusal"));
+        for (String key : List.of("drl", "drlRules", "drlError")) assertFalse(without.has(key), key);
+    }
+
+    /** {@code drl} is {@code true} or {@code false}: a value that is neither is refused, so that a misspelt
+     *  {@code false} does not pass as the full analysis. */
+    @Test
+    void another_value_of_drl_is_a_400() throws Exception {
+        HttpResponse<String> r = post(withDetail, "?drl=nee", BERGING);
+        assertEquals(400, r.statusCode(), r.body());
+        JsonNode s = ServiceHttp.MAPPER.readTree(r.body()).path("violations").get(0);
+        assertEquals("drl", s.path("field").asText());
+        assertEquals("MALFORMED", s.path("kind").asText());
+        assertEquals("drl kent alleen de waarden 'true' en 'false', niet 'nee'", s.path("error").asText());
     }
 
     private static List<String> keys(JsonNode n) {

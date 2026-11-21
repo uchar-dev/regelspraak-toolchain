@@ -76,7 +76,9 @@ import java.util.Set;
  *       for a DRL text the Drools compiler rejects, with {@code drl} empty. Beside it {@code drlRules}: per rule of
  *       that text, in its order, its name, its role in the lowering and what it lowers in the keys of the decider of
  *       a {@code GROUND}, and its {@code piece} of the text with its functions ({@link #drlRules}), empty with
- *       {@code drlError}, since an empty text has no rule;</li>
+ *       {@code drlError}, since an empty text has no rule. A caller may ask the analysis without this view
+ *       ({@link #analyze(String, String, DecisionCore, java.util.Locale, boolean)}): none of the three keys is then
+ *       there;</li>
  *   <li><b>graaf</b> and <b>graphJson</b> — uchar's rule graph of the document its loader reads back (the route
  *       uchar's gate 15 holds equal to the source route), as Mermaid source and as
  *       {@code {nodes:[{id,label,kind,eindOutput}], edges:[{van,naar}]}}, so a workbench can take a rule's dataflow
@@ -150,6 +152,18 @@ public final class Playground {
      *  build in {@code locale} (null: the language of the process). */
     public static ObjectNode analyze(String source, String vocabulary, DecisionCore service,
                                        java.util.Locale locale) {
+        return analyze(source, vocabulary, service, locale, true);
+    }
+
+    /**
+     * {@link #analyze(String, String, DecisionCore, java.util.Locale)} with the DRL view or without it. Without
+     * ({@code drlView} false) the DRL-text branch is not built and the answer has no {@code drl}, {@code drlRules}
+     * and {@code drlError}; every other key is what it is with the view, since nothing else reads that branch. Its
+     * build compiles the DRL text with the Drools compiler, on a large model most of the time of an analysis, and a
+     * caller that shows the outcome of a scenario reads none of the three.
+     */
+    public static ObjectNode analyze(String source, String vocabulary, DecisionCore service,
+                                       java.util.Locale locale, boolean drlView) {
         ObjectNode root = NF.objectNode();
 
         // 1. PARSE — uchar's parse, the one its resolver reads, with the column and the expected tokens the
@@ -225,18 +239,20 @@ public final class Playground {
         // 4. DRL — a view of the DRL-text branch, never the verdict. uchar's build of that branch throws an
         //    IllegalStateException for a DRL text the Drools compiler rejects, a fault of its rendering; the view
         //    shows uchar's sentence for it as it shows a refusal. drlRules is read after that catch, so that a fault
-        //    of its own reading is no drlError
-        DroolsBackend.Build drlBuild = null;
-        try {
-            drlBuild = UcharBuild.assemble(model, DroolsBackend.Branch.DRL_TEXT);
-        } catch (UcharBuild.NotCarried | UcharBuild.UnresolvedName | IllegalStateException e) {
-            root.put("drl", "");
-            root.putArray("drlRules");
-            root.put("drlError", e.getMessage());
-        }
-        if (drlBuild != null) {
-            root.put("drl", drlBuild.drl());
-            root.set("drlRules", drlRules(drlBuild, ir, model));
+        //    of its own reading is no drlError. A request without the view leaves the branch unbuilt
+        if (drlView) {
+            DroolsBackend.Build drlBuild = null;
+            try {
+                drlBuild = UcharBuild.assemble(model, DroolsBackend.Branch.DRL_TEXT);
+            } catch (UcharBuild.NotCarried | UcharBuild.UnresolvedName | IllegalStateException e) {
+                root.put("drl", "");
+                root.putArray("drlRules");
+                root.put("drlError", e.getMessage());
+            }
+            if (drlBuild != null) {
+                root.put("drl", drlBuild.drl());
+                root.set("drlRules", drlRules(drlBuild, ir, model));
+            }
         }
 
         // 5. GRAAF — uchar's rule graph of the document its loader reads back, with the defaults groups and the

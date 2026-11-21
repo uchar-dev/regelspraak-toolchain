@@ -410,7 +410,12 @@ public final class ServiceHttp {
      *  <p>{@code ?via=service} has this service's core compute the scenarios ({@link Playground#analyze(String,
      *  String, DecisionCore)}). It shows the session of each, so a core started without detail answers it with a 400
      *  that names {@code DETAIL}, before any analysis; a source that is not the service's own is a 400 as well.
-     *  Another value of {@code via} is a 400. */
+     *  Another value of {@code via} is a 400.
+     *
+     *  <p>{@code ?drl=false} asks the analysis without the DRL view ({@link Playground#analyze(String, String,
+     *  DecisionCore, java.util.Locale, boolean)}); without the parameter, with {@code drl=true} or with a bare
+     *  {@code drl} the answer has it. Another value is a 400: a misspelt {@code false} would otherwise pass as the
+     *  full analysis. */
     private void processPlaygroundAnalysis(HttpExchange ex) throws IOException {
         try {
             if (!"POST".equalsIgnoreCase(ex.getRequestMethod())) {
@@ -437,13 +442,22 @@ public final class ServiceHttp {
                                 + " scenario's via de dienst; start hem met DETAIL=true of --detail")))));
                 return;
             }
+            String drl = queryValue(ex.getRequestURI().getRawQuery(), "drl");
+            if (drl != null && !isSet(drl) && !"false".equalsIgnoreCase(drl)) {
+                send(ex, 400, requestErrorBody(new ServiceError("verzoek valideert niet", List.of(Violation.of(
+                        Violation.Kind.MALFORMED, "drl", "drl kent alleen de waarden 'true' en 'false', niet '" + drl
+                                + "'")))));
+                return;
+            }
+            boolean drlView = drl == null || isSet(drl);
             DecisionCore service = via == null ? null : core;
             java.util.Locale locale = dev.uchar.regelspraak.toolchain.engine.MessageLanguage
                     .ofAcceptLanguage(ex.getRequestHeaders().getFirst("Accept-Language"));
             // Compile-per-request under a hard timeout, on a throwaway single-use executor (no shared state).
             ExecutorService exec = Executors.newSingleThreadExecutor();
             try {
-                Future<ObjectNode> f = exec.submit(() -> Playground.analyze(source, vocabulary, service, locale));
+                Future<ObjectNode> f = exec.submit(
+                        () -> Playground.analyze(source, vocabulary, service, locale, drlView));
                 send(ex, 200, f.get(PLAYGROUND_TIMEOUT_MS, TimeUnit.MILLISECONDS));
             } catch (TimeoutException timeout) {
                 send(ex, 503, errorBody("analyse overschreed de tijdslimiet ("

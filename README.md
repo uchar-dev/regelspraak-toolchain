@@ -389,6 +389,10 @@ writes one does not start:
   <descriptor.service.json> <source.rgs...> [--detail]` starts it beside the service of that model, for
   `?via=service`. `serve` binds no playground route; it no longer reads `PLAYGROUND`, so `PLAYGROUND=true` gives a
   404 on `/playground` where it bound the workbench.
+- **The DRL view on request** (card `drl-view-on-request`): `POST /playground/analyse?drl=false` gives the analysis
+  without the DRL view: no `drl`, no `drlRules` and no `drlError`, and every other key as the full analysis gives it.
+  The DRL-text branch is then not built, and on a large model its build is most of the time of an analysis
+  (`docs/ENGINE.md`). Without the parameter the answer is unchanged; a value other than `true` or `false` is a 400.
 
 ## The pin
 
