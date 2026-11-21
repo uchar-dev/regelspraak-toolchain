@@ -1,4 +1,4 @@
-# drl-view-on-request: de playground maakt de DRL-weergave alleen op verzoek, en parseert de bron één keer
+# drl-view-on-request: de playground maakt de DRL-weergave alleen op verzoek
 
 *Opgesteld door een werkbanksessie op 2026-11-21, op verzoek van de eigenaar. Meting:
 `regelspraak-werkbank/werknotities/20261121-traagheid/verslag.md` (met harnas en logs in `meet/`; werknotities zijn
@@ -33,17 +33,20 @@ of `Resolver.resolve(source)`.
 
 ## Goal
 
-1. **De DRL-weergave op verzoek.** Een aanroeper van `/playground/analyse` kan de DRL-teksttak overslaan; het
-   antwoord heeft dan geen `drl` en `drlRules` (en geen `drlError`). Zonder die keuze blijft het antwoord zoals nu,
-   zodat de regelsetpagina niets hoeft te veranderen. De naam en vorm (query-parameter of veld) kiest de bouwer,
-   Engels en in de OpenAPI-beschrijving, zoals de andere namen van het koppelvlak. "Compile-per-request, no shared
-   state" (`ServiceHttp`) blijft zoals het is: er komt geen cache.
-2. **Eén parse per analyse.** Stap 2 leest de parse van stap 1 in plaats van de bron opnieuw te parseren. uchar biedt
-   daar nu geen publieke API voor (`ScenarioResolver.read` is package-private, `Resolver.resolve(String)` parseert
-   zelf). Volgens de regels van deze repository is dat een kaart in uchar die eerst landt en hier als pin aankomt; de
-   bouwer stelt die API voor (welke methode, welke parse-vlag: de scenarioroute parseert met `testDocument = true`
-   en soms een tweede keer) en schrijft de uchar-kaart. Zonder geland uchar-werk is dit deel niet af, en zegt de
-   Result wat er ontbreekt.
+Een aanroeper van `/playground/analyse` kan de DRL-teksttak overslaan; het
+antwoord heeft dan geen `drl` en `drlRules` (en geen `drlError`). Zonder die keuze blijft het antwoord zoals nu,
+zodat de regelsetpagina niets hoeft te veranderen. De naam en vorm (query-parameter of veld) kiest de bouwer,
+Engels en in de OpenAPI-beschrijving, zoals de andere namen van het koppelvlak. "Compile-per-request, no shared
+state" (`ServiceHttp`) blijft zoals het is: er komt geen cache.
+
+## Vervolg, niet deze kaart: één parse per analyse
+
+Stap 2 zou de parse van stap 1 kunnen lezen in plaats van de bron opnieuw te parseren. uchar biedt daar geen
+publieke API voor (`ScenarioResolver.read` is package-private, `Resolver.resolve(String)` parseert zelf), dus dat is
+eerst een kaart in uchar. Besluit eigenaar 2026-11-21: wachten. De parse-groei komt bijna geheel uit één regel van
+v2 ("herleving afhankelijk van ontbrekende invoer art. 21 lid 1", hww-05), een handmatige afvang van lege invoer die
+verdwijnt zodra uchar de strikte lezing van leeg heeft (uchar-kaart `empty-closures-inventory` en vervolg). Daarna
+opnieuw meten en dan pas beslissen.
 
 ## Acceptance
 
@@ -51,19 +54,16 @@ of `Resolver.resolve(source)`.
   stuurt): de analyse zonder DRL-weergave is gemeten vóór en na, in de Result; de velden behalve `drl`, `drlRules`
   en `drlError` zijn byte-gelijk aan die van de volle analyse.
 - Een test die de keuze vastlegt: zonder keuze `drl` en `drlRules` aanwezig, met keuze afwezig; eerst rood getoond.
-- Deel 2: de tijd van stap 1+2 vóór en na, en een test of bestaande dekking die aantoont dat de diagnostiek
-  (`parse.errors` met kolom en verwachte tokens, `resolver.errors/warnings`) gelijk blijft, ook voor een bron met een
-  syntaxfout en voor een testdocument met een dimensielabel met 'en'.
 - README/`docs/ENGINE.md` als huidige stand; `make verify` en de gates groen.
 - Een WERKBANK.md voor de werkbank: de naam van de keuze, zodat de eval-pagina (`static/api.js`, `static/eval.js`)
   hem kan zetten. Die wijziging in de werkbank is niet deze kaart.
 
-May touch: `service/` (`Playground`, `ServiceHttp`, OpenAPI), tests, README, `docs/ENGINE.md`, kaartverplaatsing;
-een kaart in uchar voor deel 2.
+May touch: `service/` (`Playground`, `ServiceHttp`, OpenAPI), tests, README, `docs/ENGINE.md`, kaartverplaatsing.
 
-Out of scope: de DRL-weergave of andere takken bewaren tussen aanvragen; minder `function`-declaraties in de
-DRL-weergave en de parsesnelheid van de telconstructie "het aantal … die … voldoen" (beide uchar); de werkbank.
+Out of scope: één parse per analyse (zie Vervolg); de DRL-weergave of andere takken bewaren tussen aanvragen;
+minder `function`-declaraties in de DRL-weergave en de parsesnelheid van de telconstructie "het aantal … die …
+voldoen" (beide uchar); de werkbank.
 
 ## Omvang
 
-Klein voor deel 1; deel 2 hangt af van de uchar-API.
+Klein.
