@@ -520,8 +520,8 @@ class PlaygroundDrlRulesTest {
         List<String> keys = new ArrayList<>();
         for (TmsTranspiler.RuleOrigin.Role r : TmsTranspiler.RuleOrigin.Role.values()) keys.add(r.key());
         assertEquals(List.of("own", "fallback", "condition-fault", "condition-deposit", "no-evaluation-date",
-                "reading", "reconcile-pass-on", "reconcile-difference", "reconcile-agreement", "fold-contribution",
-                "fold-filter-fault", "fold-member-fault", "fold-filter-deposit", "uniqueness-key",
+                "reading", "reconcile-pass-on", "reconcile-difference", "reconcile-agreement", "reconcile-open",
+                "fold-contribution", "fold-filter-fault", "fold-member-fault", "fold-filter-deposit", "uniqueness-key",
                 "uniqueness-key-form-fault", "uniqueness-channel", "allocation-recipient"), keys);
     }
 

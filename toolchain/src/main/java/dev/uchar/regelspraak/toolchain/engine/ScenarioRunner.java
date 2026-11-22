@@ -229,6 +229,8 @@ public final class ScenarioRunner {
                         + " het fixpunt, en speelde de case toch niet uit");
             return new Explained(r, List.of(), noExplanation, session, null);
         }
+        String without = Verbaliser.withoutExplanation(model);
+        if (without != null) return new Explained(r, List.of(), without, session, null);
         return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings(), h.standing())
                 .sentences(session.beans(), types, h.decisions(), h.periodDecisions()), null, session, null);
     }

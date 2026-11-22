@@ -200,11 +200,14 @@ public final class Verbaliser {
      * dezelfde sessie gaf, met de labels van de invoer gelezen, waarvan de uitleg de gemaakte objecten leest;
      * {@code naming} de namen, op het model van {@code document}.
      *
-     * @throws IllegalStateException twee lezingen van één vorm op één object
+     * @throws IllegalStateException twee lezingen van één vorm op één object, of een document waarvan er geen uitleg is
+     *                               ({@link #withoutExplanation})
      */
     public Verbaliser(Document document, Naming naming, List<ConditionReading> readings, EndState standing) {
         this.document = Objects.requireNonNull(document, "document");
         this.model = document.model();
+        String without = withoutExplanation(model);
+        if (without != null) throw new IllegalStateException(without);
         this.naming = Objects.requireNonNull(naming, "naming");
         this.made = Objects.requireNonNull(standing, "standing").objects().stream()
                 .filter(o -> o.creation() != null).toList();
@@ -213,6 +216,14 @@ public final class Verbaliser {
         for (ConditionReading r : readings)
             if (this.readings.computeIfAbsent(r.form(), k -> new IdentityHashMap<>()).put(r.object(), r) != null)
                 throw new IllegalStateException("de motor gaf twee lezingen van " + r.form() + " op één object");
+    }
+
+    /** Waarom er van een document met het model {@code model} geen uitleg is, of null waar er een is: een document met
+     *  {@code inferFromEmpty: false} (uchars RUNTIME-SEMANTICS ch. 1.5) heeft lezingen die openstaan, en een zin die ze als
+     *  leeg of als onwaar las, zei iets wat niet vaststaat. */
+    public static String withoutExplanation(RegelSpraakModel model) {
+        return model.inferFromEmpty() ? null : "de regelset leidt uit leeg niets af (Afleiden uit leeg: nee), en de"
+                + " uitleg verwoordt geen open uitkomst";
     }
 
     /**
@@ -441,6 +452,7 @@ public final class Verbaliser {
             case HOLDS -> throw new IllegalStateException("de voorwaarde van de objectcreatie '" + c.name() + "' geldt"
                     + " op " + label + ", en het fixpunt noemt geen object dat zij voor " + label + " maakte");
             case FAULTS -> throw faulted(pointer, label);
+            case OPEN -> throw open(pointer, label);
         }
         return new Creation(b.build(), reading.status() == ConditionReading.Status.OUTSIDE_VALIDITY);
     }
@@ -996,6 +1008,7 @@ public final class Verbaliser {
                 case HOLDS, FAILS -> throw new IllegalStateException("de variant " + v.pointer() + " van '"
                         + d.member() + "' van " + label + " heeft de lezing " + r.status() + ", en de beslissing"
                         + " noemt haar na de beslisser, als verdrongen");
+                case OPEN -> throw open(v.pointer(), label);
                 case DISPLACED -> { }
             }
             // een initialisatie waarvan de invoer het doel vulde, las de motor niet: zij gold niet, zoals vóór de
@@ -1239,6 +1252,7 @@ public final class Verbaliser {
                             + " was volgens de motor niet aan de beurt, en de beslissing noemt haar vóór de beslisser");
                 }
                 case FAULTS -> throw faulted(v.pointer(), label);
+                case OPEN -> throw open(v.pointer(), label);
             }
         }
 
@@ -2479,6 +2493,7 @@ public final class Verbaliser {
                 case DISPLACED -> throw new IllegalStateException("de motor noemt '" + r.name() + "' op " + label
                         + " niet aan de beurt, en een kenmerktoekenning wacht niet op haar beurt");
                 case FAULTS -> throw faulted(pointer, label);
+                case OPEN -> throw open(pointer, label);
             }
         }
         ground(b, sourceAnnotations(r), ruleDecider(r));
@@ -2778,6 +2793,13 @@ public final class Verbaliser {
     private static IllegalStateException faulted(String form, String label) {
         return new IllegalStateException("de motor gaf voor " + form + " op " + label + " een evaluatiefout, en de"
                 + " uitleg volgt een sessie zonder fout");
+    }
+
+    /** Een open uitkomst geeft de motor alleen in een document met {@code inferFromEmpty: false}, en dat verwoordt de
+     *  uitleg niet ({@link #withoutExplanation}). */
+    private static IllegalStateException open(String form, String label) {
+        return new IllegalStateException("de motor liet " + form + " op " + label + " open, en de uitleg verwoordt"
+                + " geen open uitkomst");
     }
 
     /** De lezing van één vorm op één object, op de knopen van haar voorwaarde gelegd. Een knoop zonder eigen lezing

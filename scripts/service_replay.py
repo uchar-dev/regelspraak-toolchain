@@ -13,8 +13,8 @@ Uitvoer: regels "<sleutel>\\t<STATUS>\\t<detail>" in de volgorde van de invoer, 
            (detail: de vorm); de andere cases van de golden spelen door;
   PLAYED   met sleutel "<golden>": elke case die de dienst draagt gaf de gepinde verwachtingen, en minstens één
            speelde (detail: het aantal gespeelde cases);
-  EXCLUDE  met sleutel "<golden>": een golden zonder casebestand of vorm, of een document met een onopgeloste naam,
-           waarop de dienst niet start (detail: de weigering);
+  EXCLUDE  met sleutel "<golden>": een golden zonder casebestand of vorm, of een document met een onopgeloste naam of
+           dat uit leeg niets afleidt, waarop de dienst niet start (detail: de weigering);
   FAIL     met sleutel "<golden>": een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is
            (detail: wat).
 Een golden waarvan geen case speelt, heeft alleen haar EXCLUDE-regels.
@@ -55,6 +55,7 @@ import urllib.request
 REGELSPRAAK = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "bin", "regelspraak")
 STARTUP_SECONDS = 120  # seconden; een dienst die dan nog geen poort noemt, is een FAIL
 UNRESOLVED_START = "dienst start niet: de bron draagt een onopgeloste naam"  # DecisionCore.unresolvedName
+OPEN_VALUES_START = "de regelset leidt uit leeg niets af"  # DecisionCore.openValues
 FORM_LISTS = ("rules", "objectCreations", "allocations", "consistencies", "uniquenesses", "factCreations",
                "prioritizedDefaults")
 
@@ -410,6 +411,8 @@ class Service:
                 # replay faults only when the evaluation reaches the node (WF-044)
                 if UNRESOLVED_START in message:
                     raise NotExpressible(f"de dienst start niet op een onopgeloste naam: {message[:600]}")
+                if OPEN_VALUES_START in message:
+                    raise NotExpressible(f"de dienst start niet op open waarden: {message[:600]}")
                 raise Deviation(f"de dienst start niet (exit {self.process.returncode}): {message[:600]}")
             time.sleep(0.05)
         raise Deviation(f"de dienst noemt na {STARTUP_SECONDS} s geen poort")

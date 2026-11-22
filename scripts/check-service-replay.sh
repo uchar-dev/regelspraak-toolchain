@@ -243,7 +243,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar 2e54dd254: 374 — de set van gate 12 groeit van 382 naar 383 met jutterswet-opgave-afwezigheidsmarkers (een
 # afwezigheidsmarkering naast de opgavemarkering: een marker als opgave, als berekende waarde en als afwijking), en die
 # speelt door de dienst.
-EXPECTED_REPLAY_PLAYED=374
+# Pin uchar af54fac21: 375 — de set van gate 12 groeit van 383 naar 386 met jutterswet-gevuldtoets-soorten (de toets op
+# leeg en gevuld op een enumeratie, een tekst, een boolean en een attribuut met markers), die door de dienst speelt, en
+# jutterswet-afleiden-uit-leeg en jutterswet-volledig-gegeven, waarop de dienst niet start (hieronder).
+EXPECTED_REPLAY_PLAYED=375
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -258,15 +261,18 @@ EXPECTED_REPLAY_PLAYED=374
 # jutterswet-percentage-plus-percentage.
 # 1042 (pin uchar c24de6c58): de case van jutterswet-vondsten-van-de-meester.
 # 1057 (pin uchar 2e54dd254): de vijftien cases van jutterswet-opgave-afwezigheidsmarkers.
-EXPECTED_REPLAY_CASES=1057
+# 1060 (pin uchar af54fac21): de drie cases van jutterswet-gevuldtoets-soorten.
+EXPECTED_REPLAY_CASES=1060
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
 # attribuut als tijdlijn en een tijdsafhankelijk kenmerk als zijn perioden, maar geen scalaire waarde op een
 # tijdsafhankelijk attribuut: uchars replay legt die in de periode van de rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de
 # dienst weigert haar met een 400 UNSUPPORTED. Op een document met een Unresolved-knoop start de dienst niet: hij
-# weigert een onopgeloste naam als fout in de bron, waar uchar pas faalt als de evaluatie de knoop bereikt (WF-044).
+# weigert een onopgeloste naam als fout in de bron, waar uchar pas faalt als de evaluatie de knoop bereikt (WF-044). Op
+# een regelset die uit leeg niets afleidt start hij evenmin: zijn antwoord heeft geen vorm voor een lid dat openstaat.
 REPLAY_EXCLUDED=(
+  "jutterswet-afleiden-uit-leeg|een regelset die uit leeg niets afleidt: de dienst start er niet op"
   "jutterswet-gevolg-buiten-de-beurt/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-gevolg-buiten-de-beurt-som/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-kadetarief/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
@@ -276,6 +282,7 @@ REPLAY_EXCLUDED=(
   "jutterswet-tempototaal/case1-totaal-en-som-naast-elkaar.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-vast-startpunt/case5-geklemde-maand.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-vast-startpunt/case7-week-en-kwartaal.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-volledig-gegeven|een regelset die uit leeg niets afleidt: de dienst start er niet op"
   "jutterswet-voorwaarde-buiten-de-beurt/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "unresolved-behind-a-failing-condition|een Unresolved-knoop in het document: de dienst start niet op een onopgeloste naam"
 )
@@ -327,6 +334,7 @@ RED_REFUSED=(
   "jutterswet-emmerscalair-gevolg/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
   "jutterswet-emmerscalair-knip/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
   "jutterswet-emmerscalair-per-periode/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
+  "jutterswet-kenmerk-wel-en-niet/case1.json|een regelset die uit leeg niets afleidt: de dienst start er niet op"
   "undeclared-input-name/case1.json|een attribuut dat het document niet declareert (EF-040): 400 UNKNOWN_FIELD op het attribuut"
   "unknown-role-target-label/case1.json|een rol naar een id dat geen instantie draagt (EF-002): 400 UNKNOWN_FIELD op de rol"
   "unresolved-behind-a-holding-condition/case1.json|een Unresolved-knoop in het document (EF-019 waar de evaluatie hem bereikt): de dienst start niet op een onopgeloste naam"

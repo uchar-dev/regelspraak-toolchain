@@ -510,10 +510,11 @@ refuse the start as well.
       for a stack with a dated group (ch. 8.1);
     - `reading`: the reading rule of a build with readings (ch. 5.12); the DRL shown is built without, so it does not
       occur here;
-    - `reconcile-pass-on`, `reconcile-difference`, `reconcile-agreement`: the reconciliation of a default's exception
-      groups (ch. 7.9) or, on an entry with `stack` only, of the groups at the stack's root (ch. 7.2): pass on the
-      first conflict, make a conflict where two members decide differently, take the decision of the first deciding
-      member;
+    - `reconcile-pass-on`, `reconcile-difference`, `reconcile-agreement`, `reconcile-open`: the reconciliation of a
+      default's exception groups (ch. 7.9) or, on an entry with `stack` only, of the groups at the stack's root
+      (ch. 7.2): pass on the first conflict, make a conflict where two members decide differently, take the decision
+      of the first deciding member, and, only in a document that infers nothing from an empty value (ch. 1.5), leave
+      the outcome open where a member is open and nothing conflicts or differs;
     - `fold-contribution`, `fold-filter-fault`, `fold-member-fault`, `fold-filter-deposit`: of a fold (ch. 3.4): insert
       the contribution of a member that passes the filter, note a member whose filter faults (ch. 5.11), a member whose
       timeline the case gives as the asOfDate-bucket scalar (ch. 3.6, 8.4), a member whose filter deposits (ch. 5.10);

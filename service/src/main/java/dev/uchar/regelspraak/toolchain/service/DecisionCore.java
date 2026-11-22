@@ -221,6 +221,7 @@ public final class DecisionCore {
         // only validate the descriptor against a well-formed model — a resolve failure already dominates
         FormIndex forms = FormIndex.of(model, model.prioritizedDefaults);
         if (startErrors.isEmpty()) startErrors.addAll(DescriptorLoader.validate(descriptor, model, forms));
+        startErrors.addAll(openValues(model));
         if (!startErrors.isEmpty())
             throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
         descriptor = DescriptorLoader.declared(descriptor, model);
@@ -292,6 +293,15 @@ public final class DecisionCore {
         return new DecisionCore(descriptor, model, perPath, sets, defaults, warnings, config.detail(), forms, null);
     }
 
+    /** The violation of a rule set that infers nothing from an empty value ({@code Afleiden uit leeg: nee}, uchar's
+     *  RUNTIME-SEMANTICS ch. 1.5): the answer has no form for a member that is open, and null or false would say that it
+     *  stands. */
+    private static List<Violation> openValues(RegelSpraakModel model) {
+        return model.inferFromEmpty() ? List.of() : List.of(Violation.of(Violation.Kind.UNSUPPORTED, "source",
+                "de regelset leidt uit leeg niets af (Afleiden uit leeg: nee), en het antwoord van de dienst heeft geen"
+                        + " vorm voor een lid dat openstaat"));
+    }
+
     /** The {@code uchar-ir-v1} document uchar's emitter wrote, as a tree. */
     private static com.fasterxml.jackson.databind.JsonNode documentTree(String document) {
         try {
@@ -350,6 +360,7 @@ public final class DecisionCore {
         ServiceDescriptor descriptor = DescriptorLoader.read(descriptorJson);
         FormIndex forms = FormIndex.of(model, loaded.prioritizedDefaults());
         List<Violation> startErrors = DescriptorLoader.validate(descriptor, model, forms);
+        startErrors.addAll(openValues(model));
         if (!startErrors.isEmpty())
             throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
         descriptor = DescriptorLoader.declared(descriptor, model);

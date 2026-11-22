@@ -186,6 +186,10 @@ public final class FixpointGivens {
      * @throws UnrenderableValue a value in a form this view does not show
      */
     public static ObjectNode fixpoint(EndState standing, List<InputObject> input, RegelSpraakModel model, Naming ng) {
+        for (EndState.EndObject o : standing.objects())
+            if (!o.open().isEmpty())
+                throw new UnrenderableValue("het lid '" + o.open().get(0).name() + "' van een object van " + o.type()
+                        + " staat open, en dat toont het fixpunt niet");
         // every object of the session, those of the input by their label and the made ones, with its type
         Map<Object, ObjectType> type = new IdentityHashMap<>();
         Map<Object, EndState.EndObject> held = new IdentityHashMap<>();
