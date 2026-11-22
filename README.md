@@ -393,6 +393,11 @@ writes one does not start:
   without the DRL view: no `drl`, no `drlRules` and no `drlError`, and every other key as the full analysis gives it.
   The DRL-text branch is then not built, and on a large model its build is most of the time of an analysis
   (`docs/ENGINE.md`). Without the parameter the answer is unchanged; a value other than `true` or `false` is a 400.
+- **A strict rule set** (card `open-values-in-service`, on uchar's `Afleiden uit leeg: nee`) is new: the service starts on
+  it, its answer gives every member of `output` with its state, and its request gives a characteristic as a state and
+  refuses a bare `false` ("A strict rule set", below). A rule set without that line keeps its requests, answers,
+  explanations, `/info` and OpenAPI document as they were. One answer changes for every rule set: an attribute a request
+  gives as `null` is not given, as one it leaves out, where the request got a 500.
 
 ## The pin
 
@@ -460,20 +465,22 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (379). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (386). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   replay excludes a case, not a golden: a golden plays when every case the service carries plays. The numbers of
-  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 370; `EXPECTED_REPLAY_CASES`, 1038); every case
+  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 377; `EXPECTED_REPLAY_CASES`, 1072); every case
   that does not play is listed by golden and case file with its reason (10 cases of 9 goldens, each with a scalar on a
   time-dependent attribute, which the request does not carry), and every golden the service does not start on by name
   (1, whose document holds an `Unresolved` node); a deviation always fails, and the list fails when it goes stale in
   either direction. An attribute or characteristic of the answer is compared by its name under uchar's name equality
   (`Namen.norm`), since the answer spells a name as declared and a case as it writes it. Every golden that plays is asked with
-  `?explanation=true` as well, and an explanation the service does not give fails it. A red leg sends every red case
+  `?explanation=true` as well, and an explanation the service does not give fails it; of a golden that infers nothing
+  from an empty value the request states what does not hold, the comparison reads the states of the answer, and the
+  service must refuse the explanation. A red leg sends every red case
   of uchar (`uchar/corpus/red`) on which uchar's gate 8 lets the Drools branch fault as a request, and the 422 must
-  carry the pinned `code` with the pinned `params` as a subset, as gate 8 holds them (`EXPECTED_RED_FAULTS`, 64); the
+  carry the pinned `code` with the pinned `params` as a subset, as gate 8 holds them (`EXPECTED_RED_FAULTS`, 69); the
   cases the service refuses first, with a 400 or by not starting on the document, stand in `RED_REFUSED` with the
-  reason (13), and that list fails when it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
+  reason (14), and that list fails when it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
   and a listed scenario uchar accepts fails the run.
@@ -561,6 +568,28 @@ and output selectors, and per object type its attributes and characteristics wit
 form and dimensions. The `description` of an object type, an attribute, a characteristic and a parameter starts with
 the comment the author wrote directly above its declaration, verbatim, and then says the form; a service started on a
 `uchar-ir-v1` document has no comment there, since the IR carries none.
+
+## A strict rule set
+
+A rule set whose source says `Afleiden uit leeg: nee` infers nothing from an empty value (uchar's RUNTIME-SEMANTICS ch.
+1.5): a member of an object is filled, settled leeg, or open, which means that neither a value nor leeg stands. A service
+in a conversation that is still asking needs that difference, so the answer of such a rule set gives every member of
+`output` with its state, and an absence marker, which is a filled value, with a state of its own:
+
+| member | in the answer | means |
+|---|---|---|
+| attribute | `{"state": "filled", "value": 60}` | it has this value |
+| attribute with absence markers | `{"state": "marker", "marker": "onbekend"}` | it holds this marker |
+| attribute | `{"state": "empty"}` | it stands that there is no value |
+| attribute, characteristic | `{"state": "open"}` | it does not stand |
+| characteristic | `{"state": "holds"}`, `{"state": "holdsNot"}` | it holds; it stands not to hold |
+
+A request gives a characteristic as `true` or `{"state": "holds"}`, as `{"state": "holdsNot"}` where it stands not to
+hold, and leaves it out (or `null`) where it is not given; a bare `false` is a 400. An attribute that is left out or
+`null` is not given. What is not given is open, unless its declaration says `(volledig gegeven)`; `/info` lists those
+members (`completeInput`) beside `"inferFromEmpty": false`. `inconsistencies` names what stands, so an empty list does not
+say that every consistency holds. A request for an explanation is a 400. `docs/ENGINE.md`, "A strict rule set", has the
+whole contract; for every other rule set nothing of it applies.
 
 ## Vocabularies
 

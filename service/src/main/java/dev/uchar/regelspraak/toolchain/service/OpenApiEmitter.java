@@ -63,6 +63,11 @@ import java.util.List;
  * document's vocabulary in {@code x-vocabulaire}. A model without vocabularies gets none of this, so its document is
  * the one it always was.
  *
+ * <p><b>A strict rule set</b> ({@link OpenValues}) has the states of a member as enumerations: the components
+ * {@code AttributeState} and {@code CharacteristicState} for the answer, and a characteristic of a request as {@code true}
+ * or its state; every member says what it means that a request does not give it. The document of any other rule set has
+ * none of this.
+ *
  * <p><b>The comment of a declaration.</b> The description of an object type, of an attribute and of a characteristic
  * starts with the comment the source writes directly above its declaration, verbatim, its lines joined with a space,
  * and the generated description follows; the description of {@code parameters} starts so with the comment of each
@@ -525,8 +530,8 @@ public final class OpenApiEmitter {
     /** {@code node}, a member a request of a strict rule set gives, ends its description with what it means that it is not
      *  given: it is open, or stands to be leeg or not to hold where its input is {@code complete}. */
     private static void notGiven(ObjectNode node, boolean complete, String what) {
-        String sentence = complete ? "Volledig gegeven: waar het ontbreekt of null is, staat vast dat het leeg is of niet"
-                + " geldt." : "Waar het ontbreekt of null is, is " + what + " niet gegeven.";
+        String sentence = complete ? "Volledig gegeven: waar het ontbreekt of null is en geen regel het schrijft, staat vast"
+                + " dat het leeg is of niet geldt." : "Waar het ontbreekt of null is, is " + what + " niet gegeven.";
         node.put("description", joined(node.has("description") ? node.get("description").asText() : "", sentence));
     }
 
@@ -1213,7 +1218,7 @@ public final class OpenApiEmitter {
             infer.put("type", "boolean");
             infer.putArray("enum").add(false);
             infer.put("description", "de regelset leidt uit leeg niets af: een lid is gevuld, vaststaand leeg of open.");
-            list(props, "completeInput", "de leden waarvan de declaratie zegt dat hun invoer volledig is: kind (attribute"
+            list(props, "completeInput", "de invoerleden waarvan de declaratie zegt dat hun invoer volledig is: kind (attribute"
                     + " of characteristic), objectType en name.").put("additionalProperties", true);
         }
         return s;

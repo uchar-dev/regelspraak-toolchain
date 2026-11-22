@@ -622,6 +622,66 @@ refuse the start as well.
   The entry point fires only the forms of its scope and uses the parameters of the descriptor beside those the
   situation sets, so a verdict can differ from the ordinary route's, which fires the forms of the scenario's own scope.
 
+## A strict rule set
+
+A rule set whose source says `Afleiden uit leeg: nee` infers nothing from an empty value (`inferFromEmpty: false` in its
+document; uchar's RUNTIME-SEMANTICS ch. 1.5). A member of an object is then **filled**, **settled leeg** (it stands that
+an attribute has no value, or that a characteristic does not hold) or **open** (neither stands). The absence markers
+`onbekend` and `niet van toepassing` are filled values. An input member that the request does not give is open, unless
+its declaration says `(volledig gegeven)`: then it is settled leeg, or stands not to hold. A derived member follows its
+writers, so an outcome can be open now and stand once the input it lacks is given. `OpenValues.in` is the one place where
+the service asks whether its rule set is strict (`RegelSpraakModel.inferFromEmpty()`); for every other rule set the
+request, the answer, `/info`, the OpenAPI document and `fixpoint` are what the sections above describe, byte for byte.
+
+**The request.** A characteristic is `true` or `{"state": "holds"}` where it holds, and `{"state": "holdsNot"}` where it
+stands not to hold, which the mapper writes as the `characteristicsAbsent` of the case. Where it is not given, it is left
+out or `null`. A bare `false` is a 400 `WRONG_TYPE` whose sentence names the two forms: a form or a DTO fills a boolean
+nobody answered with `false`, and the rules would infer from it without saying so. Another state is a `WRONG_TYPE` too,
+and an object without `state` or with another key a `MALFORMED`. An attribute that is left out or `null` is not given. A
+request cannot state that an attribute is leeg: that stands only of an attribute that is `(volledig gegeven)`. A value or
+`holdsNot` on a member that a rule writes stands where every writer of the member fills nothing; while a writer is open,
+the member is open. A characteristic the request gives holds whatever its rules do.
+
+**The answer** gives every member of `output` with its state, never as a bare value, `null` or boolean:
+
+| member | in the answer | means |
+|---|---|---|
+| attribute | `{"state": "filled", "value": <value>}` | it has this value, in the form of any answer |
+| attribute with absence markers | `{"state": "marker", "marker": "onbekend"}` | it holds this marker |
+| attribute | `{"state": "empty"}` | settled leeg: it stands that there is no value |
+| attribute, characteristic | `{"state": "open"}` | open: it does not stand |
+| characteristic | `{"state": "holds"}`, `{"state": "holdsNot"}` | it holds; it stands not to hold |
+
+A state is an object on every member, so code that does not read it fails always and not only where something is open. A
+member of `output` that the instance does not have is left out, as in any answer. `inconsistencies` and
+`inconsistencyDetails` name what stands: a consistency that does not decide is not among them, so an empty list does not
+say that every consistency holds. The states are those of uchar's end state of the session (`DroolsBackend.endStateOf`):
+a member among the `members` of its object, among its `open`, or in neither, which is settled leeg.
+
+**`/info`** has `"inferFromEmpty": false` and `completeInput`, the input members whose declaration says `(volledig
+gegeven)` (the `opgegeven X` of the opgave marker among them), `[{"kind": "attribute", "objectType": "Vondst", "name":
+"toeslag"}, {"kind": "characteristic", …}]`, per object type as declared. **The OpenAPI document** has the states as enumerations:
+the components `AttributeState` and `CharacteristicState`, to which `Answer` refers, a characteristic of an object type as
+`true` or a state, and in the description of every member what it means that a request does not give it.
+
+**`fixpoint`** (of an answer and of a 422) gives every object the list `open` after `characteristics`: its open
+attributes and then its open characteristics, in declaration order, each with the `unit` of an attribute that has one and
+with `input` where the request gave the member a value, which does not stand beside a writer that is open
+(`{"attribute": "bergloon", "input": "7"}`, `{"characteristic": "kostbaar", "input": {"state": "holdsNot"}}`). An open
+member is in no other row; a member in no row is settled leeg, or stands not to hold.
+
+**No explanation.** A request with `?explanation=true` is a 400 `UNSUPPORTED` on `explanation`, and no build with readings
+is made. The scenario runner and the playground give the reason in the place of the explanation.
+
+**The scenarios.** A test document has no sentence that expects an open outcome. An expectation on one is FAIL with uchar's
+word for it, `openstaand`, on the ordinary route and with `?via=service`. A situation asserts a characteristic or leaves
+it out, so the request of `via=service` states none that does not hold.
+
+**The start.** A dimensioned attribute in `output` refuses the start (`UNSUPPORTED`): uchar does not say whether a cell is
+open. So does an attribute without a bean field of its own. A form whose reading of ch. 1.5 uchar's Drools branch does
+not carry (an object creation, a timeline, an allocation, …; DROOLS-370 with the slug of the form) makes the entry point
+a marker with uchar's sentence, as any form uchar does not carry.
+
 ## The parts of an explanation
 
 The verbaliser (`engine/Verbaliser`) writes every sentence through one builder (`Sentence.Builder`) as a shallow tree

@@ -6,7 +6,12 @@ import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.cases.EndState;
+import dev.uchar.regelspraak.ir.Expr;
+import dev.uchar.regelspraak.ir.PrioritizedDefaults;
+import dev.uchar.regelspraak.ir.ResolvedRule;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -46,20 +51,39 @@ public final class OpenValues {
                         + ", en uchar draagt geen creatie in een regelset die uit leeg niets afleidt");
     }
 
-    /** The members of {@code model} whose declaration says that their input is complete ({@code (volledig gegeven)},
+    /** The input members of {@code model} whose declaration says that their input is complete ({@code (volledig gegeven)},
      *  uchar's RUNTIME-SEMANTICS ch. 1.5), as {@code /info} lists them: {@code {"kind": "attribute" | "characteristic",
-     *  "objectType", "name"}}, per object type its attributes and then its characteristics, as declared. */
-    public static ArrayNode completeInput(RegelSpraakModel model) {
+     *  "objectType", "name"}}, per object type its attributes and then its characteristics, as declared. A member that a
+     *  rule or one of {@code groups}, the defaults groups of the document, writes on the objects of the type that declares
+     *  it, such as the {@code berekende X} of the opgave marker, is no input. */
+    static ArrayNode completeInput(RegelSpraakModel model, List<PrioritizedDefaults> groups) {
         ArrayNode out = NF.arrayNode();
-        for (RegelSpraakModel.ObjectType ot : model.objectTypes.values()) {
+        for (ObjectType ot : model.objectTypes.values()) {
             for (String a : ot.attributes.keySet())
-                if (ot.completeAttributes.contains(a))
+                if (ot.completeAttributes.contains(a) && !written(model, groups, ot, a, false))
                     out.addObject().put("kind", "attribute").put("objectType", ot.name).put("name", a);
             for (String k : ot.characteristics)
-                if (ot.completeCharacteristics.contains(k))
+                if (ot.completeCharacteristics.contains(k) && !written(model, groups, ot, k, true))
                     out.addObject().put("kind", "characteristic").put("objectType", ot.name).put("name", k);
         }
         return out;
+    }
+
+    /** Whether a rule or a defaults group writes member {@code name}, a characteristic where {@code characteristic}, on the
+     *  objects of {@code type}: one on {@code type} or on a type above it (ch. 1.5, "An input member"). */
+    private static boolean written(RegelSpraakModel model, List<PrioritizedDefaults> groups, ObjectType type, String name,
+                                   boolean characteristic) {
+        for (ResolvedRule r : model.resolvedRules)
+            if (r.target() instanceof Expr.AttributeReference a && a.objectType() != null && a.attribute() != null
+                    && (r.kind() == ResolvedRule.Kind.KENMERKTOEKENNING) == characteristic
+                    && Namen.norm(a.attribute()).equals(Namen.norm(name)) && type.isA(a.objectType()))
+                return true;
+        for (PrioritizedDefaults g : groups)
+            if (g.isCharacteristic() == characteristic && g.target() != null
+                    && Namen.norm(g.target()).equals(Namen.norm(name))
+                    && type.isA(model.objectTypeByName(g.subject())))
+                return true;
+        return false;
     }
 
     /** A member in the state {@code state}, without a value. */

@@ -94,7 +94,8 @@ final class SituationToRequest {
                             periods.addObject().put("from", p.van().toString()).put("to", p.until().toString());
                         continue;
                     }
-                    characteristics.put(k.characteristic(), Boolean.TRUE);   // a situatie only ever ASSERTS a kenmerk
+                    // a situatie only ever ASSERTS a kenmerk: a test document has no sentence that one stands not to hold
+                    characteristics.put(k.characteristic(), Boolean.TRUE);
                 }
             }
             if (!i.roles().isEmpty()) {

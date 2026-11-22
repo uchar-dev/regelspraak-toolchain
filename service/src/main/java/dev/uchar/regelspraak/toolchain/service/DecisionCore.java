@@ -92,10 +92,12 @@ public final class DecisionCore {
     /** The {@code uchar-ir-v1} document of the source: the one the service was given, or, for {@code .rgs} sources,
      *  the one uchar's emitter writes of the model, emitted on the first ask ({@link #document()}). */
     private volatile String document;
+    /** The input members whose input is complete, as {@code /info} of a strict rule set lists them ({@link OpenValues}). */
+    private final ArrayNode completeInput;
     private DecisionCore(ServiceDescriptor descriptor, RegelSpraakModel model,
                           Map<String, Entrypoint> perPath, List<ParameterSet> parameterSets,
                           ObjectNode defaultParameters, List<String> periodWarnings, boolean detail, FormIndex forms,
-                          String document) {
+                          String document, ArrayNode completeInput) {
         this.descriptor = descriptor;
         this.model = model;
         this.perPath = perPath;
@@ -105,6 +107,7 @@ public final class DecisionCore {
         this.detail = detail;
         this.forms = forms;
         this.document = document;
+        this.completeInput = completeInput;
     }
 
     /** One compiled entry point: its descriptor entry, uchar's {@link DroolsBackend.Build} of its scope (the scoped
@@ -289,7 +292,8 @@ public final class DecisionCore {
         refuseParameters(perPath.values(), defaults, sets, model);
         List<String> warnings = periodWarnings(model, sets);
 
-        return new DecisionCore(descriptor, model, perPath, sets, defaults, warnings, config.detail(), forms, null);
+        return new DecisionCore(descriptor, model, perPath, sets, defaults, warnings, config.detail(), forms, null,
+                OpenValues.completeInput(model, model.prioritizedDefaults));
     }
 
     /** The {@code uchar-ir-v1} document uchar's emitter wrote, as a tree. */
@@ -402,7 +406,8 @@ public final class DecisionCore {
         List<ParameterSet> sets = loadParameterSets(descriptor, parameterSetsJson, model);
         refuseParameters(perPath.values(), defaults, sets, model);
         return new DecisionCore(descriptor, model, perPath, sets, defaults, periodWarnings(model, sets),
-                config.detail(), forms, documentJson);
+                config.detail(), forms, documentJson,
+                OpenValues.completeInput(model, loaded.prioritizedDefaults()));
     }
 
     /** The start refused for names the resolver bound to no declaration ({@link UcharBuild.UnresolvedName}), one
@@ -988,6 +993,10 @@ public final class DecisionCore {
 
     public ServiceDescriptor descriptor() { return descriptor; }
     public RegelSpraakModel model() { return model; }
+
+    /** The input members whose declaration says that their input is complete, as {@code /info} of a strict rule set lists
+     *  them ({@link OpenValues#completeInput}). */
+    public ArrayNode completeInput() { return completeInput.deepCopy(); }
 
     /** Whether a request may ask to see its session: the core was started with {@link CoreConfig#detail()}. */
     public boolean detail() { return detail; }

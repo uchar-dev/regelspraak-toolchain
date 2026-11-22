@@ -8,6 +8,7 @@ import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.OpenValuesSource;
 import dev.uchar.regelspraak.toolchain.service.ServiceError;
+import dev.uchar.regelspraak.toolchain.service.TokaSource;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 
 import org.junit.jupiter.api.AfterAll;
@@ -18,6 +19,8 @@ import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Map;
 
@@ -278,6 +281,24 @@ class OpenValuesHttpTest {
                 [{"kind": "attribute", "objectType": "Vondst", "name": "toeslag"},
                  {"kind": "characteristic", "objectType": "Vondst", "name": "onleesbaar"}]"""), info.get("completeInput"));
         }
+    }
+
+    /** The opgave marker makes two members whose declaration is complete: the {@code opgegeven bergloon} is input, the
+     *  {@code berekende bergloon} a rule writes and is not (uchar's golden jutterswet-volledig-gegeven). */
+    @Test
+    void a_complete_member_that_a_rule_writes_is_no_complete_input() throws Exception {
+        Path golden = TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-volledig-gegeven");
+        String descriptor = """
+            { "service": {"name":"volledig","version":"1"}, "entrypoints": [], "parameters": {} }""";
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+        String expected = json("""
+            [{"kind": "attribute", "objectType": "Vondst", "name": "toeslag"},
+             {"kind": "attribute", "objectType": "Vondst", "name": "opgegeven bergloon"},
+             {"kind": "characteristic", "objectType": "Vondst", "name": "drijfhout"}]""").toString();
+        assertEquals(expected, DecisionCore.assemble(descriptor, Map.of("b.rgs",
+                Files.readString(golden.resolve("source.rgs"))), CoreConfig.strict(), cl).completeInput().toString());
+        assertEquals(expected, DecisionCore.buildFromDocument(descriptor, Files.readString(golden.resolve("ir.json")),
+                CoreConfig.strict(), cl, null).completeInput().toString());
     }
 
     @Test

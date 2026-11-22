@@ -460,6 +460,14 @@ function fixpointHtml(r) {
           + (k.periods ? k.periods.map(interval).join("<br>") : "waar")
           + (k.input ? ' <span class="small">(ook invoer)</span>' : "")
           + '</td><td><span class="origin ' + esc(k.origin) + '">' + esc(k.origin) + "</span></td></tr>");
+    // a strict rule set: the members that are open, with the input that does not stand beside a writer that is open
+    for (const v of o.open || []) {
+      const member = "attribute" in v ? "attribute" : "characteristic";
+      if (whole || matches(v[member], v[member + "Canonical"]))
+        rows.push("<tr><td>" + nameOf(v, member) + "</td><td>staat niet vast"
+          + ("input" in v ? ' <span class="small">(invoer ' + (member === "attribute" ? scalar(v.input) : "geldt niet")
+             + ")</span>" : "") + "</td><td></td></tr>");
+    }
     if (!rows.length) continue;
     n++;
     t += '<tr class="obj"><td colspan="3">' + esc(o.object) + ' <span class="muted">' + nameOf(o, "objectType") + "</span></td></tr>"

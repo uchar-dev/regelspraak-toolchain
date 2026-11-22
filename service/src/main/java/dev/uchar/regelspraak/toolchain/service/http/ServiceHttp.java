@@ -605,7 +605,7 @@ public final class ServiceHttp {
         // a strict rule set, and the members whose input is complete; absent for any other
         if (OpenValues.in(core.model())) {
             root.put("inferFromEmpty", false);
-            root.set("completeInput", OpenValues.completeInput(core.model()));
+            root.set("completeInput", core.completeInput());
         }
 
         return root;
