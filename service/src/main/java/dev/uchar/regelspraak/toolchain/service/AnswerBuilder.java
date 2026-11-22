@@ -56,7 +56,12 @@ import java.util.Map;
  * the request: its value {@code waarde(…)} as the payload, a marker as {@code {"marker": "onbekend"}}, also as the value
  * of a segment or a cell.
  *
- * <p>Response shape:
+ * <p>In a strict rule set ({@link OpenValues}) every attribute and characteristic is answered with its state, in place of
+ * the value, null or boolean: {@code {"state": "filled", "value": <waarde>}}, {@code {"state": "marker", "marker":
+ * "onbekend"}}, {@code {"state": "empty"}} (settled leeg), {@code {"state": "open"}}, and of a characteristic
+ * {@code {"state": "holds"}}, {@code {"state": "holdsNot"}} and {@code {"state": "open"}}.
+ *
+ * <p>Response shape, of every other rule set:
  * <pre>{@code
  * { "instances": [ { "id": "<label>", "type": "<objecttype>",
  *                     "attributes": { "<attribuut>": <waarde|null>,
@@ -95,6 +100,7 @@ public final class AnswerBuilder {
         ObjectNode root = NF.objectNode();
         ArrayNode instances = root.putArray("instances");
 
+        OpenValues.refuseMade(model, outcome.endState());
         Map<String, EndState.EndObject> byLabel = new HashMap<>();
         for (EndState.EndObject o : outcome.endState().objects()) if (o.label() != null) byLabel.put(o.label(), o);
         // group selectors per instance id, preserving instance order
@@ -107,11 +113,16 @@ public final class AnswerBuilder {
 
             ObjectNode attributes = NF.objectNode();
             ObjectNode characteristics = NF.objectNode();
+            boolean strict = OpenValues.in(model);
             for (String sel : output) {
                 OutputSelector u = OutputSelector.parse(sel);
                 if (u == null) continue;
                 if (!DescriptorLoader.objectMatch(model, ot, u.objectType())) continue;
-                if (u.characteristic()) {
+                if (strict && u.characteristic()) {
+                    characteristics.set(naming.characteristic(ot, u.member()), characteristicState(object, u.member()));
+                } else if (strict) {
+                    attributes.set(naming.attribute(ot, u.member()), attributeState(object, ot, u.member()));
+                } else if (u.characteristic()) {
                     EndState.Member k = member(object, true, u.member());
                     characteristics.set(naming.characteristic(ot, u.member()),
                             NF.booleanNode(k != null && Boolean.TRUE.equals(k.value())));
@@ -144,6 +155,36 @@ public final class AnswerBuilder {
         }
         root.set("inconsistencyDetails", details);
         return root;
+    }
+
+    /** Characteristic {@code name} of {@code object} with its state, in a strict rule set ({@link OpenValues}). */
+    private static JsonNode characteristicState(EndState.EndObject object, String name) {
+        if (open(object, true, name)) return OpenValues.state(OpenValues.OPEN);
+        EndState.Member k = member(object, true, name);
+        if (k != null && !Boolean.TRUE.equals(k.value()))
+            throw new IllegalStateException("uchars eindtoestand geeft het kenmerk '" + name + "' als " + k.value()
+                    + ", en in een regelset die uit leeg niets afleidt, geldt een kenmerk of geldt het niet");
+        return OpenValues.state(k != null ? OpenValues.HOLDS : OpenValues.HOLDS_NOT);
+    }
+
+    /** Attribute {@code name} of {@code object}, of type {@code ot}, with its state, in a strict rule set
+     *  ({@link OpenValues}); a timeline or cells, which uchar gives no state there, fail. */
+    private JsonNode attributeState(EndState.EndObject object, ObjectType ot, String name) {
+        if (open(object, false, name)) return OpenValues.state(OpenValues.OPEN);
+        EndState.Member a = member(object, false, name);
+        if (a == null && ot.dimensionsOf(name).isEmpty()) return OpenValues.state(OpenValues.EMPTY);
+        if (a == null || a.value() instanceof List<?>)
+            throw new IllegalStateException("het attribuut '" + name + "' van " + ot.name + " heeft dimensies of een"
+                    + " tijdlijn, en die heeft in een regelset die uit leeg niets afleidt geen stand");
+        return a.value() instanceof ConstructorValue c && c.payload() == null && Markers.of(ot, name) != null
+                ? OpenValues.marker(c.constructor()) : OpenValues.filled(rend(a.value(), ot, name));
+    }
+
+    /** Whether member {@code name} of {@code object} is open, a characteristic where {@code characteristic}. */
+    private static boolean open(EndState.EndObject object, boolean characteristic, String name) {
+        String key = Namen.norm(name);
+        return object.open().stream()
+                .anyMatch(v -> v.characteristic() == characteristic && Namen.norm(v.name()).equals(key));
     }
 
     /** The answer to a request on which the rules give an evaluation fault, which both adapters send with HTTP 422,

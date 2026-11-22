@@ -225,9 +225,9 @@ def names_in(case, answer, table, choice, place):
     return echo
 
 
-def compare(case, answer, place):
+def compare(case, answer, document, place):
     try:
-        dr.compare(case, answer)
+        dr.compare(case, answer, document)
     except dr.Deviation as a:
         raise dr.Deviation(f"{place}: {a}")
 
@@ -262,21 +262,21 @@ def play_golden(golden, map_, descriptor_path):
                 return dr.read_json(text_)
 
             for name, c in cases:
-                canonical = dr.request_body(c)
+                canonical = dr.request_body(c, doc)
                 for spelling, choose in spellings:
                     body = play_(canonical, table, choose)
                     for out in choices:
                         place = f"{name}, spelling {spelling}, vocabulaire {out}"
                         answer = ask(path, "?vocabulary=" + urllib.parse.quote(out), body, place)
-                        compare(expected_in(c, table, out), answer, place)
+                        compare(expected_in(c, table, out), answer, doc, place)
                         echo += names_in(c, answer, table, out, place)
                     if spelling != "gemengd":
                         place = f"{name}, spelling {spelling}, invoervocabulaire {spelling}"
                         answer = ask(path, "?inputVocabulary=" + urllib.parse.quote(spelling), body, place)
-                        compare(c, answer, place)
+                        compare(c, answer, doc, place)
                 place = f"{name}, standaardvocabulaire {default_} van {default_path}"
                 answer = ask(default_path, "", canonical, place)
-                compare(expected_in(c, table, default_), answer, place)
+                compare(expected_in(c, table, default_), answer, doc, place)
                 echo += names_in(c, answer, table, default_, place)
                 # a pinned vocabulary reads only its own effective names: another spelling is refused, by name
                 other, fixed = table.vocabularies[0], table.vocabularies[-1]

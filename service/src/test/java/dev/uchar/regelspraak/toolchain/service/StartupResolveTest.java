@@ -43,26 +43,6 @@ class StartupResolveTest {
         assertTrue(f.violations().stream().anyMatch(s -> s.kind() == Violation.Kind.MALFORMED), f.getMessage());
     }
 
-    /** A rule set that infers nothing from an empty value, uchar's golden, as its source and as its document: the answer
-     *  has no form for an open member, so the start is refused, also with markers allowed. */
-    @Test
-    void a_rule_set_with_open_values_refuses_start() throws IOException {
-        var golden = TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-afleiden-uit-leeg");
-        String descriptor = """
-            { "service": {"name":"open","version":"1"},
-              "entrypoints": [ { "name":"vindloon","path":"vindloon", "scope": {"ruleNames": ["vindloon"]},
-                "input": ["Vondst"], "output": ["Vondst.vindloon"], "scopeCheckOptOut": true } ],
-              "parameters": {} }""";
-        ClassLoader cl = Thread.currentThread().getContextClassLoader();
-        String source = Files.readString(golden.resolve("source.rgs")), document = Files.readString(golden.resolve("ir.json"));
-        for (CoreConfig config : List.of(CoreConfig.strict(), CoreConfig.withMarkers()))
-            for (ServiceError f : List.of(
-                    assertThrows(ServiceError.class, () -> DecisionCore.assemble(descriptor, Map.of("bron.rgs", source), config, cl)),
-                    assertThrows(ServiceError.class, () -> DecisionCore.buildFromDocument(descriptor, document, config, cl, null))))
-                assertTrue(f.violations().stream().anyMatch(v -> v.kind() == Violation.Kind.UNSUPPORTED
-                        && v.field().equals("source") && v.message().contains("Afleiden uit leeg: nee")), f.getMessage());
-    }
-
     /** Rule bijvoeglijk writes the een-form over the adjectival characteristic {@code minderjarig}, on line 6. */
     private static final String UNRESOLVED = """
         Objecttype de Passagier

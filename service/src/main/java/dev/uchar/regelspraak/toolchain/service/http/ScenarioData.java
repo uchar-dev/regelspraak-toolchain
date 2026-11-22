@@ -170,7 +170,8 @@ final class ScenarioData {
                 for (TimeWindow w : k.periods()) p.addObject().put("from", w.van().toString()).put("to", w.until().toString());
                 periods.put(k.characteristic(), p);
             }
-            input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods));
+            // a situation asserts a characteristic or leaves it out: it has no sentence that one stands not to hold
+            input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods, Set.of()));
         }
         return FixpointGivens.fixpoint(session.standing(), input, model, ng);
     }

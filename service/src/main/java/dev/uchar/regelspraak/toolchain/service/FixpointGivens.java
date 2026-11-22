@@ -81,19 +81,22 @@ public final class FixpointGivens {
      * otherwise), {@code timeline}, or for a dimensioned attribute {@code cells}, a list of nodes with {@code labels}
      * (as uchar keys a cell) and {@code value}, keyed case-insensitively; {@code characteristics} the characteristics
      * the input set, case-insensitively, and {@code periods} per time-dependent characteristic the input gave periods
-     * those periods, as {@code from}, {@code to} nodes ({@link #periodNodes}), keyed case-insensitively. Its object in
+     * those periods, as {@code from}, {@code to} nodes ({@link #periodNodes}), keyed case-insensitively; {@code absent}
+     * the characteristics the input states not to hold ({@link OpenValues}), by their declared names. Its object in
      * the session is the one uchar's reading labels so ({@link EndState.EndObject#label}).
      */
     public record InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
-                               Map<String, ArrayNode> periods) {}
+                               Map<String, ArrayNode> periods, Set<String> absent) {}
 
     /**
      * The input objects of a request, in the order of {@code labels}, as uchar's reading {@code standing} gives what
      * their bean fields hold without the write-back ({@link EndState.Member#given}): the attributes that hold a value
      * and the characteristics that hold. Of a dimensioned member the filled cells are, in the order of {@code model}'s
-     * labels.
+     * labels. {@code absent} holds per label the characteristics the request states not to hold, which no bean field
+     * holds.
      */
-    public static List<InputObject> inputOf(EndState standing, List<String> labels, RegelSpraakModel model, Naming ng) {
+    public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
+                                            RegelSpraakModel model, Naming ng) {
         Map<String, EndState.EndObject> labelled = new HashMap<>();
         for (EndState.EndObject o : standing.objects()) if (o.label() != null) labelled.put(o.label(), o);
         List<InputObject> sink = new ArrayList<>();
@@ -110,7 +113,7 @@ public final class FixpointGivens {
                 else if (m.given() instanceof List<?> segments) periods.put(m.name(), periodNodes(segments));
             }
             sink.add(new InputObject(label, attributes(typeOf(o, model), given(o), model, ng), characteristics,
-                    periods));
+                    periods, absent.getOrDefault(label, Set.of())));
         }
         return sink;
     }
@@ -186,10 +189,7 @@ public final class FixpointGivens {
      * @throws UnrenderableValue a value in a form this view does not show
      */
     public static ObjectNode fixpoint(EndState standing, List<InputObject> input, RegelSpraakModel model, Naming ng) {
-        for (EndState.EndObject o : standing.objects())
-            if (!o.open().isEmpty())
-                throw new UnrenderableValue("het lid '" + o.open().get(0).name() + "' van een object van " + o.type()
-                        + " staat open, en dat toont het fixpunt niet");
+        OpenValues.refuseMade(model, standing);
         // every object of the session, those of the input by their label and the made ones, with its type
         Map<Object, ObjectType> type = new IdentityHashMap<>();
         Map<Object, EndState.EndObject> held = new IdentityHashMap<>();
@@ -253,7 +253,7 @@ public final class FixpointGivens {
         Map<Object, ArrayNode[]> members = new IdentityHashMap<>();
         for (Object o : type.keySet()) {
             InputObject in = entered.get(o);
-            Map<String, ObjectNode> given = in != null ? in.attributes()
+            Map<String, ObjectNode> given = in != null ? standing(in.attributes(), held.get(o).open())
                     : attributes(type.get(o), given(held.get(o)), model, ng);
             members.put(o, new ArrayNode[]{
                     valuesOf(type.get(o), given, values.getOrDefault(o, Map.of()), made.containsKey(o), model, ng),
@@ -277,6 +277,8 @@ public final class FixpointGivens {
             name(on, "objectType", ng.objectType(type.get(o).name), type.get(o).name);
             on.set("values", members.get(o)[0]);
             on.set("characteristics", members.get(o)[1]);
+            if (OpenValues.in(model))
+                on.set("open", openOf(type.get(o), held.get(o).open(), entered.get(o).absent(), ng));
         }
         ArrayNode madeNode = n.putArray("madeObjects");
         for (Object o : madeObjects) {
@@ -325,6 +327,55 @@ public final class FixpointGivens {
             if (x[1] == null) in.putNull("subject"); else in.put("subject", x[1]);
         }
         return n;
+    }
+
+    /** The input {@code attributes} of an object without its members that are {@code open}: the input of those does not
+     *  stand. */
+    private static Map<String, ObjectNode> standing(Map<String, ObjectNode> attributes, List<EndState.Open> open) {
+        if (open.isEmpty()) return attributes;
+        Map<String, ObjectNode> sink = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        sink.putAll(attributes);
+        for (EndState.Open v : open) if (!v.characteristic()) sink.remove(v.name());
+        return sink;
+    }
+
+    /** The members of an object of type {@code ot} that are {@code open}, in a strict rule set ({@link OpenValues}): its
+     *  attributes and then its characteristics, each in declaration order, the nearest type of its chain first. Where the
+     *  input gave the member a value, which does not stand beside a writer that is open, it is {@code input}: of an
+     *  attribute its value, of a characteristic its state, {@code holdsNot} where it is among {@code absent}. */
+    private static ArrayNode openOf(ObjectType ot, List<EndState.Open> open, Set<String> absent, Naming ng) {
+        Map<String, EndState.Open> attributes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Map<String, EndState.Open> characteristics = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        for (EndState.Open v : open) (v.characteristic() ? characteristics : attributes).put(v.name(), v);
+        ArrayNode sink = NF.arrayNode();
+        for (ObjectType t : ot.chain())
+            for (String a : t.attributes.keySet()) {
+                EndState.Open v = attributes.remove(a);
+                if (v == null) continue;
+                ObjectNode rn = sink.addObject();
+                name(rn, "attribute", ng.attribute(ot, a), a);
+                if (v.given() != null) {
+                    ObjectNode given = NF.objectNode();
+                    java(given, v.given(), ot.attribute(a), a, ng);
+                    rn.set("input", given.get("value"));
+                }
+                unit(rn, ot.attribute(a));
+            }
+        for (ObjectType t : ot.chain())
+            for (String k : t.characteristics) {
+                EndState.Open v = characteristics.remove(k);
+                if (v == null) continue;
+                ObjectNode rn = sink.addObject();
+                name(rn, "characteristic", ng.characteristic(ot, k), k);
+                if (absent.contains(k)) rn.set("input", OpenValues.state(OpenValues.HOLDS_NOT));
+                else if (v.given() != null)
+                    throw new IllegalStateException("het kenmerk '" + k + "' staat open terwijl de invoer het zet; een"
+                            + " schrijver kent een kenmerk alleen toe");
+            }
+        if (!attributes.isEmpty() || !characteristics.isEmpty())
+            throw new IllegalStateException("het fixpunt geeft de open leden " + attributes.keySet() + " en "
+                    + characteristics.keySet() + ", die het objecttype '" + ot.name + "' niet declareert");
+        return sink;
     }
 
     /** The attribute values of an object of type {@code ot} at the fixpoint, in declaration order: a derived value

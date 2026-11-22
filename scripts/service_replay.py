@@ -13,11 +13,13 @@ Uitvoer: regels "<sleutel>\\t<STATUS>\\t<detail>" in de volgorde van de invoer, 
            (detail: de vorm); de andere cases van de golden spelen door;
   PLAYED   met sleutel "<golden>": elke case die de dienst draagt gaf de gepinde verwachtingen, en minstens één
            speelde (detail: het aantal gespeelde cases);
-  EXCLUDE  met sleutel "<golden>": een golden zonder casebestand of vorm, of een document met een onopgeloste naam of
-           dat uit leeg niets afleidt, waarop de dienst niet start (detail: de weigering);
+  EXCLUDE  met sleutel "<golden>": een golden zonder casebestand of vorm, of een document met een onopgeloste naam,
+           waarop de dienst niet start (detail: de weigering);
   FAIL     met sleutel "<golden>": een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is
            (detail: wat).
-Een golden waarvan geen case speelt, heeft alleen haar EXCLUDE-regels.
+Een golden waarvan geen case speelt, heeft alleen haar EXCLUDE-regels. In een document dat uit leeg niets afleidt
+(inferFromEmpty false) gaat een kenmerk dat vaststaand niet geldt (characteristicsAbsent) als {"state": "holdsNot"} in het
+verzoek, en leest een verwachting de stand van haar lid; de dienst moet daar de uitleg weigeren.
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
 haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vijf velden erbij: het
@@ -55,7 +57,6 @@ import urllib.request
 REGELSPRAAK = os.path.join(os.path.dirname(os.path.abspath(__file__)), os.pardir, "bin", "regelspraak")
 STARTUP_SECONDS = 120  # seconden; een dienst die dan nog geen poort noemt, is een FAIL
 UNRESOLVED_START = "dienst start niet: de bron draagt een onopgeloste naam"  # DecisionCore.unresolvedName
-OPEN_VALUES_START = "de regelset leidt uit leeg niets af"  # DecisionCore.openValues
 FORM_LISTS = ("rules", "objectCreations", "allocations", "consistencies", "uniquenesses", "factCreations",
                "prioritizedDefaults")
 
@@ -146,8 +147,14 @@ def cells_of(node, place):
                       for c in node["cells"]]}
 
 
-def request_body(case):
-    """Het verzoek van een casebestand."""
+def strict(document):
+    """Of het document uit leeg niets afleidt (inferFromEmpty false, uchars RUNTIME-SEMANTICS ch. 1.5): het verzoek en
+    het antwoord van de dienst geven er een stand."""
+    return document.get("inferFromEmpty") is False
+
+
+def request_body(case, document):
+    """Het verzoek van een casebestand van `document`."""
     v = {}
     if case.get("asOfDate"):
         v["rekendatum"] = case["asOfDate"]
@@ -167,6 +174,12 @@ def request_body(case):
         if attr:
             inst["attributes"] = attr
         characteristics = {k: True for k in i.get("characteristics") or []}
+        # een kenmerk dat vaststaand niet geldt: in een document dat uit leeg niets afleidt een stand, anders false
+        for k in i.get("characteristicsAbsent") or []:
+            if norm(k) in [norm(c) for c in characteristics]:
+                raise NotExpressible(f"kenmerk {k!r} staat in beide lijsten van de case, en het verzoek geeft een kenmerk"
+                                     f" één keer ({i['label']})")
+            characteristics[k] = {"state": "holdsNot"} if strict(document) else False
         # een tijdsafhankelijk kenmerk neemt de perioden waarin het geldt, zoals de case ze geeft
         for k, periods in (i.get("characteristicTimelines") or {}).items():
             characteristics[k] = {"periods": [{"from": p["from"], "to": p["to"]} for p in periods]}
@@ -185,9 +198,9 @@ def selectors(case):
     out = []
     for e in case["expected"]:
         kind = e["kind"]
-        if kind in ("attributeValue", "attributeEmpty", "cellValue", "cellEmpty", "attributeTimeline"):
+        if kind in ("attributeValue", "attributeEmpty", "attributeOpen", "cellValue", "cellEmpty", "attributeTimeline"):
             out.append(types[e["label"]] + "." + e["attribute"])
-        elif kind in ("characteristicPresent", "characteristicAbsent"):
+        elif kind in ("characteristicPresent", "characteristicAbsent", "characteristicOpen"):
             out.append(types[e["label"]] + ":" + e["characteristic"])
     return out
 
@@ -290,7 +303,36 @@ def by_name(members):
     return {norm(k): v for k, v in members.items()}
 
 
-def compare(case, answer):
+# per soort verwachting zonder waarde de stand die een dienst van een document dat uit leeg niets afleidt, antwoordt
+STATES = {"attributeEmpty": "empty", "attributeOpen": "open", "characteristicPresent": "holds",
+          "characteristicAbsent": "holdsNot", "characteristicOpen": "open"}
+
+
+def compare_state(e, members, place):
+    """Vergelijk verwachting `e` met de stand van haar lid in `members`, de attributen of kenmerken van de instantie in het
+    antwoord van een dienst waarvan het document uit leeg niets afleidt."""
+    name = norm(e.get("attribute", e.get("characteristic")))
+    if name not in members:
+        raise Deviation(f"{place}: het antwoord noemt het lid niet")
+    given = members[name]
+    if not isinstance(given, dict) or not isinstance(given.get("state"), str):
+        raise Deviation(f"{place}: het antwoord geeft het lid zonder stand: {given}")
+    if e["kind"] in STATES:
+        want = {"state": STATES[e["kind"]]}
+        if given != want:
+            raise Deviation(f"{place}: verwacht {want}, kreeg {given}")
+        return
+    if e["value"] is None:
+        raise NotExpressible(f"attributeValue zonder waarde ({place})")
+    m = marker_of(e["value"], place) if "constructor" in e["value"] else None
+    if m is not None:
+        if list(given) != ["state", "marker"] or given["state"] != "marker" or norm(given["marker"]) != m:
+            raise Deviation(f"{place}: verwacht de marker {m}, kreeg {given}")
+    elif list(given) != ["state", "value"] or given["state"] != "filled" or not equal(e["value"], given["value"], place):
+        raise Deviation(f"{place}: verwacht {json.dumps(e['value'])}, kreeg {given}")
+
+
+def compare(case, answer, document):
     """Zet een Afwijking bij de eerste verwachting die het antwoord niet geeft. Dit leest het
     HTTP-antwoord zelf: uchars DroolsBackend.vergelijk oordeelt over een sessie in het geheugen, en
     die gaat niet over de lijn; deze gate toetst wat de dienst stuurt. Een attribuut of kenmerk zoekt het op zijn
@@ -302,7 +344,13 @@ def compare(case, answer):
         kind = e["kind"]
         place = f"verwachting {n} ({kind} {e.get('label', '')} {e.get('attribute', e.get('characteristic', ''))}" \
                 + (f" {e['labels']}" if "labels" in e else "") + ")"
-        if kind in ("cellValue", "cellEmpty"):
+        if strict(document) and kind in ("attributeValue", "attributeEmpty", "attributeOpen", "characteristicPresent",
+                                         "characteristicAbsent", "characteristicOpen"):
+            members = inst.get(e["label"], {}).get("attributes" if "attribute" in e else "characteristics", {})
+            compare_state(e, by_name(members), place)
+        elif kind in ("attributeOpen", "characteristicOpen"):
+            raise Deviation(f"{place}: in een document dat uit leeg afleidt, staat niets open")
+        elif kind in ("cellValue", "cellEmpty"):
             attrs = by_name(inst.get(e["label"], {}).get("attributes", {}))
             cells = attrs.get(norm(e["attribute"]))
             if not isinstance(cells, dict) or not isinstance(cells.get("cells"), list):
@@ -411,8 +459,6 @@ class Service:
                 # replay faults only when the evaluation reaches the node (WF-044)
                 if UNRESOLVED_START in message:
                     raise NotExpressible(f"de dienst start niet op een onopgeloste naam: {message[:600]}")
-                if OPEN_VALUES_START in message:
-                    raise NotExpressible(f"de dienst start niet op open waarden: {message[:600]}")
                 raise Deviation(f"de dienst start niet (exit {self.process.returncode}): {message[:600]}")
             time.sleep(0.05)
         raise Deviation(f"de dienst noemt na {STARTUP_SECONDS} s geen poort")
@@ -504,6 +550,14 @@ def explained(service, path, request, answer, name, document, scope):
     undetermined = sum(z.count("niet is vast te stellen") for z in sentences)
     computations = sum(1 for roots in parts if computed(roots))
     return len(sentences), conditions, undetermined, computations, read_links(parts, request, document, scope, name)
+
+
+def unexplained(service, path, request, name):
+    """De dienst weigert de uitleg van een regelset die uit leeg niets afleidt met een 400 UNSUPPORTED op explanation."""
+    status, text_ = service.ask("POST", path + "?explanation=true", request)
+    violations = json.loads(text_).get("violations", []) if status == 400 else []
+    if [(v["field"], v["kind"]) for v in violations] != [("explanation", "UNSUPPORTED")]:
+        raise Deviation(f"{name}: met uitleg geen 400 UNSUPPORTED op explanation, maar {status} {text_[:300]}")
 
 
 def read_links(parts, request, document, scope, place):
@@ -647,7 +701,7 @@ def play(golden, map_, descriptor_path=None, explanation=False):
         requests = []
         for name, c in cases:
             try:
-                requests.append((name, request_body(c), c))
+                requests.append((name, request_body(c, document), c))
             except NotExpressible as n:
                 excluded.append((f"{golden}/{name}", "EXCLUDE", str(n)))
         if not requests:
@@ -680,13 +734,15 @@ def play(golden, map_, descriptor_path=None, explanation=False):
                     if status != 200:
                         raise Deviation(f"{name}: {status} {text_[:500]}")
                     try:
-                        compare(c, read_json(text_))
+                        compare(c, read_json(text_), document)
                     except Deviation as a:
                         raise Deviation(f"{name}: {a}")
                     except NotExpressible as n:
                         excluded.append((f"{golden}/{name}", "EXCLUDE", str(n)))
                         continue
-                    if explanation:
+                    if explanation and strict(document):
+                        unexplained(service, path, v, name)
+                    elif explanation:
                         for k, n in enumerate(explained(service, path, v, read_json(text_), name, document, scope)):
                             totals[k] += n
                     played += 1
@@ -722,7 +778,7 @@ def play_red(name, map_):
     requests = []
     for case_name, c in cases:
         try:
-            requests.append((case_name, request_body(c), c))
+            requests.append((case_name, request_body(c, document), c))
         except NotExpressible as n:
             out.append((f"{name}/{case_name}", "REFUSED", f"het verzoek drukt de case niet uit: {n}"))
     if not requests:

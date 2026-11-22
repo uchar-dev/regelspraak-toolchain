@@ -11,6 +11,8 @@ import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
+import dev.uchar.regelspraak.refusal.Reason;
+import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 
@@ -241,7 +243,8 @@ public final class DescriptorLoader {
     /** Whether the answer can carry the member output selector {@code sel} names: a time-dependent characteristic it
      *  cannot, since the answer gives a characteristic as a boolean and the bean holds its true periods; nor an
      *  attribute of a sum type that is not that of an attribute with absence markers ({@link Markers}), which only a
-     *  {@code uchar-ir-v1} document of another producer declares and for which the answer has no form. A selector
+     *  {@code uchar-ir-v1} document of another producer declares and for which the answer has no form; nor, in a strict
+     *  rule set, an attribute that has no state ({@link #stateless}). A selector
      *  {@link #validateOutput} refuses has its violation there. */
     private static void answerable(RegelSpraakModel model, String sel, String field, List<Violation> sink) {
         OutputSelector u = OutputSelector.parse(sel);
@@ -251,12 +254,32 @@ public final class DescriptorLoader {
             sink.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "attribuut '" + u.member() + "' op objecttype '"
                     + u.objectType() + "' heeft het sum type '" + sum.domain() + "', dat geen attribuut met markers is;"
                     + " het antwoord van de dienst heeft er geen vorm voor"));
+        if (a != null && OpenValues.in(model)) stateless(model, ot, u, a, field, sink);
         Designatable k = ot == null || !u.characteristic() ? null : characteristic(ot, u.member());
         if (k == null) return;
         if (RequestMapper.isTemporalCharacteristic(ot, k.name()))
             sink.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "kenmerk '" + u.member() + "' op objecttype '"
                     + u.objectType() + "' is tijdsafhankelijk; het antwoord van de dienst geeft een kenmerk als"
                     + " boolean en draagt geen perioden"));
+    }
+
+    /** Adds the violation of attribute {@code a} of {@code ot} that has no state in a strict rule set ({@link OpenValues}):
+     *  a dimensioned one, of whose cells uchar's RUNTIME-SEMANTICS ch. 1.5 does not say whether they are open, and one
+     *  without a bean field of its own on an object the selector selects, whose input uchar's end state does not give. */
+    private static void stateless(RegelSpraakModel model, ObjectType ot, OutputSelector u, Designatable a, String field,
+                                  List<Violation> sink) {
+        String reason = null;
+        if (!ot.dimensionsOf(a.name()).isEmpty())
+            reason = "is gedimensioneerd, en een cel heeft in een regelset die uit leeg niets afleidt geen stand";
+        else
+            for (ObjectType t : model.objectTypes.values()) {
+                Reason displaced = !t.isA(ot) ? null : FactModelGenerator.displacedMember(
+                        FactModelGenerator.displacements(model), t, a.name(), false);
+                if (displaced != null) reason = "heeft geen stand: " + displaced.text();
+            }
+        if (reason != null)
+            sink.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "attribuut '" + u.member() + "' op objecttype '"
+                    + u.objectType() + "' " + reason));
     }
 
     // ---- model lookups, by the name equality of uchar's case reader ----

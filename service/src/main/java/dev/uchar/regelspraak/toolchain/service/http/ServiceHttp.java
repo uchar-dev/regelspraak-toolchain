@@ -23,6 +23,7 @@ import dev.uchar.regelspraak.toolchain.service.EvaluationFault;
 import dev.uchar.regelspraak.toolchain.service.Limit;
 import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
 import dev.uchar.regelspraak.toolchain.service.OpenApiEmitter;
+import dev.uchar.regelspraak.toolchain.service.OpenValues;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 import dev.uchar.regelspraak.toolchain.service.ValueCoder;
 import dev.uchar.regelspraak.toolchain.service.RequestOptions;
@@ -68,7 +69,8 @@ import java.util.concurrent.TimeoutException;
  *       uchar's sentence as {@code refusal}; the list of all {@code skipped} (marker) names across the service, the
  *       descriptor {@code parameters} defaults verbatim, the {@code parameterSets} and the {@code periodWarnings}. A
  *       model with vocabularies adds {@code vocabularies} ({@link Completeness}), and an entry point with a default
- *       vocabulary names it.</li>
+ *       vocabulary names it. A strict rule set ({@link OpenValues}) adds {@code "inferFromEmpty": false} and
+ *       {@code completeInput}, the members whose input is complete.</li>
  *   <li>{@code GET /openapi}: the OpenAPI document of the service ({@link #openapi}), the one
  *       {@link OpenApiEmitter#emit} writes over the core's descriptor and model, in {@link OpenApiEmitter#toBytes}'s
  *       canonical bytes, so that {@code bin/regelspraak openapi} writes the same file. {@code ?vocabulary=<name>}
@@ -599,6 +601,12 @@ public final class ServiceHttp {
 
         // the vocabularies, each with the declarations an answer in it names canonically; absent without any
         if (!core.model().vocabularies.isEmpty()) root.set("vocabularies", Completeness.info(core.model()));
+
+        // a strict rule set, and the members whose input is complete; absent for any other
+        if (OpenValues.in(core.model())) {
+            root.put("inferFromEmpty", false);
+            root.set("completeInput", OpenValues.completeInput(core.model()));
+        }
 
         return root;
     }

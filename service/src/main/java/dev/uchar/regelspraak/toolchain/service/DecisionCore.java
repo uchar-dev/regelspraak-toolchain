@@ -221,7 +221,6 @@ public final class DecisionCore {
         // only validate the descriptor against a well-formed model — a resolve failure already dominates
         FormIndex forms = FormIndex.of(model, model.prioritizedDefaults);
         if (startErrors.isEmpty()) startErrors.addAll(DescriptorLoader.validate(descriptor, model, forms));
-        startErrors.addAll(openValues(model));
         if (!startErrors.isEmpty())
             throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
         descriptor = DescriptorLoader.declared(descriptor, model);
@@ -254,7 +253,7 @@ public final class DecisionCore {
             try {
                 com.fasterxml.jackson.databind.JsonNode tree = documentTree(UcharBuild.document(scoped));
                 build = UcharBuild.assemble(tree, DroolsBackend.Branch.EXEC_MODEL);
-                if (ep.explains()) {
+                if (ep.explains() && Verbaliser.withoutExplanation(model) == null) {
                     explanationBuild = UcharBuild.assemble(tree, DroolsBackend.Branch.EXEC_MODEL, true);
                     explained = Verbaliser.Document.of(IrLoader.loadWithPositions(tree))
                             .withOutside(outsideScope(model, scoped));
@@ -291,15 +290,6 @@ public final class DecisionCore {
         List<String> warnings = periodWarnings(model, sets);
 
         return new DecisionCore(descriptor, model, perPath, sets, defaults, warnings, config.detail(), forms, null);
-    }
-
-    /** The violation of a rule set that infers nothing from an empty value ({@code Afleiden uit leeg: nee}, uchar's
-     *  RUNTIME-SEMANTICS ch. 1.5): the answer has no form for a member that is open, and null or false would say that it
-     *  stands. */
-    private static List<Violation> openValues(RegelSpraakModel model) {
-        return model.inferFromEmpty() ? List.of() : List.of(Violation.of(Violation.Kind.UNSUPPORTED, "source",
-                "de regelset leidt uit leeg niets af (Afleiden uit leeg: nee), en het antwoord van de dienst heeft geen"
-                        + " vorm voor een lid dat openstaat"));
     }
 
     /** The {@code uchar-ir-v1} document uchar's emitter wrote, as a tree. */
@@ -360,7 +350,6 @@ public final class DecisionCore {
         ServiceDescriptor descriptor = DescriptorLoader.read(descriptorJson);
         FormIndex forms = FormIndex.of(model, loaded.prioritizedDefaults());
         List<Violation> startErrors = DescriptorLoader.validate(descriptor, model, forms);
-        startErrors.addAll(openValues(model));
         if (!startErrors.isEmpty())
             throw new ServiceError("dienst start niet: descriptor/model-validatie faalt", startErrors);
         descriptor = DescriptorLoader.declared(descriptor, model);
@@ -373,7 +362,8 @@ public final class DecisionCore {
         String refusal = null, construct = null;
         try {
             build = UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL);
-            if (descriptor.entrypoints().stream().anyMatch(ServiceDescriptor.Entrypoint::explains)) {
+            if (Verbaliser.withoutExplanation(model) == null
+                    && descriptor.entrypoints().stream().anyMatch(ServiceDescriptor.Entrypoint::explains)) {
                 explanationBuild = UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL, true);
                 explained = Verbaliser.Document.of(IrLoader.loadWithPositions(document));
             }
@@ -734,7 +724,8 @@ public final class DecisionCore {
 
     /**
      * Why the entry point at {@code path} gives no explanation, the sentence of the 400 a request for one gets, or null
-     * where it gives one: the descriptor sets {@code explanation} to false.
+     * where it gives one: the descriptor sets {@code explanation} to false, or the rule set is strict
+     * ({@link Verbaliser#withoutExplanation}).
      *
      * @throws UnknownPath    a path no entry point has
      * @throws NonExecutable  an entry point uchar does not carry
@@ -743,10 +734,12 @@ public final class DecisionCore {
         return withoutExplanation(entrypointAt(path));
     }
 
-    private static String withoutExplanation(Entrypoint ep) {
-        return ep.explanationBuild() != null ? null
-                : "het entrypoint '" + ep.descriptor().name() + "' geeft geen uitleg: de descriptor zet explanation op"
-                + " false";
+    private String withoutExplanation(Entrypoint ep) {
+        if (ep.explanationBuild() != null) return null;
+        String reason = ep.descriptor().explains() ? Verbaliser.withoutExplanation(model)
+                : "de descriptor zet explanation op false";
+        return "het entrypoint '" + ep.descriptor().name() + "' geeft geen uitleg: "
+                + java.util.Objects.requireNonNull(reason, "een entrypoint dat uitlegt, heeft een build met lezingen");
     }
 
     /**
@@ -815,25 +808,24 @@ public final class DecisionCore {
         mr.world().beans().forEach((id, bean) -> label.put(bean, id));
         DroolsBackend.Observer observer = options.trace() || options.coverage()
                 ? new DroolsBackend.Observer(label::get) : null;
-        List<String> inputLabels = List.copyOf(mr.world().beans().keySet());
         Executor executor = new Executor(fired);
         Executor.Outcome outcome;
         try {
             outcome = executor.fire(mr.world(), observer, expectations, options.explanation());
         } catch (EvaluationFault error) {
             if (!withDetail) throw error;
-            throw error.withDetail(detail(options, ep, observer, error.standing(), null, inputLabels, output));
+            throw error.withDetail(detail(options, ep, observer, error.standing(), null, mr, output));
         } catch (NoFixpoint none) {
             if (!withDetail) throw none;
-            throw none.withDetail(detail(options, ep, observer, null, none.getMessage(), inputLabels, output));
+            throw none.withDetail(detail(options, ep, observer, null, none.getMessage(), mr, output));
         } catch (Limit limit) {
             if (!withDetail) throw limit;
-            throw limit.withDetail(detail(options, ep, observer, limit.standing(), null, inputLabels, output));
+            throw limit.withDetail(detail(options, ep, observer, limit.standing(), null, mr, output));
         }
         ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());
         if (options.explanation()) addExplanation(answer, outcome, mr, ep, output, options.explanationParts());
-        if (withDetail) answer.setAll(detail(options, ep, observer, outcome.endState(), null, inputLabels, output));
+        if (withDetail) answer.setAll(detail(options, ep, observer, outcome.endState(), null, mr, output));
         return new Assessment(answer, outcome.comparison());
     }
 
@@ -843,14 +835,14 @@ public final class DecisionCore {
      * its matches bound ({@code labels}) and how often its rules fired ({@code aantal}), as uchar's {@code observer}
      * recorded them; {@code dekking}, per form of the entry point's build whether a rule of it fired
      * ({@link DroolsBackend#coverage}: {@code FIRED} or {@code NOT_FIRED}); and {@code fixpunt}, what stands at the
-     * fixpoint with the instances of the request, in the order of {@code inputLabels}, as its input, read off
+     * fixpoint with the instances of the request, in their order in {@code mr}, as its input, read off
      * {@code standing}, what the session holds there as uchar reads it, the input of the instances and the values the
      * creations assigned to the objects they made among it ({@link FixpointGivens}), or {@code fixpointError} with the
      * reason a value of it cannot be shown, or {@code withoutFixpoint}, uchar's sentence of a run that reached no
      * fixpoint (null at a fixpoint): then there is nothing to show. The playground gives a scenario the same three.
      */
     private ObjectNode detail(RequestOptions options, Entrypoint ep, DroolsBackend.Observer observer,
-                              EndState standing, String withoutFixpoint, List<String> inputLabels, Naming naming) {
+                              EndState standing, String withoutFixpoint, RequestMapper.Result mr, Naming naming) {
         ObjectNode n = NF.objectNode();
         if (options.trace()) {
             ArrayNode trace = n.putArray("trace");
@@ -875,7 +867,8 @@ public final class DecisionCore {
         } else if (options.fixpoint()) {
             try {
                 n.set("fixpoint", FixpointGivens.fixpoint(standing,
-                        FixpointGivens.inputOf(standing, inputLabels, model, naming), model, naming));
+                        FixpointGivens.inputOf(standing, List.copyOf(mr.world().beans().keySet()), mr.absent(), model,
+                                naming), model, naming));
             } catch (FixpointGivens.UnrenderableValue o) {
                 n.put("fixpointError", o.getMessage());
             }
