@@ -20,11 +20,13 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The Quarkus adapter and {@code ServiceHttp} over one core of a rule set that infers nothing from an empty value
- * ({@link OpenValuesSource}) give the same answers, with the states of the members, the same 400 for a bare false and the
- * same {@code /info} and OpenAPI document.
+ * ({@link OpenValuesSource}) give the same answers, with the states of the members, the explanation with its parts and the open
+ * inputs, the same 400s and the same {@code /info} and OpenAPI document.
  */
 class OpenValuesParityTest {
 
@@ -71,6 +73,40 @@ class OpenValuesParityTest {
     }
 
     @Test
+    void the_explanation_and_the_open_inputs_are_equal() throws Exception {
+        JsonNode open = compare(core, service, "vondst", "", "true", "true", 200);
+        assertTrue(open.get("explanation").toString().contains("V1: zijn vindloon staat niet vast, want zijn taxatie is niet"
+                + " gegeven"), open.get("explanation").toString());
+        assertEquals(open.get("explanation").size(), open.get("explanationParts").size());
+        assertEquals("taxatie", open.at("/openInputs/0/name").asText());
+        JsonNode one = compare(core, service, "vondst", "", null, "true", 200);
+        assertEquals(open.get("openInputs"), one.get("openInputs"));
+        assertFalse(one.has("explanation"));
+        assertFalse(compare(core, service, "vondst", "", null, "false", 200).has("openInputs"));
+    }
+
+    /** A rule set that is not strict refuses the open inputs, and an entry point that does not explain refuses both. */
+    @Test
+    void the_refusals_of_the_open_inputs_are_equal() throws Exception {
+        String source = OpenValuesSource.SOURCE.replace("Afleiden uit leeg: nee", "").replace(" (volledig gegeven)", "");
+        String without = OpenValuesSource.DESCRIPTOR.replace("\"input\": [],", "\"input\": [], \"explanation\": false,");
+        for (String[] c : new String[][]{{OpenValuesSource.DESCRIPTOR, source, null, "openInputs"},
+                {without, OpenValuesSource.SOURCE, null, "openInputs"},
+                {without, OpenValuesSource.SOURCE, "true", "explanation"}}) {
+            DecisionCore other = DecisionCore.assemble(c[0], java.util.Map.of("b.rgs", c[1]), CoreConfig.strict(),
+                    Thread.currentThread().getContextClassLoader());
+            ServiceHttp jdk = ServiceHttp.bind(other, "127.0.0.1", 0).start();
+            try {
+                JsonNode body = compare(other, jdk, "vondst", "", c[2], "true", 400);
+                assertEquals("UNSUPPORTED", body.at("/violations/0/kind").asText());
+                assertEquals(c[3], body.at("/violations/0/field").asText());
+            } finally {
+                jdk.stop(0);
+            }
+        }
+    }
+
+    @Test
     void info_and_openapi_are_equal() throws Exception {
         DecideResource resource = new DecideResource();
         resource.core = core;
@@ -81,12 +117,21 @@ class OpenValuesParityTest {
     }
 
     private static JsonNode compare(String path, String given, int expected) throws Exception {
+        return compare(core, service, path, given, null, null, expected);
+    }
+
+    /** {@code parts} and {@code openInputs}: the values of their query parameters, null where the request has none. */
+    private static JsonNode compare(DecisionCore core, ServiceHttp service, String path, String given, String parts,
+                                    String openInputs, int expected) throws Exception {
         String request = "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\"" + given + "}]}";
         DecideResource resource = new DecideResource();
         resource.core = core;
-        Response quarkus = resource.process(path, null, null, null, request);
+        Response quarkus = resource.process(path, null, null, null, null, null, null, parts, openInputs, request);
+        String query = (parts == null ? "" : "&explanationParts=" + parts)
+                + (openInputs == null ? "" : "&openInputs=" + openInputs);
         HttpResponse<String> jdk = CLIENT.send(HttpRequest.newBuilder(
-                        URI.create("http://127.0.0.1:" + service.port() + "/" + path))
+                        URI.create("http://127.0.0.1:" + service.port() + "/" + path + (query.isEmpty() ? "" : "?"
+                                + query.substring(1))))
                 .header("Content-Type", "application/json").POST(HttpRequest.BodyPublishers.ofString(request)).build(),
                 HttpResponse.BodyHandlers.ofString());
         assertEquals(expected, jdk.statusCode(), jdk.body());

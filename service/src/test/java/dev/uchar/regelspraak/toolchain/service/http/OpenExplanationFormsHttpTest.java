@@ -209,11 +209,195 @@ class OpenExplanationFormsHttpTest {
                 Thread.currentThread().getContextClassLoader(), null), """
             {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2", "V3"]}},
               {"type": "Vondst", "id": "V1", "characteristics": {"betwist": {"state": "holdsNot"}}},
-              {"type": "Vondst", "id": "V2", "characteristics": {"betwist": true}}, {"type": "Vondst", "id": "V3"}]}""");
+              {"type": "Vondst", "id": "V2", "characteristics": {"betwist": true}}, {"type": "Vondst", "id": "V3"}]}""", "");
         assertFold("is niet kundig, want", "is niet voldaan: niet voor V1 (1 van de 2) (1 lid niet beoordeeld)", answer);
     }
 
+    // ---------------- the quantifiers ----------------
+
+    /** V1 of gewicht 20, V2 of 5 and V3 open, or fewer: what each quantifier says where it stands and where it does not. */
+    @Test
+    void every_quantifier_decided_and_undetermined() throws Exception {
+        String three = "\"gewicht\": 20|\"gewicht\": 5|";
+        assertQuantifier("geen van de", three, "J1 is niet kundig, want", "is niet voldaan: wel voor V1 (1 van de 3)");
+        assertQuantifier("ten minste één van de", three, "J1 is kundig, omdat", "is voldaan: voor V1 (1 van de 3)");
+        assertQuantifier("ten hoogste één van de", "\"gewicht\": 20|\"gewicht\": 30|", "J1 is niet kundig, want",
+                "is niet voldaan: voor V1 en V2 (2 van de 3)");
+        assertQuantifier("precies één van de", "\"gewicht\": 20|\"gewicht\": 30|", "J1 is niet kundig, want",
+                "is niet voldaan: voor V1 en V2 (2 van de 3)");
+        assertQuantifier("ten minste twee van de", "\"gewicht\": 5|\"gewicht\": 5|", "J1 is niet kundig, want",
+                "is niet voldaan: niet voor V1 en V2 (2 van de 3)");
+        // too few members, whatever the open one has
+        assertQuantifier("ten minste twee van de", "", "J1 is niet kundig, want", "is niet voldaan: er is 1 lid");
+        assertQuantifier("ten hoogste twee van de", "|", "J1 is kundig, omdat", "is voldaan: er zijn 2 leden");
+        for (String quantifier : List.of("ten minste twee van de", "ten hoogste één van de", "precies één van de"))
+            assertQuantifier(quantifier, three, "J1: of hij kundig is, staat niet vast, want van V3 is zijn gewicht niet gegeven;",
+                    "is voldaan: wel voor V1, niet voor V2, niet vast voor V3");
+        assertQuantifier("geen van de", "\"gewicht\": 5|", "J1: of hij kundig is, staat niet vast, want van V2 is zijn gewicht niet"
+                + " gegeven;", "is voldaan: niet voor V1, niet vast voor V2");
+    }
+
+    /** {@code vondsten}: the attributes of V1, V2, ..., with a bar between them. */
+    private static void assertQuantifier(String quantifier, String vondsten, String begin, String end) throws Exception {
+        String[] given = vondsten.split("\\|", -1);
+        StringBuilder roles = new StringBuilder(), instances = new StringBuilder();
+        for (int i = 1; i <= given.length; i++) {
+            roles.append(i == 1 ? "" : ", ").append("\"V").append(i).append('"');
+            instances.append(", {\"type\": \"Vondst\", \"id\": \"V").append(i).append("\", \"attributes\": {").append(given[i - 1])
+                    .append("}}");
+        }
+        List<String> texts = texts(ask(VONDST + """
+            Regel kundig
+                geldig altijd
+                    Een Jutter is kundig indien het gewicht van %s vondsten van de Jutter groter is dan 10.
+            """.formatted(quantifier), "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\", \"roles\": {\"vondsten\": ["
+                + roles + "]}}" + instances + "]}"));
+        assertEquals(1, texts.size(), texts.toString());
+        assertTrue(texts.get(0).startsWith(begin) && texts.get(0).endsWith("\" " + end), texts.get(0) + "\nis niet\n" + begin
+                + " … " + end);
+    }
+
+    // ---------------- composites, binders, markers, ground, vocabulary ----------------
+
+    @Test
+    void a_nested_composite_names_the_member_that_keeps_it_open() throws Exception {
+        String source = VONDST + """
+            Regel verkoop
+                geldig altijd
+                    Een Vondst is verkoopbaar indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is betwist
+                    - hij voldoet aan ten minste één van de volgende voorwaarden:
+                      .. zijn gewicht is groter dan 10
+                      .. zijn taxatie is groter dan 100.
+            """;
+        assertSentence("V1: of hij verkoopbaar is, staat niet vast, want zijn taxatie is niet gegeven; voor de regel 'verkoop' staat"
+                + " niet vast: zijn taxatie (niet gegeven) is groter dan 100",
+                ask(source, vondst("\"gewicht\": 5", "\"betwist\": true")));
+        assertSentence("V1 is verkoopbaar, omdat het onderwerp betwist is en zijn gewicht (20) is groter dan 10",
+                ask(source, vondst("\"gewicht\": 20", "\"betwist\": true")));
+    }
+
+    @Test
+    void a_binder_that_is_open_and_one_that_is_leeg_after_a_closure() throws Exception {
+        assertSentence("V1: zijn vindloon staat niet vast, want zijn taxatie is niet gegeven; voor de regel 'vindloon' staat niet"
+                + " vast: de meerwaarde maal 3, met zijn gewicht (5), zijn taxatie (niet gegeven) en de meerwaarde is zijn gewicht"
+                + " plus zijn taxatie (staat niet vast)", ask(VONDST + """
+                Regel vindloon
+                    geldig altijd
+                        Het vindloon van een Vondst moet berekend worden als de meerwaarde maal 3
+                        Daarbij geldt:
+                            de meerwaarde is zijn gewicht plus zijn taxatie.
+                """, vondst("\"gewicht\": 5", "")));
+        String fold = "de som van het gewicht van alle vondsten van de jutter van de Vondst die aan de volgende voorwaarde voldoen:"
+                + " zijn taxatie is gevuld";
+        assertSentence("V1: zijn vindloon staat niet vast, want zijn taxatie is niet gegeven; voor de regel 'vindloon' staat niet"
+                + " vast: de meerwaarde plus 1, met " + fold + " (staat niet vast) en de meerwaarde is " + fold
+                + " (staat niet vast)", ask(VONDST + """
+                Regel vindloon
+                    geldig altijd
+                        Het vindloon van een Vondst moet berekend worden als de meerwaarde plus 1
+                        Daarbij geldt:
+                            de meerwaarde is de som van het gewicht van alle vondsten van de jutter van de Vondst die aan de volgende voorwaarde voldoen: zijn taxatie is gevuld.
+                """, jutter("\"gewicht\": 5", "\"gewicht\": 7")));
+    }
+
+    /** Two rules on one target: the one wrote, and what the other, whose condition holds, gives does not stand. */
+    @Test
+    void what_a_rule_beside_the_writer_gives() throws Exception {
+        assertSentence("V1 heeft als vindloon 8 volgens de regel 'vindloon' (onvoorwaardelijk): zijn gewicht (8); wat de regel"
+                + " 'betwist vindloon' geeft, staat niet vast", ask(VONDST + """
+                Regel vindloon
+                    geldig altijd
+                        Het vindloon van een Vondst moet gesteld worden op zijn gewicht.
+
+                Regel betwist vindloon
+                    geldig altijd
+                        Het vindloon van een Vondst moet gesteld worden op zijn taxatie indien hij betwist is.
+                """, vondst("\"gewicht\": 8", "\"betwist\": true")));
+    }
+
+    @Test
+    void the_stack_of_a_subtype() throws Exception {
+        String source = VONDST + """
+            Regel vindloon
+                geldig altijd
+                    Het vindloon van een Vondst moet gesteld worden op zijn gewicht.
+
+            Regel wrakloon
+                geldig altijd
+                    Het vindloon van een Wrakvondst moet gesteld worden op zijn gewicht maal 2.
+
+            Afwijking van wrakloon: diep wrakloon
+                geldig altijd
+                    Het vindloon van een Wrakvondst moet gesteld worden op 55 indien zijn diepte groter is dan 20.
+            """;
+        assertSentence("W1: zijn vindloon staat niet vast, want zijn diepte is niet gegeven; voor 'diep wrakloon' staat niet vast: zijn"
+                + " diepte (niet gegeven) is groter dan 20; niet aan de beurt: de regel 'wrakloon' (onvoorwaardelijk, 16)",
+                ask(source, "{\"instances\": [{\"type\": \"Wrakvondst\", \"id\": \"W1\", \"attributes\": {\"gewicht\": 8}}]}"));
+        assertSentence("V1 heeft als vindloon 8 volgens de regel 'vindloon' (onvoorwaardelijk): zijn gewicht (8)",
+                ask(source, vondst("\"gewicht\": 8", "")));
+    }
+
+    /** A marker is a value: it is not leeg, and the test on leeg over an attribute that is not given is a closure. */
+    @Test
+    void a_marker_is_a_value() throws Exception {
+        String source = VONDST.replace("    het keurgewicht", "    de herkomst Numeriek (geheel getal) (of onbekend);\n    het"
+                + " keurgewicht") + """
+            Regel zonder herkomst
+                geldig altijd
+                    Een Vondst is beschadigd indien zijn herkomst leeg is.
+
+            Regel onbekende herkomst
+                geldig altijd
+                    Een Vondst is verkoopbaar indien zijn herkomst onbekend is.
+            """;
+        JsonNode open = ask(source, vondst("", ""));
+        assertSentence("V1 is beschadigd, omdat zijn herkomst niet gegeven is; wordt zijn herkomst gegeven, dan kan dit veranderen",
+                open);
+        assertSentence("V1: of hij verkoopbaar is, staat niet vast, want zijn herkomst is niet gegeven; voor de regel 'onbekende"
+                + " herkomst' staat niet vast: zijn herkomst (niet gegeven) is gelijk aan onbekend", open);
+        JsonNode marker = ask(source, vondst("\"herkomst\": {\"marker\": \"onbekend\"}", ""));
+        assertSentence("V1 is niet beschadigd, want niet geldt: zijn herkomst (onbekend) leeg is", marker);
+        assertSentence("V1 is verkoopbaar, omdat zijn herkomst (onbekend) is gelijk aan onbekend", marker);
+    }
+
+    /** The ground of the rule that leaves a characteristic open, and the names of the vocabulary of the answer in the head, the cause
+     *  and openInputs. */
+    @Test
+    void the_ground_and_the_vocabulary_of_an_open_outcome() throws Exception {
+        String source = VONDST.replace("Afleiden uit leeg: nee", "Afleiden uit leeg: nee\n\nVocabulaire register (taal: nl)")
+                .replace("de taxatie Numeriek", "de taxatie (register: getaxeerde waarde) Numeriek")
+                .replace("is verkoopbaar kenmerk", "is verkoopbaar (register: te gelde te maken) kenmerk") + """
+            // Bron: jci1.3:c:BWBR0005291&artikel=5
+            Regel verkoop
+                geldig altijd
+                    Een Vondst is verkoopbaar indien zijn taxatie groter is dan 10.
+
+            Regel vindloon
+                geldig altijd
+                    Het vindloon van een Vondst moet gesteld worden op 3 indien hij niet verkoopbaar is.
+            """;
+        String tail = " voor de regel 'verkoop' staat niet vast: zijn taxatie (niet gegeven) is groter dan 10. Grondslag:"
+                + " jci1.3:c:BWBR0005291&artikel=5";
+        assertSentence("V1: of hij verkoopbaar is, staat niet vast, want zijn taxatie is niet gegeven;" + tail,
+                ask(source, vondst("", "")));
+        JsonNode register = ask(source, vondst("", ""), "&vocabulary=register&openInputs=true");
+        assertSentence("V1: of hij te gelde te maken is, staat niet vast, want zijn getaxeerde waarde is niet gegeven;" + tail, register);
+        assertSentence("V1: zijn vindloon staat niet vast, want het staat niet vast of hij te gelde te maken is; voor de regel"
+                + " 'vindloon' staat niet vast: het onderwerp niet te gelde te maken is (staat niet vast)", register);
+        List<String> taxatie = new ArrayList<>();
+        for (JsonNode i : register.get("openInputs"))
+            if (i.get("name").asText().equals("getaxeerde waarde"))
+                for (JsonNode o : i.get("forOutputs")) taxatie.add(o.get("name").asText());
+        assertEquals(List.of("getaxeerde waarde", "vindloon", "te gelde te maken"), taxatie, register.get("openInputs").toString());
+    }
+
     // ---------------- helpers ----------------
+
+    private static String vondst(String attributes, String characteristics) {
+        return "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\", \"attributes\": {" + attributes + "},"
+                + " \"characteristics\": {" + characteristics + "}}]}";
+    }
 
     private static final String WRAKVERKOOP = """
         Regel verkoopbaar
@@ -237,9 +421,13 @@ class OpenExplanationFormsHttpTest {
     }
 
     private static JsonNode ask(String source, String request) throws Exception {
+        return ask(source, request, "");
+    }
+
+    private static JsonNode ask(String source, String request, String query) throws Exception {
         JsonNode document = json(UcharBuild.document(Resolver.resolve(source)));
         return post(DecisionCore.assemble(descriptor(document), java.util.Map.of("b.rgs", source), CoreConfig.strict(),
-                Thread.currentThread().getContextClassLoader()), request);
+                Thread.currentThread().getContextClassLoader()), request, query);
     }
 
     /** A service with every form of {@code document} in its scope and every member in its output. */
@@ -260,11 +448,11 @@ class OpenExplanationFormsHttpTest {
         return descriptor.toString();
     }
 
-    private static JsonNode post(DecisionCore core, String request) throws Exception {
+    private static JsonNode post(DecisionCore core, String request, String query) throws Exception {
         ServiceHttp service = ServiceHttp.bind(core, "127.0.0.1", 0).start();
         try {
             HttpResponse<String> r = CLIENT.send(HttpRequest.newBuilder(URI.create("http://127.0.0.1:" + service.port()
-                            + "/vormen?explanationParts=true")).header("Content-Type", "application/json")
+                            + "/vormen?explanationParts=true" + query)).header("Content-Type", "application/json")
                     .POST(HttpRequest.BodyPublishers.ofString(request)).build(), HttpResponse.BodyHandlers.ofString());
             assertEquals(200, r.statusCode(), r.body());
             JsonNode answer = json(r.body());
