@@ -77,6 +77,11 @@ import java.util.Map;
  * {@code {"constructor": "onbekend"}}. A marker the attribute does not declare is a
  * {@link Violation.Kind#UNKNOWN_MARKER}, a marker on an attribute without markers a {@link Violation.Kind#WRONG_TYPE}.
  *
+ * <p>In a strict rule set ({@link OpenValues}) a characteristic is {@code true} or {@code {"state": "holds"}} where it
+ * holds, {@code {"state": "holdsNot"}} where it stands not to hold, written under the {@code characteristicsAbsent} of the
+ * case, and left out or null where it is not given; a bare {@code false} is a violation of the type. An attribute that is
+ * left out or null is not given, in the case as in the request.
+ *
  * <p>An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid mismatch, an unknown
  * enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without dimensions are all
  * violations.
@@ -162,10 +167,11 @@ public final class RequestMapper {
     }
 
     /** The mapped world, the id→objecttype map (for the response builder), the violations produced while
-     *  mapping (empty on success), and the values uchar's input refused before any session (EF-004, EF-034, EF-035;
-     *  empty on success). The world is null when uchar refused the input. */
+     *  mapping (empty on success), the values uchar's input refused before any session (EF-004, EF-034, EF-035;
+     *  empty on success), and per id the characteristics the request of a strict rule set ({@link OpenValues}) states not
+     *  to hold, by their declared names, no entry for an id without. The world is null when uchar refused the input. */
     public record Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations,
-                         List<RuntimeException> inputFaults) {}
+                         List<RuntimeException> inputFaults, Map<String, java.util.Set<String>> absent) {}
 
     /** A role link the mapper writes into the case: under the {@code roles} of instance {@code id}, the key
      *  {@code role}, naming {@code doel}; uchar's {@link CaseInput.RoleError} names a refused link the same way. */
@@ -339,7 +345,10 @@ public final class RequestMapper {
             if (refusals.isEmpty()) throw f;
             s.add(Violation.of(Violation.Kind.WRONG_TYPE, refusals.get(0).field(), f.getMessage()));
         }
-        return new Result(input == null ? null : new World(input, date), typePerLabel, s, inputFaults);
+        Map<String, java.util.Set<String>> absent = new LinkedHashMap<>();
+        instances.forEach((id, instance) -> instance.path("characteristicsAbsent").forEach(k ->
+                absent.computeIfAbsent(id, x -> new java.util.LinkedHashSet<>()).add(k.asText())));
+        return new Result(input == null ? null : new World(input, date), typePerLabel, s, inputFaults, absent);
     }
 
     /** The field of the request that wrote the link uchar refused. A link the mapper did not write is a broken promise
@@ -459,7 +468,7 @@ public final class RequestMapper {
             }
             if (isTemporal(ot, canonical)) {
                 JsonNode timeline = timeline(ot, canonical, name, dt, markers, e.getValue(), field, refusals, s);
-                if (timeline != null) objectIn(instance, "attributes").set(canonical, timeline);
+                if (timeline != null && !timeline.isNull()) objectIn(instance, "attributes").set(canonical, timeline);
                 return;
             }
             if (TimelineInput.isTimeline(e.getValue())) {
@@ -468,7 +477,8 @@ public final class RequestMapper {
                 return;
             }
             JsonNode caseValue = attributeValue(e.getValue(), dt, markers, name, field, refusals, s);
-            if (caseValue != null) objectIn(instance, "attributes").set(canonical, caseValue);
+            // a case names the attributes it gives a value; null gives none
+            if (caseValue != null && !caseValue.isNull()) objectIn(instance, "attributes").set(canonical, caseValue);
         });
     }
 
@@ -716,6 +726,11 @@ public final class RequestMapper {
                 return;
             }
             JsonNode v = e.getValue();
+            if (OpenValues.in(model)) {
+                Boolean holds = OpenValues.characteristic(v, name, field, s);
+                if (holds != null) listIn(instance, holds ? "characteristics" : "characteristicsAbsent").add(canonical);
+                return;
+            }
             if (isTemporalCharacteristic(ot, canonical)) {
                 if (!TimelineInput.isPeriods(v)) {
                     RegelSpraakModel.Granularity grid = ot.characteristicGranularityOf(canonical);

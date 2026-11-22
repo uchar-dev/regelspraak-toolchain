@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.resolver.Resolver;
+import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
@@ -46,6 +47,15 @@ class RequestMapperTest {
                   "attributes": { "geboortedatum": "1990-06-15" }, "roles": { "reis": "V1" } } ] }""");
         assertTrue(r.violations().isEmpty(), "onverwachte schendingen: " + r.violations());
         assertEquals(2, r.world().beans().size());
+    }
+
+    /** An attribute that is null is not given, as one the request leaves out. */
+    @Test
+    void a_null_attribute_is_not_given() {
+        var r = map("""
+            { "instances": [ { "type": "Vlucht", "id": "V1", "attributes": { "vluchtdatum": null } } ] }""");
+        assertTrue(r.violations().isEmpty(), "onverwachte schendingen: " + r.violations());
+        assertEquals(null, CaseSession.read(r.world().beans().get("V1"), "getVluchtdatum"));
     }
 
     @Test
