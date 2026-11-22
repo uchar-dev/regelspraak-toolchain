@@ -800,7 +800,7 @@ public final class Verbaliser {
                             + " op dat lid: elk object van de sessie heeft er één per stapel van zijn type");
                 if (d.conflict() != null) sink.add(conflicted(d));
                 else if (d.decider() != null) sink.add(decided(d));
-                else if (open != null && open.open(bean, member, d.characteristic()) != null) sink.add(leftOpen(d));
+                else if (isOpen(d)) sink.add(leftOpen(d));
                 else sink.add(undecided(d));
             }
         }
@@ -856,6 +856,7 @@ public final class Verbaliser {
         private Sentence conflictedIn(PeriodDecisions p, PeriodDecisions.Span s) {
             Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
             standingIn(b, p.member(), s);
+            b.text(", ").leaf(Part.Kind.CONNECTIVE, "want");
             conflict(b, s.conflict(), p.member(), false);
             return b.build();
         }
@@ -898,22 +899,37 @@ public final class Verbaliser {
                 throw new IllegalStateException("de beslisser " + pointer + " van '" + d.member() + "' van " + label
                         + " is een groep-default zonder eigen besluit of waarde");
             requireTarget(decider, d.member());
-            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
-            outcome(b, d.member(), d.characteristic(), d.decider().decision());
-            b.text(" volgens ");
-            name(b, decider);
-            reason(b, decider, d.characteristic());
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label);
+            if (isOpen(d)) {
+                // a rule beside the stack leaves a characteristic open that the stack decided not to attribute
+                openHead(b, d, null);
+                b.open(Part.Kind.VARIANT, Part.meta("decided", false)).text("; ");
+                name(b, decider);
+                b.text(" besliste '");
+                outcome(b, d.member(), d.characteristic(), d.decider().decision());
+                b.text("'");
+                reason(b, decider, d.characteristic());
+                b.close(Part.Kind.VARIANT);
+            } else {
+                b.text(" ");
+                outcome(b, d.member(), d.characteristic(), d.decider().decision());
+                b.text(" volgens ");
+                name(b, decider);
+                reason(b, decider, d.characteristic());
+            }
+            List<Variant> before = turns.stream().filter(t -> t.role() == Role.BEFORE).map(Turn::variant).toList();
+            Variant firstOpen = firstOpen(before);
+            notDecidedVariants(b, before, firstOpen, d);
             List<Variant> after = new ArrayList<>();
             for (Turn t : turns) {
                 switch (t.role()) {
-                    case BEFORE -> notDecidedVariant(b, t.variant(), d);
                     case SIBLING -> {
                         b.open(Part.Kind.VARIANT, Part.meta("decided", false)).text("; ");
                         name(b, t.variant());
                         b.text(" besliste niet anders").close(Part.Kind.VARIANT);
                     }
                     case AFTER -> after.add(t.variant());
-                    case DECIDER -> { }
+                    case BEFORE, DECIDER -> { }
                 }
             }
             for (int i = 0; i < after.size(); i++)
@@ -921,36 +937,41 @@ public final class Verbaliser {
             if (d.characteristic() && Boolean.FALSE.equals(d.decider().decision())
                     && given(member(bean, d.member(), true, null)) != null)
                 b.text("; de invoer kende het kenmerk toe, en dat blijft staan");
-            if (open != null) mayChange(b, decider, turns);
+            if (open != null) mayChange(b, decider, firstOpen);
             ground(b, groundOf(decider), deciderOf(decider));
             return b.build();
         }
 
         /** Dat een uitkomst die beslist is door een sluiting kan veranderen (uchars RUNTIME-SEMANTICS ch. 1.5): een
-         *  initialisatie besliste over een default die open is, of de voorwaarde of de waarde van de beslisser geldt alleen
-         *  zolang een open lid niet gegeven is. */
-        private void mayChange(Sentence.Builder b, Variant decider, List<Turn> turns) {
-            if (isInitialisation(decider))
-                for (Turn t : turns)
-                    if (t.role() == Role.BEFORE && statusOf(t.variant()) == ConditionReading.Status.OPEN) {
-                        laterGiven(b, open.of(readingOf(t.variant())).get(0), label);
-                        return;
-                    }
+         *  initialisatie besliste over een default die open is ({@code firstOpen}), of de voorwaarde of de waarde van de
+         *  beslisser geldt alleen zolang een open lid niet gegeven is. */
+        private void mayChange(Sentence.Builder b, Variant decider, Variant firstOpen) {
+            if (firstOpen != null) {
+                laterGiven(b, open.of(readingOf(firstOpen)).get(0), label);
+                return;
+            }
             ConditionReading r = readingOf(decider);
             List<OpenValue> closed = r == null ? List.of() : open.closedBy(r);
             if (!closed.isEmpty()) laterGiven(b, closed.get(0), label);
         }
 
         private Sentence conflicted(DefaultsDecision d) {
-            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
-            standing(b, d.member(), d.characteristic());
+            Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label);
+            if (isOpen(d)) {
+                openHead(b, d, null);
+                b.text(";");
+            } else {
+                b.text(" ");
+                standing(b, d.member(), d.characteristic());
+                b.text(", ").leaf(Part.Kind.CONNECTIVE, "want");
+            }
             conflict(b, d.conflict(), d.member(), d.characteristic());
             return b.build();
         }
 
         /** Conflict {@code c} na wat het doel houdt: waar het stond en wat elk lid besliste. */
         private void conflict(Sentence.Builder b, DefaultsDecision.Conflict c, String member, boolean characteristic) {
-            b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" er is een conflict");
+            b.text(" er is een conflict");
             if (c.pointer() != null) {
                 b.text(" in de uitzonderingen op ");
                 carrierName(b, variant(c.pointer()));
@@ -986,14 +1007,15 @@ public final class Verbaliser {
             Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label).text(" ");
             standing(b, d.member(), d.characteristic());
             b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" geen variant besliste");
-            for (Turn t : turns) notDecidedVariant(b, t.variant(), d);
+            List<Variant> variants = turns.stream().map(Turn::variant).toList();
+            notDecidedVariants(b, variants, firstOpen(variants), d);
             return b.build();
         }
 
-        /** Niemand besliste, want een default van de stapel staat open (uchars RUNTIME-SEMANTICS ch. 1.5): dat het doel niet
-         *  vaststaat, met wat de eerste open default openhoudt; dan per variant van de stapel, in haar volgorde, wat zij
-         *  vond. Onder een open default is geen default aan de beurt; in een uitzonderingsgroep of een ongeordende groep
-         *  beslist een lid niet zolang een lid naast hem open is. */
+        /** Niemand besliste en het doel staat open (uchars RUNTIME-SEMANTICS ch. 1.5), want een default van de stapel staat open,
+         *  of van een kenmerk een regel naast de stapel: dat het doel niet vaststaat ({@link #openHead}); dan per variant van
+         *  de stapel, in haar volgorde, wat zij vond. Onder een open default is geen default aan de beurt; in een
+         *  uitzonderingsgroep of een ongeordende groep beslist een lid niet zolang een lid naast hem open is. */
         private Sentence leftOpen(DefaultsDecision d) {
             List<Turn> turns = new ArrayList<>();
             for (List<String> chain : d.rootChains())
@@ -1001,20 +1023,44 @@ public final class Verbaliser {
                     requireTarget(v, d.member());
                     all(v, Role.BEFORE, turns);
                 }
-            Variant first = turns.stream().map(Turn::variant)
-                    .filter(v -> statusOf(v) == ConditionReading.Status.OPEN).findFirst()
-                    .orElseThrow(() -> new IllegalStateException("de motor gaf '" + d.member() + "' van " + label
-                            + " als open, en geen default van zijn stapel staat open"));
+            List<Variant> variants = turns.stream().map(Turn::variant).toList();
+            Variant first = firstOpen(variants);
             Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label);
+            openHead(b, d, first);
+            notDecidedVariants(b, variants, first, d);
+            return b.build();
+        }
+
+        /** Of het doel van {@code d} openstaat, in een strikt document. */
+        private boolean isOpen(DefaultsDecision d) {
+            return open != null && open.open(bean, d.member(), d.characteristic()) != null;
+        }
+
+        /** Dat het doel van {@code d} niet vaststaat, na het onderwerp, met wat de default {@code first} openhoudt; waar er geen
+         *  default openstaat ({@code first} null), wat de regel naast de stapel openhoudt. */
+        private void openHead(Sentence.Builder b, DefaultsDecision d, Variant first) {
             if (d.characteristic()) openCharacteristic(b, predicateOf(d.member(), true), label);
             else openAttribute(b, type, d.member(), label);
             b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" ");
-            cause(b, open.of(readingOf(first)).get(0), label);
+            cause(b, (first != null ? open.of(readingOf(first)) : open.of(bean, d.member(), d.characteristic())).get(0),
+                    label);
             if (!d.characteristic()) inputWaits(b, bean, type, d.member());
+        }
+
+        /** De eerste default van {@code variants} die open is, in een strikt document; null waar er geen is. */
+        private Variant firstOpen(List<Variant> variants) {
+            return open == null ? null : variants.stream().filter(v -> statusOf(v) == ConditionReading.Status.OPEN)
+                    .findFirst().orElse(null);
+        }
+
+        /** De varianten die aan de beurt waren en niet beslisten, elk met de reden. Staat er een open ({@code firstOpen} de
+         *  eerste): die met wat niet vaststaat, een default daaronder als niet aan de beurt, en een lid naast haar dat iets
+         *  besluit als een dat niet beslist zolang zij niet vaststaat. */
+        private void notDecidedVariants(Sentence.Builder b, List<Variant> variants, Variant firstOpen,
+                                        DefaultsDecision d) {
             boolean waiting = false;
-            for (Turn t : turns) {
-                Variant v = t.variant();
-                ConditionReading r = readingOf(v);
+            for (Variant v : variants) {
+                ConditionReading r = firstOpen == null ? null : readingOf(v);
                 if (r != null && r.status() == ConditionReading.Status.DISPLACED
                         && !(r.nodes().isEmpty() && isInitialisation(v))) {
                     displacedVariant(b, v, waiting ? ", " : "; niet aan de beurt: ", d);
@@ -1022,11 +1068,11 @@ public final class Verbaliser {
                     continue;
                 }
                 waiting = false;
-                if (r != null && r.status() == ConditionReading.Status.HOLDS && decides(v, r, d))
-                    heldBack(b, v, first, d);
+                if (r != null && r.status() == ConditionReading.Status.OPEN) openVariant(b, v);
+                else if (r != null && r.status() == ConditionReading.Status.HOLDS && decides(v, r, d))
+                    heldBack(b, v, firstOpen, d);
                 else notDecidedVariant(b, v, d);
             }
-            return b.build();
         }
 
         /** Of variant {@code v}, met de lezing {@code r} die geldt, iets besluit: een kenmerkvariant altijd, een
@@ -1179,20 +1225,8 @@ public final class Verbaliser {
             else value(b, render(found, type.attribute(member)), false, found);
         }
 
-        /** Een variant die aan de beurt was en niet besliste, als groep met de "; " ervoor: haar naam en de reden; een default
-         *  die open is zoals {@link #openVariant}, en een daaronder als niet aan de beurt. */
+        /** Een variant die aan de beurt was en niet besliste, als groep met de "; " ervoor: haar naam en de reden. */
         private void notDecidedVariant(Sentence.Builder b, Variant v, DefaultsDecision d) {
-            ConditionReading r = open == null ? null : readingOf(v);
-            if (r != null && r.status() == ConditionReading.Status.OPEN) {
-                openVariant(b, v);
-                return;
-            }
-            // onder een open default, boven de initialisatie die over de stapel besliste
-            if (r != null && r.status() == ConditionReading.Status.DISPLACED
-                    && !(r.nodes().isEmpty() && isInitialisation(v))) {
-                displacedVariant(b, v, "; niet aan de beurt: ", d);
-                return;
-            }
             b.open(Part.Kind.VARIANT, Part.meta("decided", false)).text("; ");
             name(b, v);
             b.text(" ");
@@ -1267,18 +1301,16 @@ public final class Verbaliser {
             value(b, render(decision, type.attribute(member)), decision == null, decision);
         }
 
-        /** Wat het doel houdt waar de groep niets schreef: het kenmerk zoals de invoer het gaf, de invoerwaarde of
-         *  leeg. */
+        /** Wat het doel houdt waar de groep niets schreef: het kenmerk zoals de invoer of een regel naast de groep het gaf, de
+         *  invoerwaarde of leeg. */
         private void standing(Sentence.Builder b, String member, boolean characteristic) {
             if (characteristic) {
                 EndState.Member m = member(bean, member, true, null);
                 predicateOf(member, m != null).mainClause(b, new On(label));
                 if (m == null) return;
-                // the group wrote nothing here, so a characteristic that holds came from the input
-                if (given(m) == null)
-                    throw new IllegalStateException("het kenmerk '" + member + "' van " + label + " staat aan het"
-                            + " fixpunt zonder invoer, en de groep die het schrijft besliste niets");
-                b.text(" uit de invoer");
+                // the group wrote nothing here, so a characteristic that holds came from the input or from a rule on a
+                // supertype, which no stack takes in (RUNTIME-SEMANTICS ch. 7.10)
+                b.text(given(m) == null ? " volgens een regel buiten de groep" : " uit de invoer");
                 return;
             }
             attributeStanding(b, bean, label, type, member);
@@ -3531,7 +3563,8 @@ public final class Verbaliser {
             openMembers(b, q, n, read);
             return;
         }
-        if (open != null && !n.closure() && n.contributors().stream().anyMatch(c -> !stands(q, c, read))) {
+        if (open != null && (n.closure() ? !countsItsMembers(q, n, read)
+                : n.contributors().stream().anyMatch(c -> !stands(q, c, read)))) {
             carriers(b, q, n, read);
             return;
         }
@@ -3549,16 +3582,7 @@ public final class Verbaliser {
         }
         int k = holding.size(), m = k + failing.size();
         // de zin noemt de leden bij het oordeel van de vouw; spreken die twee elkaar tegen, dan liegt de zin
-        boolean expected = switch (q.quantifier()) {
-            case ALLE -> k == m;
-            case GEEN -> k == 0;
-            case TEN_MINSTE -> k >= q.threshold();
-            case TEN_HOOGSTE -> k <= q.threshold();
-            case PRECIES -> k == q.threshold();
-            case DE -> throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form()
-                    + " heeft de kwantor 'de', die een kwantorvouw niet draagt (WF-108 (a))");
-        };
-        if (expected != holds)
+        if (verdict(q, k, m, read) != holds)
             throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form() + " op "
                     + read.label() + " geldt volgens de motor " + (holds ? "wel" : "niet") + ", en haar matrix geldt"
                     + " volgens de lezing voor " + k + " van de " + m + " leden");
@@ -3600,8 +3624,39 @@ public final class Verbaliser {
                 }
             }
         }
-        if (unjudged > 0) b.text(" (" + unjudged + (unjudged == 1 ? " lid" : " leden") + " niet beoordeeld)");
+        unjudged(b, unjudged);
         b.close(Part.Kind.MEMBERS);
+    }
+
+    /** Het oordeel van kwantorvouw {@code q} waarvan de matrix voor {@code k} van de {@code m} leden geldt. */
+    private static boolean verdict(Condition.QuantifierFold q, int k, int m, Read read) {
+        return switch (q.quantifier()) {
+            case ALLE -> k == m;
+            case GEEN -> k == 0;
+            case TEN_MINSTE -> k >= q.threshold();
+            case TEN_HOOGSTE -> k <= q.threshold();
+            case PRECIES -> k == q.threshold();
+            case DE -> throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form()
+                    + " heeft de kwantor 'de', die een kwantorvouw niet draagt (WF-108 (a))");
+        };
+    }
+
+    /** Of kwantorvouw {@code q}, die door een sluiting geldt, geldt naar het oordeel van de matrix op elk van haar bijdragers:
+     *  niet waar dat op een bijdrager onbepaald is, of waar een sluiting in het filter er een niet liet meetellen. */
+    private static boolean countsItsMembers(Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
+        if (n.contributors().stream().anyMatch(ConditionReading.Contributor::undetermined)) return false;
+        int k = 0, m = 0;
+        for (ConditionReading.Contributor c : n.contributors()) {
+            if (c.fault() != null) continue;
+            m++;
+            if (Boolean.TRUE.equals(c.value())) k++;
+        }
+        return Boolean.valueOf(verdict(q, k, m, read)).equals(n.value());
+    }
+
+    /** " (1 lid niet beoordeeld)": de leden van een kwantorvouw waarvan de matrix een fout gaf, waar er zijn. */
+    private static void unjudged(Sentence.Builder b, int members) {
+        if (members > 0) b.text(" (" + members + (members == 1 ? " lid" : " leden") + " niet beoordeeld)");
     }
 
     /** Of het oordeel van kwantorvouw {@code q} op bijdrager {@code c} vaststaat, in een strikt document: haar matrix is er niet
@@ -3639,16 +3694,19 @@ public final class Verbaliser {
 
     /** De leden die de uitkomst van kwantorvouw {@code q} dragen, waar het oordeel van de vouw vaststaat en dat op een lid
      *  niet: de leden waarvoor haar matrix geldt of die waarvoor zij niet geldt, naar wat de uitkomst draagt, met hun aantal
-     *  van alle leden; waar te weinig leden zijn voor de drempel hun aantal. */
+     *  van alle leden; waar te weinig leden zijn voor de drempel hun aantal, en waar een sluiting geen lid liet meetellen de
+     *  leden waarvoor het niet vaststaat. Een lid na de stop waarvan de matrix een fout gaf, staat er zoals in
+     *  {@link #members}. */
     private void carriers(Sentence.Builder b, Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
         boolean holds = Boolean.TRUE.equals(n.value());
-        List<Object> holding = new ArrayList<>(), failing = new ArrayList<>();
-        for (ConditionReading.Contributor c : n.contributors())
-            if (stands(q, c, read)) (Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
+        List<ConditionReading.Contributor> judged = n.contributors().stream().filter(c -> c.fault() == null).toList();
+        List<Object> holding = new ArrayList<>(), failing = new ArrayList<>(), unsettled = new ArrayList<>();
+        for (ConditionReading.Contributor c : judged)
+            (!stands(q, c, read) ? unsettled : Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
         if (holding.isEmpty() && failing.isEmpty())
-            for (ConditionReading.Contributor c : n.contributors())
+            for (ConditionReading.Contributor c : judged)
                 if (!c.undetermined()) (Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
-        int total = n.contributors().size(), k = holding.size();
+        int total = judged.size(), k = holding.size(), unjudged = n.contributors().size() - total;
         boolean byHolding = switch (q.quantifier()) {
             case ALLE -> holds;
             case GEEN -> !holds;
@@ -3659,7 +3717,16 @@ public final class Verbaliser {
                     + " heeft de kwantor 'de', die een kwantorvouw niet draagt (WF-108 (a))");
         };
         List<Object> carrying = byHolding ? holding : failing;
-        b.open(Part.Kind.MEMBERS, Part.meta("members", k + failing.size(), "holding", k, "unjudged", 0, "unsettled",
+        if (carrying.isEmpty() && n.closure()) {
+            b.open(Part.Kind.MEMBERS, Part.meta("members", total - unsettled.size(), "holding",
+                    unsettled.size() == total ? 0 : k, "unjudged", unjudged, "unsettled", unsettled.size()));
+            b.text(": niet vast voor ");
+            names(b, unsettled, q, read);
+            unjudged(b, unjudged);
+            b.close(Part.Kind.MEMBERS);
+            return;
+        }
+        b.open(Part.Kind.MEMBERS, Part.meta("members", k + failing.size(), "holding", k, "unjudged", unjudged, "unsettled",
                 total - k - failing.size()));
         if (carrying.isEmpty()) {
             b.text(total == 1 ? ": er is 1 lid" : ": er zijn " + total + " leden");
@@ -3668,6 +3735,7 @@ public final class Verbaliser {
             names(b, carrying, q, read);
             b.text(" (" + carrying.size() + " van de " + total + ")");
         }
+        unjudged(b, unjudged);
         b.close(Part.Kind.MEMBERS);
     }
 

@@ -17,6 +17,7 @@ import dev.uchar.regelspraak.transpiler.tms.ConditionReading.NodeReading;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint.OpenValue;
 
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -37,7 +38,8 @@ import java.util.Set;
  * <p>uchar's readings name the read a closure closed over where that is the operand of a test on leeg or gevuld. Where the
  * closure is inside a fold — the filled-value count, a filter or a quantified test on gevuld — its node carries no open
  * read: there the reads are the open members that the filter, the test or the counted attribute reads on the members of
- * the range, over the links of the end state ({@link #inFold}).
+ * the range, over the links of the end state ({@link #closed}, {@link #inFold}), so one of them can be a member the outcome
+ * does not rest on.
  */
 public final class OpenReads {
 
@@ -254,8 +256,14 @@ public final class OpenReads {
             }
             return;
         }
-        if (c instanceof Condition.QuantifierFold) {
-            inFold(c, subject, subject, false, out);
+        if (c instanceof Condition.QuantifierFold q) {
+            // a member its filter leaves out is no contributor: the engine tested the others alone
+            Set<Object> tested = Collections.newSetFromMap(new IdentityHashMap<>());
+            n.of(q).contributors().forEach(x -> tested.add(x.member()));
+            for (Object e : range(q, subject)) {
+                read(q.filter(), e, subject, out);
+                if (tested.contains(e)) read(q.test(), e, subject, out);
+            }
             return;
         }
         int before = out.size();
@@ -310,17 +318,9 @@ public final class OpenReads {
         return found;
     }
 
-    /** The open members the closures of {@code fold}, whose range starts at {@code on}, read on the members of that range: in
-     *  its filter, in the test of a quantifier fold, and as the attribute of a filled-value count. */
-    private void inFold(Object fold, Object on, Object subject, boolean certain, Set<OpenValue> out) {
-        if (fold instanceof Condition.QuantifierFold q) {
-            for (Object e : range(q, on)) {
-                read(q.filter(), e, subject, out);
-                read(q.test(), e, subject, out);
-            }
-            return;
-        }
-        Expr.FunctionCall f = (Expr.FunctionCall) fold;
+    /** The open members the closures of {@code f}, a fold over a set whose range starts at {@code on}, read on the members of
+     *  that range: in its filter, and as the attribute of a filled-value count. */
+    private void inFold(Expr.FunctionCall f, Object on, Object subject, boolean certain, Set<OpenValue> out) {
         if (f.arguments().size() == 1 && f.arguments().get(0) instanceof Expr.InstanceSetUnion u) {
             for (Expr.InstanceSetUnion.Branch b : u.branches())
                 for (Object e : walk(on, List.of(b.sourceRole())))
