@@ -671,8 +671,59 @@ with `input` where the request gave the member a value, which does not stand bes
 (`{"attribute": "bergloon", "input": "7"}`, `{"characteristic": "kostbaar", "input": {"state": "holdsNot"}}`). An open
 member is in no other row; a member in no row is settled leeg, or stands not to hold.
 
-**No explanation.** A request with `?explanation=true` is a 400 `UNSUPPORTED` on `explanation`, and no build with readings
-is made. The scenario runner and the playground give the reason in the place of the explanation.
+**The explanation** says of an open outcome that it does not stand, and what keeps it open. `OpenReads` (toolchain) is the
+one place that says what: it takes the open reads from uchar's readings (RUNTIME-SEMANTICS ch. 5.12, "Open values") and
+evaluates nothing. An open attribute is `<SUBJECT>: zijn <NAME> staat niet vast, want <cause>`, an open characteristic
+`<SUBJECT>: of hij <NAME> is, staat niet vast, want <cause>`, with one cause: the member that keeps the first open form
+open, "zijn taxatie is niet gegeven" of input, "zijn vindloon staat niet vast" of a derived member, "van J1 is zijn bonus
+niet gegeven" of another object. Then every form follows in a `VARIANT` (`decided: false`) with what it found: `; voor de regel 'vindloon' staat niet
+vast: …` with its condition or its computation up to the open read, `; de regel … gold niet, want …`, and in a stack
+`; niet aan de beurt: …` for what stands below an open default (a default whose own reading does not stand by its name alone), and "gaf 0, maar beslist
+niet zolang '…' niet vaststaat" for a member of an exception group or an unordered group beside an open one. A value the
+request gives beside an open writer waits: `; de invoerwaarde 7 geldt pas als vaststaat dat geen regel een waarde geeft`. Other sentences:
+
+- an outcome that stands by a closure — a test on leeg or gevuld over an open member, a filled-value count or a filter that
+  tests on gevuld, an initialisation below an open default or beside an open rule — ends in `; wordt zijn taxatie gegeven,
+  dan kan dit veranderen` (of a derived member `; komt zijn vindloon vast te staan, …`); the test itself reads "omdat zijn
+  taxatie niet gegeven is". A closure in the value of an outcome is named where it is certain, the filter being the test
+  itself or the count having no filter;
+- a writer that is open beside an outcome that stands says only that: `of de regel '…' geldt, staat niet vast`, or `wat de
+  regel '…' geeft, staat niet vast` where its condition holds; a member of a composite that is undetermined beside one that
+  decides has no word;
+- a composite that is undetermined names the first member that keeps it so; a quantifier fold the members by their verdict:
+  "wel voor V1, niet voor V2, niet vast voor V3"; one that stands beside an open member the members that carry it, counted
+  among all: "niet voor V2 (1 van de 3)";
+- a consistency that does not decide: `of <SUBJECT> voldoet aan de regel '…', staat niet vast, want <cause>; het staat niet
+  vast: …`, which begins with no `SUBJECT`, since it is about no member. One that stands has no sentence.
+
+No sentence calls what is open leeg or onbekend.
+
+**`?openInputs=true`** adds `openInputs` to the answer of a POST, with or without `explanation`: the input members that keep an open outcome of
+`output` open now, each once, in the order of the instances of the request and then of the declarations, with the outcomes
+each keeps open, in the vocabulary of the answer:
+
+```json
+{"openInputs": [{"kind": "attribute", "instance": "V1", "name": "taxatie",
+                 "forOutputs": [{"instance": "V1", "name": "vindloon", "kind": "attribute"}]}]}
+```
+
+An open outcome is followed over the forms that leave it open to the members no form writes; an input member in `output`
+that is open is under its own name, and an outcome that stands is under none. An open outcome without such a member is a
+fault of the engine, and a 500. The list is what can be asked now, not the whole questionnaire: an evaluation "that reaches an
+open value is broken off" (ch. 1.5), so a value names the first open member it read and a fold the first of its members that is open, and once
+that is given another read can turn out open; a composite is read past its first undetermined member, and names all of
+them. Of a closure inside a fold uchar's reading does not name the member it closed over (a node carries `open` only where
+it is undetermined, ch. 5.12), so there the list has the open members that the filter, the test of a quantifier fold or the
+counted attribute reads on the members of the range: an upper bound, in which one can be a member that does not affect the
+outcome, such as one that another condition of the filter leaves out already. The cause in a sentence is then the first of
+them.
+
+`openInputs` is a 400 `UNSUPPORTED` on a rule set that is not strict, and, as `explanation`, on an entry point that does
+not explain. uchar refuses some strict documents only with readings (DROOLS-318, a fold that can be open over a relation
+both of whose roles are to-many): the entry point then answers, and both flags are a 400 `UNSUPPORTED` with uchar's
+sentence; the scenario runner and the playground give it in the place of the explanation. In a rule set that is not strict
+such a refusal makes the entry point a marker. The playground shows per scenario the `openInputs` of every derived member
+of the situation, and with `?via=service` those of the `output` of the entry point.
 
 **The scenarios.** A test document has no sentence that expects an open outcome. An expectation on one is FAIL with uchar's
 word for it, `openstaand`, on the ordinary route and with `?via=service`. A situation asserts a characteristic or leaves
@@ -701,13 +752,13 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
 | `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`), a value of an attribute with absence markers as its payload or the name of its marker; a literal | `empty: true` for an empty one ("leeg", on every attribute); `marker`, the name of the absence marker in its declared spelling, for a marker (`"marker": "onbekend"`), in the head of a sentence, as a value read and as the literal of a comparison, never on a payload or an enumeration value; `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic, which carries no `marker` |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
-| `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, gold op geen dag, gold alleen op dagen die al een waarde hadden | — |
+| `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, staat niet vast, gold op geen dag, gold alleen op dagen die al een waarde hadden | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
-| `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count |
-| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone |
+| `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count; in a strict rule set `undetermined: true` and no `holds` where it has no verdict, and `closure: true` where a closure gave the verdict, which stands for the form itself alone |
+| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone; of a quantifier fold in a strict rule set `unsettled`, the members on which the verdict does not stand, where there can be any |
 | `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, how an allocation divided, or the waardetoekenningen of an object creation, after its name, with its colon (below) | — |
-| `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn; on a displaced variant of a defaults group `holds` (absent without a condition), `decision` for a characteristic, `unreadable: true` where its reading carried a fault (below) |
-| `READING` | group | the value the engine read for the operand or the member right before it, with its brackets: `" ("`, the `VALUE`, `")"` | — |
+| `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn; on a displaced variant of a defaults group `holds` (absent without a condition), `decision` for a characteristic, `unreadable: true` where its reading carried a fault (below); in a strict rule set `undetermined: true` on a displaced variant whose reading does not stand, which is its name alone |
+| `READING` | group | the value the engine read for the operand or the member right before it, with its brackets: `" ("`, the `VALUE`, `")"` | —; in a strict rule set `open`, `{"object", "canonical", "kind": "attribute" \| "characteristic"}`, where the read broke off at that open member: it then has no `VALUE` and says "(niet gegeven)" or "(staat niet vast)" |
 | `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | the decider whose annotations they are (below): `rule`, or `group`, `pointer`, `position` and `variant` where it has a name |
 | `STATUTE` | leaf | a Juriconnect anchor, literally | `bwb`, `article`, and `paragraph` and `part` where it names them |
 | `LEMMA` | leaf | the slug of a lemma | — |

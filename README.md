@@ -395,9 +395,11 @@ writes one does not start:
   (`docs/ENGINE.md`). Without the parameter the answer is unchanged; a value other than `true` or `false` is a 400.
 - **A strict rule set** (card `open-values-in-service`, on uchar's `Afleiden uit leeg: nee`) is new: the service starts on
   it, its answer gives every member of `output` with its state, and its request gives a characteristic as a state and
-  refuses a bare `false` ("A strict rule set", below). A rule set without that line keeps its requests, answers,
-  explanations, `/info` and OpenAPI document as they were. One answer changes for every rule set: an attribute a request
-  gives as `null` is not given, as one it leaves out, where the request got a 500.
+  refuses a bare `false`; its explanation says what does not stand and why, and `?openInputs=true` lists the input that
+  keeps an outcome open ("A strict rule set", below). A rule set without that line keeps its requests, answers,
+  explanations, `/info` and OpenAPI document as they were. Two answers change for every rule set, both from a 500: an
+  attribute a request gives as `null` is not given, as one it leaves out; and the explanation of a characteristic that a
+  rule on a supertype attributes where the defaults group of the subtype decided nothing says so.
 
 ## The pin
 
@@ -588,8 +590,11 @@ A request gives a characteristic as `true` or `{"state": "holds"}`, as `{"state"
 hold, and leaves it out (or `null`) where it is not given; a bare `false` is a 400. An attribute that is left out or
 `null` is not given. What is not given is open, unless its declaration says `(volledig gegeven)`; `/info` lists those
 members (`completeInput`) beside `"inferFromEmpty": false`. `inconsistencies` names what stands, so an empty list does not
-say that every consistency holds. A request for an explanation is a 400. `docs/ENGINE.md`, "A strict rule set", has the
-whole contract; for every other rule set nothing of it applies.
+say that every consistency holds. The explanation says of an open outcome that it does not stand and which member keeps it open.
+`?openInputs=true` (a 400 on any other rule set) adds `openInputs`: the input members that keep an open outcome of `output` open now, with the
+outcomes each keeps open, `{"kind", "instance", "name", "forOutputs": [{"instance", "name", "kind"}]}`. It is what can be
+asked now, not the whole questionnaire: once that is given, another read can turn out open. `docs/ENGINE.md`, "A strict
+rule set", has the whole contract; for every other rule set nothing of it applies.
 
 ## Vocabularies
 

@@ -175,6 +175,12 @@ import java.util.regex.Pattern;
  * zinnen zelf. Een naam van een attribuut of kenmerk waarvan de zin de waarde op één object noemt, zegt van welk object
  * ({@link On}): de kop van een zin het onderwerp, een lezing het object waarop de motor haar las, ook over een rol; zo
  * vindt een lezer bij elke gelezen waarde de zin over (object, lid).
+ *
+ * <p>In een strikt document ({@code inferFromEmpty: false}, uchars RUNTIME-SEMANTICS ch. 1.5) zegt een zin van een uitkomst die
+ * openstaat dat zij niet vaststaat, met het lid dat haar openhoudt ("niet gegeven" van invoer, "staat niet vast" van een
+ * afgeleid lid), en dan per vorm wat zij vond; van een uitkomst die door een sluiting vaststaat dat zij kan veranderen; en
+ * van een consistentieregel die niet beslist dat dat niet vaststaat. Wat openstaat en waardoor, zegt {@link OpenReads}. Geen
+ * zin noemt iets wat openstaat leeg of onbekend.
  */
 public final class Verbaliser {
 
