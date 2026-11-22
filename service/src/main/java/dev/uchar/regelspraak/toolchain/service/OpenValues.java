@@ -18,9 +18,9 @@ import java.util.List;
  * The contract of a strict rule set, one that infers nothing from what is open (the dialect's {@code Afleiden uit leeg:
  * nee}, the document's {@code inferFromEmpty: false}; uchar's RUNTIME-SEMANTICS ch. 1.5). A member of an object is filled
  * there, settled leeg, or open: neither a value nor leeg stands. So the answer gives every member with its state
- * ({@link #state(String)} and its sisters) and no null or boolean, and a request can state that a characteristic stands
- * not to hold ({@link #characteristic}). {@link #in} is the one place where the service asks whether a rule set is strict;
- * every other rule set is read and answered without this class.
+ * ({@link #state(String)} and its sisters) and no null or boolean, and a request gives a characteristic as its state, that
+ * it holds or stands not to hold ({@link #characteristic}). {@link #in} is the one place where the service asks whether a
+ * rule set is strict; every other rule set is read and answered without this class.
  *
  * <p>An absence marker ({@link Markers}) is a filled value, with a state of its own so that it is not taken for the value
  * of the datatype.
