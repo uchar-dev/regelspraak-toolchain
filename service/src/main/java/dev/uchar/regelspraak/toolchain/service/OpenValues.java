@@ -17,7 +17,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * The contract of a strict rule set, one that infers nothing from an empty value (the dialect's {@code Afleiden uit leeg:
+ * The contract of a strict rule set, one that infers nothing from what is open (the dialect's {@code Afleiden uit leeg:
  * nee}, the document's {@code inferFromEmpty: false}; uchar's RUNTIME-SEMANTICS ch. 1.5). A member of an object is filled
  * there, settled leeg, or open: neither a value nor leeg stands. So the answer gives every member with its state
  * ({@link #state(String)} and its sisters) and no null or boolean, and a request can state that a characteristic stands

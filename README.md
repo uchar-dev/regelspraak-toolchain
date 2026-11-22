@@ -571,9 +571,9 @@ the comment the author wrote directly above its declaration, verbatim, and then 
 
 ## A strict rule set
 
-A rule set whose source says `Afleiden uit leeg: nee` infers nothing from an empty value (uchar's RUNTIME-SEMANTICS ch.
-1.5): a member of an object is filled, settled leeg, or open, which means that neither a value nor leeg stands. A service
-in a conversation that is still asking needs that difference, so the answer of such a rule set gives every member of
+A rule set whose source says `Afleiden uit leeg: nee` infers nothing from what is open (uchar's RUNTIME-SEMANTICS ch. 1.5):
+a member of an object is filled, settled leeg, or open, which means that neither a value nor leeg stands. A settled leeg
+value computes as in any rule set. A service in a conversation that is still asking needs that difference, so the answer of such a rule set gives every member of
 `output` with its state, and an absence marker, which is a filled value, with a state of its own:
 
 | member | in the answer | means |

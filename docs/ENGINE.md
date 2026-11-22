@@ -624,9 +624,10 @@ refuse the start as well.
 
 ## A strict rule set
 
-A rule set whose source says `Afleiden uit leeg: nee` infers nothing from an empty value (`inferFromEmpty: false` in its
+A rule set whose source says `Afleiden uit leeg: nee` infers nothing from what is open (`inferFromEmpty: false` in its
 document; uchar's RUNTIME-SEMANTICS ch. 1.5). A member of an object is then **filled**, **settled leeg** (it stands that
-an attribute has no value, or that a characteristic does not hold) or **open** (neither stands). The absence markers
+an attribute has no value, or that a characteristic does not hold) or **open** (neither stands); a settled leeg value
+computes as in any rule set. The absence markers
 `onbekend` and `niet van toepassing` are filled values. An input member that the request does not give is open, unless
 its declaration says `(volledig gegeven)`: then it is settled leeg, or stands not to hold. A derived member follows its
 writers, so an outcome can be open now and stand once the input it lacks is given. `OpenValues.in` is the one place where
