@@ -653,7 +653,10 @@ the member is open. A characteristic the request gives holds whatever its rules 
 | attribute, characteristic | `{"state": "open"}` | open: it does not stand |
 | characteristic | `{"state": "holds"}`, `{"state": "holdsNot"}` | it holds; it stands not to hold |
 
-A state is an object on every member, so code that does not read it fails always and not only where something is open. A
+A state is an object on every member, so code that does not read it goes wrong on every member and not only where
+something is open; where a language takes every object for true, it does so without a message. A rule set that becomes
+strict has another contract, which neither a header nor its path announces: give it a path or a service of its own, so
+that no consumer of the old one reads a state as a value. An attribute has a value in the states `filled` and `marker`. A
 member of `output` that the instance does not have is left out, as in any answer. `inconsistencies` and
 `inconsistencyDetails` name what stands: a consistency that does not decide is not among them, so an empty list does not
 say that every consistency holds. The states are those of uchar's end state of the session (`DroolsBackend.endStateOf`):
