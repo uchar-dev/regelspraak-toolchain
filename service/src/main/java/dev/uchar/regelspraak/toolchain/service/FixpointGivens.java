@@ -181,7 +181,8 @@ public final class FixpointGivens {
      * input value: {@code input}; on a made object the value the creation assigned, what its bean field holds without
      * the write-back in {@code standing}: {@code creation}; one a rule, a default or an allocation derived:
      * {@code derived}, with the input value or the value the creation assigned, which it replaced beside it as
-     * {@code input}, and on a made object {@code inputOrigin} {@code creation}); {@code madeObjects} with their
+     * {@code input}, and on a made object {@code inputOrigin} {@code creation}), and in a strict rule set its {@code open}
+     * members ({@link #openOf}); {@code madeObjects} with their
      * creation and subject; the {@code links} the creations laid; the evaluation {@code faults} with the code and
      * parameters of their kind and uchar's sentence; and the {@code inconsistencies}, one per rule and subject
      * (RUNTIME-SEMANTICS ch. 5.6).
