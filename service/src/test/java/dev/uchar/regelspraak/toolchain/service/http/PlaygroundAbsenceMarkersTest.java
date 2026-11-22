@@ -6,6 +6,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.resolver.ScenarioResolver;
+import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
@@ -103,20 +104,20 @@ class PlaygroundAbsenceMarkersTest {
      *  in a cell. */
     @Test
     void a_marker_in_the_situation_is_a_marker_object_of_the_request() throws IOException {
-        List<ResolvedScenario> markers = scenarios("jutterswet-afwezigheidsmarkers");
+        ScenarioBundle markers = bundle("jutterswet-afwezigheidsmarkers");
         assertEquals("{\"marker\":\"onbekend\"}", request(markers, "onbekend in de invoer", "/instances/0/attributes/taxatie"));
         assertEquals("40.00", request(markers, "onbekend verdringt invoer", "/instances/0/attributes/taxatie"));
         assertEquals("{\"timeline\":[{\"from\":\"2025-01-01\",\"to\":\"2026-01-01\",\"value\":10}]}",
                 request(markers, "onbekend per maand", "/instances/0/attributes/opslagkosten"));
 
-        List<ResolvedScenario> cell = scenarios("jutterswet-afwezigheidsmarkers-cel");
+        ScenarioBundle cell = bundle("jutterswet-afwezigheidsmarkers-cel");
         assertEquals("{\"cells\":[{\"labels\":[\"najaar\"],\"value\":{\"marker\":\"onbekend\"}},{\"labels\":[\"voorjaar\"],"
                         + "\"value\":{\"marker\":\"onbekend\"}}]}",
                 request(cell, "onbekend in de invoer", "/instances/0/attributes/gewicht"));
         assertEquals("{\"cells\":[{\"labels\":[\"voorjaar\"],\"value\":10.00}]}",
                 request(cell, "onbekend verdringt invoer", "/instances/0/attributes/gewicht"));
 
-        List<ResolvedScenario> creation = scenarios("jutterswet-afwezigheidsmarkers-creatie");
+        ScenarioBundle creation = bundle("jutterswet-afwezigheidsmarkers-creatie");
         assertEquals("{\"marker\":\"onbekend\"}",
                 request(creation, "drijfhout verdringt onbekend in de invoer", "/instances/1/attributes/taxatie"));
     }
@@ -141,8 +142,8 @@ class PlaygroundAbsenceMarkersTest {
         assertTrue(bundle.isOk(), () -> bundle.model().errors().toString());
         assertEquals("{\"timeline\":[{\"from\":\"2025-03-01\",\"to\":\"2025-05-01\",\"value\":{\"marker\":"
                         + "\"niet van toepassing\"}}]}",
-                SituationToRequest.assemble(bundle.scenarios().get(0)).at("/instances/0/attributes/opslagkosten")
-                        .toString());
+                SituationToRequest.assemble(bundle.scenarios().get(0), bundle.model())
+                        .at("/instances/0/attributes/opslagkosten").toString());
         DecisionCore core = DecisionCore.assemble(descriptor("jutterswet-afwezigheidsmarkers", dir),
                 Map.of("source.rgs", rgs), CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
         JsonNode g = Playground.analyze(source, null).path("scenario").path("results").get(0);
@@ -224,7 +225,7 @@ class PlaygroundAbsenceMarkersTest {
         return d.toString();
     }
 
-    private static ScenarioResolver.ScenarioBundle bundle(String golden) throws IOException {
+    private static ScenarioBundle bundle(String golden) throws IOException {
         Path dir = GOLDENS.resolve(golden);
         var bundle = ScenarioResolver.resolve(Files.readString(dir.resolve("source.rgs")) + "\n"
                 + Files.readString(dir.resolve("scenario.rgs")));
@@ -232,13 +233,9 @@ class PlaygroundAbsenceMarkersTest {
         return bundle;
     }
 
-    private static List<ResolvedScenario> scenarios(String golden) throws IOException {
-        return bundle(golden).scenarios();
-    }
-
-    private static String request(List<ResolvedScenario> scenarios, String name, String pointer) {
-        ResolvedScenario s = scenarios.stream().filter(x -> x.name().equals(name)).findFirst().orElseThrow();
-        return SituationToRequest.assemble(s).at(pointer).toString();
+    private static String request(ScenarioBundle bundle, String name, String pointer) {
+        ResolvedScenario s = bundle.scenarios().stream().filter(x -> x.name().equals(name)).findFirst().orElseThrow();
+        return SituationToRequest.assemble(s, bundle.model()).at(pointer).toString();
     }
 
     private static JsonNode ordinary(String golden) throws IOException {

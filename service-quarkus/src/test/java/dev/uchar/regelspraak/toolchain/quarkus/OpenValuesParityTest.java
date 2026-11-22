@@ -53,7 +53,7 @@ class OpenValuesParityTest {
         assertEquals("empty", open.at("/instances/0/attributes/toeslag/state").asText());
         assertEquals("open", open.at("/instances/0/characteristics/betwist/state").asText());
         JsonNode given = compare("vondst", ", \"attributes\": {\"taxatie\": 50}, \"characteristics\": {\"betwist\":"
-                + " {\"state\": \"holdsNot\"}, \"onleesbaar\": true}", 200);
+                + " {\"state\": \"holdsNot\"}, \"onleesbaar\": {\"state\": \"holds\"}}", 200);
         assertEquals("{\"state\":\"filled\",\"value\":60}", given.at("/instances/0/attributes/vindloon").toString());
         assertEquals("{\"state\":\"marker\",\"marker\":\"onbekend\"}",
                 given.at("/instances/0/attributes/herkomst").toString());
@@ -62,9 +62,16 @@ class OpenValuesParityTest {
     }
 
     @Test
-    void a_bare_false_is_the_same_400() throws Exception {
-        JsonNode body = compare("vondst", ", \"characteristics\": {\"betwist\": false}", 400);
-        assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText());
+    void a_bare_boolean_is_the_same_400() throws Exception {
+        for (String bare : new String[]{"true", "false"}) {
+            JsonNode body = compare("vondst", ", \"characteristics\": {\"betwist\": " + bare + "}", 400);
+            assertEquals(1, body.get("violations").size(), body.toString());
+            assertEquals("WRONG_TYPE", body.at("/violations/0/kind").asText());
+            assertEquals("instances[0].characteristics.betwist", body.at("/violations/0/field").asText());
+            assertEquals("kenmerk 'betwist' is " + bare + ", en een regelset die uit leeg niets afleidt, vraagt een stand:"
+                    + " {\"state\": \"holds\"} waar het geldt, {\"state\": \"holdsNot\"} waar vaststaat dat het niet geldt;"
+                    + " waar het niet gegeven is, ontbreekt het of is het null", body.at("/violations/0/error").asText());
+        }
     }
 
     @Test

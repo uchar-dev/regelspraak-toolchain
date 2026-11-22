@@ -16,6 +16,7 @@ import dev.uchar.regelspraak.ir.ResolvedScenario.Segment;
 import dev.uchar.regelspraak.ir.ResolvedScenario.TimeWindow;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.toolchain.service.Markers;
+import dev.uchar.regelspraak.toolchain.service.OpenValues;
 
 import java.math.BigDecimal;
 import java.util.List;
@@ -38,7 +39,8 @@ import java.util.List;
  * constructor value, goes as the payload of {@code waarde} in that form and a marker as {@code {"marker": <naam>}}. The
  * cells of a dimensioned attribute go as {@code cells}, each with its labels and its value in that form, the timeline of
  * a time-dependent parameter or attribute as {@code timeline}, each segment with its bounds and its value in that form,
- * and a time-dependent kenmerk as the {@code periods} in which it holds. A fraction that has no exact decimal form has
+ * and a time-dependent kenmerk as the {@code periods} in which it holds. A kenmerk the situation asserts goes as
+ * {@code true}, or in a strict rule set ({@link OpenValues}) as its state. A fraction that has no exact decimal form has
  * no request form, and fails here by name ({@link NonPortable}).
  *
  * <p>The request it builds has the shape of {@link dev.uchar.regelspraak.toolchain.service.Request}:
@@ -57,8 +59,8 @@ final class SituationToRequest {
         NonPortable(String sentence, Throwable cause) { super(sentence, cause); }
     }
 
-    /** Build the request tree from a resolved scenario's situatie and evaluation date. */
-    static ObjectNode assemble(ResolvedScenario scenario) {
+    /** Build the request tree from the situatie and evaluation date of {@code scenario}, resolved against {@code model}. */
+    static ObjectNode assemble(ResolvedScenario scenario, RegelSpraakModel model) {
         ResolvedScenario.Situation situation = scenario.situation();
         ObjectNode root = NF.objectNode();
 
@@ -95,7 +97,8 @@ final class SituationToRequest {
                         continue;
                     }
                     // a situatie only ever ASSERTS a kenmerk: a test document has no sentence that one stands not to hold
-                    characteristics.put(k.characteristic(), Boolean.TRUE);
+                    if (OpenValues.in(model)) characteristics.set(k.characteristic(), OpenValues.state(OpenValues.HOLDS));
+                    else characteristics.put(k.characteristic(), Boolean.TRUE);
                 }
             }
             if (!i.roles().isEmpty()) {

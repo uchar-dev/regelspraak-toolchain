@@ -56,17 +56,19 @@ class OpenInputsPropertyTest {
         int checked = leavingOneOut(core, "vondst", """
             {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
               {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50, "toeslag": 3, "herkomst": 4},
-               "characteristics": {"betwist": {"state": "holdsNot"}, "onleesbaar": true}},
-              {"type": "Vondst", "id": "V2", "attributes": {"taxatie": 1500}, "characteristics": {"betwist": true}}]}""");
+               "characteristics": {"betwist": {"state": "holdsNot"}, "onleesbaar": {"state": "holds"}}},
+              {"type": "Vondst", "id": "V2", "attributes": {"taxatie": 1500},
+               "characteristics": {"betwist": {"state": "holds"}}}]}""");
         core = OpenValuesSource.wrak(CoreConfig.strict());
         checked += leavingOneOut(core, "wrak", """
             {"instances": [{"type": "Jutter", "id": "J1", "attributes": {"bonus": 4},
                             "roles": {"gevonden wrakken": ["W1", "W2", "W3"]}},
               {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
-               "characteristics": {"gemeld": true, "betwist": true, "beschadigd": {"state": "holdsNot"}, "gemerkt": true}},
+               "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holds"},
+                                   "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holds"}}},
               {"type": "Wrak", "id": "W2", "attributes": {"diepte": 5, "lading": 150, "lengte": 2},
                "characteristics": {"gemeld": {"state": "holdsNot"}, "betwist": {"state": "holdsNot"},
-                                   "beschadigd": true, "gemerkt": true}},
+                                   "beschadigd": {"state": "holds"}, "gemerkt": {"state": "holds"}}},
               {"type": "Wrak", "id": "W3", "attributes": {"diepte": 12, "lading": 8, "lengte": 0, "voorschot": 7},
                "characteristics": {"gemeld": {"state": "holdsNot"}, "betwist": {"state": "holdsNot"},
                                    "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}""");
@@ -187,7 +189,7 @@ class OpenInputsPropertyTest {
             ObjectNode attributes = n.putObject("attributes"), characteristics = n.putObject("characteristics");
             i.get("attributes").fields().forEachRemaining(e -> attributes.put(e.getKey(),
                     new java.math.BigDecimal(e.getValue().get("number").asText())));
-            for (JsonNode k : i.get("characteristics")) characteristics.put(k.asText(), true);
+            for (JsonNode k : i.get("characteristics")) characteristics.putObject(k.asText()).put("state", "holds");
             for (JsonNode k : i.path("characteristicsAbsent")) characteristics.putObject(k.asText()).put("state", "holdsNot");
         }
         return request.toString();

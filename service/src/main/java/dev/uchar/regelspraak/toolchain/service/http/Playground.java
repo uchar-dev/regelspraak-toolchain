@@ -475,7 +475,7 @@ public final class Playground {
             boolean explained = explanationError == null;
             RequestOptions options = new RequestOptions(explained, vocabulary == null ? Naming.CANONICAL : vocabulary,
                     Naming.CANONICAL, true, true, true, explained, explained && OpenValues.in(model));
-            DecisionCore.Assessment b = service.assess(path, SituationToRequest.assemble(s), options, expected);
+            DecisionCore.Assessment b = service.assess(path, SituationToRequest.assemble(s, model), options, expected);
             status = b.comparison().pass() ? ScenarioResult.Status.PASS : ScenarioResult.Status.FAIL;
             if (!b.comparison().pass()) diagnostic = caseName + ": " + b.comparison().diagnostic();
             expectations = b.comparison().expectations();

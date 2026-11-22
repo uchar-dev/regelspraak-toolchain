@@ -18,8 +18,8 @@ Uitvoer: regels "<sleutel>\\t<STATUS>\\t<detail>" in de volgorde van de invoer, 
   FAIL     met sleutel "<golden>": een afwijking, een dienst die niet start, of een antwoord dat geen antwoord is
            (detail: wat).
 Een golden waarvan geen case speelt, heeft alleen haar EXCLUDE-regels. In een document dat uit leeg niets afleidt
-(inferFromEmpty false) gaat een kenmerk dat vaststaand niet geldt (characteristicsAbsent) als {"state": "holdsNot"} in het
-verzoek, en leest een verwachting de stand van haar lid.
+(inferFromEmpty false) gaat een kenmerk als stand in het verzoek, {"state": "holds"} en waar het vaststaand niet geldt
+(characteristicsAbsent) {"state": "holdsNot"}, en leest een verwachting de stand van haar lid.
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
 haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vijf velden erbij: het
@@ -173,8 +173,8 @@ def request_body(case, document):
                 else value_of(w, i["label"] + "." + a) for a, w in (i.get("attributes") or {}).items()}
         if attr:
             inst["attributes"] = attr
-        characteristics = {k: True for k in i.get("characteristics") or []}
-        # een kenmerk dat vaststaand niet geldt: in een document dat uit leeg niets afleidt een stand, anders false
+        # een kenmerk: in een document dat uit leeg niets afleidt een stand, anders een boolean
+        characteristics = {k: {"state": "holds"} if strict(document) else True for k in i.get("characteristics") or []}
         for k in i.get("characteristicsAbsent") or []:
             if norm(k) in [norm(c) for c in characteristics]:
                 raise NotExpressible(f"kenmerk {k!r} staat in beide lijsten van de case, en het verzoek geeft een kenmerk"

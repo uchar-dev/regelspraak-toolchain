@@ -77,10 +77,10 @@ import java.util.Map;
  * {@code {"constructor": "onbekend"}}. A marker the attribute does not declare is a
  * {@link Violation.Kind#UNKNOWN_MARKER}, a marker on an attribute without markers a {@link Violation.Kind#WRONG_TYPE}.
  *
- * <p>In a strict rule set ({@link OpenValues}) a characteristic is {@code true} or {@code {"state": "holds"}} where it
- * holds, {@code {"state": "holdsNot"}} where it stands not to hold, written under the {@code characteristicsAbsent} of the
- * case, and left out or null where it is not given; a bare {@code false} is a violation of the type. An attribute that is
- * left out or null is not given, in the case as in the request.
+ * <p>In a strict rule set ({@link OpenValues}) a characteristic is {@code {"state": "holds"}} where it holds,
+ * {@code {"state": "holdsNot"}} where it stands not to hold, written under the {@code characteristicsAbsent} of the case,
+ * and left out or null where it is not given; a bare boolean is a violation of the type. An attribute that is left out or
+ * null is not given, in the case as in the request.
  *
  * <p>An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid mismatch, an unknown
  * enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without dimensions are all

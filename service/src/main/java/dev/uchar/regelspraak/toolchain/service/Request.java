@@ -21,7 +21,7 @@ import com.fasterxml.jackson.databind.JsonNode;
  *   "relations"?: [ { "factType": "<name>", "roles": { "<role>": "<id>" | ["<id>", ...], ... } } ]
  * }
  * }</pre>
- * A characteristic of a strict rule set ({@link OpenValues}) is {@code true} or its state, {@code {"state": "holds"}} or
+ * A characteristic of a strict rule set ({@link OpenValues}) is its state, {@code {"state": "holds"}} or
  * {@code {"state": "holdsNot"}}. Role links may be given inline per instance ({@code instances[].roles}, as a case file's {@code roles}) and through
  * the top-level {@code relations}; both become the {@code roles} of a case, which uchar's input step reads.
  */

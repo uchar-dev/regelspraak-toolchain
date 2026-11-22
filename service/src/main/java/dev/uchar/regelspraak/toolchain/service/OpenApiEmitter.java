@@ -64,9 +64,9 @@ import java.util.List;
  * the one it always was.
  *
  * <p><b>A strict rule set</b> ({@link OpenValues}) has the states of a member as enumerations: the components
- * {@code AttributeState} and {@code CharacteristicState} for the answer, and a characteristic of a request as {@code true}
- * or its state; every member says what it means that a request does not give it; the operations have the flag
- * {@code openInputs} and {@code Answer} its field. The document of any other rule set has none of this.
+ * {@code AttributeState} and {@code CharacteristicState} for the answer, and {@code CharacteristicInput} for a
+ * characteristic of a request; every member says what it means that a request does not give it; the operations have the
+ * flag {@code openInputs} and {@code Answer} its field. The document of any other rule set has none of this.
  *
  * <p><b>The comment of a declaration.</b> The description of an object type, of an attribute and of a characteristic
  * starts with the comment the source writes directly above its declaration, verbatim, its lines joined with a space,
@@ -130,6 +130,7 @@ public final class OpenApiEmitter {
         if (strict) {
             schemas.set("AttributeState", attributeStateSchema());
             schemas.set("CharacteristicState", characteristicStateSchema());
+            schemas.set(CHARACTERISTIC_INPUT, characteristicInputSchema());
         }
         schemas.set("Error", errorSchema());
         schemas.set("EvaluationFault", evaluationFaultSchema());
@@ -409,7 +410,10 @@ public final class OpenApiEmitter {
                 kn = periodsSchema(ot.characteristicGranularityOf(k));
                 withPeriods.add(name);
             } else if (OpenValues.in(model)) {
-                kn = characteristicInputSchema();
+                // a $ref stands alone in a schema of OpenAPI 3.0, so the description of the member stands beside an allOf
+                kn = NF.objectNode();
+                kn.put("description", "kenmerk, gegeven als stand.");
+                kn.putArray("allOf").addObject().put("$ref", "#/components/schemas/" + CHARACTERISTIC_INPUT);
                 notGiven(kn, complete(ot, k, true), "of het geldt");
                 characteristics.add(name);
             } else {
@@ -466,18 +470,15 @@ public final class OpenApiEmitter {
         return first + (first.endsWith(".") ? " " : ". ") + second;
     }
 
-    /** A characteristic as a request of a strict rule set ({@link OpenValues}) gives it: {@code true}, or its state. */
+    /** The component of a characteristic in a request of a strict rule set. */
+    private static final String CHARACTERISTIC_INPUT = "CharacteristicInput";
+
+    /** A characteristic as a request of a strict rule set ({@link OpenValues}) gives it: its state. */
     private static ObjectNode characteristicInputSchema() {
-        ObjectNode s = NF.objectNode();
-        s.put("description", "kenmerk: {\"state\": \"holds\"} (of true) waar het geldt, {\"state\": \"holdsNot\"} waar"
-                + " vaststaat dat het niet geldt. Een kale false is een 400 (WRONG_TYPE).");
-        ArrayNode oneOf = s.putArray("oneOf");
-        ObjectNode holds = oneOf.addObject();
-        holds.put("type", "boolean");
-        holds.putArray("enum").add(true);
-        ObjectNode state = stateSchema(OpenValues.HOLDS, OpenValues.HOLDS_NOT);
-        state.put("nullable", true);
-        oneOf.add(state);
+        ObjectNode s = stateSchema(OpenValues.HOLDS, OpenValues.HOLDS_NOT);
+        s.put("nullable", true);
+        s.put("description", "De stand van een kenmerk in een verzoek: " + OpenValues.FORMS + ". Waar het niet gegeven is,"
+                + " ontbreekt het of is het null. Een kale boolean is een 400 (WRONG_TYPE).");
         return s;
     }
 
@@ -784,11 +785,11 @@ public final class OpenApiEmitter {
         freeObject(instProps.putObject("attributes"),
                 "attribuutnaam -> waarde (per het objecttype-schema); een tijdsafhankelijk attribuut neemt zijn tijdlijn: "
                         + TimelineInput.TIMELINE_FORM + ".");
-        freeObject(instProps.putObject("characteristics"), OpenValues.in(model)
-                ? "kenmerknaam -> stand: {\"state\": \"holds\"} (of true) waar het geldt, {\"state\": \"holdsNot\"} waar"
-                        + " vaststaat dat het niet geldt; waar het niet gegeven is, ontbreekt het of is het null."
-                : "kenmerknaam -> boolean; een tijdsafhankelijk kenmerk neemt de perioden waarin het geldt: "
-                        + TimelineInput.PERIODS_FORM + ".");
+        if (OpenValues.in(model))
+            members(instProps.putObject("characteristics"), "kenmerknaam -> stand.", CHARACTERISTIC_INPUT);
+        else
+            freeObject(instProps.putObject("characteristics"), "kenmerknaam -> boolean; een tijdsafhankelijk kenmerk neemt"
+                    + " de perioden waarin het geldt: " + TimelineInput.PERIODS_FORM + ".");
         freeObject(instProps.putObject("roles"),
                 "rolnaam -> doel-id of lijst van doel-ids.");
 

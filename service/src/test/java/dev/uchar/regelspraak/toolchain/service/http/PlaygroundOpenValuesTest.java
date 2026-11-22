@@ -2,6 +2,8 @@ package dev.uchar.regelspraak.toolchain.service.http;
 
 import com.fasterxml.jackson.databind.JsonNode;
 
+import dev.uchar.regelspraak.resolver.ScenarioResolver;
+import dev.uchar.regelspraak.resolver.ScenarioResolver.ScenarioBundle;
 import dev.uchar.regelspraak.toolchain.service.CoreConfig;
 import dev.uchar.regelspraak.toolchain.service.DecisionCore;
 import dev.uchar.regelspraak.toolchain.service.OpenValuesSource;
@@ -17,8 +19,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The scenarios of a rule set that infers nothing from an empty value ({@link OpenValuesSource}) in the playground, on the
  * ordinary route and with {@code via=service}: the verdict of a scenario that expects a value where the outcome is open is
  * FAIL, with uchar's word for it; the fixpoint lists what is open, with the input that does not stand; the explanation
- * says what keeps an outcome open, and {@code openInputs} what can be given. The situation of a scenario asserts a characteristic or leaves it out, so its request
- * states none that does not hold.
+ * says what keeps an outcome open, and {@code openInputs} what can be given. The situation of a scenario asserts a
+ * characteristic or leaves it out, so its request states that one holds, and none that does not hold.
  */
 class PlaygroundOpenValuesTest {
 
@@ -64,6 +66,44 @@ class PlaygroundOpenValuesTest {
         for (JsonNode results : new JsonNode[]{ordinary, via})
             assertEquals("PASS", results.at("/0/status").asText(), results.toString());
         assertEquals("vondst", via.at("/0/path").asText());
+    }
+
+    private static final String BETWIST = """
+
+        Scenario betwiste vondst
+        toetst de regel premie
+        Gegeven is de volgende situatie:
+        een Vondst V1
+        - is betwist
+        Met als verwacht resultaat:
+        - de premie van V1 is 0
+        - V1 is betwist
+        """;
+
+    /** A characteristic that the situation asserts holds in the request of the service: betwist decides the premie. */
+    @Test
+    void a_characteristic_of_the_situation_holds_via_the_service() {
+        DecisionCore core = OpenValuesSource.core(CoreConfig.strict().withDetail());
+        String source = OpenValuesSource.SOURCE + BETWIST;
+        for (JsonNode s : new JsonNode[]{Playground.analyze(source).at("/scenario/results/0"),
+                Playground.analyze(source, null, core, null, false).at("/scenario/results/0")}) {
+            assertEquals("PASS", s.at("/status").asText(), s.toString());
+            assertTrue(s.get("explanation").toString().contains("V1 heeft als premie 0 volgens 'betwiste premie': 0, omdat het"
+                    + " onderwerp betwist is"), s.toString());
+        }
+    }
+
+    /** The request of that situation: the state of the characteristic, and in a rule set that is not strict its boolean. */
+    @Test
+    void the_request_of_a_situation_gives_a_characteristic_as_its_state() {
+        String source = OpenValuesSource.SOURCE + BETWIST;
+        for (String[] c : new String[][]{{source, "{\"betwist\":{\"state\":\"holds\"}}"},
+                {source.replace("Afleiden uit leeg: nee", "").replace(" (volledig gegeven)", ""), "{\"betwist\":true}"}}) {
+            ScenarioBundle bundle = ScenarioResolver.resolve(c[0]);
+            assertTrue(bundle.isOk(), () -> bundle.model().errors().toString());
+            assertEquals(c[1], SituationToRequest.assemble(bundle.scenarios().get(0), bundle.model())
+                    .at("/instances/0/characteristics").toString());
+        }
     }
 
     @Test

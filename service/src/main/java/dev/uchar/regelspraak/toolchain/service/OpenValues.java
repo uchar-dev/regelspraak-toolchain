@@ -32,8 +32,10 @@ public final class OpenValues {
     /** The key of the state of a member, in a request and in an answer. */
     static final String STATE = "state";
 
-    static final String FILLED = "filled", MARKER = "marker", EMPTY = "empty", OPEN = "open", HOLDS = "holds",
-            HOLDS_NOT = "holdsNot";
+    static final String FILLED = "filled", MARKER = "marker", EMPTY = "empty", OPEN = "open", HOLDS_NOT = "holdsNot";
+
+    /** The state of a characteristic that holds. */
+    public static final String HOLDS = "holds";
 
     private OpenValues() {}
 
@@ -68,7 +70,7 @@ public final class OpenValues {
     }
 
     /** A member in the state {@code state}, without a value. */
-    static ObjectNode state(String state) { return NF.objectNode().put(STATE, state); }
+    public static ObjectNode state(String state) { return NF.objectNode().put(STATE, state); }
 
     /** An attribute filled with {@code value}. */
     static ObjectNode filled(JsonNode value) {
@@ -82,13 +84,13 @@ public final class OpenValues {
 
     /**
      * What a request says of a characteristic ({@code name} as it writes it) on {@code field}: true where it holds
-     * ({@code true}, {@code {"state": "holds"}}), false where it stands not to hold ({@code {"state": "holdsNot"}}), and
-     * null where it is not given (null) or after adding the violation of another value. A bare {@code false} is one: a
-     * form or a DTO fills a boolean nobody answered with it, and the rules would infer from it.
+     * ({@code {"state": "holds"}}), false where it stands not to hold ({@code {"state": "holdsNot"}}), and null where it is
+     * not given (null) or after adding the violation of another value. A bare boolean is one: a form or a DTO fills a
+     * boolean nobody answered with {@code false}, and the rules would infer from it; a client that could write {@code true}
+     * would meet that only at its first {@code false}.
      */
     static Boolean characteristic(JsonNode value, String name, String field, List<Violation> sink) {
         if (value.isNull()) return null;
-        if (value.isBoolean() && value.booleanValue()) return true;
         if (value.isObject()) {
             List<String> other = new ArrayList<>();
             value.fieldNames().forEachRemaining(f -> { if (!f.equals(STATE)) other.add(f); });
@@ -107,6 +109,7 @@ public final class OpenValues {
         return null;
     }
 
-    private static final String FORMS = "{\"state\": \"holds\"} (of true) waar het geldt, {\"state\": \"holdsNot\"} waar"
-            + " vaststaat dat het niet geldt";
+    /** The two states a request gives of a characteristic, as a sentence names them. */
+    static final String FORMS = "{\"state\": \"holds\"} waar het geldt, {\"state\": \"holdsNot\"} waar vaststaat dat het"
+            + " niet geldt";
 }

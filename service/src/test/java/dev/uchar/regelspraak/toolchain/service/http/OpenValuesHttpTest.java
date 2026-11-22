@@ -32,7 +32,7 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * A rule set that infers nothing from an empty value through the service ({@link OpenValuesSource}; uchar's
  * RUNTIME-SEMANTICS ch. 1.5): the answer gives every member of {@code output} with its state, filled, a marker, settled
- * leeg or open; the request states that a characteristic holds or stands not to hold, and refuses a bare false;
+ * leeg or open; the request states that a characteristic holds or stands not to hold, and refuses a bare boolean;
  * {@code /info}, the OpenAPI document and {@code fixpoint} say what is open and whose input is complete. The expected
  * states are computed by hand from the rules of the source.
  */
@@ -94,7 +94,7 @@ class OpenValuesHttpTest {
              "characteristics": {"kostbaar": {"state": "holds"}, "betwist": {"state": "holds"},
               "onleesbaar": {"state": "holds"}}}""", """
             "attributes": {"taxatie": 1500, "toeslag": 3},
-            "characteristics": {"betwist": true, "onleesbaar": {"state": "holds"}}""");
+            "characteristics": {"betwist": {"state": "holds"}, "onleesbaar": {"state": "holds"}}""");
     }
 
     /** taxatie 50: kostbaar stands not to hold; betwist stated not to hold: premie 10; a herkomst of 3 stands, since its
@@ -137,8 +137,8 @@ class OpenValuesHttpTest {
     @Test
     void a_service_from_the_document_answers_with_the_same_states() throws Exception {
         for (String given : List.of("\"attributes\": {\"taxatie\": 1500, \"toeslag\": 3}, \"characteristics\":"
-                + " {\"betwist\": true, \"onleesbaar\": true}", "\"characteristics\": {\"betwist\": {\"state\":"
-                + " \"holdsNot\"}}, \"attributes\": {\"taxatie\": 50}"))
+                + " {\"betwist\": {\"state\": \"holds\"}, \"onleesbaar\": {\"state\": \"holds\"}}", "\"characteristics\":"
+                + " {\"betwist\": {\"state\": \"holdsNot\"}}, \"attributes\": {\"taxatie\": 50}"))
             assertEquals(vondst(service, given), vondst(document, given, ", \"parameters\": {\"TARIEF\": 2}"));
     }
 
@@ -178,11 +178,11 @@ class OpenValuesHttpTest {
 
     // ---------------- the request ----------------
 
-    /** kostbaar, which a rule writes: true holds whatever the rule does; stated not to hold it is open while the rule is
-     *  open, and follows the rule otherwise. */
+    /** kostbaar, which a rule writes: stated to hold it holds whatever the rule does; stated not to hold it is open while
+     *  the rule is open, and follows the rule otherwise. */
     @Test
     void a_stated_characteristic_beside_its_writer() throws Exception {
-        JsonNode held = vondst(service, "\"characteristics\": {\"kostbaar\": true}");
+        JsonNode held = vondst(service, "\"characteristics\": {\"kostbaar\": {\"state\": \"holds\"}}");
         assertEquals("holds", held.at("/characteristics/kostbaar/state").asText());
         assertEquals("empty", held.at("/attributes/bewakingstoeslag/state").asText());
         String not = "\"characteristics\": {\"kostbaar\": {\"state\": \"holdsNot\"}}";
@@ -201,13 +201,34 @@ class OpenValuesHttpTest {
     }
 
     @Test
-    void a_bare_false_is_refused_and_the_refusal_names_the_two_forms() throws Exception {
-        JsonNode v = refused("\"characteristics\": {\"betwist\": false}");
-        assertEquals("WRONG_TYPE", v.get("kind").asText());
-        assertEquals("instances[0].characteristics.betwist", v.get("field").asText());
-        assertEquals("kenmerk 'betwist' is false, en een regelset die uit leeg niets afleidt, vraagt een stand: {\"state\":"
-                + " \"holds\"} (of true) waar het geldt, {\"state\": \"holdsNot\"} waar vaststaat dat het niet geldt; waar het"
-                + " niet gegeven is, ontbreekt het of is het null", v.get("error").asText());
+    void a_bare_boolean_is_refused_and_the_refusal_names_the_two_forms() throws Exception {
+        for (String bare : List.of("true", "false")) {
+            JsonNode v = refused("\"characteristics\": {\"betwist\": " + bare + "}");
+            assertEquals("WRONG_TYPE", v.get("kind").asText());
+            assertEquals("instances[0].characteristics.betwist", v.get("field").asText());
+            assertEquals("kenmerk 'betwist' is " + bare + ", en een regelset die uit leeg niets afleidt, vraagt een stand:"
+                    + " {\"state\": \"holds\"} waar het geldt, {\"state\": \"holdsNot\"} waar vaststaat dat het niet geldt;"
+                    + " waar het niet gegeven is, ontbreekt het of is het null", v.get("error").asText());
+        }
+    }
+
+    /** Each bare boolean of a request is a violation of its own, also on a characteristic that a rule writes and on one whose
+     *  input is complete. */
+    @Test
+    void every_bare_boolean_of_a_request_is_named() throws Exception {
+        HttpResponse<String> r = post(service, "vondst", """
+            {"instances": [
+              {"type": "Vondst", "id": "V1", "characteristics": {"kostbaar": true, "betwist": {"state": "holds"}}},
+              {"type": "Vondst", "id": "V2", "characteristics": {"onleesbaar": true, "betwist": false}}]}""");
+        assertEquals(400, r.statusCode(), r.body());
+        StringBuilder named = new StringBuilder();
+        for (JsonNode v : json(r.body()).get("violations"))
+            named.append(v.get("kind").asText()).append(' ').append(v.get("field").asText()).append('\n');
+        assertEquals("""
+            WRONG_TYPE instances[0].characteristics.kostbaar
+            WRONG_TYPE instances[1].characteristics.onleesbaar
+            WRONG_TYPE instances[1].characteristics.betwist
+            """, named.toString());
     }
 
     @Test
@@ -218,7 +239,8 @@ class OpenValuesHttpTest {
                 .get("kind").asText());
         assertEquals("MALFORMED", refused("\"characteristics\": {\"betwist\": {\"periods\": []}}").get("kind").asText());
         // two stands of one characteristic are two values of one declaration
-        assertEquals("MALFORMED", refused("\"characteristics\": {\"betwist\": true, \"Betwist\": {\"state\": \"holdsNot\"}}")
+        assertEquals("MALFORMED", refused("\"characteristics\": {\"betwist\": {\"state\": \"holds\"}, \"Betwist\": {\"state\":"
+                + " \"holdsNot\"}}")
                 .get("kind").asText());
     }
 
@@ -226,7 +248,7 @@ class OpenValuesHttpTest {
     @Test
     void what_stands_is_explained() throws Exception {
         JsonNode answer = ok(post(service, "vondst?explanation=true", request("\"attributes\": {\"taxatie\": 1500},"
-                + " \"characteristics\": {\"betwist\": true, \"onleesbaar\": true}", "")));
+                + " \"characteristics\": {\"betwist\": {\"state\": \"holds\"}, \"onleesbaar\": {\"state\": \"holds\"}}", "")));
         assertEquals(json("""
             ["V1 is kostbaar, omdat zijn taxatie (1.500) is groter dan 1.000",
              "V1 heeft als premie 0 volgens 'betwiste premie': 0, omdat het onderwerp betwist is; verdrongen: de regel 'premie' (onvoorwaardelijk, 10)",
@@ -243,7 +265,8 @@ class OpenValuesHttpTest {
     @Test
     void the_fixpoint_gives_the_open_members_with_the_input_that_does_not_stand() throws Exception {
         JsonNode answer = ok(post(detail, "vondst?fixpoint=true", request("\"attributes\": {\"bergloon\": 7, \"toeslag\": 3},"
-                + " \"characteristics\": {\"kostbaar\": {\"state\": \"holdsNot\"}, \"betwist\": true}", "")));
+                + " \"characteristics\": {\"kostbaar\": {\"state\": \"holdsNot\"}, \"betwist\": {\"state\": \"holds\"}}",
+                "")));
         JsonNode o = answer.at("/fixpoint/objects/0");
         // vrachtprijs is an input member here: its rule is outside the scope of this entry point
         assertEquals(json("""
@@ -318,9 +341,17 @@ class OpenValuesHttpTest {
         assertEquals(json("[\"filled\"]"), schemas.at("/AttributeState/oneOf/0/properties/state/enum"));
         assertEquals(json("[\"marker\"]"), schemas.at("/AttributeState/oneOf/1/properties/state/enum"));
         assertEquals(json("[\"empty\", \"open\"]"), schemas.at("/AttributeState/oneOf/2/properties/state/enum"));
-        assertEquals(json("[true]"), schemas.at("/Vondst/properties/betwist/oneOf/0/enum"));
-        assertEquals(json("[\"holds\", \"holdsNot\"]"),
-                schemas.at("/Vondst/properties/betwist/oneOf/1/properties/state/enum"));
+        // a characteristic of a request is a state, and no boolean
+        JsonNode input = schemas.get("CharacteristicInput");
+        assertEquals(json("""
+            {"type": "object", "required": ["state"], "additionalProperties": false, "properties":
+              {"state": {"type": "string", "enum": ["holds", "holdsNot"]}}, "nullable": true}"""),
+                ((com.fasterxml.jackson.databind.node.ObjectNode) input.deepCopy()).without("description"));
+        assertEquals(json("[{\"$ref\": \"#/components/schemas/CharacteristicInput\"}]"),
+                schemas.at("/Vondst/properties/betwist/allOf"));
+        assertEquals(json("{\"$ref\": \"#/components/schemas/CharacteristicInput\"}"),
+                schemas.at("/Request/properties/instances/items/properties/characteristics/additionalProperties"));
+        assertFalse(schemas.get("Vondst").toString().contains("boolean"), schemas.get("Vondst").toString());
         assertTrue(schemas.at("/Vondst/properties/toeslag/description").asText().contains("Volledig gegeven"));
         assertTrue(schemas.at("/Vondst/properties/taxatie/description").asText().contains("niet gegeven"));
         assertTrue(schemas.at("/Info/properties").has("completeInput"));

@@ -82,7 +82,7 @@ class OpenExplanationFormsHttpTest {
                 geldig altijd
                     Het vindloon van een Wrakvondst moet gesteld worden op 5 indien hij beschadigd is.
             """, "{\"instances\": [{\"type\": \"Wrakvondst\", \"id\": \"W1\", \"attributes\": {\"gewicht\": 50},"
-                + " \"characteristics\": {\"betwist\": true}}]}");
+                + " \"characteristics\": {\"betwist\": {\"state\": \"holds\"}}}]}");
         assertSentence("W1 heeft als vindloon 25 volgens de regel 'basisvindloon': 25, omdat zijn vindloon in de invoer niet"
                 + " gegeven was; 'betwist vindloon' (uitzondering op 'vindloon') gaf 0, maar beslist niet zolang 'beschadigd"
                 + " vindloon' (uitzondering op 'vindloon') niet vaststaat; voor 'beschadigd vindloon' (uitzondering op"
@@ -108,7 +108,7 @@ class OpenExplanationFormsHttpTest {
                 geldig altijd
                     Een Vondst is verkoopbaar indien hij beschadigd is.
             """, "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\", \"attributes\": {\"gewicht\": 50},"
-                + " \"characteristics\": {\"betwist\": true, \"verkoopbaar\": true}}]}");
+                + " \"characteristics\": {\"betwist\": {\"state\": \"holds\"}, \"verkoopbaar\": {\"state\": \"holds\"}}}]}");
         assertEquals("holds", answer.at("/instances/0/characteristics/verkoopbaar/state").asText());
         assertSentence("V1 is verkoopbaar uit de invoer, want geen variant besliste; 'onverkoopbaar' (uitzondering op"
                 + " 'verkoopbaar') gold (niet toekennen), maar beslist niet zolang 'toch verkoopbaar' (uitzondering op"
@@ -122,7 +122,8 @@ class OpenExplanationFormsHttpTest {
     void a_rule_beside_the_stack_of_a_subtype() throws Exception {
         JsonNode answer = ask(VONDST + WRAKVERKOOP, """
             {"instances": [{"type": "Wrakvondst", "id": "W1", "attributes": {"diepte": 1}},
-              {"type": "Wrakvondst", "id": "W2", "attributes": {"diepte": 5}, "characteristics": {"betwist": true}},
+              {"type": "Wrakvondst", "id": "W2", "attributes": {"diepte": 5},
+               "characteristics": {"betwist": {"state": "holds"}}},
               {"type": "Wrakvondst", "id": "W3", "attributes": {"diepte": 1, "gewicht": 5}}]}""");
         assertSentence("W1: of hij verkoopbaar is, staat niet vast, want zijn gewicht is niet gegeven; 'betwist wrak' gold niet,"
                 + " want niet geldt: zijn diepte (1) is groter dan 2; de regel 'wrakverkoopbaar' gold niet, want niet geldt: zijn"
@@ -209,7 +210,8 @@ class OpenExplanationFormsHttpTest {
                 Thread.currentThread().getContextClassLoader(), null), """
             {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2", "V3"]}},
               {"type": "Vondst", "id": "V1", "characteristics": {"betwist": {"state": "holdsNot"}}},
-              {"type": "Vondst", "id": "V2", "characteristics": {"betwist": true}}, {"type": "Vondst", "id": "V3"}]}""", "");
+              {"type": "Vondst", "id": "V2", "characteristics": {"betwist": {"state": "holds"}}},
+              {"type": "Vondst", "id": "V3"}]}""", "");
         assertFold("is niet kundig, want", "is niet voldaan: niet voor V1 (1 van de 2) (1 lid niet beoordeeld)", answer);
     }
 
@@ -272,9 +274,9 @@ class OpenExplanationFormsHttpTest {
             """;
         assertSentence("V1: of hij verkoopbaar is, staat niet vast, want zijn taxatie is niet gegeven; voor de regel 'verkoop' staat"
                 + " niet vast: zijn taxatie (niet gegeven) is groter dan 100",
-                ask(source, vondst("\"gewicht\": 5", "\"betwist\": true")));
+                ask(source, vondst("\"gewicht\": 5", "\"betwist\": {\"state\": \"holds\"}")));
         assertSentence("V1 is verkoopbaar, omdat het onderwerp betwist is en zijn gewicht (20) is groter dan 10",
-                ask(source, vondst("\"gewicht\": 20", "\"betwist\": true")));
+                ask(source, vondst("\"gewicht\": 20", "\"betwist\": {\"state\": \"holds\"}")));
     }
 
     @Test
@@ -313,7 +315,7 @@ class OpenExplanationFormsHttpTest {
                 Regel betwist vindloon
                     geldig altijd
                         Het vindloon van een Vondst moet gesteld worden op zijn taxatie indien hij betwist is.
-                """, vondst("\"gewicht\": 8", "\"betwist\": true")));
+                """, vondst("\"gewicht\": 8", "\"betwist\": {\"state\": \"holds\"}")));
     }
 
     @Test

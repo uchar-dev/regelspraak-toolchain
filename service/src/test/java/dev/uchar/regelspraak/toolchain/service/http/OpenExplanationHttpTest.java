@@ -121,7 +121,7 @@ class OpenExplanationHttpTest {
         assertSentence("W1: zijn wrakpremie staat niet vast, want het is niet gegeven of hij betwist is; voor 'betwiste"
                 + " wrakpremie' staat niet vast: het onderwerp betwist is (niet gegeven); niet aan de beurt: 'gemerkte"
                 + " wrakpremie' (gold, 5), de regel 'wrakpremie' (onvoorwaardelijk, 10)",
-                wrak("\"attributes\": {\"lading\": 5}, \"characteristics\": {\"gemerkt\": true}"));
+                wrak("\"attributes\": {\"lading\": 5}, \"characteristics\": {\"gemerkt\": {\"state\": \"holds\"}}"));
         // a displaced default whose reading does not stand is named alone
         assertSentence("W1: zijn wrakpremie staat niet vast, want het is niet gegeven of hij betwist is; voor 'betwiste"
                 + " wrakpremie' staat niet vast: het onderwerp betwist is (niet gegeven); niet aan de beurt: 'gemerkte"
@@ -133,7 +133,7 @@ class OpenExplanationHttpTest {
         assertSentence("W1: zijn wrakpremie staat niet vast, want zijn lading is niet gegeven; 'betwiste wrakpremie' gold niet,"
                 + " want niet geldt: het onderwerp betwist is; voor 'gemerkte wrakpremie' staat niet vast: zijn lading (niet"
                 + " gegeven); niet aan de beurt: de regel 'wrakpremie' (onvoorwaardelijk, 10)", wrak("\"characteristics\":"
-                + " {\"betwist\": {\"state\": \"holdsNot\"}, \"gemerkt\": true}"));
+                + " {\"betwist\": {\"state\": \"holdsNot\"}, \"gemerkt\": {\"state\": \"holds\"}}"));
     }
 
     @Test
@@ -169,14 +169,14 @@ class OpenExplanationHttpTest {
                 + " (uitzondering op 'bergingsloon') niet vaststaat; voor 'beschadigd bergingsloon' (uitzondering op"
                 + " 'bergingsloon') staat niet vast: het onderwerp beschadigd is (niet gegeven); niet aan de beurt: de regel"
                 + " 'bergingsloon' (gold, 100)",
-                wrak("\"attributes\": {\"lengte\": 30}, \"characteristics\": {\"betwist\": true}"));
+                wrak("\"attributes\": {\"lengte\": 30}, \"characteristics\": {\"betwist\": {\"state\": \"holds\"}}"));
     }
 
     // ---------------- a composite ----------------
 
     @Test
     void a_composite_that_is_undetermined_names_the_member_that_keeps_it_so() throws Exception {
-        JsonNode answer = wrak("\"attributes\": {\"lengte\": 5}, \"characteristics\": {\"betwist\": true}");
+        JsonNode answer = wrak("\"attributes\": {\"lengte\": 5}, \"characteristics\": {\"betwist\": {\"state\": \"holds\"}}");
         assertSentence("W1: of hij gevaarlijk is, staat niet vast, want zijn diepte is niet gegeven; voor de regel 'gevaar' staat"
                 + " niet vast: zijn diepte (niet gegeven) is groter dan 10", answer);
         assertSentence("W1: of hij vrij is, staat niet vast, want zijn diepte is niet gegeven; voor de regel 'vrijdom' staat niet"
@@ -192,7 +192,7 @@ class OpenExplanationHttpTest {
     /** The member that decides is named, and not a word of the member that is open. */
     @Test
     void a_composite_that_another_member_decides() throws Exception {
-        JsonNode answer = wrak("\"attributes\": {\"lengte\": 30}, \"characteristics\": {\"betwist\": true}");
+        JsonNode answer = wrak("\"attributes\": {\"lengte\": 30}, \"characteristics\": {\"betwist\": {\"state\": \"holds\"}}");
         assertSentence("W1 is gevaarlijk, omdat zijn lengte (30) is groter dan 20", answer);
         assertSentence("W1 is vrij, omdat ten minste 2 van de 3 voorwaarden gelden: het onderwerp betwist is en zijn lengte (30)"
                 + " is groter dan 20", answer);
@@ -234,7 +234,7 @@ class OpenExplanationHttpTest {
                 + " 'keurderschap' staat niet vast: aan de voorwaarde \"de diepte van alle gevonden wrakken van de Jutter die"
                 + " gemerkt zijn groter is dan 10\" is voldaan: wel voor W1, niet vast voor W2", post("""
                 {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2"]}},
-                  {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20}, "characteristics": {"gemerkt": true}},
+                  {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20}, "characteristics": {"gemerkt": {"state": "holds"}}},
                   {"type": "Wrak", "id": "W2", "attributes": {"diepte": 5}}]}"""));
     }
 
@@ -375,8 +375,8 @@ class OpenExplanationHttpTest {
         return """
             {"instances": [{"type": "Jutter", "id": "J1", "attributes": {"bonus": 4}, "roles": {"gevonden wrakken": ["W1"]}},
               {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
-               "characteristics": {"gemeld": true, "betwist": {"state": "holdsNot"}, "beschadigd": {"state": "holdsNot"},
-                                   "gemerkt": {"state": "holdsNot"}}}]}""";
+               "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holdsNot"},
+                                   "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}""";
     }
 
     private static JsonNode wrak(String given) throws Exception {

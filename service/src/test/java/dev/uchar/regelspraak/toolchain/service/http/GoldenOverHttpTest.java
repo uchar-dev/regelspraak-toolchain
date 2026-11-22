@@ -199,7 +199,7 @@ class GoldenOverHttpTest {
                 + "' (" + scopeNames(scenario) + ")");
 
         // 3. derive the request mechanically + POST.
-        com.fasterxml.jackson.databind.node.ObjectNode request = SituationToRequest.assemble(scenario);
+        com.fasterxml.jackson.databind.node.ObjectNode request = SituationToRequest.assemble(scenario, bundle.model());
         HttpResponse<String> resp = post(path, ServiceHttp.MAPPER.writeValueAsString(request));
         assertEquals(200, resp.statusCode(),
                 () -> "POST /" + path + " gaf " + resp.statusCode() + ": " + resp.body()

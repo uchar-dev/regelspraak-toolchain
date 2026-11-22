@@ -228,7 +228,7 @@ class DetailConcurrencyTest {
         assertTrue(bundle.isOk() && !bundle.scenarios().isEmpty(),
                 () -> "scenario resolvet niet: " + scenarioPath + " " + bundle.model().errors());
         ResolvedScenario sc = bundle.scenarios().get(0);
-        return SituationToRequest.assemble(sc);
+        return SituationToRequest.assemble(sc, bundle.model());
     }
 
     private static List<Path> companionsFor(Path scenario) throws Exception {

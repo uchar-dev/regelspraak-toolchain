@@ -243,7 +243,8 @@ class DetailHttpTest {
         String source = strandmeldingSource + MELDINGEN.replace(" is 20", " is 20,00").replace(" is 10", " is 10,00");
         JsonNode playground = Playground.analyze(source).at("/scenario/results/0");
         var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
-        ObjectNode service = strandmeldingKern.process("melding", SituationToRequest.assemble(bundle.scenarios().get(0)),
+        ObjectNode service = strandmeldingKern.process("melding",
+                SituationToRequest.assemble(bundle.scenarios().get(0), bundle.model()),
                 new RequestOptions(false, null, null, true, true, true, false, false));
         assertEquals("20.00", service.at("/fixpoint/objects/0/values/0/value").asText(), service.toString());
         assertEquals(playground.get("fixpoint"), service.get("fixpoint"));
@@ -494,7 +495,8 @@ class DetailHttpTest {
     private static JsonNode detailOf(ServiceHttp service, String path, String source) throws Exception {
         var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
         assertTrue(bundle.isOk(), () -> String.valueOf(bundle.model().errors()));
-        String request = ServiceHttp.MAPPER.writeValueAsString(SituationToRequest.assemble(bundle.scenarios().get(0)));
+        String request = ServiceHttp.MAPPER.writeValueAsString(
+                SituationToRequest.assemble(bundle.scenarios().get(0), bundle.model()));
         HttpResponse<String> r = post(service, path, "trace=true&coverage=true&fixpoint=true", request);
         assertTrue(Set.of(200, 422).contains(r.statusCode()), r.body());
         return ServiceHttp.MAPPER.readTree(r.body());

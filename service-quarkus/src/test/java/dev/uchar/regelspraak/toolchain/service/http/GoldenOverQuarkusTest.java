@@ -174,7 +174,7 @@ class GoldenOverQuarkusTest {
         assertNotNull(path, () -> "geen descriptor-entrypoint scoped de regel(s) van scenario '" + scenario.name()
                 + "' (" + scopeNames(scenario) + ")");
 
-        ObjectNode request = deriveRequest(scenario);
+        ObjectNode request = deriveRequest(bundle, scenario);
         Response resp = RestAssured.given()
                 .contentType("application/json")
                 .body(MAPPER.writeValueAsString(request))
@@ -194,17 +194,18 @@ class GoldenOverQuarkusTest {
      * reflective {@code setAccessible} call over the SAME method bridges that classloader split without copying
      * or re-deriving any value.
      */
-    private static ObjectNode deriveRequest(ResolvedScenario scenario) throws Exception {
-        // Resolve the class BY NAME through the scenario object's OWN classloader so the ResolvedScenario
-        // parameter type matches (the @QuarkusTest test class and the test-jar dependency live in DIFFERENT
+    private static ObjectNode deriveRequest(ScenarioBundle bundle, ResolvedScenario scenario) throws Exception {
+        // Resolve the class BY NAME through the scenario object's OWN classloader so the parameter types
+        // match (the @QuarkusTest test class and the test-jar dependency live in DIFFERENT
         // QuarkusClassLoaders). No compile-time symbolic reference to SituationToRequest — that would trigger a
         // cross-loader IllegalAccessError on the package-private class before reflection even runs.
         ClassLoader cl = scenario.getClass().getClassLoader();
         Class<?> snv = Class.forName("dev.uchar.regelspraak.toolchain.service.http.SituationToRequest", true, cl);
         Class<?> rsClass = Class.forName("dev.uchar.regelspraak.ir.ResolvedScenario", true, cl);
-        var m = snv.getDeclaredMethod("assemble", rsClass);
+        Class<?> modelClass = Class.forName("dev.uchar.regelspraak.model.RegelSpraakModel", true, cl);
+        var m = snv.getDeclaredMethod("assemble", rsClass, modelClass);
         m.setAccessible(true);
-        return (ObjectNode) m.invoke(null, scenario);
+        return (ObjectNode) m.invoke(null, scenario, bundle.model());
     }
 
     // ---------------- verwachting comparison (mirrors GoldenOverHttpTest.compare exactly) ----------------

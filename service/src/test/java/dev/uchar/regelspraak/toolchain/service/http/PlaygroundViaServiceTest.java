@@ -339,11 +339,11 @@ class PlaygroundViaServiceTest {
         assertTrue(bundle.isOk(), () -> bundle.model().errors().toString());
         assertEquals("{\"periods\":[{\"from\":\"2024-01-01\",\"to\":\"2024-01-02\"},{\"from\":\"2024-01-10\",\"to\":"
                         + "\"2024-02-14\"}]}",
-                SituationToRequest.assemble(bundle.scenarios().get(0)).at("/instances/0/characteristics/borgplichtig")
-                        .toString());
+                SituationToRequest.assemble(bundle.scenarios().get(0), bundle.model())
+                        .at("/instances/0/characteristics/borgplichtig").toString());
         assertEquals("{\"timeline\":[{\"from\":\"2024-03-01\",\"to\":\"2024-04-01\",\"value\":99}]}",
-                SituationToRequest.assemble(bundle.scenarios().get(3)).at("/instances/0/attributes/borgdagen")
-                        .toString());
+                SituationToRequest.assemble(bundle.scenarios().get(3), bundle.model())
+                        .at("/instances/0/attributes/borgdagen").toString());
 
         JsonNode ordinary = Playground.analyze(source, null).path("scenario").path("results");
         JsonNode service = Playground.analyze(source, null, core).path("scenario").path("results");
@@ -453,8 +453,8 @@ class PlaygroundViaServiceTest {
         var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
         assertTrue(bundle.isOk(), () -> bundle.model().errors().toString());
         assertEquals("{\"cells\":[{\"labels\":[\"voorjaar\"],\"value\":1.50},{\"labels\":[\"zomer\"],\"value\":2.00}]}",
-                SituationToRequest.assemble(bundle.scenarios().get(0)).at("/instances/1/attributes/vondstgewicht")
-                        .toString());
+                SituationToRequest.assemble(bundle.scenarios().get(0), bundle.model())
+                        .at("/instances/1/attributes/vondstgewicht").toString());
 
         JsonNode ordinary = Playground.analyze(source, null).path("scenario").path("results");
         JsonNode service = Playground.analyze(source, null, core).path("scenario").path("results");
