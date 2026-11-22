@@ -243,7 +243,7 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar 2e54dd254: 374 — de set van gate 12 groeit van 382 naar 383 met jutterswet-opgave-afwezigheidsmarkers (een
 # afwezigheidsmarkering naast de opgavemarkering: een marker als opgave, als berekende waarde en als afwijking), en die
 # speelt door de dienst.
-# Pin uchar af54fac21: 377 — de set van gate 12 groeit van 383 naar 386 met jutterswet-gevuldtoets-soorten (de toets op
+# Pin uchar b9232544e: 377 — de set van gate 12 groeit van 383 naar 386 met jutterswet-gevuldtoets-soorten (de toets op
 # leeg en gevuld op een enumeratie, een tekst, een boolean en een attribuut met markers), en met
 # jutterswet-afleiden-uit-leeg en jutterswet-volledig-gegeven, regelsets die uit leeg niets afleiden (het verzoek en het
 # antwoord geven een stand). Alle drie spelen door de dienst.
@@ -262,7 +262,7 @@ EXPECTED_REPLAY_PLAYED=377
 # jutterswet-percentage-plus-percentage.
 # 1042 (pin uchar c24de6c58): de case van jutterswet-vondsten-van-de-meester.
 # 1057 (pin uchar 2e54dd254): de vijftien cases van jutterswet-opgave-afwezigheidsmarkers.
-# 1072 (pin uchar af54fac21): de drie cases van jutterswet-gevuldtoets-soorten en de zes van elk van de twee strikte goldens.
+# 1072 (pin uchar b9232544e): de drie cases van jutterswet-gevuldtoets-soorten en de zes van elk van de twee strikte goldens.
 EXPECTED_REPLAY_CASES=1072
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet

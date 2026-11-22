@@ -85,20 +85,20 @@ De semantiek (uchars). Een zin in de scenariolaag voor een open verwachting (uch
 
 ### Per punt
 
-- **De pin** (`513a1be37`): uchar `af54fac21`. Van de lijst "Voor de pin van de distributie" vroegen hier werk: de vier `switch`-en van de verbaliser
+- **De pin** (`242ca4521`): uchar `b9232544e`. Van de lijst "Voor de pin van de distributie" vroegen hier werk: de vier `switch`-en van de verbaliser
   over `ConditionReading.Status` zonder `default`, die op `OPEN` zwijgend doorliepen (elk faalt nu luid), de rol `reconcile-open` in `drlRules`, en `EndObject.open`. Er is geen
   compileerfout: een `switch` als opdracht hoeft niet volledig te zijn. In deze commit weigert een strikte regelset de start.
-- **Het verzoek** (`264a94534`): `RequestMapper` schrijft `holds` onder `characteristics` en `holdsNot` onder `characteristicsAbsent` van de case; `null` en
+- **Het verzoek** (`6ae3b7030`): `RequestMapper` schrijft `holds` onder `characteristics` en `holdsNot` onder `characteristicsAbsent` van de case; `null` en
   weggelaten zijn niet gegeven; een kale `false` is `WRONG_TYPE` met de twee vormen, een andere stand ook, een object met een andere sleutel `MALFORMED`.
-- **Het antwoord** (`8b223f183`): elk lid van `output` met zijn stand; `/info` met `inferFromEmpty: false` en `completeInput`; `fixpoint` met `open` per
+- **Het antwoord** (`7c921cab2`): elk lid van `output` met zijn stand; `/info` met `inferFromEmpty: false` en `completeInput`; `fixpoint` met `open` per
   object, ook in de 422; beide adapters (één `ServiceHttp`). De uitleg is een 400 `UNSUPPORTED` op `explanation`.
-- **OpenAPI** (`8cdcb4b82`): `AttributeState` en `CharacteristicState` als opsommingen, een kenmerk van een verzoek als `true` of een stand.
+- **OpenAPI** (`12786afa7`): `AttributeState` en `CharacteristicState` als opsommingen, een kenmerk van een verzoek als `true` of een stand.
 - **Eén plaats**: `OpenValues.in(model)`. Een gewone regelset loopt langs de code die er stond.
 - **De poort**: `service_replay.py` leest `characteristicsAbsent`, `attributeOpen` en `characteristicOpen`, en de standen van een strikt antwoord. Met een
   verwachting veranderd (open naar leeg, open naar afwezig) en met `characteristicsAbsent` weggelaten faalt zij, alle drie gemeten.
 - **Scenario's en playground**: een verwachting tegenover een open uitkomst is FAIL met `openstaand`, op beide routes; het toetsdocument heeft geen zin voor een
   kenmerk dat niet geldt, dus `SituationToRequest` verandert niet; de pagina toont een open lid ("staat niet vast").
-- **Documentatie** (`7d79970a6`): `docs/ENGINE.md` en README, "A strict rule set"; README, één punt onder "Contract change".
+- **Documentatie** (`7b0641880`): `docs/ENGINE.md` en README, "A strict rule set"; README, één punt onder "Contract change".
 
 ### Vóór en na de pin
 
@@ -147,21 +147,21 @@ twee volledige leden). `OpenValuesHttpTest` (21), `PlaygroundOpenValuesTest` (4)
 
 ### Poorten
 
-Op `7d79970a6`, elk los: `mvn -B -o verify -Dmaven.test.skip.exec=true` groen (210, 615 en 66 tests), `make check-service-replay` PASS (377 goldens, 1072
+Op `7b0641880`, elk los: `mvn -B -o verify -Dmaven.test.skip.exec=true` groen (210, 615 en 66 tests), `make check-service-replay` PASS (377 goldens, 1072
 cases, rode leg 69 en 14), `make check-twins` PASS (18 cases, 34 verzoeken), `make scenario-test` 0 mismatch. Daarna alleen javadoc.
 
 ## Result van deel 2: de uitleg, openInputs, de playground
 
 ### Per punt van de kaart
 
-- **4, wat een uitkomst openhoudt** (`9869ae8ad`): `?openInputs=true` in beide adapters (`RequestOptions.openInputs`, `OpenInputs` als de ene schrijver, `OpenReads.openInputs`) en in het OpenAPI-document
+- **4, wat een uitkomst openhoudt** (`d9eeb9711`): `?openInputs=true` in beide adapters (`RequestOptions.openInputs`, `OpenInputs` als de ene schrijver, `OpenReads.openInputs`) en in het OpenAPI-document
   van een strikte regelset. Een open uitkomst zonder open invoerlid is een fout van de motor en valt luid. Op een gewone regelset en op een ingang zonder uitleg een 400 `UNSUPPORTED`.
-- **5, de uitleg** (`9869ae8ad`, `2f5857032`): een zin per open uitkomst met één oorzaak en per vorm wat zij vond; sluitingen, samenstellingen, vouwen, kwantorvouwen, stapels, uitzonderingsgroepen,
+- **5, de uitleg** (`d9eeb9711`, `49a835ae8`): een zin per open uitkomst met één oorzaak en per vorm wat zij vond; sluitingen, samenstellingen, vouwen, kwantorvouwen, stapels, uitzonderingsgroepen,
   initialisaties en consistentieregels. `explanationParts`: `undetermined` en `closure` op `CONDITION`, `open` op `READING`, `unsettled` op `MEMBERS`, `undetermined` op een verdrongen
   `VARIANT`. `engine/OpenReads` zegt waardoor iets openstaat, uit uchars lezingen en de eindstand, zonder iets na te rekenen.
-- **6, de playground** (`761c6a8ef`): per scenario de zinnen en "Open invoer"; een verwachting tegenover een open uitkomst blijft FAIL met `openstaand`.
+- **6, de playground** (`6432889f0`): per scenario de zinnen en "Open invoer"; een verwachting tegenover een open uitkomst blijft FAIL met `openstaand`.
 - **Een document dat uchar alleen met lezingen weigert** (DROOLS-318): de ingang en het scenario antwoorden zonder lezingen; `explanation` en `openInputs` zijn een 400 met uchars zin.
-- **Documentatie** (`28e622fb0`): `docs/ENGINE.md`, "A strict rule set" en "The parts of an explanation"; README; het klassecommentaar van `Verbaliser`.
+- **Documentatie** (`a6d3e2ee8`): `docs/ENGINE.md`, "A strict rule set" en "The parts of an explanation"; README; het klassecommentaar van `Verbaliser`.
 
 ### De acht correcties van de tweede lezing
 
@@ -169,7 +169,7 @@ cases, rode leg 69 en 14), `make check-twins` PASS (18 cases, 34 verzoeken), `ma
 declaratie niet, dus staat er overal "van J1 is zijn bonus niet gegeven". 3: "dat geen regel een waarde geeft" in plaats van "dat geen regel het vult", om dezelfde reden. Bij 6 heet een
 regel waarvan de voorwaarde geldt en de waarde open is "wat de regel 'X' geeft, staat niet vast".
 
-### Nagelezen en hersteld (`2f5857032`)
+### Nagelezen en hersteld (`49a835ae8`)
 
 Drie keer een 500: een kwantorvouw met een toets op gevuld of leeg in haar filter, die door die sluiting geldt; een kenmerk uit het verzoek naast een open stapel met een lid dat iets besloot; een
 regel op het supertype naast de stapel van een subtype. Drie keer een onware zin: "gaf geen waarde" van een lid van een uitzonderingsgroep dat iets gaf, waar de initialisatie over de groep besliste; een lid na de stop met een fout als "niet voor";
@@ -202,10 +202,10 @@ Aangepast omdat het gedrag verandert: `OpenValuesHttpTest.what_stands_is_explain
 
 ### Poorten en vergelijking
 
-Op `de265a72a`: `mvn -B -o verify -Dmaven.test.skip.exec=true` groen (212, 673 en 68 tests) en `make check-service-replay` PASS (377 goldens, 1072 cases, rode leg 69 en 14). Op `28e622fb0`, dat alleen documentatie en
+Op `247456453`: `mvn -B -o verify -Dmaven.test.skip.exec=true` groen (212, 673 en 68 tests) en `make check-service-replay` PASS (377 goldens, 1072 cases, rode leg 69 en 14). Op `a6d3e2ee8`, dat alleen documentatie en
 javadoc toevoegt: `make check-twins` PASS (18 cases, 34 verzoeken) en `make scenario-test` 0 mismatch. Geen vloer en geen pin veranderde.
 
-Gewone regelsets, `compare.py` als in deel 1, de jar van stap 2 van deel 1 (`1-step2.jar`; de rest van deel 1 raakte alleen strikte regelsets) tegen die van `28e622fb0`, elke body byte voor byte: goldens 385 mappen
+Gewone regelsets, `compare.py` als in deel 1, de jar van stap 2 van deel 1 (`1-step2.jar`; de rest van deel 1 raakte alleen strikte regelsets) tegen die van `a6d3e2ee8`, elke body byte voor byte: goldens 385 mappen
 gelijk, 46 starten niet met dezelfde zin, 2 anders; rood 58 gelijk, 18 starten niet, 1 anders. De drie die anders zijn, zijn strikt: `jutterswet-afleiden-uit-leeg` en
 `jutterswet-kenmerk-wel-en-niet` op `/openapi` (de vlag en velden van de uitleg), `jutterswet-volledig-gegeven` op `/info` (`completeInput`, van het eind van deel 1).
 Geen body van een gewone regelset verschilt.
