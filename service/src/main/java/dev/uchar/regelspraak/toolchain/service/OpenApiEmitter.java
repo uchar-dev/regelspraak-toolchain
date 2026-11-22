@@ -119,15 +119,20 @@ public final class OpenApiEmitter {
         ObjectNode schemas = components.putObject("schemas");
         for (ObjectType ot : model.objectTypes.values())
             schemas.set(componentName(ot, sp.in), objectTypeSchema(ot, model, sp));
+        boolean strict = OpenValues.in(model);
         schemas.set("Request", requestSchema(model, sp.in));
-        schemas.set("Answer", answerSchema());
+        schemas.set("Answer", answerSchema(strict));
+        if (strict) {
+            schemas.set("AttributeState", attributeStateSchema());
+            schemas.set("CharacteristicState", characteristicStateSchema());
+        }
         schemas.set("Error", errorSchema());
         schemas.set("EvaluationFault", evaluationFaultSchema());
-        schemas.set("Info", infoSchema(sp));
+        schemas.set("Info", infoSchema(sp, strict));
         schemas.set("ExplanationPart", explanationPartSchema());
         schemas.set("Trace", traceSchema());
         schemas.set("Coverage", coverageSchema());
-        schemas.set("Fixpoint", fixpointSchema());
+        schemas.set("Fixpoint", fixpointSchema(strict));
         schemas.set("NoFixpoint", noFixpointSchema());
         schemas.set("Limit", limitSchema());
 
@@ -382,6 +387,7 @@ public final class OpenApiEmitter {
                     ? timelineSchema(e.getValue(), markers, ot.granularityOf(e.getKey()), sp)
                     : ot.dimensionsOf(e.getKey()).isEmpty() ? valueSchema(e.getValue(), markers, sp)
                     : cellsSchema(e.getValue(), markers, ot.dimensionsOf(e.getKey()), model, sp);
+            if (OpenValues.in(model)) notGiven(attribute, complete(ot, e.getKey(), false), "de waarde");
             comment(attribute, model, Naming.attributeOf(ot, e.getKey()));
             if (sp.enabled()) spellings(attribute, sp.of(Naming.attributeOf(ot, e.getKey())));
             props.set(name, attribute);
@@ -393,6 +399,10 @@ public final class OpenApiEmitter {
             if (temporalCharacteristic(ot, k)) {
                 kn = periodsSchema(ot.characteristicGranularityOf(k));
                 withPeriods.add(name);
+            } else if (OpenValues.in(model)) {
+                kn = characteristicInputSchema();
+                notGiven(kn, complete(ot, k, true), "of het geldt");
+                characteristics.add(name);
             } else {
                 kn = NF.objectNode();
                 kn.put("type", "boolean");
@@ -404,7 +414,7 @@ public final class OpenApiEmitter {
             props.set(name, kn);
         }
         schema.set("properties", props);
-        schema.put("description", objectTypeDescription(ot, sp.in, characteristics, withPeriods));
+        schema.put("description", objectTypeDescription(ot, sp.in, characteristics, withPeriods, OpenValues.in(model)));
         comment(schema, model, Designatable.objectType(ot.name));
         if (sp.enabled()) spellings(schema, sp.of(Designatable.objectType(ot.name)));
         return schema;
@@ -447,12 +457,86 @@ public final class OpenApiEmitter {
         return first + (first.endsWith(".") ? " " : ". ") + second;
     }
 
+    /** A characteristic as a request of a strict rule set ({@link OpenValues}) gives it: {@code true}, or its state. */
+    private static ObjectNode characteristicInputSchema() {
+        ObjectNode s = NF.objectNode();
+        s.put("description", "kenmerk: {\"state\": \"holds\"} (of true) waar het geldt, {\"state\": \"holdsNot\"} waar"
+                + " vaststaat dat het niet geldt. Een kale false is een 400 (WRONG_TYPE).");
+        ArrayNode oneOf = s.putArray("oneOf");
+        ObjectNode holds = oneOf.addObject();
+        holds.put("type", "boolean");
+        holds.putArray("enum").add(true);
+        ObjectNode state = stateSchema(OpenValues.HOLDS, OpenValues.HOLDS_NOT);
+        state.put("nullable", true);
+        oneOf.add(state);
+        return s;
+    }
+
+    /** An object with a {@code state} that is one of {@code states}. */
+    private static ObjectNode stateSchema(String... states) {
+        ObjectNode s = NF.objectNode();
+        s.put("type", "object");
+        s.putArray("required").add(OpenValues.STATE);
+        s.put("additionalProperties", false);
+        ObjectNode state = s.putObject("properties").putObject(OpenValues.STATE);
+        state.put("type", "string");
+        ArrayNode enumArray = state.putArray("enum");
+        for (String v : states) enumArray.add(v);
+        return s;
+    }
+
+    /** An attribute in the answer of a strict rule set ({@link OpenValues}): per state what stands beside it. */
+    private static ObjectNode attributeStateSchema() {
+        ObjectNode s = NF.objectNode();
+        s.put("description", "De stand van een attribuut. filled: het heeft de waarde value, in de vorm van het"
+                + " objecttype-schema, een getal in precies de decimalen van zijn type. marker: het heeft een"
+                + " afwezigheidsmarker, een gevulde waarde, met haar naam onder marker. empty: het staat vast dat er geen"
+                + " waarde is. open: het staat niet vast.");
+        ArrayNode oneOf = s.putArray("oneOf");
+        ObjectNode filled = stateSchema(OpenValues.FILLED);
+        ((ArrayNode) filled.get("required")).add("value");
+        ((ObjectNode) filled.get("properties")).putObject("value");
+        oneOf.add(filled);
+        ObjectNode marker = stateSchema(OpenValues.MARKER);
+        ((ArrayNode) marker.get("required")).add(Markers.KEY);
+        ((ObjectNode) marker.get("properties")).putObject(Markers.KEY).put("type", "string");
+        oneOf.add(marker);
+        oneOf.add(stateSchema(OpenValues.EMPTY, OpenValues.OPEN));
+        return s;
+    }
+
+    /** A characteristic in the answer of a strict rule set ({@link OpenValues}). */
+    private static ObjectNode characteristicStateSchema() {
+        ObjectNode s = stateSchema(OpenValues.HOLDS, OpenValues.HOLDS_NOT, OpenValues.OPEN);
+        s.put("description", "De stand van een kenmerk. holds: het geldt. holdsNot: het staat vast dat het niet geldt."
+                + " open: het staat niet vast.");
+        return s;
+    }
+
+    /** Whether the declaration of member {@code name} of {@code ot} says that its input is complete. */
+    private static boolean complete(ObjectType ot, String name, boolean characteristic) {
+        Designatable declared = characteristic ? Naming.characteristicOf(ot, name) : Naming.attributeOf(ot, name);
+        for (ObjectType t : ot.chain())
+            if (t.name.equals(declared.owner()))
+                return (characteristic ? t.completeCharacteristics : t.completeAttributes).contains(declared.name());
+        throw new IllegalStateException("het lid '" + name + "' van " + ot.name + " heeft geen declaratie in zijn keten");
+    }
+
+    /** {@code node}, a member a request of a strict rule set gives, ends its description with what it means that it is not
+     *  given: it is open, or stands to be leeg or not to hold where its input is {@code complete}. */
+    private static void notGiven(ObjectNode node, boolean complete, String what) {
+        String sentence = complete ? "Volledig gegeven: waar het ontbreekt of null is, staat vast dat het leeg is of niet"
+                + " geldt." : "Waar het ontbreekt of null is, is " + what + " niet gegeven.";
+        node.put("description", joined(node.has("description") ? node.get("description").asText() : "", sentence));
+    }
+
     private static String objectTypeDescription(ObjectType ot, Naming in, List<String> characteristics,
-                                                 List<String> withPeriods) {
+                                                 List<String> withPeriods, boolean strict) {
         StringBuilder b = new StringBuilder();
         b.append("Objecttype '").append(in.objectType(ot.name)).append("'.");
         if (!characteristics.isEmpty())
-            b.append(" Kenmerken (boolean-eigenschappen): ").append(String.join(", ", characteristics)).append(".");
+            b.append(strict ? " Kenmerken (een stand): " : " Kenmerken (boolean-eigenschappen): ")
+                    .append(String.join(", ", characteristics)).append(".");
         if (!withPeriods.isEmpty())
             b.append(" Tijdsafhankelijke kenmerken (de perioden waarin ze gelden): ")
                     .append(String.join(", ", withPeriods)).append(".");
@@ -691,8 +775,10 @@ public final class OpenApiEmitter {
         freeObject(instProps.putObject("attributes"),
                 "attribuutnaam -> waarde (per het objecttype-schema); een tijdsafhankelijk attribuut neemt zijn tijdlijn: "
                         + TimelineInput.TIMELINE_FORM + ".");
-        freeObject(instProps.putObject("characteristics"),
-                "kenmerknaam -> boolean; een tijdsafhankelijk kenmerk neemt de perioden waarin het geldt: "
+        freeObject(instProps.putObject("characteristics"), OpenValues.in(model)
+                ? "kenmerknaam -> stand: {\"state\": \"holds\"} (of true) waar het geldt, {\"state\": \"holdsNot\"} waar"
+                        + " vaststaat dat het niet geldt; waar het niet gegeven is, ontbreekt het of is het null."
+                : "kenmerknaam -> boolean; een tijdsafhankelijk kenmerk neemt de perioden waarin het geldt: "
                         + TimelineInput.PERIODS_FORM + ".");
         freeObject(instProps.putObject("roles"),
                 "rolnaam -> doel-id of lijst van doel-ids.");
@@ -714,7 +800,7 @@ public final class OpenApiEmitter {
 
     /** The generic response schema, honest to {@link AnswerBuilder}: instances[{id,type,attributes,characteristics}]
      *  + inconsistencies[string] + inconsistencyDetails[{rule,subject}]. */
-    private static ObjectNode answerSchema() {
+    private static ObjectNode answerSchema(boolean strict) {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "Het beslissingsantwoord: per instantie de gevraagde uitvoer-attributen/-kenmerken,"
@@ -728,17 +814,24 @@ public final class OpenApiEmitter {
         ObjectNode instProps = inst.putObject("properties");
         instProps.putObject("id").put("type", "string");
         instProps.putObject("type").put("type", "string");
-        freeObject(instProps.putObject("attributes"), "attribuutnaam -> waarde (of null bij leeg); een attribuut op een"
-                + " tijdlijn als {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]},"
-                + " from of to weggelaten voor een open grens. Een getal staat in precies de decimalen van zijn type"
-                + " (25.00 bij 2 decimalen, 25 bij een geheel getal), een getal van de onbegrensde vorm (Numeriek"
-                + " (getal)) met zijn eigen schaal.");
-        freeObject(instProps.putObject("characteristics"), "kenmerknaam -> boolean.");
+        if (strict) {
+            members(instProps.putObject("attributes"), "attribuutnaam -> stand.", "AttributeState");
+            members(instProps.putObject("characteristics"), "kenmerknaam -> stand.", "CharacteristicState");
+        } else {
+            freeObject(instProps.putObject("attributes"), "attribuutnaam -> waarde (of null bij leeg); een attribuut op een"
+                    + " tijdlijn als {\"timeline\": [{\"from\": <datum>, \"to\": <datum>, \"value\": <waarde>}, ...]},"
+                    + " from of to weggelaten voor een open grens. Een getal staat in precies de decimalen van zijn type"
+                    + " (25.00 bij 2 decimalen, 25 bij een geheel getal), een getal van de onbegrensde vorm (Numeriek"
+                    + " (getal)) met zijn eigen schaal.");
+            freeObject(instProps.putObject("characteristics"), "kenmerknaam -> boolean.");
+        }
 
         ObjectNode inc = props.putObject("inconsistencies");
         inc.put("type", "array");
         inc.putObject("items").put("type", "string");
-        inc.put("description", "de namen van de regels waarvan een consistentietoets INCONSISTENT opleverde.");
+        inc.put("description", "de namen van de regels waarvan een consistentietoets INCONSISTENT opleverde."
+                + (strict ? " Zij noemt wat vaststaat: een toets die openstaat, staat er niet in, dus een lege lijst zegt"
+                        + " niet dat elke regel houdt." : ""));
 
         ObjectNode details = props.putObject("inconsistencyDetails");
         details.put("type", "array");
@@ -894,7 +987,7 @@ public final class OpenApiEmitter {
     }
 
     /** What stands at the fixpoint of a request's session ({@link FixpointGivens}). */
-    private static ObjectNode fixpointSchema() {
+    private static ObjectNode fixpointSchema(boolean strict) {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "met de vlag fixpoint: wat aan het fixpunt van de sessie staat. Een instantie van het"
@@ -922,6 +1015,12 @@ public final class OpenApiEmitter {
                 + " perioden waarin het geldt (from, to, zoals het verzoek ze geeft): die een regel schreef, of anders"
                 + " die van de invoer.");
         characteristics.put("additionalProperties", true);
+        if (strict)
+            list(objectProps, "open", "elk lid dat openstaat: attribute of characteristic, met unit bij een attribuut met"
+                    + " een eenheid, en met input waar het verzoek het een waarde gaf, die niet staat naast een regel die"
+                    + " openstaat (bij een kenmerk {\"state\": \"holdsNot\"}). Een lid dat hier niet staat en onder values of"
+                    + " characteristics evenmin, is vaststaand leeg of geldt vaststaand niet.")
+                    .put("additionalProperties", true);
         ObjectNode made = list(props, "madeObjects", "de objecten die een objectcreatie maakte.");
         ObjectNode madeProps = made.putObject("properties");
         for (String v : new String[]{"object", "objectType", "creation", "subject"})
@@ -1086,7 +1185,7 @@ public final class OpenApiEmitter {
     }
 
     /** The /info response schema (minimal, honest to fase-3 /info); with vocabularies, their completeness. */
-    private static ObjectNode infoSchema(Spellings sp) {
+    private static ObjectNode infoSchema(Spellings sp, boolean strict) {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "De dienst-info: identiteit, per-regel coverage, overgeslagen markers, parameters.");
@@ -1109,7 +1208,22 @@ public final class OpenApiEmitter {
             v.put("description", "per vocabulaire: name, default, language, complete, en de declaraties"
                     + " zonder benaming (die draagt een antwoord in dat vocabulaire bij hun canonieke naam).");
         }
+        if (strict) {
+            ObjectNode infer = props.putObject("inferFromEmpty");
+            infer.put("type", "boolean");
+            infer.putArray("enum").add(false);
+            infer.put("description", "de regelset leidt uit leeg niets af: een lid is gevuld, vaststaand leeg of open.");
+            list(props, "completeInput", "de leden waarvan de declaratie zegt dat hun invoer volledig is: kind (attribute"
+                    + " of characteristic), objectType en name.").put("additionalProperties", true);
+        }
         return s;
+    }
+
+    /** An object whose every property is the component {@code schema}. */
+    private static void members(ObjectNode node, String description, String schema) {
+        node.put("type", "object");
+        node.putObject("additionalProperties").put("$ref", "#/components/schemas/" + schema);
+        node.put("description", description);
     }
 
     private static void freeObject(ObjectNode node, String description) {
