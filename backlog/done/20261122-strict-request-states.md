@@ -90,3 +90,7 @@ verzoeken, 4 getuigenissen), `make scenario-test` 0 mismatch. Geen vloer, pin of
 ### Open punten
 
 Geen in de code. De werkbanktekst van `open-values-in-service` (buiten deze repository) noemt `true` nog als toegestane vorm.
+
+### Nagerekend door de hoofdsessie (2026-11-22)
+
+De diff nagelezen. `make gates` op deze inhoud: 7 van 7 groen in 7m12s (gedraaid vóór de herschrijving van de geschiedenis; de boom is daarna gelijk op de pin en de geciteerde hashes na); `make check-pin` op de huidige pin groen.
