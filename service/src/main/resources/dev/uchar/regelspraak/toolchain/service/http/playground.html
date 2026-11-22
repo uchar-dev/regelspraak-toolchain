@@ -369,6 +369,8 @@ function renderScenario() {
                + " vormen gevuurd</span>", coverageHtml(cov), false);
   const trace = r.trace || [];
   h += section("Vuringen <span class=\"muted\">" + trace.length + " vormen</span>", firingsHtml(trace), false);
+  if (r.openInputs)
+    h += section("Open invoer <span class=\"muted\">" + r.openInputs.length + " te geven</span>", openInputsHtml(r.openInputs), false);
   h += section("Uitleg <span class=\"muted\">" + (r.explanation || []).length + " zinnen</span>", explanationHtml(r), false);
   return h;
 }
@@ -514,6 +516,16 @@ function firingsHtml(trace) {
   let h = '<table><tr><th>vorm</th><th>labels</th><th class="num">aantal</th></tr>';
   for (const t of trace)
     h += "<tr><td>" + esc(t.rule) + "</td><td>" + t.labels.map(esc).join(", ") + '</td><td class="num">' + t.count + "</td></tr>";
+  return h + "</table>";
+}
+
+// what keeps an outcome of a strict rule set open now: the input that can be given, with the outcomes it keeps open
+function openInputsHtml(inputs) {
+  if (!inputs.length) return '<div class="diag muted">Geen afgeleide uitkomst staat open.</div>';
+  let h = "<table><tr><th>niet gegeven</th><th>houdt open</th></tr>";
+  for (const i of inputs)
+    h += "<tr><td>" + esc(i.instance) + " " + esc(i.name) + "</td><td>"
+       + i.forOutputs.map((o) => esc(o.instance) + " " + esc(o.name)).join(", ") + "</td></tr>";
   return h + "</table>";
 }
 

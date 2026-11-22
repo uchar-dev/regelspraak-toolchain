@@ -10,13 +10,14 @@ import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * The scenarios of a rule set that infers nothing from an empty value ({@link OpenValuesSource}) in the playground, on the
  * ordinary route and with {@code via=service}: the verdict of a scenario that expects a value where the outcome is open is
- * FAIL, with uchar's word for it; the fixpoint lists what is open, with the input that does not stand; and there is no
- * explanation, with the reason. The situation of a scenario asserts a characteristic or leaves it out, so its request
+ * FAIL, with uchar's word for it; the fixpoint lists what is open, with the input that does not stand; the explanation
+ * says what keeps an outcome open, and {@code openInputs} what can be given. The situation of a scenario asserts a characteristic or leaves it out, so its request
  * states none that does not hold.
  */
 class PlaygroundOpenValuesTest {
@@ -81,13 +82,48 @@ class PlaygroundOpenValuesTest {
         assertEquals(ordinary.at("/1/diagnosis"), via.at("/1/diagnosis"));
     }
 
+    /** The sentences of the service and of the ordinary route are the same on the forms both run. */
     @Test
-    void there_is_no_explanation_and_the_reason_is_given() {
-        for (JsonNode results : new JsonNode[]{ordinary, via})
-            for (JsonNode s : results) {
-                assertEquals(0, s.get("explanation").size(), s.toString());
-                assertTrue(s.get("explanationError").asText().contains("Afleiden uit leeg: nee"), s.toString());
-            }
+    void the_explanation_says_what_keeps_an_outcome_open() {
+        for (JsonNode results : new JsonNode[]{ordinary, via}) {
+            String open = results.at("/1/explanation").toString();
+            for (String sentence : new String[]{
+                    "V1: of hij kostbaar is, staat niet vast, want zijn taxatie is niet gegeven; voor de regel 'kostbaarheid' staat"
+                            + " niet vast: zijn taxatie (niet gegeven) is groter dan 1000",
+                    "V1: zijn vindloon staat niet vast, want zijn taxatie is niet gegeven; voor de regel 'vindloon' staat niet vast:"
+                            + " zijn taxatie plus 10, met zijn taxatie (niet gegeven)",
+                    "V1: zijn bergloon staat niet vast, want zijn taxatie is niet gegeven; de invoerwaarde 7 geldt pas als vaststaat"
+                            + " dat geen regel een waarde geeft; voor de regel 'bergloon' staat niet vast: zijn taxatie (niet gegeven)"
+                            + " is groter dan 1000"})
+                assertTrue(open.contains("\"" + sentence + "\""), open);
+            assertFalse(results.get(1).has("explanationError"), results.toString());
+            assertTrue(results.at("/0/explanation").toString().contains("\"V1 heeft als vindloon 60 volgens de regel 'vindloon'"
+                    + " (onvoorwaardelijk): zijn taxatie plus 10, met zijn taxatie (50)\""), results.toString());
+        }
+    }
+
+    /** On the ordinary route every derived member of the situation is an outcome, and via the service the output of the entry
+     *  point: there the taxatie and betwist are outcomes themselves and betwist keeps the premie open. */
+    @Test
+    void the_open_inputs_of_a_scenario() throws Exception {
+        assertEquals(ServiceHttp.MAPPER.readTree("""
+            [{"kind": "attribute", "instance": "V1", "name": "taxatie", "forOutputs": [
+                {"instance": "V1", "name": "vindloon", "kind": "attribute"},
+                {"instance": "V1", "name": "bergloon", "kind": "attribute"},
+                {"instance": "V1", "name": "kostbaar", "kind": "characteristic"}]}]"""), ordinary.at("/1/openInputs"));
+        assertEquals(0, ordinary.at("/0/openInputs").size(), ordinary.toString());
+        assertEquals("taxatie", via.at("/1/openInputs/0/name").asText());
+        assertEquals("betwist", via.at("/1/openInputs/1/name").asText());
+        assertEquals("[{\"instance\":\"V1\",\"name\":\"premie\",\"kind\":\"attribute\"},{\"instance\":\"V1\","
+                + "\"name\":\"betwist\",\"kind\":\"characteristic\"}]", via.at("/1/openInputs/1/forOutputs").toString());
+    }
+
+    /** A scenario of a rule set that infers from empty has no open inputs. */
+    @Test
+    void an_ordinary_rule_set_has_no_open_inputs() {
+        JsonNode results = Playground.analyze(OpenValuesSource.SOURCE.replace("Afleiden uit leeg: nee", "")
+                .replace(" (volledig gegeven)", "") + SCENARIOS).at("/scenario/results");
+        for (JsonNode s : results) assertFalse(s.has("openInputs"), s.toString());
     }
 
     /** The bergloon of 7 is input beside a writer that is open, so it is no row of the values. */
