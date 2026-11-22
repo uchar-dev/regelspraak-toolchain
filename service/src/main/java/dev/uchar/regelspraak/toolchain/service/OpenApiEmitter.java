@@ -65,8 +65,8 @@ import java.util.List;
  *
  * <p><b>A strict rule set</b> ({@link OpenValues}) has the states of a member as enumerations: the components
  * {@code AttributeState} and {@code CharacteristicState} for the answer, and a characteristic of a request as {@code true}
- * or its state; every member says what it means that a request does not give it. The document of any other rule set has
- * none of this.
+ * or its state; every member says what it means that a request does not give it; the operations have the flag
+ * {@code openInputs} and {@code Answer} its field. The document of any other rule set has none of this.
  *
  * <p><b>The comment of a declaration.</b> The description of an object type, of an attribute and of a characteristic
  * starts with the comment the source writes directly above its declaration, verbatim, its lines joined with a space,
@@ -134,7 +134,7 @@ public final class OpenApiEmitter {
         schemas.set("Error", errorSchema());
         schemas.set("EvaluationFault", evaluationFaultSchema());
         schemas.set("Info", infoSchema(sp, strict));
-        schemas.set("ExplanationPart", explanationPartSchema());
+        schemas.set("ExplanationPart", explanationPartSchema(strict));
         schemas.set("Trace", traceSchema());
         schemas.set("Coverage", coverageSchema());
         schemas.set("Fixpoint", fixpointSchema(strict));
@@ -239,6 +239,10 @@ public final class OpenApiEmitter {
         parameters.add(flagParameter("explanationParts", "true: het antwoord krijgt explanation en daarnaast"
                 + " explanationParts (schema ExplanationPart): per zin van explanation de stukken waaruit zij bestaat,"
                 + " elk met zijn kind; de teksten van de bladeren achter elkaar zijn de zin."));
+        if (OpenValues.in(model))
+            parameters.add(flagParameter("openInputs", "true: het antwoord krijgt openInputs: de invoerleden die een open"
+                    + " uitkomst nu openhouden. Het is wat nu gevraagd kan worden, niet de volledige vragenlijst: zijn zij"
+                    + " gegeven, dan kan een volgende lezing open blijken."));
         parameters.add(flagParameter("trace", "true: het antwoord krijgt trace (schema Trace): per vorm die vuurde de"
                 + " ids van het verzoek die haar regels bonden en hoe vaak ze vuurden." + DETAIL));
         parameters.add(flagParameter("coverage", "true: het antwoord krijgt coverage (schema Coverage): per vorm van dit"
@@ -860,8 +864,26 @@ public final class OpenApiEmitter {
         sentence.putObject("items").put("$ref", "#/components/schemas/ExplanationPart");
         explanationParts.put("description", "met de vlag explanationParts: per zin van explanation, in dezelfde"
                 + " volgorde, de stukken aan haar wortel; de teksten van de bladeren achter elkaar zijn de zin.");
+        if (strict) {
+            ObjectNode open = list(props, "openInputs", "met de vlag openInputs: de invoerleden die een open uitkomst nu"
+                    + " openhouden, elk eenmaal, in de volgorde van de instanties van het verzoek en dan van de declaratie."
+                    + " De namen staan in het vocabulaire van het antwoord.");
+            ObjectNode openProps = open.putObject("properties");
+            member(openProps);
+            ObjectNode outputs = list(openProps, "forOutputs", "de open uitkomsten die dit lid openhoudt.");
+            member(outputs.putObject("properties"));
+        }
         detailFields(props);
         return s;
+    }
+
+    /** A member of an instance, as {@link OpenInputs} writes it, on {@code props}. */
+    private static void member(ObjectNode props) {
+        ObjectNode kind = props.putObject("kind");
+        kind.put("type", "string");
+        kind.putArray("enum").add("attribute").add("characteristic");
+        props.putObject("instance").put("type", "string").put("description", "het id van de instantie.");
+        props.putObject("name").put("type", "string");
     }
 
     /** The fields the detail flags add to an answer and to a 422, in the order the service writes them. */
@@ -877,7 +899,7 @@ public final class OpenApiEmitter {
 
     /** One part of a sentence of the explanation ({@link ExplanationParts}): a leaf or a group, recursive through
      *  {@code parts}. */
-    private static ObjectNode explanationPartSchema() {
+    private static ObjectNode explanationPartSchema(boolean strict) {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "Een stuk van een uitlegzin: een blad met text, of een groep (CONDITION, MEMBERS,"
@@ -953,6 +975,25 @@ public final class OpenApiEmitter {
             props.putObject(key).put("type", "boolean");
         for (String key : new String[]{"threshold", "members", "holding", "unjudged", "position"})
             props.putObject(key).put("type", "integer");
+        if (strict) {
+            s.put("description", s.get("description").asText() + " In een regelset die uit leeg niets afleidt: een CONDITION die"
+                    + " niet vaststaat draagt undetermined: true en geen holds, een die door een toets op leeg of gevuld over een"
+                    + " open lid beslist is closure: true; een READING van een lezing die op een open lid afbrak draagt open, dat"
+                    + " lid (object zoals SUBJECT het noemt, canonical, en kind: attribute of characteristic), en geen VALUE;"
+                    + " MEMBERS van een kwantorvouw draagt unsettled, het aantal leden waarvoor niet vaststaat of de toets"
+                    + " geldt; een VARIANT van een defaults-groep die niet aan de beurt was en waarvan de lezing niet vaststaat,"
+                    + " undetermined: true (dan de naam alleen).");
+            props.putObject("unsettled").put("type", "integer");
+            for (String key : new String[]{"undetermined", "closure"}) props.putObject(key).put("type", "boolean");
+            ObjectNode open = props.putObject("open");
+            open.put("type", "object");
+            ObjectNode openProps = open.putObject("properties");
+            openProps.putObject("object").put("type", "string");
+            openProps.putObject("canonical").put("type", "string");
+            ObjectNode kindOfMember = openProps.putObject("kind");
+            kindOfMember.put("type", "string");
+            kindOfMember.putArray("enum").add("attribute").add("characteristic");
+        }
         return s;
     }
 

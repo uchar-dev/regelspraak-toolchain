@@ -51,7 +51,7 @@ public final class Executor {
      *  verdict on the expectations the caller gave ({@link DroolsBackend#vergelijk}), null when it gave none, which
      *  default of each defaults stack decided ({@link DroolsBackend#decisionsOf}), who decided each timeline target per
      *  period ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out
-     *  ({@link DroolsBackend#readingsOf}), all three empty when the caller did not ask for the explanation. */
+     *  ({@link DroolsBackend#readingsOf}), all three empty when the caller did not ask for them. */
     public record Outcome(Map<String, Object> beans, int fired, EndState endState,
                            DroolsBackend.Comparison comparison, List<DefaultsDecision> decisions,
                            List<PeriodDecisions> periodDecisions, List<ConditionReading> readings) {}
@@ -65,10 +65,10 @@ public final class Executor {
      * so the caller gives each request a fresh one. {@code expectations} (null: none) is the {@code expected} of a
      * {@code uchar-case-v0} case whose labels are ids of the request, on which uchar gives its verdict over the
      * written-back session ({@link DroolsBackend#compare}) before the session is disposed. With
-     * {@code withExplanation} it reads what the explanation needs off the session after the write-back: which default
-     * of each defaults stack decided ({@link DroolsBackend#decisionsOf}), who decided each timeline target per period
-     * ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out ({@link DroolsBackend#readingsOf}), the
-     * last of a build with readings only; a request without an explanation has no use for it.
+     * {@code withReadings} it reads what the explanation and the open inputs need off the session after the write-back:
+     * which default of each defaults stack decided ({@link DroolsBackend#decisionsOf}), who decided each timeline target
+     * per period ({@link DroolsBackend#periodDecisionsOf}) and how each condition came out
+     * ({@link DroolsBackend#readingsOf}), the last of a build with readings only.
      *
      * @throws EvaluationFault the evaluation faults that stand at the fixpoint, one or more, of any type, with the
      *                         fixpoint they stand at; nothing is compared
@@ -79,7 +79,7 @@ public final class Executor {
      *                                  {@code uchar-case-v0} does not have, a value of another datatype, a scalar
      *                                  expectation on a time-dependent member
      */
-    public Outcome fire(World world, DroolsBackend.Observer observer, JsonNode expectations, boolean withExplanation) {
+    public Outcome fire(World world, DroolsBackend.Observer observer, JsonNode expectations, boolean withReadings) {
         ClassLoader previous = Thread.currentThread().getContextClassLoader();
         Thread.currentThread().setContextClassLoader(build.beanLoader());   // Drools resolves fact types via the TCCL
         KieSession session = build.kieBase().newKieSession();
@@ -108,10 +108,10 @@ public final class Executor {
             DroolsBackend.setDerivedValues(build, session, label::get);
             DroolsBackend.Comparison comparison = expectations == null ? null
                     : DroolsBackend.compare(build, session, label::get, expectations);
-            List<DefaultsDecision> decisions = withExplanation ? DroolsBackend.decisionsOf(build, session) : List.of();
-            List<PeriodDecisions> periodDecisions = withExplanation ? DroolsBackend.periodDecisionsOf(build, session)
+            List<DefaultsDecision> decisions = withReadings ? DroolsBackend.decisionsOf(build, session) : List.of();
+            List<PeriodDecisions> periodDecisions = withReadings ? DroolsBackend.periodDecisionsOf(build, session)
                     : List.of();
-            List<ConditionReading> readings = withExplanation ? DroolsBackend.readingsOf(build, session) : List.of();
+            List<ConditionReading> readings = withReadings ? DroolsBackend.readingsOf(build, session) : List.of();
             return new Outcome(world.beans(), firing.firings(), standing, comparison, decisions,
                     periodDecisions, readings);
         } finally {

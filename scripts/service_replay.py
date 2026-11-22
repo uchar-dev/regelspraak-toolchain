@@ -19,7 +19,7 @@ Uitvoer: regels "<sleutel>\\t<STATUS>\\t<detail>" in de volgorde van de invoer, 
            (detail: wat).
 Een golden waarvan geen case speelt, heeft alleen haar EXCLUDE-regels. In een document dat uit leeg niets afleidt
 (inferFromEmpty false) gaat een kenmerk dat vaststaand niet geldt (characteristicsAbsent) als {"state": "holdsNot"} in het
-verzoek, en leest een verwachting de stand van haar lid; de dienst moet daar de uitleg weigeren.
+verzoek, en leest een verwachting de stand van haar lid.
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
 haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vijf velden erbij: het
@@ -552,14 +552,6 @@ def explained(service, path, request, answer, name, document, scope):
     return len(sentences), conditions, undetermined, computations, read_links(parts, request, document, scope, name)
 
 
-def unexplained(service, path, request, name):
-    """De dienst weigert de uitleg van een regelset die uit leeg niets afleidt met een 400 UNSUPPORTED op explanation."""
-    status, text_ = service.ask("POST", path + "?explanation=true", request)
-    violations = json.loads(text_).get("violations", []) if status == 400 else []
-    if [(v["field"], v["kind"]) for v in violations] != [("explanation", "UNSUPPORTED")]:
-        raise Deviation(f"{name}: met uitleg geen 400 UNSUPPORTED op explanation, maar {status} {text_[:300]}")
-
-
 def read_links(parts, request, document, scope, place):
     """Het aantal gelezen waarden met een schrijver in de stukken `parts` van één uitleg (kaart
     explanation-read-objects-and-displaced, deel 1). Een gelezen waarde is een blad NAME of QUOTE met de sleutels van
@@ -740,9 +732,7 @@ def play(golden, map_, descriptor_path=None, explanation=False):
                     except NotExpressible as n:
                         excluded.append((f"{golden}/{name}", "EXCLUDE", str(n)))
                         continue
-                    if explanation and strict(document):
-                        unexplained(service, path, v, name)
-                    elif explanation:
+                    if explanation:
                         for k, n in enumerate(explained(service, path, v, read_json(text_), name, document, scope)):
                             totals[k] += n
                     played += 1

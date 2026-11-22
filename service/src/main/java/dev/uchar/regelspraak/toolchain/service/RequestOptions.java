@@ -9,14 +9,15 @@ import java.util.List;
  * {@code vocabulary}, the vocabulary the answer names the declarations in (null: the entry point's default from the
  * descriptor, else the canonical names); {@code inputVocabulary}, the vocabulary the request's names are read in
  * (null: every name is read liberally, canonical or a designation in any vocabulary). A vocabulary is one the model
- * declares, or {@code canonical} for the canonical names.
+ * declares, or {@code canonical} for the canonical names; {@code openInputs}, the input members that keep an outcome of a
+ * strict rule set open ({@link OpenInputs}).
  *
  * <p>The detail flags ask to see the request's session beside the answer, which a core gives only when it was started
  * with them ({@link CoreConfig#detail()}): {@code trace}, the firings per form with the ids of the request they bound;
  * {@code coverage}, per form of the entry point whether it fired; {@code fixpoint}, what stands at the fixpoint.
  */
 public record RequestOptions(boolean explanation, String vocabulary, String inputVocabulary, boolean trace,
-                            boolean coverage, boolean fixpoint, boolean explanationParts) {
+                            boolean coverage, boolean fixpoint, boolean explanationParts, boolean openInputs) {
 
     /** A request that asks nothing beside its body. */
     public static final RequestOptions DEFAULT = new RequestOptions(false, null, null);
@@ -26,10 +27,13 @@ public record RequestOptions(boolean explanation, String vocabulary, String inpu
         explanation = explanation || explanationParts;
     }
 
-    /** A request that asks no detail of its session and no parts of its explanation. */
+    /** A request that asks no detail of its session, no parts of its explanation and no open inputs. */
     public RequestOptions(boolean explanation, String vocabulary, String inputVocabulary) {
-        this(explanation, vocabulary, inputVocabulary, false, false, false, false);
+        this(explanation, vocabulary, inputVocabulary, false, false, false, false, false);
     }
+
+    /** Whether the answer needs the readings of its session, which the build with readings gives. */
+    boolean readings() { return explanation || openInputs; }
 
     /** The detail flags this request sets, by the name of their query parameter, in the order of the answer. */
     public List<String> detailFlags() {

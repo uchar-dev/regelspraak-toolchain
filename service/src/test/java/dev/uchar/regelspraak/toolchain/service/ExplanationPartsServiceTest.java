@@ -306,11 +306,11 @@ public class ExplanationPartsServiceTest {
 
     @Test
     void the_query_flag_asks_the_explanation_as_well() {
-        assertEquals(new RequestOptions(true, null, null, false, false, false, true),
+        assertEquals(new RequestOptions(true, null, null, false, false, false, true, false),
                 ServiceHttp.options("explanationParts=true"));
-        assertEquals(new RequestOptions(true, null, null, false, false, false, true),
+        assertEquals(new RequestOptions(true, null, null, false, false, false, true, false),
                 ServiceHttp.options("ExplanationParts"));
-        assertEquals(new RequestOptions(false, null, null, false, false, false, false),
+        assertEquals(new RequestOptions(false, null, null, false, false, false, false, false),
                 ServiceHttp.options("explanationParts=false"));
         assertTrue(ServiceHttp.options("explanation&explanationParts").explanationParts());
     }

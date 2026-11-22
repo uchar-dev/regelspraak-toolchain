@@ -61,9 +61,17 @@ public final class ScenarioRunner {
      *  a played scenario has none (null otherwise; a MARKER scenario has no explanation and no reason beside its own
      *  diagnose). {@code session} is the session uchar's replay judged, with uchar's reading of its fixpoint
      *  ({@link CaseSession.Outcome#fixpoint}), as the replay handed it over, and {@code sessionError} why there is none
-     *  otherwise (both null for a MARKER scenario and without an explanation asked). */
+     *  otherwise (both null for a MARKER scenario and without an explanation asked). {@code openInputs} are, in a strict
+     *  document, the input members that keep a derived member of an instance of the situation open
+     *  ({@link OpenReads#openInputs}), where there is an explanation. */
     public record Explained(ScenarioResult result, List<Sentence> sentences, String explanationError,
-                            CaseSession.Outcome session, String sessionError) {
+                            CaseSession.Outcome session, String sessionError, List<OpenReads.OpenInput> openInputs) {
+
+        /** A report without open inputs. */
+        Explained(ScenarioResult result, List<Sentence> sentences, String explanationError, CaseSession.Outcome session,
+                  String sessionError) {
+            this(result, sentences, explanationError, session, sessionError, List.of());
+        }
 
         /** The plain sentences ({@link Sentence#text()}). */
         public List<String> explanation() { return sentences.stream().map(Sentence::text).toList(); }
@@ -149,13 +157,25 @@ public final class ScenarioRunner {
                 // document escape; uchar's emitter wrote it, so uchar does not carry this document either
                 return markers(scenarios, "document: " + e.getMessage());
             }
+            // a strict document that uchar refuses only with readings: the verdicts without them, with uchar's sentence in
+            // the place of the explanation and the session
+            String withoutReadings = null;
+            if (withExplanation && !irModel.inferFromEmpty() && report.stream()
+                    .allMatch(r -> r.status() == ScenarioResult.Status.MARKER)) {
+                List<ScenarioResult> plain = CaseRunner.report(ir, cases);
+                if (plain.stream().anyMatch(r -> r.status() != ScenarioResult.Status.MARKER)) {
+                    withoutReadings = report.get(0).diagnostic();
+                    report = plain;
+                }
+            }
             if (report.size() != scenarios.size())
                 throw new IllegalStateException("het rapport telt " + report.size() + " case(s) voor "
                         + scenarios.size() + " scenario('s): een gelagerde case hoort nooit een red-path case te zijn");
             // the explanation reads the document as uchar's loader reads it, with the positions of its nodes, on which
             // the readings lie, and the defaults groups beside the model, into which the engine's decisions point;
             // when the replay played no case (every report is MARKER) there is nothing to explain
-            boolean played = report.stream().anyMatch(r -> r.status() != ScenarioResult.Status.MARKER);
+            boolean played = withoutReadings == null
+                    && report.stream().anyMatch(r -> r.status() != ScenarioResult.Status.MARKER);
             Verbaliser.Document explained = withExplanation && played
                     ? Verbaliser.Document.of(IrLoader.loadWithPositions(JSON.readTree(document))) : null;
             List<Explained> sink = new ArrayList<>();
@@ -163,7 +183,9 @@ public final class ScenarioRunner {
                 ScenarioResult r = report.get(i);
                 ScenarioResult named = new ScenarioResult(scenarios.get(i).name(), r.status(),
                         r.expectations(), r.trace(), r.coverage(), r.diagnostic());
-                sink.add(withExplanation ? explanation(explained, named,
+                sink.add(withoutReadings != null && r.status() != ScenarioResult.Status.MARKER
+                        ? new Explained(named, List.of(), withoutReadings, null, withoutReadings)
+                        : withExplanation ? explanation(explained, named,
                         handed.get(cases.get(i).getFileName().toString()),
                         JSON.readTree(Files.readString(cases.get(i))), vocabulary)
                         : new Explained(named, List.of(), null, null, null));
@@ -229,10 +251,12 @@ public final class ScenarioRunner {
                         + " het fixpunt, en speelde de case toch niet uit");
             return new Explained(r, List.of(), noExplanation, session, null);
         }
-        String without = Verbaliser.withoutExplanation(model);
-        if (without != null) return new Explained(r, List.of(), without, session, null);
-        return new Explained(r, new Verbaliser(explained, Naming.of(model, vocabulary), h.readings(), h.standing())
-                .sentences(session.beans(), types, h.decisions(), h.periodDecisions()), null, session, null);
+        List<Sentence> sentences = new Verbaliser(explained, Naming.of(model, vocabulary), h.readings(), h.standing())
+                .sentences(session.beans(), types, h.decisions(), h.periodDecisions());
+        if (model.inferFromEmpty()) return new Explained(r, sentences, null, session, null);
+        OpenReads reads = new OpenReads(explained, h.readings(), h.standing());
+        List<Object> instances = List.copyOf(session.beans().values());
+        return new Explained(r, sentences, null, session, null, reads.openInputs(instances, reads.derived(instances)));
     }
 
     private static void remove(Path map) {

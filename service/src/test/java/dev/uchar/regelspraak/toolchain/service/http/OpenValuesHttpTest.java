@@ -222,14 +222,20 @@ class OpenValuesHttpTest {
                 .get("kind").asText());
     }
 
+    /** The explanation of what stands; {@code OpenExplanationHttpTest} holds that of what is open. */
     @Test
-    void the_explanation_is_refused() throws Exception {
-        HttpResponse<String> r = post(service, "vondst?explanation=true", request("", ""));
-        assertEquals(400, r.statusCode(), r.body());
-        JsonNode v = json(r.body()).at("/violations/0");
-        assertEquals("explanation", v.get("field").asText());
-        assertEquals("UNSUPPORTED", v.get("kind").asText());
-        assertTrue(v.get("error").asText().contains("Afleiden uit leeg: nee"), r.body());
+    void what_stands_is_explained() throws Exception {
+        JsonNode answer = ok(post(service, "vondst?explanation=true", request("\"attributes\": {\"taxatie\": 1500},"
+                + " \"characteristics\": {\"betwist\": true, \"onleesbaar\": true}", "")));
+        assertEquals(json("""
+            ["V1 is kostbaar, omdat zijn taxatie (1.500) is groter dan 1.000",
+             "V1 heeft als premie 0 volgens 'betwiste premie': 0, omdat het onderwerp betwist is; verdrongen: de regel 'premie' (onvoorwaardelijk, 10)",
+             "V1 heeft als vindloon 1.510 volgens de regel 'vindloon' (onvoorwaardelijk): zijn taxatie plus 10, met zijn taxatie (1.500)",
+             "V1 heeft als uitbetaling 1.500 volgens de regel 'uitbetaling' (onvoorwaardelijk): zijn taxatie plus zijn toeslag, met zijn taxatie (1.500) en zijn toeslag (leeg)",
+             "V1 heeft geen bewakingstoeslag, want geen regel gold; de regel 'bewakingstoeslag' gold niet, want niet geldt: het onderwerp niet kostbaar is",
+             "V1 heeft als bergloon 20 volgens de regel 'bergloon': 20, omdat zijn taxatie (1.500) is groter dan 1.000",
+             "V1 heeft als herkomst onbekend volgens de regel 'herkomst onbekend': onbekend, omdat het onderwerp onleesbaar is",
+             "de regel 'vrachtprijs' staat buiten deze berekening"]"""), answer.get("explanation"));
     }
 
     // ---------------- the fixpoint ----------------

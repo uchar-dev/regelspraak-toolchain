@@ -18,6 +18,7 @@ import dev.uchar.regelspraak.ir.ResolvedRule;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.toolchain.engine.OpenReads;
 import dev.uchar.regelspraak.toolchain.engine.Sentence;
 import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 import dev.uchar.regelspraak.toolchain.engine.Verbaliser;
@@ -123,15 +124,18 @@ public final class DecisionCore {
      *  and a request to it is refused with {@link NonExecutable}.
      *
      *  <p>{@code explanationBuild} is the build with readings of the same document (card explanation-from-readings): a
-     *  request that asks for the explanation is mapped, fired and answered there, once, and the explanation reads the
+     *  request that asks for the explanation or for {@code openInputs} is mapped, fired and answered there, once, and the explanation reads the
      *  readings of that session; uchar's witnesses hold that its facts at the fixpoint are those of {@code build}.
      *  {@code document} is what uchar's loader read of that document, with the positions of its nodes, on which the
      *  explanation lays the engine's decisions and readings ({@link Verbaliser.Document}), from sources with the
-     *  attribution rules the scope leaves out. Both are null without a build, and for an entry point whose descriptor
-     *  says it does not explain ({@link ServiceDescriptor.Entrypoint#explains}). */
+     *  attribution rules the scope leaves out. Both are null without a build, for an entry point whose descriptor
+     *  says it does not explain ({@link ServiceDescriptor.Entrypoint#explains}), and where {@code withoutReadings} is
+     *  uchar's sentence: its document is strict ({@link OpenValues}), and uchar refuses it only with readings (DROOLS-318),
+     *  so the entry point answers without them. */
     public record Entrypoint(ServiceDescriptor.Entrypoint descriptor, DroolsBackend.Build build,
                              List<String> markers, String refusal,
-                             DroolsBackend.Build explanationBuild, Verbaliser.Document document) {
+                             DroolsBackend.Build explanationBuild, Verbaliser.Document document,
+                             String withoutReadings) {
         /** Whether a request to this entry point can fire: uchar built it. */
         public boolean executable() { return build != null; }
 
@@ -251,15 +255,16 @@ public final class DecisionCore {
             }
             RegelSpraakModel scoped = CaseEmitter.withScope(model, new ResolvedScenario.Scope(choice.forms()));
             DroolsBackend.Build build;
-            DroolsBackend.Build explanationBuild = null;
+            Readings readings = null;
             Verbaliser.Document explained = null;
             try {
                 com.fasterxml.jackson.databind.JsonNode tree = documentTree(UcharBuild.document(scoped));
                 build = UcharBuild.assemble(tree, DroolsBackend.Branch.EXEC_MODEL);
-                if (ep.explains() && Verbaliser.withoutExplanation(model) == null) {
-                    explanationBuild = UcharBuild.assemble(tree, DroolsBackend.Branch.EXEC_MODEL, true);
-                    explained = Verbaliser.Document.of(IrLoader.loadWithPositions(tree))
-                            .withOutside(outsideScope(model, scoped));
+                if (ep.explains()) {
+                    readings = readings(tree, model);
+                    if (readings.build() != null)
+                        explained = Verbaliser.Document.of(IrLoader.loadWithPositions(tree))
+                                .withOutside(outsideScope(model, scoped));
                 }
             } catch (UcharBuild.UnresolvedName u) {
                 // a form without a norm is a form uchar does not carry; any other node a fault in the source, which is
@@ -277,7 +282,8 @@ public final class DecisionCore {
             // walk throws on a navigation its emitter refuses, where the marker names the refusal.
             if (!ep.scopeCheckOptOut())
                 scopeErrors.addAll(scopeCompleteness(ep, model, scoped, producers));
-            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), null, explanationBuild, explained));
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), null, readings == null ? null : readings.build(),
+                    explained, readings == null ? null : readings.refusal()));
         }
         if (!unresolved.isEmpty()) throw unresolvedName(unresolved);
         if (!scopeErrors.isEmpty())
@@ -294,6 +300,21 @@ public final class DecisionCore {
 
         return new DecisionCore(descriptor, model, perPath, sets, defaults, warnings, config.detail(), forms, null,
                 OpenValues.completeInput(model, model.prioritizedDefaults));
+    }
+
+    /** The build with readings of a document, or in a strict rule set the sentence with which uchar refuses it where it
+     *  carries the document without readings. */
+    private record Readings(DroolsBackend.Build build, String refusal) {}
+
+    /** The build with readings of {@code document}, which uchar carries without them; in a rule set that is not strict a
+     *  refusal goes on to the caller, who makes the entry point a marker. */
+    private static Readings readings(com.fasterxml.jackson.databind.JsonNode document, RegelSpraakModel model) {
+        try {
+            return new Readings(UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL, true), null);
+        } catch (UcharBuild.NotCarried refusal) {
+            if (!OpenValues.in(model)) throw refusal;
+            return new Readings(null, refusal.getMessage());
+        }
     }
 
     /** The {@code uchar-ir-v1} document uchar's emitter wrote, as a tree. */
@@ -361,15 +382,15 @@ public final class DecisionCore {
         // one build: every entry point serves the whole document; beside it the build with readings when an entry
         // point explains
         DroolsBackend.Build build = null;
-        DroolsBackend.Build explanationBuild = null;
+        Readings readings = null;
         Verbaliser.Document explained = null;
         String refusal = null, construct = null;
         try {
             build = UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL);
-            if (Verbaliser.withoutExplanation(model) == null
-                    && descriptor.entrypoints().stream().anyMatch(ServiceDescriptor.Entrypoint::explains)) {
-                explanationBuild = UcharBuild.assemble(document, DroolsBackend.Branch.EXEC_MODEL, true);
-                explained = Verbaliser.Document.of(IrLoader.loadWithPositions(document));
+            if (descriptor.entrypoints().stream().anyMatch(ServiceDescriptor.Entrypoint::explains)) {
+                readings = readings(document, model);
+                if (readings.build() != null)
+                    explained = Verbaliser.Document.of(IrLoader.loadWithPositions(document));
             }
         } catch (UcharBuild.UnresolvedName u) {
             if (!u.onlyFormsWithoutNorm()) throw unresolvedName(u.sites().stream().map(UcharBuild.Site::sentence).toList());
@@ -396,8 +417,8 @@ public final class DecisionCore {
                 marker(ep, construct, refusal, config, perPath, markerErrors);
                 continue;
             }
-            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), null,
-                    ep.explains() ? explanationBuild : null, ep.explains() ? explained : null));
+            perPath.put(ep.path(), new Entrypoint(ep, build, List.of(), null, ep.explains() ? readings.build() : null,
+                    ep.explains() ? explained : null, ep.explains() ? readings.refusal() : null));
         }
         if (!scopeErrors.isEmpty())
             throw new ServiceError("dienst start niet: een scope draagt niet het hele document", scopeErrors);
@@ -426,7 +447,7 @@ public final class DecisionCore {
                                CoreConfig config, Map<String, Entrypoint> perPath, List<Violation> markerErrors) {
         if (config.allowMarkers()) {
             perPath.put(ep.path(), new Entrypoint(ep, null, construct == null ? List.of() : List.of(construct),
-                    reason, null, null));
+                    reason, null, null, null));
             return;
         }
         markerErrors.add(Violation.of(Violation.Kind.MARKER, "entrypoint:" + ep.path(), construct == null
@@ -729,22 +750,21 @@ public final class DecisionCore {
 
     /**
      * Why the entry point at {@code path} gives no explanation, the sentence of the 400 a request for one gets, or null
-     * where it gives one: the descriptor sets {@code explanation} to false, or the rule set is strict
-     * ({@link Verbaliser#withoutExplanation}).
+     * where it gives one: the descriptor sets {@code explanation} to false, or uchar refuses its strict document with
+     * readings ({@link Entrypoint#withoutReadings}).
      *
      * @throws UnknownPath    a path no entry point has
      * @throws NonExecutable  an entry point uchar does not carry
      */
     public String withoutExplanation(String path) {
-        return withoutExplanation(entrypointAt(path));
+        return withoutReadings(entrypointAt(path), "uitleg");
     }
 
-    private String withoutExplanation(Entrypoint ep) {
+    /** Why {@code ep} gives no {@code what}, which the readings of its session give, or null where it gives it. */
+    private static String withoutReadings(Entrypoint ep, String what) {
         if (ep.explanationBuild() != null) return null;
-        String reason = ep.descriptor().explains() ? Verbaliser.withoutExplanation(model)
-                : "de descriptor zet explanation op false";
-        return "het entrypoint '" + ep.descriptor().name() + "' geeft geen uitleg: "
-                + java.util.Objects.requireNonNull(reason, "een entrypoint dat uitlegt, heeft een build met lezingen");
+        return "het entrypoint '" + ep.descriptor().name() + "' geeft geen " + what + ": " + (ep.withoutReadings() != null
+                ? ep.withoutReadings() : "de descriptor zet explanation op false");
     }
 
     /**
@@ -755,7 +775,8 @@ public final class DecisionCore {
      * @throws UnknownPath    a path no entry point has
      * @throws NonExecutable  an entry point uchar does not carry
      * @throws ServiceError   a vocabulary the model does not declare, a detail flag of a core without detail, an
-     *                        explanation the entry point does not give
+     *                        explanation the entry point does not give, {@code openInputs} of a rule set that is not
+     *                        strict or that the entry point does not give
      */
     public void admit(String path, RequestOptions options) {
         admitted(entrypointAt(path), options);
@@ -779,9 +800,14 @@ public final class DecisionCore {
             for (String flag : options.detailFlags())
                 choices.add(Violation.of(Violation.Kind.UNSUPPORTED, flag, "de dienst is zonder DETAIL gestart"
                         + " en geeft geen " + flag + "; start hem met DETAIL=true of --detail"));
-        String withoutExplanation = options.explanation() ? withoutExplanation(ep) : null;
+        String withoutExplanation = options.explanation() ? withoutReadings(ep, "uitleg") : null;
         if (withoutExplanation != null)
             choices.add(Violation.of(Violation.Kind.UNSUPPORTED, "explanation", withoutExplanation));
+        String withoutOpenInputs = !options.openInputs() ? null : OpenValues.in(model) ? withoutReadings(ep, "openInputs")
+                : "openInputs noemt wat een open uitkomst openhoudt, en alleen een regelset die uit leeg niets afleidt"
+                        + " (Afleiden uit leeg: nee) heeft open uitkomsten";
+        if (withoutOpenInputs != null)
+            choices.add(Violation.of(Violation.Kind.UNSUPPORTED, "openInputs", withoutOpenInputs));
         if (!choices.isEmpty()) throw new ServiceError("verzoek valideert niet", choices);
         return output;
     }
@@ -789,8 +815,9 @@ public final class DecisionCore {
     private Assessment process(String path, JsonNode requestTree, RequestOptions options, JsonNode expectations) {
         Entrypoint ep = entrypointAt(path);
         Naming output = admitted(ep, options);
-        // an explanation is given from the build with readings, which answers the request as well: one fire
-        DroolsBackend.Build fired = options.explanation() ? ep.explanationBuild() : ep.build();
+        // an explanation and the open inputs are given from the build with readings, which answers the request as well: one
+        // fire
+        DroolsBackend.Build fired = options.readings() ? ep.explanationBuild() : ep.build();
         RequestMapper mapper = new RequestMapper(model, fired, new NameReader(model, options.inputVocabulary()));
         RequestMapper.Result mr = mapper.map(new Request(requestTree), this::baseParameters);
         if (!mr.violations().isEmpty())
@@ -816,7 +843,7 @@ public final class DecisionCore {
         Executor executor = new Executor(fired);
         Executor.Outcome outcome;
         try {
-            outcome = executor.fire(mr.world(), observer, expectations, options.explanation());
+            outcome = executor.fire(mr.world(), observer, expectations, options.readings());
         } catch (EvaluationFault error) {
             if (!withDetail) throw error;
             throw error.withDetail(detail(options, ep, observer, error.standing(), null, mr, output));
@@ -830,6 +857,9 @@ public final class DecisionCore {
         ObjectNode answer = new AnswerBuilder(model, output).assemble(outcome, ep.descriptor().output(),
                 mr.typePerLabel());
         if (options.explanation()) addExplanation(answer, outcome, mr, ep, output, options.explanationParts());
+        if (options.openInputs())
+            answer.set("openInputs", OpenInputs.of(new OpenReads(ep.document(), outcome.readings(), outcome.endState()), model,
+                    outcome, ep.descriptor().output(), mr.typePerLabel(), output));
         if (withDetail) answer.setAll(detail(options, ep, observer, outcome.endState(), null, mr, output));
         return new Assessment(answer, outcome.comparison());
     }

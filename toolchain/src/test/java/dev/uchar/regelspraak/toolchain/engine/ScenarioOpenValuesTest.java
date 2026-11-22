@@ -8,13 +8,14 @@ import org.junit.jupiter.api.Test;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Scenarios of a rule set that infers nothing from an empty value ({@code Afleiden uit leeg: nee}, uchar's
  * RUNTIME-SEMANTICS ch. 1.5). A scenario has no sentence that expects an open outcome: one that expects a value, leeg or
- * the absence of a characteristic where the outcome is open fails, with uchar's word for it. The explanation refuses
- * such a document; the report and the session stand beside that refusal.
+ * the absence of a characteristic where the outcome is open fails, with uchar's word for it. The explanation says what
+ * keeps an outcome open.
  */
 class ScenarioOpenValuesTest {
 
@@ -70,7 +71,7 @@ class ScenarioOpenValuesTest {
     }
 
     @Test
-    void what_stands_is_compared_as_ever_and_the_explanation_refuses() {
+    void what_stands_is_compared_and_explained_as_ever() {
         ScenarioRunner.Explained p = play("""
             Scenario gegeven
             Gegeven is de volgende situatie:
@@ -82,9 +83,66 @@ class ScenarioOpenValuesTest {
             - V1 is kostbaar
             """).get(0);
         assertEquals(Status.PASS, p.result().status(), p.result()::diagnostic);
-        assertEquals(List.of(), p.explanation());
-        assertEquals("de regelset leidt uit leeg niets af (Afleiden uit leeg: nee), en de uitleg verwoordt geen open"
-                + " uitkomst", p.explanationError());
+        assertEquals(List.of("V1 is kostbaar, omdat zijn taxatie (1.500) is groter dan 1.000",
+                "V1 heeft als vindloon 15 volgens de regel 'vindloon' (onvoorwaardelijk): zijn gewicht plus 10, met zijn gewicht"
+                        + " (5)"), p.explanation());
+        assertNull(p.explanationError());
         assertEquals(0, p.session().standing().objects().get(0).open().size());
+        assertEquals(List.of(), p.openInputs());
+    }
+
+    @Test
+    void the_explanation_says_what_keeps_an_outcome_open() {
+        ScenarioRunner.Explained p = play("""
+            Scenario zonder gewicht
+            Gegeven is de volgende situatie:
+            een Vondst V1
+            - de taxatie is 1500
+            Met als verwacht resultaat:
+            - V1 is kostbaar
+            """).get(0);
+        assertEquals(Status.PASS, p.result().status(), p.result()::diagnostic);
+        assertEquals(List.of("V1 is kostbaar, omdat zijn taxatie (1.500) is groter dan 1.000",
+                "V1: zijn vindloon staat niet vast, want zijn gewicht is niet gegeven; voor de regel 'vindloon' staat niet vast:"
+                        + " zijn gewicht plus 10, met zijn gewicht (niet gegeven)"), p.explanation());
+        assertEquals(1, p.openInputs().size());
+        assertEquals("gewicht", p.openInputs().get(0).input().member());
+        assertEquals(List.of("vindloon"), p.openInputs().get(0).outcomes().stream().map(o -> o.member()).toList());
+    }
+
+    /** A fold that can be open over a relation both of whose roles are to-many: uchar plays the document without readings and
+     *  refuses it with them, so the scenario has its verdict, and uchar's sentence stands in the place of the explanation. */
+    @Test
+    void a_document_that_uchar_refuses_with_readings_is_played_without_an_explanation() {
+        List<ScenarioRunner.Explained> played = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve("""
+            Afleiden uit leeg: nee
+
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                de hulpsom Numeriek (geheel getal);
+
+            Objecttype het Wrak (mv: Wrakken)
+                de lading Numeriek (geheel getal);
+
+            Feittype hulp
+                de helper (mv: helpers) Jutter
+                het geholpen wrak (mv: geholpen wrakken) Wrak
+                meerdere helpers bergen meerdere geholpen wrakken
+
+            Regel hulpsom
+                geldig altijd
+                    De hulpsom van een Jutter moet berekend worden als de som van de lading van alle geholpen wrakken van de Jutter.
+
+            Scenario geen wrak
+            Gegeven is de volgende situatie:
+            een Jutter J1
+            Met als verwacht resultaat:
+            - de hulpsom van J1 is leeg
+            """));
+        assertEquals(1, played.size());
+        assertEquals(Status.PASS, played.get(0).result().status(), played.get(0).result()::diagnostic);
+        assertEquals(List.of(), played.get(0).explanation());
+        assertTrue(played.get(0).explanationError().contains("een vouw over 'hulp', een relatie waarvan beide rollen meervoudig"
+                + " zijn"), played.get(0)::explanationError);
+        assertEquals(played.get(0).explanationError(), played.get(0).sessionError());
     }
 }

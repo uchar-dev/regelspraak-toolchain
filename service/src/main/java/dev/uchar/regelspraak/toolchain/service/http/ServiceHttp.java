@@ -59,8 +59,8 @@ import java.util.concurrent.TimeoutException;
  *       number is ever a double), handed to {@link DecisionCore#process}, and the response tree is written back
  *       with {@code 200} and {@code Content-Type: application/json; charset=UTF-8}. The query carries what the
  *       request asks beside its body ({@link #options}): {@code explanation}, {@code explanationParts},
- *       {@code vocabulary} (the vocabulary of the answer), {@code inputVocabulary} (the one the request's names are
- *       read in), and the detail flags {@code trace}, {@code coverage} and {@code fixpoint}, which a core started with
+ *       {@code openInputs}, {@code vocabulary} (the vocabulary of the answer), {@code inputVocabulary} (the one the
+ *       request's names are read in), and the detail flags {@code trace}, {@code coverage} and {@code fixpoint}, which a core started with
  *       detail answers ({@link dev.uchar.regelspraak.toolchain.service.CoreConfig#detail()}) and any other refuses
  *       with a 400.</li>
  *   <li>{@code GET /info}: the service manifest ({@link #info}) — the service identity, one entry per entry point
@@ -305,12 +305,13 @@ public final class ServiceHttp {
 
     /** What the query of a request asks beside its body: {@link #requiresExplanation}, the values of {@code vocabulaire} and
      *  {@code inputVocabulary} ({@link #queryValue}), the detail flags {@code trace}, {@code dekking} and
-     *  {@code fixpunt}, and {@code explanationParts} ({@link #isRequested}). The Quarkus adapter reads the same seven
-     *  parameters. */
+     *  {@code fixpunt}, and {@code explanationParts} and {@code openInputs} ({@link #isRequested}). The Quarkus adapter
+     *  reads the same eight parameters. */
     public static RequestOptions options(String rawQuery) {
         return new RequestOptions(requiresExplanation(rawQuery), queryValue(rawQuery, "vocabulary"),
                 queryValue(rawQuery, "inputVocabulary"), isRequested(rawQuery, "trace"), isRequested(rawQuery, "coverage"),
-                isRequested(rawQuery, "fixpoint"), isRequested(rawQuery, "explanationParts"));
+                isRequested(rawQuery, "fixpoint"), isRequested(rawQuery, "explanationParts"),
+                isRequested(rawQuery, "openInputs"));
     }
 
     /** The decoded value of the first query parameter {@code naam} (its name compared case-insensitively, as

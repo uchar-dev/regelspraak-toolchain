@@ -10,7 +10,7 @@ import java.util.Objects;
  * One part of a sentence of the explanation ({@link Sentence}): a leaf with its text, or a group of parts, whose text
  * is by definition the concatenation of the texts of its parts. {@code meta} carries what the kind adds beside the
  * text (the declaration a {@link Kind#NAME} names, the verdict of a {@link Kind#CONDITION}, ...), as strings, booleans,
- * integers, lists of strings or null, in the order the consumer reads them.
+ * integers, lists of strings, objects of strings or null, in the order the consumer reads them.
  */
 public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> parts) {
 
@@ -36,16 +36,19 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         /** The name of a rule or of a variant of a defaults group, without its quotes. */
         RULE,
         /** A word that carries the logic between the parts: omdat, want, maar, en, of, en niet, niet geldt, gold
-         *  niet. */
+         *  niet, staat niet vast. */
         CONNECTIVE,
         /** Glue. */
         TEXT,
         /** A condition: {@code holds}, the verdict of the engine on its node, and on a compound or a fold its
-         *  {@code quantifier} (the wire spelling of the IR) with the {@code threshold} of a count. */
+         *  {@code quantifier} (the wire spelling of the IR) with the {@code threshold} of a count. In a strict document
+         *  {@code undetermined} where it has no verdict because of what is open, and {@code closure} where a test on leeg or
+         *  gevuld over an open member gave the verdict, which then stands for the form itself alone. */
         CONDITION,
         /** The members of a quantifier fold that carry its outcome, with the colon before them: {@code members} (m, the
          *  members with a verdict),
-         *  {@code holding} (k, those for which its matrix holds) and {@code unjudged} (those whose matrix faulted). Of
+         *  {@code holding} (k, those for which its matrix holds) and {@code unjudged} (those whose matrix faulted); in a
+         *  strict document {@code unsettled}, those on which the verdict does not stand, where there are any. Of
          *  a fold in a computation, the members it folded over, each with what it contributed: {@code members} (m)
          *  alone. */
         MEMBERS,
@@ -58,10 +61,12 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
          *  defaults group and for an initialisation that was not at its turn. In the sentence of a defaults group every
          *  variant but the decider; in that of a computed value every writer but the one that wrote. A displaced variant
          *  of a defaults group says what it found: {@code holds}, its value as a {@link #VALUE}, {@code decision} for a
-         *  characteristic, {@code unreadable} where its reading carried a fault. */
+         *  characteristic, {@code unreadable} where its reading carried a fault, and {@code undetermined} where, in a strict
+         *  document, what its reading found does not stand. */
         VARIANT,
         /** The value the engine read for the operand or the member right before it, with its brackets: " (", the
-         *  {@link #VALUE}, ")". */
+         *  {@link #VALUE}, ")". Where the read broke off at an open member there is no value: it carries {@code open}, that
+         *  member ({@code object}, {@code canonical}, {@code kind}), and says that it is not given or does not stand. */
         READING,
         /** The ground of the sentence, its last part: the {@code // Bron:} annotations of the rule or of the default
          *  that decided, parsed ({@link Ground}), with that decider in the terms of the IR: {@code rule}, the name of
@@ -101,10 +106,14 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
                                 + " een lijst met " + (o == null ? "null" : "een " + o.getClass().getSimpleName())
                                 + ", en een lijst in een stuk draagt alleen teksten");
                 v = List.copyOf(l);
+            } else if (v instanceof Map<?, ?> m) {
+                Map<String, String> strings = new LinkedHashMap<>();
+                for (Map.Entry<?, ?> f : m.entrySet()) strings.put((String) f.getKey(), (String) f.getValue());
+                v = Collections.unmodifiableMap(strings);
             } else if (v != null && !(v instanceof String) && !(v instanceof Boolean) && !(v instanceof Integer))
                 throw new IllegalArgumentException("het stuk " + kind + " draagt bij " + e.getKey() + " een "
                         + v.getClass().getSimpleName() + ", en een stuk draagt alleen teksten, booleans, gehele getallen,"
-                        + " lijsten van teksten en null");
+                        + " lijsten en objecten van teksten en null");
             copy.put(e.getKey(), v);
         }
         meta = Collections.unmodifiableMap(copy);

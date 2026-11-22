@@ -50,10 +50,11 @@ public class DecideResource {
                             @QueryParam("inputVocabulary") String inputVocabulary,
                             @QueryParam("trace") String trace, @QueryParam("coverage") String coverage,
                             @QueryParam("fixpoint") String fixpoint,
-                            @QueryParam("explanationParts") String explanationParts, String body) {
+                            @QueryParam("explanationParts") String explanationParts,
+                            @QueryParam("openInputs") String openInputs, String body) {
         RequestOptions options = new RequestOptions(ServiceHttp.isSet(explanation), vocabulary, inputVocabulary,
                 ServiceHttp.isSet(trace), ServiceHttp.isSet(coverage), ServiceHttp.isSet(fixpoint),
-                ServiceHttp.isSet(explanationParts));
+                ServiceHttp.isSet(explanationParts), ServiceHttp.isSet(openInputs));
         try {
             ServiceHttp.Answer answer = ServiceHttp.post(core, this::decide, path, options, body);
             return response(answer.status(), answer.body());
@@ -70,7 +71,7 @@ public class DecideResource {
 
     /** A request that asks no detail of its session: the resource method without the detail flags. */
     public Response process(String path, String explanation, String vocabulary, String inputVocabulary, String body) {
-        return process(path, explanation, vocabulary, inputVocabulary, null, null, null, null, body);
+        return process(path, explanation, vocabulary, inputVocabulary, null, null, null, null, null, body);
     }
 
     /** A request that names no vocabulary: {@link #process(String, String, String, String, String)} without them. */

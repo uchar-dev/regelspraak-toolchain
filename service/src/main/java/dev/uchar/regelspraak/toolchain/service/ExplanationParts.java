@@ -45,6 +45,10 @@ public final class ExplanationParts {
                 ArrayNode list = n.putArray(e.getKey());
                 for (Object o : l) list.add((String) o);
             }
+            else if (v instanceof Map<?, ?> m) {
+                ObjectNode object = n.putObject(e.getKey());
+                m.forEach((k, t) -> object.put((String) k, (String) t));
+            }
             else throw new IllegalStateException("het stuk " + p.kind() + " draagt bij " + e.getKey() + " een "
                     + v.getClass().getSimpleName());
         }

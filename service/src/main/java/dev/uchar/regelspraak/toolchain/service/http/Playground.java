@@ -22,6 +22,8 @@ import dev.uchar.regelspraak.toolchain.service.ExplanationParts;
 import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
 import dev.uchar.regelspraak.toolchain.service.Limit;
 import dev.uchar.regelspraak.toolchain.service.NoFixpoint;
+import dev.uchar.regelspraak.toolchain.service.OpenInputs;
+import dev.uchar.regelspraak.toolchain.service.OpenValues;
 import dev.uchar.regelspraak.toolchain.service.Violation;
 import dev.uchar.regelspraak.toolchain.service.RequestOptions;
 import dev.uchar.regelspraak.graph.ProducerConsumer;
@@ -89,6 +91,8 @@ import java.util.Set;
  *   <li><b>scenario</b> — only when the source contains a {@code Scenario} block: per scenario uchar's report
  *       (status, per expectation verwacht/werkelijk, the coverage), its {@code trace} (per fired rule the labels it
  *       bound and how often) and its {@code explanation} ({@link ScenarioRunner#runWithExplanation}), or {@code explanationError};
+ *       of a strict rule set with its explanation the {@code openInputs} ({@link OpenInputs}), on this route those of every
+ *       derived member of the situation's instances and via the service those of the {@code output} of the entry point;
  *       beside it the source line of the scenario and of each expectation, the {@code situatie} uchar's scenario
  *       resolver gives, and the {@code fixpunt} of the case's own session, or {@code fixpointError}
  *       ({@link ScenarioData}).</li>
@@ -342,6 +346,8 @@ public final class Playground {
         for (String z : u.explanation()) explanation.add(z);
         n.set("explanationParts", ExplanationParts.json(u.sentences()));
         if (u.explanationError() != null) n.put("explanationError", u.explanationError());
+        if (OpenValues.in(model) && u.session() != null && u.explanationError() == null)
+            n.set("openInputs", OpenInputs.json(u.openInputs(), u.session().beans(), u.session().typePerLabel(), naming));
         n.set("situation", ScenarioData.situation(s, model, naming));
         if (u.session() != null) {
             try {
@@ -445,9 +451,8 @@ public final class Playground {
      *       gives such a case, the name of the case file and uchar's sentence, and the trace and coverage of the 422;</li>
      *   <li>any other 400 of the service: FAIL naming its violations.</li>
      * </ul>
-     * An entry point that gives no explanation ({@link DecisionCore#withoutExplanation}: its descriptor sets
-     * {@code explanation} to false) is asked without one; the scenario has its verdict, and {@code explanationError}
-     * says why there is no explanation.
+     * An entry point that gives no explanation ({@link DecisionCore#withoutExplanation}) is asked without one; the
+     * scenario has its verdict, and {@code explanationError} says why there is no explanation.
      */
     private static void renderViaService(ObjectNode n, int i, ResolvedScenario s, DecisionCore service,
                                       List<String> sourceLines, RegelSpraakModel model, Naming naming,
@@ -469,7 +474,7 @@ public final class Playground {
             explanationError = service.withoutExplanation(path);
             boolean explained = explanationError == null;
             RequestOptions options = new RequestOptions(explained, vocabulary == null ? Naming.CANONICAL : vocabulary,
-                    Naming.CANONICAL, true, true, true, explained);
+                    Naming.CANONICAL, true, true, true, explained, explained && OpenValues.in(model));
             DecisionCore.Assessment b = service.assess(path, SituationToRequest.assemble(s), options, expected);
             status = b.comparison().pass() ? ScenarioResult.Status.PASS : ScenarioResult.Status.FAIL;
             if (!b.comparison().pass()) diagnostic = caseName + ": " + b.comparison().diagnostic();
@@ -521,6 +526,7 @@ public final class Playground {
         for (String field : List.of("coverage", "trace", "explanation", "explanationParts"))
             n.set(field, session.has(field) ? session.get(field) : NF.arrayNode());
         if (explanationError != null) n.put("explanationError", explanationError);
+        if (session.has("openInputs")) n.set("openInputs", session.get("openInputs"));
         n.set("situation", ScenarioData.situation(s, model, naming));
         if (session.has("fixpoint")) n.set("fixpoint", session.get("fixpoint"));
         if (session.has("fixpointError")) n.put("fixpointError", session.get("fixpointError").asText());
