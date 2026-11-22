@@ -393,11 +393,12 @@ writes one does not start:
   without the DRL view: no `drl`, no `drlRules` and no `drlError`, and every other key as the full analysis gives it.
   The DRL-text branch is then not built, and on a large model its build is most of the time of an analysis
   (`docs/ENGINE.md`). Without the parameter the answer is unchanged; a value other than `true` or `false` is a 400.
-- **A strict rule set** (card `open-values-in-service`, on uchar's `Afleiden uit leeg: nee`) is new: the service starts on
-  it, its answer gives every member of `output` with its state, and its request gives a characteristic as a state and
-  refuses a bare `false`; its explanation says what does not stand and why, and `?openInputs=true` lists the input that
-  keeps an outcome open ("A strict rule set", below). A rule set without that line keeps its requests, answers,
-  explanations, `/info` and OpenAPI document as they were. Two answers change for every rule set, both from a 500: an
+- **A strict rule set** (cards `open-values-in-service` and `strict-request-states`, on uchar's
+  `Afleiden uit leeg: nee`) is new: the service starts on it, its answer gives every member of `output` with its state,
+  and its request gives a characteristic as a state and refuses a bare boolean, `true` as well as `false`; its
+  explanation says what does not stand and why, and `?openInputs=true` lists the input that keeps an outcome open ("A
+  strict rule set", below). A rule set without that line keeps its requests, answers, explanations, `/info` and OpenAPI
+  document as they were. Two answers change for every rule set, both from a 500: an
   attribute a request gives as `null` is not given, as one it leaves out; and the explanation of a characteristic that a
   rule on a supertype attributes where the defaults group of the subtype decided nothing says so.
 
@@ -586,9 +587,9 @@ value computes as in any rule set. A service in a conversation that is still ask
 | attribute, characteristic | `{"state": "open"}` | it does not stand |
 | characteristic | `{"state": "holds"}`, `{"state": "holdsNot"}` | it holds; it stands not to hold |
 
-A request gives a characteristic as `true` or `{"state": "holds"}`, as `{"state": "holdsNot"}` where it stands not to
-hold, and leaves it out (or `null`) where it is not given; a bare `false` is a 400. An attribute that is left out or
-`null` is not given. What is not given is open, unless its declaration says `(volledig gegeven)`; `/info` lists those
+A request gives a characteristic as `{"state": "holds"}`, as `{"state": "holdsNot"}` where it stands not to hold, and
+leaves it out (or `null`) where it is not given; a bare boolean, `true` or `false`, is a 400. An attribute that is left
+out or `null` is not given. What is not given is open, unless its declaration says `(volledig gegeven)`; `/info` lists those
 members (`completeInput`) beside `"inferFromEmpty": false`. `inconsistencies` names what stands, so an empty list does not
 say that every consistency holds. The explanation says of an open outcome that it does not stand and which member keeps it open.
 `?openInputs=true` (a 400 on any other rule set) adds `openInputs`: the input members that keep an open outcome of `output` open now, with the

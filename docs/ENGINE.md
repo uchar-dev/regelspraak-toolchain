@@ -634,14 +634,16 @@ writers, so an outcome can be open now and stand once the input it lacks is give
 the service asks whether its rule set is strict (`RegelSpraakModel.inferFromEmpty()`); for every other rule set the
 request, the answer, `/info`, the OpenAPI document and `fixpoint` are what the sections above describe, byte for byte.
 
-**The request.** A characteristic is `true` or `{"state": "holds"}` where it holds, and `{"state": "holdsNot"}` where it
-stands not to hold, which the mapper writes as the `characteristicsAbsent` of the case. Where it is not given, it is left
-out or `null`. A bare `false` is a 400 `WRONG_TYPE` whose sentence names the two forms: a form or a DTO fills a boolean
-nobody answered with `false`, and the rules would infer from it without saying so. Another state is a `WRONG_TYPE` too,
-and an object without `state` or with another key a `MALFORMED`. An attribute that is left out or `null` is not given. A
-request cannot state that an attribute is leeg: that stands only of an attribute that is `(volledig gegeven)`. A value or
-`holdsNot` on a member that a rule writes stands where every writer of the member fills nothing; while a writer is open,
-the member is open. A characteristic the request gives holds whatever its rules do.
+**The request.** A characteristic is `{"state": "holds"}` where it holds, and `{"state": "holdsNot"}` where it stands
+not to hold, which the mapper writes as the `characteristicsAbsent` of the case. Where it is not given, it is left out
+or `null`. A bare boolean, `true` or `false`, is a 400 `WRONG_TYPE` whose sentence names the two forms and leaving it
+out: a form or a DTO fills a boolean nobody answered with `false`, and the rules would infer from it without saying so;
+and a client that writes a characteristic as a boolean would meet that only at its first `false`, so `true` is refused
+as well. Another state is a `WRONG_TYPE` too, and an object without `state` or with another key a `MALFORMED`. An
+attribute that is left out or `null` is not given. A request cannot state that an attribute is leeg: that stands only
+of an attribute that is `(volledig gegeven)`. A value or `holdsNot` on a member that a rule writes stands where every
+writer of the member fills nothing; while a writer is open, the member is open. A characteristic the request gives
+holds whatever its rules do.
 
 **The answer** gives every member of `output` with its state, never as a bare value, `null` or boolean:
 
@@ -665,8 +667,9 @@ a member among the `members` of its object, among its `open`, or in neither, whi
 **`/info`** has `"inferFromEmpty": false` and `completeInput`, the input members whose declaration says `(volledig
 gegeven)` (the `opgegeven X` of the opgave marker among them), `[{"kind": "attribute", "objectType": "Vondst", "name":
 "toeslag"}, {"kind": "characteristic", …}]`, per object type as declared. **The OpenAPI document** has the states as enumerations:
-the components `AttributeState` and `CharacteristicState`, to which `Answer` refers, a characteristic of an object type as
-`true` or a state, and in the description of every member what it means that a request does not give it.
+the components `AttributeState` and `CharacteristicState`, to which `Answer` refers, and `CharacteristicInput` (`holds` and
+`holdsNot`), to which the characteristics of `Request` and of every object type refer; and in the description of every
+member what it means that a request does not give it.
 
 **`fixpoint`** (of an answer and of a 422) gives every object the list `open` after `characteristics`: its open
 attributes and then its open characteristics, in declaration order, each with the `unit` of an attribute that has one and
@@ -730,7 +733,7 @@ of the situation, and with `?via=service` those of the `output` of the entry poi
 
 **The scenarios.** A test document has no sentence that expects an open outcome. An expectation on one is FAIL with uchar's
 word for it, `openstaand`, on the ordinary route and with `?via=service`. A situation asserts a characteristic or leaves
-it out, so the request of `via=service` states none that does not hold.
+it out, so the request of `via=service` gives one as `{"state": "holds"}` and states none that does not hold.
 
 **The start.** A dimensioned attribute in `output` refuses the start (`UNSUPPORTED`): uchar does not say whether a cell is
 open. So does an attribute without a bean field of its own. A form whose reading of ch. 1.5 uchar's Drools branch does
