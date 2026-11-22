@@ -209,3 +209,8 @@ Gewone regelsets, `compare.py` als in deel 1, de jar van stap 2 van deel 1 (`1-s
 gelijk, 46 starten niet met dezelfde zin, 2 anders; rood 58 gelijk, 18 starten niet, 1 anders. De drie die anders zijn, zijn strikt: `jutterswet-afleiden-uit-leeg` en
 `jutterswet-kenmerk-wel-en-niet` op `/openapi` (de vlag en velden van de uitleg), `jutterswet-volledig-gegeven` op `/info` (`completeInput`, van het eind van deel 1).
 Geen body van een gewone regelset verschilt.
+
+### Nagerekend door de hoofdsessie (2026-11-22)
+
+175 strikte scenario's met uitleg en 1289 zinnen over wat niet vaststaat: geen uitzondering. Dezelfde bronnen als gewone regelset: de uitvoer byte-gelijk aan die van de
+jar van vóór deel 1. Een tweede lezing van het contract corrigeerde één zin (een afnemer die de stand niet leest, gaat mis zonder melding).
