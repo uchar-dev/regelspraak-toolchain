@@ -149,3 +149,63 @@ twee volledige leden). `OpenValuesHttpTest` (21), `PlaygroundOpenValuesTest` (4)
 
 Op `7d79970a6`, elk los: `mvn -B -o verify -Dmaven.test.skip.exec=true` groen (210, 615 en 66 tests), `make check-service-replay` PASS (377 goldens, 1072
 cases, rode leg 69 en 14), `make check-twins` PASS (18 cases, 34 verzoeken), `make scenario-test` 0 mismatch. Daarna alleen javadoc.
+
+## Result van deel 2: de uitleg, openInputs, de playground
+
+### Per punt van de kaart
+
+- **4, wat een uitkomst openhoudt** (`9869ae8ad`): `?openInputs=true` in beide adapters (`RequestOptions.openInputs`, `OpenInputs` als de ene schrijver, `OpenReads.openInputs`) en in het OpenAPI-document
+  van een strikte regelset. Een open uitkomst zonder open invoerlid is een fout van de motor en valt luid. Op een gewone regelset en op een ingang zonder uitleg een 400 `UNSUPPORTED`.
+- **5, de uitleg** (`9869ae8ad`, `2f5857032`): een zin per open uitkomst met één oorzaak en per vorm wat zij vond; sluitingen, samenstellingen, vouwen, kwantorvouwen, stapels, uitzonderingsgroepen,
+  initialisaties en consistentieregels. `explanationParts`: `undetermined` en `closure` op `CONDITION`, `open` op `READING`, `unsettled` op `MEMBERS`, `undetermined` op een verdrongen
+  `VARIANT`. `engine/OpenReads` zegt waardoor iets openstaat, uit uchars lezingen en de eindstand, zonder iets na te rekenen.
+- **6, de playground** (`761c6a8ef`): per scenario de zinnen en "Open invoer"; een verwachting tegenover een open uitkomst blijft FAIL met `openstaand`.
+- **Een document dat uchar alleen met lezingen weigert** (DROOLS-318): de ingang en het scenario antwoorden zonder lezingen; `explanation` en `openInputs` zijn een 400 met uchars zin.
+- **Documentatie** (`28e622fb0`): `docs/ENGINE.md`, "A strict rule set" en "The parts of an explanation"; README; het klassecommentaar van `Verbaliser`.
+
+### De acht correcties van de tweede lezing
+
+1 (de woordvolgorde van "niet gegeven of hij betwist is"), 4, 5, 6, 7 en 8 zoals gevraagd; 8: een onbepaalde kwantorvouw heeft geen `READING`, haar lid staat in de kop. 2: het model draagt het lidwoord van een
+declaratie niet, dus staat er overal "van J1 is zijn bonus niet gegeven". 3: "dat geen regel een waarde geeft" in plaats van "dat geen regel het vult", om dezelfde reden. Bij 6 heet een
+regel waarvan de voorwaarde geldt en de waarde open is "wat de regel 'X' geeft, staat niet vast".
+
+### Nagelezen en hersteld (`2f5857032`)
+
+Drie keer een 500: een kwantorvouw met een toets op gevuld of leeg in haar filter, die door die sluiting geldt; een kenmerk uit het verzoek naast een open stapel met een lid dat iets besloot; een
+regel op het supertype naast de stapel van een subtype. Drie keer een onware zin: "gaf geen waarde" van een lid van een uitzonderingsgroep dat iets gaf, waar de initialisatie over de groep besliste; een lid na de stop met een fout als "niet voor";
+en een sluiting over een lid dat het filter uitsluit. De derde 500 had ook een gewone regelset.
+
+### Getuigen
+
+Letterlijke zinnen: `OpenExplanationHttpTest` (28), `OpenExplanationFormsHttpTest` (14: vormen die elkaar raken, elke kwantor beslist en onbepaald, geneste samenstelling, binder, subtype, marker, grondslag, vocabulaire),
+`OpenValuesHttpTest`, `ScenarioOpenValuesTest`, `PlaygroundOpenValuesTest`. `OpenInputsHttpTest` (12). `OpenInputsPropertyTest`: elke open uitkomst van de strikte goldens en van twee eigen regelsets, met
+elk invoerlid weggelaten, heeft een zin en staat onder een invoerlid, en dat lid geven verandert de uitkomst of de vraag. `OpenValuesParityTest` (6): Quarkus gelijk aan de JDK-dienst, met de weigeringen.
+
+Eenmalig gemeten, niet gepind: elke golden als strikt document door de dienst (433 mappen, 239 starten, 3867 verzoeken met elk gegeven lid een keer weggelaten, 20355 open uitkomsten): geen 500, elke open uitkomst een zin en een plaats in
+`openInputs`, geen zin "staat niet vast" over wat vaststaat, de stukken gelijk aan de zin.
+
+Aangepast omdat het gedrag verandert: `OpenValuesHttpTest.what_stands_is_explained` (was `the_explanation_is_refused`), `ScenarioOpenValuesTest` en `PlaygroundOpenValuesTest` (de uitleg is er), en
+`service_replay.py`: strikte goldens gaan door `explained`.
+
+### Voorlopige besluiten
+
+1. `openInputs` noemt van een samenstelling elk onbepaald lid en van een waarde of een vouw het eerste; op de gewone route van de playground staan alle afgeleide open leden van de situatie erin.
+2. Een sluiting in een vouw is een bovengrens (uchars lezing noemt het lid niet): de open leden die het filter, de toets of het getelde attribuut op de leden van het bereik leest. In een waarde die vaststaat, zegt een zin
+   alleen iets over een sluiting waar het filter zelf de toets is of de telling geen filter heeft.
+3. De zin over een kenmerk dat een regel op het supertype toekent waar de groep van het subtype niets besloot, "… volgens een regel buiten de groep", ook in een gewone regelset, in plaats van een 500.
+
+### Open punten
+
+1. Voor uchar: een lezing noemt de open lezing niet waarover een sluiting in een vouw of in een waarde sloot, en van een bijdrager van een kwantorvouw niet of zijn filter vaststaat of een sluiting zijn oordeel gaf.
+2. Gewone regelset, bestaand en gelaten: besliste de stapel van een subtype "niet toekennen" en kent een regel op het supertype het kenmerk toe, dan staan er twee zinnen die elkaar tegenspreken. Herstel verandert een
+   zin van een gewone regelset.
+
+### Poorten en vergelijking
+
+Op `de265a72a`: `mvn -B -o verify -Dmaven.test.skip.exec=true` groen (212, 673 en 68 tests) en `make check-service-replay` PASS (377 goldens, 1072 cases, rode leg 69 en 14). Op `28e622fb0`, dat alleen documentatie en
+javadoc toevoegt: `make check-twins` PASS (18 cases, 34 verzoeken) en `make scenario-test` 0 mismatch. Geen vloer en geen pin veranderde.
+
+Gewone regelsets, `compare.py` als in deel 1, de jar van stap 2 van deel 1 (`1-step2.jar`; de rest van deel 1 raakte alleen strikte regelsets) tegen die van `28e622fb0`, elke body byte voor byte: goldens 385 mappen
+gelijk, 46 starten niet met dezelfde zin, 2 anders; rood 58 gelijk, 18 starten niet, 1 anders. De drie die anders zijn, zijn strikt: `jutterswet-afleiden-uit-leeg` en
+`jutterswet-kenmerk-wel-en-niet` op `/openapi` (de vlag en velden van de uitleg), `jutterswet-volledig-gegeven` op `/info` (`completeInput`, van het eind van deel 1).
+Geen body van een gewone regelset verschilt.
