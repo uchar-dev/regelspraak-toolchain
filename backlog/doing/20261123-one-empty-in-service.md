@@ -1,5 +1,27 @@
 # one-empty-in-service: geen markers en geen sluitingen in dienst, uitleg en playground
 
+Goal: de pin naar uchar `e25f201ef` (de kaarten `strict-scenarios` en `one-empty`, beide delen) in één pin-bump. Dienst,
+uitleg, OpenAPI, scenario en playground dragen geen absence markers meer (een markerobject in een verzoek is een gewone
+400 `WRONG_TYPE`); in een strikte regelset geen uitkomst door een sluiting meer in de uitleg, geen melding van een
+consistentie "moet gevuld zijn" over een open lid, geen bovengrens van `openInputs` voor een sluiting in een vouw, en een
+lid met alleen een initialisatie als invoerlid in `openInputs`. De scenariolaag leest `holds()` van een kenmerk
+(`characteristicsAbsent` als `{"state": "holdsNot"}`), `attributeOpen` en `characteristicOpen` als verwachting, en toont de
+waarschuwingen van `ScenarioBundle.warnings` (RGS-469) naast de diagnostiek van het model.
+
+Acceptance: `make check-pin` op `e25f201ef`; `make gates-no-docker` groen (check-pin, de reactor met de suites van
+`toolchain`, `service` en `service-quarkus` en hun skip-pins, `check-twins`, `check-service-replay` met de vloeren die met
+de goldens van uchar meebewegen, oud en nieuw in de commitboodschap, en `scenario-test`); `make gates` groen (de
+hoofdsessie, vóór de landing); `git grep -i -E 'absence.?marker|UNKNOWN_MARKER|onbekend|niet van toepassing|Markers\b'`
+in `service`, `service-quarkus`, `toolchain`, `tools`, `scripts`, `README.md` en `docs/` vindt niets behalve waar een
+tekst het besluit noemt, en het `MARKER` van `scenario`/`serve` en `--allow-markers` (een ander begrip).
+
+May touch: `service/`, `service-quarkus/`, `toolchain/`, `scripts/check-service-replay.sh`, `scripts/service_replay.py`,
+`tools/check-skips.sh` (de vloeren van de suites), `README.md`, `docs/ENGINE.md`, de submodule `uchar` (pin), deze kaart.
+
+Out of scope: uchar zelf (nooit bewerkt; een vraag over betekenis is een kaart daar); de werkbank en haar regelset (zij
+pint de toolchain zelf en zet om bij haar eigen bump); de website; het `MARKER` van `scenario` en `serve` en de vlag
+`--allow-markers`; `docs/historical/`.
+
 *Volgt op uchar's kaart `one-empty` (twee delen). Deel 1 is een besluit van de eigenaar (2026-11-23): de markers `onbekend`
 en `niet van toepassing` vervallen. Deel 2 volgt op uchar's deel 2 (een strikt document op zuivere Kleene), ook besloten op
 2026-11-23. Nog niet begonnen; beide delen en uchar's `strict-scenarios` landen in één pin-bump. Bijgewerkt na een tweede review
