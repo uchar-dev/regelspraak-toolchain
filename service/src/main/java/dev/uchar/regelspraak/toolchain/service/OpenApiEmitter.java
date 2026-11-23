@@ -394,7 +394,7 @@ public final class OpenApiEmitter {
                     ? timelineSchema(e.getValue(), ot.granularityOf(e.getKey()), sp)
                     : ot.dimensionsOf(e.getKey()).isEmpty() ? attributeSchema(e.getValue(), sp)
                     : cellsSchema(e.getValue(), ot.dimensionsOf(e.getKey()), model, sp);
-            if (OpenValues.in(model)) notGiven(attribute, complete(ot, e.getKey(), false), "de waarde");
+            if (OpenValues.in(model)) notGiven(attribute, complete(ot, e.getKey(), false), false);
             comment(attribute, model, Naming.attributeOf(ot, e.getKey()));
             if (sp.enabled()) spellings(attribute, sp.of(Naming.attributeOf(ot, e.getKey())));
             props.set(name, attribute);
@@ -411,7 +411,7 @@ public final class OpenApiEmitter {
                 kn = NF.objectNode();
                 kn.put("description", "kenmerk, gegeven als stand.");
                 kn.putArray("allOf").addObject().put("$ref", "#/components/schemas/" + CHARACTERISTIC_INPUT);
-                notGiven(kn, complete(ot, k, true), "of het geldt");
+                notGiven(kn, complete(ot, k, true), true);
                 characteristics.add(name);
             } else {
                 kn = NF.objectNode();
@@ -525,10 +525,17 @@ public final class OpenApiEmitter {
     }
 
     /** {@code node}, a member a request of a strict rule set gives, ends its description with what it means that it is not
-     *  given: it is open, or stands to be leeg or not to hold where its input is {@code complete}. */
-    private static void notGiven(ObjectNode node, boolean complete, String what) {
-        String sentence = complete ? "Volledig gegeven: waar het ontbreekt of null is en geen regel het schrijft, staat vast"
-                + " dat het leeg is of niet geldt." : "Waar het ontbreekt of null is, is " + what + " niet gegeven.";
+     *  given: it is open; where its input is {@code complete} and no rule writes it, it stands to be leeg or not to hold, and an
+     *  attribute that only an initialisation writes is settled leeg above it, so that the initialisation is at its turn
+     *  (uchar's RUNTIME-SEMANTICS ch. 1.5, "Complete input"). */
+    private static void notGiven(ObjectNode node, boolean complete, boolean characteristic) {
+        String sentence = !complete
+                ? "Waar het ontbreekt of null is, is " + (characteristic ? "of het geldt" : "de waarde") + " niet gegeven."
+                : characteristic
+                ? "Volledig gegeven: waar het ontbreekt of null is en geen regel het schrijft, staat vast dat het niet geldt."
+                : "Volledig gegeven: waar het ontbreekt of null is en geen regel het schrijft, staat vast dat het leeg is."
+                + " Schrijft alleen een initialisatie het, dan is die aan de beurt: het krijgt haar waarde, is leeg waar zij"
+                + " niets geeft, en staat niet vast waar zij een open waarde leest.";
         node.put("description", joined(node.has("description") ? node.get("description").asText() : "", sentence));
     }
 

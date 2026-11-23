@@ -117,6 +117,32 @@ class ScenarioOpenValuesTest {
         assertEquals(List.of("vindloon"), p.openInputs().get(0).outcomes().stream().map(o -> o.member()).toList());
     }
 
+    /** A complete toeslag that only an initialisation writes, which reads the gewicht: without a gewicht the toeslag is open by
+     *  what its initialisation reads, so it is an outcome under the gewicht, beside the vindloon, and no input of its own. */
+    @Test
+    void a_complete_member_whose_initialisation_reads_an_open_member_is_an_outcome() {
+        ScenarioRunner.Explained p = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(RULES.replace(
+                "het vindloon Numeriek (geheel getal);",
+                "het vindloon Numeriek (geheel getal);\n    de toeslag Numeriek (geheel getal) (volledig gegeven);") + """
+            Regel basistoeslag
+                geldig altijd
+                    De toeslag van een Vondst moet geïnitialiseerd worden op zijn gewicht.
+
+            Scenario zonder gewicht
+            Gegeven is de volgende situatie:
+            een Vondst V1
+            - de taxatie is 1500
+            Met als verwacht resultaat:
+            - V1 is kostbaar
+            """)).get(0);
+        assertEquals(Status.PASS, p.result().status(), p.result()::diagnostic);
+        assertTrue(p.explanation().contains("V1: zijn toeslag staat niet vast, want zijn gewicht is niet gegeven; voor de regel"
+                + " 'basistoeslag' staat niet vast: zijn gewicht (niet gegeven)"), p.explanation()::toString);
+        assertEquals(1, p.openInputs().size());
+        assertEquals("gewicht", p.openInputs().get(0).input().member());
+        assertEquals(List.of("vindloon", "toeslag"), p.openInputs().get(0).outcomes().stream().map(o -> o.member()).toList());
+    }
+
     private static final String PREMIE = """
         Objecttype de Vondst (mv: Vondsten)
             de taxatie Numeriek (geheel getal);

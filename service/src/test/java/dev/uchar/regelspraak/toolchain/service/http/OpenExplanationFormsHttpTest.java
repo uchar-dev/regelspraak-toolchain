@@ -184,6 +184,50 @@ class OpenExplanationFormsHttpTest {
                 core.completeInput());
     }
 
+    /** A complete vindloon that only an initialisation writes is settled leeg above it where the request does not give it, so
+     *  the initialisation is at its turn there; where its condition or its value reads an open member, the vindloon is open by
+     *  that read and not by its own input. The open input is what the initialisation reads, and the keurgewicht, which reads
+     *  the vindloon, says that the vindloon does not stand. */
+    @Test
+    void a_complete_member_whose_initialisation_reads_an_open_member() throws Exception {
+        String complete = VONDST.replace("het vindloon Numeriek (geheel getal);",
+                "het vindloon Numeriek (geheel getal) (volledig gegeven);");
+        String keurgewicht = """
+
+            Regel keurgewicht
+                geldig altijd
+                    Het keurgewicht van een Vondst moet berekend worden als zijn vindloon plus 10.
+            """;
+        String reader = "V1: zijn keurgewicht staat niet vast, want zijn vindloon staat niet vast; voor de regel 'keurgewicht'"
+                + " staat niet vast: zijn vindloon plus 10, met zijn vindloon (staat niet vast)";
+
+        JsonNode conditional = ask(complete + """
+            Regel basisvindloon
+                geldig altijd
+                    Het vindloon van een Vondst moet geïnitialiseerd worden op 25 indien hij betwist is.
+            """ + keurgewicht, vondst("", ""), "&openInputs=true");
+        assertEquals("open", conditional.at("/instances/0/attributes/vindloon/state").asText(), conditional.toString());
+        assertSentence("V1: zijn vindloon staat niet vast, want het is niet gegeven of hij betwist is; voor de regel"
+                + " 'basisvindloon' staat niet vast: het onderwerp betwist is (niet gegeven)", conditional);
+        assertSentence(reader, conditional);
+        assertEquals(List.of(), forOutputs(conditional, "vindloon"), conditional.get("openInputs").toString());
+        assertEquals(List.of("V1 keurgewicht", "V1 vindloon", "V1 betwist"), forOutputs(conditional, "betwist"),
+                conditional.get("openInputs").toString());
+
+        JsonNode reading = ask(complete + """
+            Regel basisvindloon
+                geldig altijd
+                    Het vindloon van een Vondst moet geïnitialiseerd worden op zijn taxatie.
+            """ + keurgewicht, vondst("", ""), "&openInputs=true");
+        assertEquals("open", reading.at("/instances/0/attributes/vindloon/state").asText(), reading.toString());
+        assertSentence("V1: zijn vindloon staat niet vast, want zijn taxatie is niet gegeven; voor de regel 'basisvindloon'"
+                + " staat niet vast: zijn taxatie (niet gegeven)", reading);
+        assertSentence(reader, reading);
+        assertEquals(List.of(), forOutputs(reading, "vindloon"), reading.get("openInputs").toString());
+        assertEquals(List.of("V1 taxatie", "V1 keurgewicht", "V1 vindloon"), forOutputs(reading, "taxatie"),
+                reading.get("openInputs").toString());
+    }
+
     /** A consistency "moet gevuld zijn" over a taxatie that is not given does not decide: it is not among the inconsistencies, and
      *  the explanation says that it does not stand. Over a complete taxatie without a value it is inconsistent. */
     @Test
@@ -203,8 +247,8 @@ class OpenExplanationFormsHttpTest {
         assertEquals(json("[\"taxatieplicht\"]"), ask(complete, vondst("", "")).get("inconsistencies"));
     }
 
-    /** The filter tests the taxatie on gevuld or leeg, so it is undetermined on a member without one, and so is that member
-     *  where its matrix does not decide it alone: for "alle" a matrix that holds, for the others one that does not. */
+    /** The filter tests the taxatie on gevuld or leeg, so it is undetermined on a member without one: the explanation of the
+     *  fold gives its verdict and names no member, and the head names the taxatie that keeps it open. */
     @Test
     void a_quantifier_fold_whose_filter_tests_an_open_member() throws Exception {
         String rules = """
@@ -213,18 +257,88 @@ class OpenExplanationFormsHttpTest {
                     Een Jutter is kundig indien het gewicht van %s vondsten van de Jutter die aan de volgende voorwaarde voldoen: zijn taxatie is %s groter is dan 10.
             """;
         // V2 of gewicht 5 fails the matrix, and whether it counts is open
-        assertFold("J1: of hij kundig is, staat niet vast, want van V2 is zijn taxatie niet gegeven;",
-                "is voldaan: wel voor V1, niet vast voor V2",
+        assertFold("J1: of hij kundig is, staat niet vast, want van V2 is zijn taxatie niet gegeven;", "is voldaan",
                 ask(VONDST + rules.formatted("alle", "gevuld"), jutter("\"gewicht\": 20, \"taxatie\": 5", "\"gewicht\": 5")));
         // V2 of gewicht 50 holds the matrix, and would be the second where it counts
-        assertFold("J1: of hij kundig is, staat niet vast, want van V2 is zijn taxatie niet gegeven;",
-                "is voldaan: wel voor V1, niet vast voor V2",
+        assertFold("J1: of hij kundig is, staat niet vast, want van V2 is zijn taxatie niet gegeven;", "is voldaan",
                 ask(VONDST + rules.formatted("ten hoogste één van de", "gevuld"),
                         jutter("\"gewicht\": 20, \"taxatie\": 5", "\"gewicht\": 50")));
         // V1 has neither, and V2 holds the matrix where it counts
-        assertFold("J1: of hij kundig is, staat niet vast, want van V1 is zijn taxatie niet gegeven;",
-                "is voldaan: niet vast voor V1 en V2",
+        assertFold("J1: of hij kundig is, staat niet vast, want van V1 is zijn taxatie niet gegeven;", "is voldaan",
                 ask(VONDST + rules.formatted("ten minste één van de", "leeg"), jutter("", "\"gewicht\": 50")));
+    }
+
+    /** The filter "betwist of beschadigd" holds on a Vondst that is betwist, also where beschadigd is open, and uchar's reading
+     *  gives per member the verdict of the matrix and not whether its filter stands. Where the filter reads an open member of
+     *  a member, the explanation of the fold gives its verdict alone: "alle" fails on V2, and "ten minste twee" holds by V1
+     *  and V2, and neither names a member. */
+    @Test
+    void a_quantifier_fold_whose_filter_reads_an_open_member_and_is_decided() throws Exception {
+        String rules = """
+            Regel kundig
+                geldig altijd
+                    Een Jutter is kundig indien het gewicht van %s vondsten van de Jutter die aan ten minste één van de volgende voorwaarden voldoen:
+                        - hij betwist is
+                        - hij beschadigd is
+                    groter is dan 10.
+            """;
+        String betwist = "\"betwist\": {\"state\": \"holds\"}";
+        JsonNode all = ask(VONDST + rules.formatted("alle"), """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
+              {"type": "Vondst", "id": "V1", "attributes": {"gewicht": 20},
+               "characteristics": {%s, "beschadigd": {"state": "holds"}}},
+              {"type": "Vondst", "id": "V2", "attributes": {"gewicht": 5}, "characteristics": {%s}}]}"""
+                .formatted(betwist, betwist));
+        assertFold("J1 is niet kundig, want", "is niet voldaan", all);
+        JsonNode atLeast = ask(VONDST + rules.formatted("ten minste twee van de"), """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2", "V3"]}},
+              {"type": "Vondst", "id": "V1", "attributes": {"gewicht": 20}, "characteristics": {%s}},
+              {"type": "Vondst", "id": "V2", "attributes": {"gewicht": 20},
+               "characteristics": {%s, "beschadigd": {"state": "holdsNot"}}},
+              {"type": "Vondst", "id": "V3", "characteristics": {%s}}]}""".formatted(betwist, betwist, betwist));
+        assertFold("J1 is kundig, omdat", "is voldaan", atLeast);
+    }
+
+    /** The filter counts a union whose first selection tests betwist: on J2 it reads the open betwist of V2, so the fold gives
+     *  its verdict and names no member. */
+    @Test
+    void a_quantifier_fold_whose_filter_counts_a_union_with_an_open_member() throws Exception {
+        assertFold("H1: of hij druk is, staat niet vast, want", "is voldaan", ask("""
+            Afleiden uit leeg: nee
+
+            Objecttype de Haven (mv: Havens)
+                is druk kenmerk (bijvoeglijk);
+
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                de leeftijd Numeriek (geheel getal);
+
+            Objecttype de Vondst (mv: Vondsten)
+                is betwist kenmerk (bijvoeglijk);
+
+            Feittype havenregister
+                de haven Haven
+                de jutter (mv: jutters) Jutter
+                één haven heeft meerdere jutters
+
+            Feittype vondstaanmelding
+                de aanmelder Jutter
+                de aangemelde vondst (mv: aangemelde vondsten) Vondst
+                één aanmelder meldt meerdere aangemelde vondsten
+
+            Feittype vondstberging
+                de berger Jutter
+                de geborgen vondst (mv: geborgen vondsten) Vondst
+                één berger bergt meerdere geborgen vondsten
+
+            Regel druk
+                geldig altijd
+                    Een Haven is druk indien de leeftijd van alle jutters van de Haven die aan de volgende voorwaarde voldoen: het aantal aangemelde vondsten van de Jutter die betwist zijn en geborgen vondsten van de Jutter is groter dan 0 groter is dan 10.
+            """, """
+            {"instances": [{"type": "Haven", "id": "H1", "roles": {"jutters": ["J1", "J2"]}},
+              {"type": "Jutter", "id": "J1", "attributes": {"leeftijd": 20}, "roles": {"aangemelde vondsten": ["V1"]}},
+              {"type": "Jutter", "id": "J2", "attributes": {"leeftijd": 5}, "roles": {"aangemelde vondsten": ["V2"]}},
+              {"type": "Vondst", "id": "V1", "characteristics": {"betwist": {"state": "holds"}}},
+              {"type": "Vondst", "id": "V2"}]}"""));
     }
 
     /** The test of a fold over the others reads nothing of the Vondst itself, which the filter leaves out. */
@@ -458,6 +572,15 @@ class OpenExplanationFormsHttpTest {
             {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
               {"type": "Vondst", "id": "V1", "attributes": {%s}}, {"type": "Vondst", "id": "V2", "attributes": {%s}}]}"""
                 .formatted(v1, v2);
+    }
+
+    /** "V1 vindloon", … : the outcomes that {@code openInputs} of {@code answer} gives under the input member {@code name}. */
+    private static List<String> forOutputs(JsonNode answer, String name) {
+        List<String> out = new ArrayList<>();
+        for (JsonNode i : answer.get("openInputs"))
+            if (i.get("name").asText().equals(name))
+                for (JsonNode o : i.get("forOutputs")) out.add(o.get("instance").asText() + " " + o.get("name").asText());
+        return out;
     }
 
     private static JsonNode ask(String source, String request) throws Exception {

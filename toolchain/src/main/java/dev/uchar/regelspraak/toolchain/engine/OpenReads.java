@@ -29,11 +29,14 @@ import java.util.Set;
 /**
  * What keeps a member open in one session of a strict document, one with {@code inferFromEmpty: false} (uchar's
  * RUNTIME-SEMANTICS ch. 1.5): the open reads uchar recorded in its readings (ch. 5.12, "Open values"), laid on the forms of
- * the document. Nothing is evaluated here. A form that left its target open is a reading with the status {@code OPEN}; what
- * left it so is the open read at its undetermined condition, per member of a composite that is undetermined itself, or at
- * its value ({@link #of}); a derived member is followed over its open forms to the input members, the input that can be
- * given ({@link #openInputs}); and whether the filter of a quantifier fold reads an open member on a member of its range
- * ({@link #reads}).
+ * the document. No condition and no value is evaluated here. A form that left its target open is a reading with the status
+ * {@code OPEN}; what left it so is the open read at its undetermined condition, per member of a composite that is
+ * undetermined itself, or at its value ({@link #of}); a member that no form left open is open by its own input
+ * ({@link #notGiven}); a member open by a form is followed over its open forms to the members open by their input, the
+ * input that can be given ({@link #openInputs}). Beside that, {@link #reads} says whether the filter of a quantifier fold
+ * reads an open member on a member of its range: it walks the nodes of the filter and the links of uchar's end state and
+ * looks the members it reaches up among the open members of that state, every branch of a choice and every value of a
+ * binder included, so it says yes also where the evaluation did not read that member.
  */
 public final class OpenReads {
 
@@ -105,6 +108,14 @@ public final class OpenReads {
     /** Whether {@code member} is input on its object: nothing but an initialisation writes it there. */
     boolean input(OpenValue member) {
         return !written(model, document.groups(), typeOf(member.object()), member.member(), member.characteristic());
+    }
+
+    /** Whether {@code member}, an open member, is open by its own input: an input member ({@link #input}) that no form left
+     *  open, so that its initialisation was not at its turn. A complete input member without a value is settled leeg above
+     *  its initialisation, which is at its turn there, and open only where the initialisation leaves it so by an open read
+     *  (ch. 1.5, "An initialisation"): that member is open by what its initialisation reads, not by its own input. */
+    boolean notGiven(OpenValue member) {
+        return input(member) && writers(member.object(), member.member(), member.characteristic()).isEmpty();
     }
 
     /** Whether a form other than an initialisation writes member {@code name}, a characteristic where
@@ -222,10 +233,11 @@ public final class OpenReads {
 
     // ---------------- an open filter of a quantifier fold ----------------
 
-    /** Whether {@code filter}, the filter of a quantifier fold in a form on {@code subject}, reads an open member on
-     *  {@code element}, a member of its range: uchar's reading of the fold gives per member the verdict of its matrix, and
-     *  an open read in the filter leaves the member undetermined where the matrix does not decide it alone (ch. 1.5, "A
-     *  quantifier fold"). Read over the links of the end state. */
+    /** Whether {@code filter}, the filter of a quantifier fold in a form on {@code subject}, can read an open member on
+     *  {@code element}, a member of its range: uchar's reading of the fold gives per member the verdict of its matrix, and not
+     *  whether its filter stands there (ch. 1.5, "A quantifier fold"). Read over the nodes of the filter and the links of the
+     *  end state, not evaluated: every branch of a choice and the value of every binder count, so the answer is yes wherever
+     *  the evaluation can have read an open member, and also where it did not. */
     boolean reads(Condition filter, Object element, Object subject) {
         if (filter == null) return false;
         Set<OpenValue> out = new LinkedHashSet<>();
@@ -253,9 +265,16 @@ public final class OpenReads {
                 i += document.positions().subtree(q).size() - 1;
             } else if (node instanceof Expr.FunctionCall f && overASet(f)) {
                 Object from = f.anchored() || document.loaded().anchored().contains(f) ? subject : on;
-                for (Object e : range(f, from)) {
-                    read(f.filter(), e, subject, out);
-                    read(f.arguments().get(0), e, subject, out);
+                if (f.arguments().get(0) instanceof Expr.InstanceSetUnion u) {
+                    // a count over a union reads nothing but the filter of each selection, on the members of its one step
+                    for (Expr.InstanceSetUnion.Branch t : u.branches())
+                        for (Object e : range(List.of(t.sourceRole()), t.elementType(), from))
+                            read(t.filter(), e, subject, out);
+                } else {
+                    for (Object e : range(f, from)) {
+                        read(f.filter(), e, subject, out);
+                        read(f.arguments().get(0), e, subject, out);
+                    }
                 }
                 i += document.positions().subtree(f).size() - 1;
             }
@@ -277,7 +296,9 @@ public final class OpenReads {
     private List<Object> range(Expr.FunctionCall f, Object on) {
         List<RoleBindingRef> path = document.loaded().sourcePaths().get(f);
         RoleBindingRef role = document.loaded().roleBindings().get(f);
-        return range(path != null ? path : role != null ? List.of(role) : List.of(), f.elementObjectType(), on);
+        if (path == null && role == null)
+            throw new IllegalStateException("een vouw " + f.kind() + " over een verzameling heeft geen bereik in het document");
+        return range(path != null ? path : List.of(role), f.elementObjectType(), on);
     }
 
     private List<Object> range(Condition.QuantifierFold q, Object on) {
@@ -326,8 +347,9 @@ public final class OpenReads {
 
     /**
      * The open input members that keep one of {@code outcomes} open, each once, with the outcomes it keeps open: an outcome
-     * that is open itself is followed over the forms that leave it open ({@link #of}) to the members no form writes. They come
-     * in the order of {@code instances} and then of the declarations; an outcome that is not open has none.
+     * that is open itself is followed over the forms that leave it open ({@link #of}) to the members open by their own input
+     * ({@link #notGiven}). They come in the order of {@code instances} and then of the declarations; an outcome that is not
+     * open has none.
      *
      * <p>It is what the session met and can be given now: a composite was read past its first undetermined member, but a value
      * broke off at its first open read and a fold names its first open member, so once these are given another can turn out
@@ -361,20 +383,21 @@ public final class OpenReads {
         return out;
     }
 
-    /** Every open member a form writes of {@code instances}, in their order and that of the declarations. */
+    /** Every open member of {@code instances} that is not open by its own input ({@link #notGiven}): a derived member, or a
+     *  complete input member that its initialisation leaves open; in their order and that of the declarations. */
     public List<OpenValue> derived(List<Object> instances) {
         List<OpenValue> out = new ArrayList<>();
         for (Object instance : instances)
             for (EndState.Open o : end(instance).open()) {
                 OpenValue member = new OpenValue(instance, o.name(), o.characteristic());
-                if (!input(member)) out.add(member);
+                if (!notGiven(member)) out.add(member);
             }
         return out;
     }
 
     private void follow(OpenValue member, Set<OpenValue> seen, Set<OpenValue> inputs) {
         if (!seen.add(member)) return;
-        if (input(member)) {
+        if (notGiven(member)) {
             inputs.add(member);
             return;
         }

@@ -603,7 +603,8 @@ computes as in any rule set, and a condition over an open value is undetermined,
 `(volledig gegeven)`: then it is settled leeg, or stands not to hold. An initialisation is the lowest writer of its
 target and makes no member derived: a member that only an initialisation writes (a rule, or the initialisation default
 of a defaults group without an exception group) is an input member with a default value, open where the request does
-not give it, and with `(volledig gegeven)` settled leeg above the initialisation, which then gives its value. A derived
+not give it, and with `(volledig gegeven)` settled leeg above the initialisation, which then is at its turn: it gives its
+value, or leaves the member open where it reads an open value. A derived
 member follows its writers, so an outcome can be open now and stand once the input it lacks is given. `OpenValues.in`
 is the one place where
 the service asks whether its rule set is strict (`RegelSpraakModel.inferFromEmpty()`); for every other rule set the
@@ -652,26 +653,42 @@ with `input` where the request gave the member a value, which does not stand bes
 member is in no other row; a member in no row is settled leeg, or stands not to hold.
 
 **The explanation** says of an open outcome that it does not stand, and what keeps it open. `OpenReads` (toolchain) is the
-one place that says what: it takes the open reads from uchar's readings (RUNTIME-SEMANTICS ch. 5.12, "Open values") and
-evaluates nothing. An open attribute is `<SUBJECT>: zijn <NAME> staat niet vast, want <cause>`, an open characteristic
+one place that says what. It evaluates no condition and no value: it takes the open reads from uchar's readings
+(RUNTIME-SEMANTICS ch. 5.12, "Open values"), lays them on the forms of the document, and follows a member that a form left
+open over those forms to the members that are open by their own input, the input members that no form left open.
+Of the filter of a quantifier fold it says whether it can read an open member on a member of the fold: it walks the nodes
+of the filter over the links of uchar's end state and looks the members it reaches up among the open members of that
+state, every branch of a choice and the value of every binder included, so it also says so where the evaluation did not
+read that member. An open attribute is `<SUBJECT>: zijn <NAME> staat niet vast, want <cause>`, an open characteristic
 `<SUBJECT>: of hij <NAME> is, staat niet vast, want <cause>`, with one cause: the member that keeps the first open form
-open, "zijn taxatie is niet gegeven" of input, "zijn vindloon staat niet vast" of a derived member, "van J1 is zijn bonus
-niet gegeven" of another object. Then every form follows in a `VARIANT` (`decided: false`) with what it found: `; voor de regel 'vindloon' staat niet
+open, "zijn taxatie is niet gegeven" of an input member that is open by its own input, "zijn vindloon staat niet vast" of
+a derived member and of a complete member that its initialisation leaves open, "van J1 is zijn bonus niet gegeven" of
+another object. Then every form follows in a `VARIANT` (`decided: false`) with what it found: `; voor de regel 'vindloon' staat niet
 vast: …` with its condition or its computation up to the open read, `; de regel … gold niet, want …`, and in a stack
 `; niet aan de beurt: …` for what stands below an open default (a default whose own reading does not stand by its name alone), and "gaf 0, maar beslist
 niet zolang '…' niet vaststaat" for a member of an exception group or an unordered group beside an open one. An
-initialisation is not at its turn where its target is open: `; niet aan de beurt: de regel 'basisstrandloon'`, the
-initialisation default of a stack by its name. A member that only an initialisation writes is open by its own input:
-`V1: zijn strandloon staat niet vast, want zijn strandloon is niet gegeven; niet aan de beurt: de regel
-'basisstrandloon'`. A value the request gives beside an open writer waits: `; de invoerwaarde 7 geldt pas als vaststaat
-dat geen regel een waarde geeft`. Other sentences:
+initialisation rule outside a stack is not at its turn where its target is an open input member or another writer leaves
+the target open, and the initialisation default of a stack where its target is an open input member; uchar reads it then
+without nodes, and the explanation names it alone: `; niet aan de beurt: de regel 'basisstrandloon'`. Below a default
+that is open, uchar reads the initialisation of the stack, its initialisation default or an initialisation rule folded
+into it (ch. 7.10), as at its turn, with its nodes (ch. 5.12), and the explanation gives it with what it found: `; niet
+aan de beurt: de regel 'vindloon' (onvoorwaardelijk, 100), de regel 'basisvindloon' (onvoorwaardelijk, 25)`. A member
+that only an initialisation writes is open by its own input: `V1: zijn strandloon staat niet vast, want zijn strandloon is
+niet gegeven; niet aan de beurt: de regel 'basisstrandloon'`. Declared complete and not given, it is settled leeg above its
+initialisation, which is at its turn; where that reads an open member, the member is open by that read: `V1: zijn vindloon
+staat niet vast, want het is niet gegeven of hij betwist is; voor de regel 'basisvindloon' staat niet vast: het onderwerp
+betwist is (niet gegeven)`, and a rule that reads it says `zijn vindloon (staat niet vast)`. A value the request gives
+beside an open writer waits: `; de invoerwaarde 7 geldt pas als vaststaat dat geen regel een waarde geeft`. Other
+sentences:
 
 - a writer that is open beside an outcome that stands says only that: `of de regel '…' geldt, staat niet vast`, or `wat de
   regel '…' geeft, staat niet vast` where its condition holds; a member of a composite that is undetermined beside one that
   decides has no word;
-- a composite that is undetermined names the first member that keeps it so; a quantifier fold the members by their verdict:
-  "wel voor V1, niet voor V2, niet vast voor V3"; one that stands beside an open member the members that carry it, counted
-  among all: "niet voor V2 (1 van de 3)";
+- a composite that is undetermined names the first member that keeps it so; a quantifier fold whose matrix is undetermined
+  on a member the members by the verdict of the matrix: "wel voor V1, niet voor V2, niet vast voor V3"; one that stands
+  beside such a member the members that carry it, counted among all: "niet voor V2 (1 van de 3)"; a quantifier fold whose
+  filter can read an open member on one of its members (`OpenReads`) gives its verdict alone and names no member, since
+  uchar's reading gives per member the verdict of the matrix and not whether the filter stands there;
 - a consistency that does not decide: `of <SUBJECT> voldoet aan de regel '…', staat niet vast, want <cause>; het staat niet
   vast: …`, which begins with no `SUBJECT`, since it is about no member. One that stands has no sentence.
 
@@ -686,19 +703,22 @@ each keeps open, in the vocabulary of the answer:
                  "forOutputs": [{"instance": "V1", "name": "vindloon", "kind": "attribute"}]}]}
 ```
 
-An open outcome is followed over the forms that leave it open to the input members, those that nothing but an
-initialisation writes; an input member in `output` that is open is under its own name, and an outcome that stands is
-under none. An open outcome without such a member is a fault of the engine, and a 500. The list is what can be asked now,
-not the whole questionnaire: an evaluation "that reaches an open value is broken off" (ch. 1.5), so a value names the
-first open member it read and a fold the first of its members that is open, and once that is given another read can turn
-out open; a composite is read past its first undetermined member, and names all of them.
+An open outcome is followed over the forms that leave it open to the input members that are open by their own input,
+those that nothing but an initialisation writes and that no form left open; a complete one that its initialisation
+leaves open is followed on to what the initialisation reads. An input member in `output` that is open by its own input
+is under its own name, and an outcome that stands is under none. An open outcome without such a member is a fault of the
+engine, and a 500. The list is what can be asked now, not the whole questionnaire: an evaluation "that reaches an open
+value is broken off" (ch. 1.5), so a value names the first open member it read and a fold the first of its members that
+is open, and once that is given another read can turn out open; a composite is read past its first undetermined member,
+and names all of them.
 
 `openInputs` is a 400 `UNSUPPORTED` on a rule set that is not strict, and, as `explanation`, on an entry point that does
 not explain. uchar refuses some strict documents only with readings (DROOLS-318, a fold that can be open over a relation
 both of whose roles are to-many): the entry point then answers, and both flags are a 400 `UNSUPPORTED` with uchar's
 sentence; the scenario runner and the playground give it in the place of the explanation. In a rule set that is not strict
-such a refusal makes the entry point a marker. The playground shows per scenario the `openInputs` of every derived member
-of the situation, and with `?via=service` those of the `output` of the entry point.
+such a refusal makes the entry point a marker. The playground shows per scenario the `openInputs` of every member of the
+situation that a form leaves open (a derived member, or a complete member that its initialisation leaves open), and with
+`?via=service` those of the `output` of the entry point.
 
 **The scenarios.** A test document of a strict rule set gives a characteristic as not holding in a situation ("- is niet
 drijfhout", "- heeft geen strandrecht": the case's `characteristicsAbsent`), and expects that an outcome stays open ("- de
@@ -735,7 +755,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, staat niet vast, gold op geen dag, gold alleen op dagen die al een waarde hadden | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count; in a strict rule set `undetermined: true` and no `holds` where it has no verdict |
-| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone; of a quantifier fold in a strict rule set `unsettled`, the members on which the verdict does not stand, where there can be any |
+| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone; of a quantifier fold in a strict rule set `unsettled`, the members on which its matrix is undetermined, where there can be any; no `MEMBERS` where its filter can read an open member |
 | `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, how an allocation divided, or the waardetoekenningen of an object creation, after its name, with its colon (below) | — |
 | `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn; on a displaced variant of a defaults group `holds` (absent without a condition), `decision` for a characteristic, `unreadable: true` where its reading carried a fault (below); in a strict rule set `undetermined: true` on a displaced variant whose reading does not stand, which is its name alone |
 | `READING` | group | the value the engine read for the operand or the member right before it, with its brackets: `" ("`, the `VALUE`, `")"` | —; in a strict rule set `open`, `{"object", "canonical", "kind": "attribute" \| "characteristic"}`, where the read broke off at that open member: it then has no `VALUE` and says "(niet gegeven)" or "(staat niet vast)" |

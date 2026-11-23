@@ -346,6 +346,11 @@ class OpenValuesHttpTest {
                 schemas.at("/Request/properties/instances/items/properties/characteristics/additionalProperties"));
         assertFalse(schemas.get("Vondst").toString().contains("boolean"), schemas.get("Vondst").toString());
         assertTrue(schemas.at("/Vondst/properties/toeslag/description").asText().contains("Volledig gegeven"));
+        // a complete attribute that only an initialisation writes is no leeg of its own: the initialisation is at its turn
+        assertTrue(schemas.at("/Vondst/properties/toeslag/description").asText().contains("Schrijft alleen een initialisatie"
+                + " het, dan is die aan de beurt"), schemas.at("/Vondst/properties/toeslag/description").asText());
+        assertTrue(schemas.at("/Vondst/properties/onleesbaar/description").asText().contains("staat vast dat het niet geldt"),
+                schemas.at("/Vondst/properties/onleesbaar/description").asText());
         assertTrue(schemas.at("/Vondst/properties/taxatie/description").asText().contains("niet gegeven"));
         assertTrue(schemas.at("/Info/properties").has("completeInput"));
         assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties").has("open"));

@@ -2775,11 +2775,12 @@ public final class Verbaliser {
     }
 
     /** Open lid {@code v} als oorzaak, in een zin over het object met naam {@code label}: "zijn taxatie is niet gegeven" van
-     *  invoer, "zijn vindloon staat niet vast" van een afgeleid lid, "van J1 is zijn bonus niet gegeven" van een ander
-     *  object, en "het is niet gegeven of hij betwist is" van een kenmerk. Het model draagt het lidwoord van een
+     *  invoer die open is omdat zij niet gegeven is ({@link OpenReads#notGiven}), "zijn vindloon staat niet vast" van een
+     *  afgeleid lid en van een volledig gegeven lid dat zijn initialisatie openliet, "van J1 is zijn bonus niet gegeven" van
+     *  een ander object, en "het is niet gegeven of hij betwist is" van een kenmerk. Het model draagt het lidwoord van een
      *  declaratie niet, dus is het "zijn". */
     private void cause(Sentence.Builder b, OpenValue v, String label) {
-        boolean input = open.input(v);
+        boolean input = open.notGiven(v);
         if (v.characteristic()) {
             b.text(input ? "het is " : "het staat ");
             of(b, v, label);
@@ -2810,10 +2811,11 @@ public final class Verbaliser {
     }
 
     /** Een lezing die op open lid {@code v} afbrak, tussen haakjes na wat haar las, als groep met {@code open}; met
-     *  {@code itself} las dat lid zelf ("(niet gegeven)"), anders iets waarin het gelezen werd ("(staat niet vast)"). */
+     *  {@code itself} las dat lid zelf ("(niet gegeven)" waar het open is omdat het niet gegeven is), anders iets waarin het
+     *  gelezen werd ("(staat niet vast)"). */
     private void openReading(Sentence.Builder b, OpenValue v, String label, boolean itself) {
         String holder = nameOf(v.object());
-        boolean input = open.input(v);
+        boolean input = open.notGiven(v);
         b.open(Part.Kind.READING, Part.meta("open", openMember(v))).text(" (");
         if (!itself || holder.equals(label)) {
             b.text(itself && input ? "niet gegeven" : "staat niet vast");
@@ -3446,18 +3448,22 @@ public final class Verbaliser {
      * (voorlopig besluit van de hoofdsessie 2026-10-21). Faalde de vouw zelf op een fout, dan draagt haar knoop die
      * fout en faalt {@link Read#of} al.
      *
-     * <p>In een strikt document kan het oordeel op een lid niet vaststaan ({@link #stands}). Staat dat van de vouw wel, dan
-     * noemt de zin de leden die het dragen, met hun aantal van alle leden ({@link #carriers}); staat het niet, dan de
-     * leden waarvoor de matrix geldt, die waarvoor zij niet geldt en die waarvoor het niet vaststaat
-     * ({@link #openMembers}).
+     * <p>In een strikt document kan de matrix op een lid onbepaald zijn. Staat het oordeel van de vouw wel vast, dan noemt de
+     * zin de leden die het dragen, met hun aantal van alle leden ({@link #carriers}); staat het niet, dan de leden waarvoor
+     * de matrix geldt, die waarvoor zij niet geldt en die waarvoor zij onbepaald is ({@link #openMembers}). Leest het filter
+     * op een lid een open lid ({@link OpenReads#reads}), dan noemt de zin geen leden: de lezing geeft per lid het oordeel
+     * van de matrix en niet of het filter er vaststaat, en zonder dat is elke opsomming een eigen oordeel over het filter.
+     * Wat de vouw openhoudt, zegt de oorzaak van de zin.
      */
     private void members(Sentence.Builder b, Condition.QuantifierFold q, Read read) {
         ConditionReading.NodeReading n = read.of(q);
+        if (open != null && n.contributors().stream().anyMatch(c -> open.reads(q.filter(), c.member(), read.object())))
+            return;
         if (n.undetermined()) {
             openMembers(b, q, n, read);
             return;
         }
-        if (open != null && n.contributors().stream().anyMatch(c -> !stands(q, c, read))) {
+        if (open != null && n.contributors().stream().anyMatch(ConditionReading.Contributor::undetermined)) {
             carriers(b, q, n, read);
             return;
         }
@@ -3534,27 +3540,17 @@ public final class Verbaliser {
         };
     }
 
-    /** Of het oordeel van kwantorvouw {@code q} op bijdrager {@code c} vaststaat, in een strikt document: haar matrix is er niet
-     *  onbepaald, en leest haar filter er een open lid, dan hangt het oordeel niet van het filter af (bij "alle" een matrix
-     *  die geldt, anders een die niet geldt). De lezing geeft per bijdrager het oordeel van de matrix; of zijn filter
-     *  vaststaat, zeggen de open leden die het filter er leest ({@link OpenReads#reads}). */
-    private boolean stands(Condition.QuantifierFold q, ConditionReading.Contributor c, Read read) {
-        if (c.undetermined()) return false;
-        return !open.reads(q.filter(), c.member(), read.object())
-                || (q.quantifier() == Condition.Quantifier.ALLE) == Boolean.TRUE.equals(c.value());
-    }
-
     /** " (1 lid niet beoordeeld)": de leden van een kwantorvouw waarvan de matrix een fout gaf, waar er zijn. */
     private static void unjudged(Sentence.Builder b, int members) {
         if (members > 0) b.text(" (" + members + (members == 1 ? " lid" : " leden") + " niet beoordeeld)");
     }
 
     /** De leden van kwantorvouw {@code q}, waarvan het oordeel niet vaststaat: waarvoor haar matrix geldt, waarvoor zij niet
-     *  geldt, en voor welke het niet vaststaat ("wel voor V1, niet voor V2, niet vast voor V3"). */
+     *  geldt, en voor welke zij onbepaald is ("wel voor V1, niet voor V2, niet vast voor V3"). */
     private void openMembers(Sentence.Builder b, Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
         List<Object> holding = new ArrayList<>(), failing = new ArrayList<>(), open = new ArrayList<>();
         for (ConditionReading.Contributor c : n.contributors())
-            (!stands(q, c, read) ? open : Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
+            (c.undetermined() ? open : Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
         b.open(Part.Kind.MEMBERS, Part.meta("members", holding.size() + failing.size(), "holding", holding.size(),
                 "unjudged", 0, "unsettled", open.size()));
         String separator = ": ";
@@ -3571,16 +3567,16 @@ public final class Verbaliser {
         b.close(Part.Kind.MEMBERS);
     }
 
-    /** De leden die de uitkomst van kwantorvouw {@code q} dragen, waar het oordeel van de vouw vaststaat en dat op een lid
-     *  niet: de leden waarvoor haar matrix geldt of die waarvoor zij niet geldt, naar wat de uitkomst draagt, met hun aantal
-     *  van alle leden; waar te weinig leden zijn voor de drempel hun aantal. Een lid na de stop waarvan de matrix een fout
-     *  gaf, staat er zoals in {@link #members}. */
+    /** De leden die de uitkomst van kwantorvouw {@code q} dragen, waar het oordeel van de vouw vaststaat en de matrix op een
+     *  lid onbepaald is: de leden waarvoor haar matrix geldt of die waarvoor zij niet geldt, naar wat de uitkomst draagt, met
+     *  hun aantal van alle leden; waar te weinig leden zijn voor de drempel hun aantal. Een lid na de stop waarvan de matrix
+     *  een fout gaf, staat er zoals in {@link #members}. */
     private void carriers(Sentence.Builder b, Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
         boolean holds = Boolean.TRUE.equals(n.value());
         List<ConditionReading.Contributor> judged = n.contributors().stream().filter(c -> c.fault() == null).toList();
         List<Object> holding = new ArrayList<>(), failing = new ArrayList<>();
         for (ConditionReading.Contributor c : judged)
-            if (stands(q, c, read)) (Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
+            if (!c.undetermined()) (Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
         int total = judged.size(), k = holding.size(), unjudged = n.contributors().size() - total;
         boolean byHolding = switch (q.quantifier()) {
             case ALLE -> holds;

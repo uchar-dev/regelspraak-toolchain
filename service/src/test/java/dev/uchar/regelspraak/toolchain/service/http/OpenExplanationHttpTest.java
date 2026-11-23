@@ -232,12 +232,13 @@ class OpenExplanationHttpTest {
                 + " 10\" is niet voldaan: niet voor W2 (1 van de 3)", jutter("\"diepte\": 20", "\"diepte\": 5", ""));
     }
 
-    /** It is open whether W2 counts (gemerkt), and W2 would fail; W1 is gemerkt and holds. */
+    /** It is open whether W2 counts (gemerkt): the filter reads an open member, so the fold gives its verdict and names no
+     *  member, and the head says what keeps it open. */
     @Test
     void a_quantifier_fold_with_an_open_filter() throws Exception {
         assertSentence("J1: of hij keurder is, staat niet vast, want het is van W2 niet gegeven of hij gemerkt is; voor de regel"
                 + " 'keurderschap' staat niet vast: aan de voorwaarde \"de diepte van alle gevonden wrakken van de Jutter die"
-                + " gemerkt zijn groter is dan 10\" is voldaan: wel voor W1, niet vast voor W2", post("""
+                + " gemerkt zijn groter is dan 10\" is voldaan", post("""
                 {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2"]}},
                   {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20}, "characteristics": {"gemerkt": {"state": "holds"}}},
                   {"type": "Wrak", "id": "W2", "attributes": {"diepte": 5}}]}"""));

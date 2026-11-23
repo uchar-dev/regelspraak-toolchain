@@ -372,12 +372,15 @@ writes one does not start:
   where it ended in "wordt zijn taxatie gegeven, dan kan dit veranderen", and `CONDITION` has no key `closure`. A
   consistency "moet gevuld zijn" over a member that is not given is not in `inconsistencies`. A member that only an
   initialisation writes is an input member: `openInputs` names it, and `/info` lists it in `completeInput` where it is
-  `(volledig gegeven)`. Of a fold `openInputs` names the first of its members that is open, where it named every open
-  member its filter or count read. A test document of a strict rule set gives a characteristic as not holding ("- is
-  niet drijfhout") and expects an open outcome ("- de afhaaldatum van V1 staat niet vast"); `?via=service` sends such a
-  characteristic as `{"state": "holdsNot"}`, where it sent every characteristic of a situation as holding. In a rule
-  set that is not strict such a sentence changes no outcome: `bin/regelspraak scenario` prints uchar's warning (RGS-469)
-  on stderr and the playground shows it among the resolver's warnings.
+  `(volledig gegeven)`; there its initialisation is at its turn, and where that reads an open member, `openInputs` names
+  that member. Of a fold `openInputs` names the first of its members that is open, where it named every open member its
+  filter or count read; the explanation of a quantifier fold whose filter can read an open member gives its verdict and
+  no `MEMBERS`. A test document of a strict rule set gives a characteristic as not holding ("- is niet drijfhout") and
+  expects an open outcome ("- de afhaaldatum van V1 staat niet vast"); `?via=service` sends such a characteristic as
+  `{"state": "holdsNot"}`, where it sent every characteristic of a situation as holding, and the JSON of the playground
+  gives it in `situation.objects[].characteristics[]` with `holds: false`. In a rule set that is not strict such a
+  sentence changes no outcome: `bin/regelspraak scenario` prints uchar's warning (RGS-469) on stderr and the playground
+  shows it among the resolver's warnings.
 
 ## The pin
 
@@ -445,10 +448,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (386). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (385). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   replay excludes a case, not a golden: a golden plays when every case the service carries plays. The numbers of
-  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 377; `EXPECTED_REPLAY_CASES`, 1072); every case
+  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 376; `EXPECTED_REPLAY_CASES`, 1050); every case
   that does not play is listed by golden and case file with its reason (10 cases of 9 goldens, each with a scalar on a
   time-dependent attribute, which the request does not carry), and every golden the service does not start on by name
   (1, whose document holds an `Unresolved` node); a deviation always fails, and the list fails when it goes stale in
@@ -456,9 +459,9 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   (`Namen.norm`), since the answer spells a name as declared and a case as it writes it. Every golden that plays is asked with
   `?explanation=true` as well, and an explanation the service does not give fails it; of a golden that infers nothing
   from an empty value the request states what does not hold, the comparison reads the states of the answer, and the
-  service must refuse the explanation. A red leg sends every red case
+  explanation is asked and checked as of any other golden. A red leg sends every red case
   of uchar (`uchar/corpus/red`) on which uchar's gate 8 lets the Drools branch fault as a request, and the 422 must
-  carry the pinned `code` with the pinned `params` as a subset, as gate 8 holds them (`EXPECTED_RED_FAULTS`, 69); the
+  carry the pinned `code` with the pinned `params` as a subset, as gate 8 holds them (`EXPECTED_RED_FAULTS`, 67); the
   cases the service refuses first, with a 400 or by not starting on the document, stand in `RED_REFUSED` with the
   reason (14), and that list fails when it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's

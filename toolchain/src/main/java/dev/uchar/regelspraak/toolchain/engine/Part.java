@@ -46,7 +46,7 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         /** The members of a quantifier fold that carry its outcome, with the colon before them: {@code members} (m, the
          *  members with a verdict),
          *  {@code holding} (k, those for which its matrix holds) and {@code unjudged} (those whose matrix faulted); in a
-         *  strict document {@code unsettled}, those on which the verdict does not stand, where there are any. Of
+         *  strict document {@code unsettled}, those on which its matrix is undetermined, where there are any. Of
          *  a fold in a computation, the members it folded over, each with what it contributed: {@code members} (m)
          *  alone. */
         MEMBERS,
