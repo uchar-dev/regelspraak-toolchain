@@ -44,11 +44,18 @@ een ander begrip.
 ## Deel 2 — geen sluitingen in een strikte regelset
 
 - **Uitleg:** de zinnen voor een uitkomst die door een sluiting vaststaat (`docs/ENGINE.md`, "A strict rule set": "wordt
-  zijn taxatie gegeven, dan kan dit veranderen", "komt zijn vindloon vast te staan, …", "omdat zijn taxatie niet gegeven is")
-  en de initialisatie onder een open default vervallen; een toets op leeg of gevuld over een open lid heet onbepaald, zoals
-  elke andere atomaire voorwaarde. De tests die deze zinnen vastpinnen (`OpenExplanationFormsHttpTest` en verwante) volgen.
+  zijn taxatie gegeven, dan kan dit veranderen", "komt zijn vindloon vast te staan, …", "omdat zijn taxatie niet gegeven is",
+  "A closure in the value of an outcome is named where it is certain …") en de initialisatie onder een open default
+  vervallen; een toets op leeg of gevuld over een open lid heet onbepaald, zoals elke andere atomaire voorwaarde. Een
+  consistentie "moet gevuld zijn" over een open lid meldt niets in `inconsistencies`; de uitleg zegt dat zij niet vaststaat.
+- **`openInputs`:** de bovengrens voor een sluiting in een vouw (`OpenValues`, `OpenReads`; `docs/ENGINE.md`, "Of a closure
+  inside a fold …") vervalt: een open lid in een vouw is nu gewoon een open lezing.
 - **Scenario en playground:** met uchar's kaart `strict-scenarios` (zelfde pin): `characteristicsAbsent` als
-  `{"state": "holdsNot"}`, en `attributeOpen` en `characteristicOpen` als verwachting.
+  `{"state": "holdsNot"}`, en `attributeOpen` en `characteristicOpen` als verwachting (`ScenarioData`, `SituationToRequest`,
+  `playground.html`); "The scenarios" in `docs/ENGINE.md` ("A test document has no sentence that expects an open outcome")
+  en de README volgen.
+- **Tests:** `OpenExplanationFormsHttpTest`, `OpenValuesHttpTest` en de verwante tests die deze zinnen en `openInputs`
+  vastpinnen, en strikte markertests die bij deze pin nog bestaan (deel 2 landt vóór deel 1).
 
 ## Voor beide delen
 
