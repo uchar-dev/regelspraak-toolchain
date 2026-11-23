@@ -94,6 +94,8 @@ Result (2026-11-23):
 | `66df66fec` | dienst, uitleg, OpenAPI, scenario en playground zonder markers en zonder sluitingen; de scenariolaag van `strict-scenarios` |
 | `cb0f92442` | replay: de gelijkheden op de nieuwe pin |
 | `d2da55b2f` | uitleg: de weergave van een constructorwaarde, die alleen de markers gebruikten, vervalt |
+| `97ec6da2b` | dit Result |
+| `fd39874c3` | herstel na de externe review: open invoer achter een initialisatie, het filter van een kwantorvouw, OpenAPI, README en ENGINE |
 
 - **Deel 1, de markers.** `Markers` en de foutsoort `UNKNOWN_MARKER` vervallen. `RequestMapper` en `TimelineInput` lezen
   een waarde, ook een segment en een cel, alleen als waarde van het datatype: een markerobject `{"marker": "onbekend"}` is
@@ -113,15 +115,18 @@ Result (2026-11-23):
   voor zo'n open invoerlid het lid zelf als oorzaak. `Verbaliser`: geen "wordt … gegeven, dan kan dit veranderen", geen
   "omdat zijn taxatie niet gegeven is", geen `closure` op `CONDITION`; een toets op leeg of gevuld over een open lid is
   onbepaald zoals elke andere voorwaarde. Een initialisatie die niet aan de beurt is omdat haar doel open is: `; niet aan
-  de beurt: de regel 'loodsgeld basis'` (een regel) of de initialisatiedefault bij haar naam, met `displaced: true`; een
+  de beurt: de regel 'loodsgeld basis'` (een losse regel), of de initialisatiedefault van een stapel waarvan het doel een
+  open invoerlid is, bij haar naam, met `displaced: true`; onder een open default leest uchar de initialisatie van de
+  stapel met haar knopen en staat zij er met haar uitkomst (`de regel 'basisvindloon' (onvoorwaardelijk, 25)`); een
   lid met alleen een initialisatie: `V1: zijn vindloon staat niet vast, want zijn vindloon is niet gegeven; niet aan de
   beurt: de regel 'basisvindloon'`. Een consistentie "moet gevuld zijn" over een open lid staat niet in
   `inconsistencies`; de uitleg zegt dat zij niet vaststaat.
-- **Het filter van een kwantorvouw** (gemeten, niet in de opdracht). uchars bijdrager geeft het oordeel van de matrix, niet
-  of het filter op dat lid vaststaat. `OpenReads.reads(filter, lid, onderwerp)` (zonder de sluitingsvorm) blijft daarom: een
-  lid waarvan het filter een open lid leest, staat niet vast waar de matrix het niet alleen beslist (bij "alle" een
-  matrix die geldt, anders een die niet geldt). Zonder dat noemde de uitleg "niet voor V2" waar V2 open is
-  (`OpenExplanationHttpTest.a_quantifier_fold_with_an_open_filter`).
+- **Het filter van een kwantorvouw.** uchars bijdrager geeft het oordeel van de matrix, niet of het filter op dat lid
+  vaststaat. Leest het filter op een lid een open lid (`OpenReads.reads`: de knopen van het filter over de koppelingen van
+  uchars eindtoestand, elke tak van een keuze en elke binderwaarde meegeteld, zonder evaluatie), dan geeft de uitleg van
+  die vouw alleen haar oordeel, zonder leden en zonder `MEMBERS`; anders noemt zij de leden naar het oordeel van de
+  matrix, met "niet vast voor" waar die onbepaald is. Zo besloten na de review (hieronder); de eerste versie benaderde het
+  oordeel per lid met de lezingen van het filter.
 - **De scenariolaag.** `ScenarioData` en `SituationToRequest` lezen `CharacteristicValue.holds()`: een niet geldend
   kenmerk staat in de situatie met `holds: false` (de pagina: "onwaar"), in het verzoek als `{"state": "holdsNot"}` (strikt)
   of `false`, en in de invoer van het fixpunt als niet geldend. `attributeOpen` en `characteristicOpen` lopen door uchars
@@ -165,24 +170,56 @@ Result (2026-11-23):
   lid staat niet in `inconsistencies`; `openInputs` noemt een lid met alleen een initialisatie en van een vouw haar eerste
   open lid; `completeInput` noemt een volledig gegeven lid met alleen een initialisatie. `?via=service` geeft een kenmerk
   dat de situatie als niet geldend geeft als `holdsNot` of `false`.
-- **Gates** (`make gates-no-docker` op `d2da55b2f`, logs in `werk/one-empty-in-service/gates-no-docker2.log`):
+- **Herstel na de externe review** (2026-11-24; review in `werk/neon-review/antwoorden/xhigh-y-tc-one-empty.md`, besluiten
+  van de hoofdsessie in `werk/one-empty-in-service/FIX.md`), in `fd39874c3`:
+  - *Een volledig gegeven lid met alleen een initialisatie* (fout antwoord in `openInputs`). Zonder waarde is het
+    vaststaand leeg boven de initialisatie, die dan aan de beurt is; leest zij een open lid, dan staat het lid open door
+    die lezing. `OpenReads.follow` en `derived` en de oorzaak in `Verbaliser` (`cause`, `openReading`) behandelden elk
+    invoerlid als open door zijn eigen invoer. Nu zegt `OpenReads.notGiven` dat: een invoerlid dat geen vorm openliet.
+    `openInputs` volgt de lezing van de initialisatie (`betwist`, `taxatie`, niet het lid zelf), de route zonder
+    `?via=service` neemt zo'n lid als uitkomst, en de uitleg zegt "zijn vindloon staat niet vast" en "(staat niet vast)".
+    Tests: `OpenExplanationFormsHttpTest.a_complete_member_whose_initialisation_reads_an_open_member` (een voorwaardelijke
+    en een lezende initialisatie, uitleg en `openInputs`) en
+    `ScenarioOpenValuesTest.a_complete_member_whose_initialisation_reads_an_open_member_is_an_outcome`.
+  - *Het filter van een kwantorvouw* (de eigen keuze van de vorige bouwer). De benadering van het filteroordeel schreef
+    onware zinnen: bij "alle" met een filter "A of B" (A waar, B open) ": er zijn 2 leden", bij "ten minste 2" de
+    verkeerde dragers. Besluit: leest het filter op een lid een open waarde, dan noemt de uitleg alleen het oordeel van de
+    vouw (hierboven); `stands` vervalt. `OpenReads.reads` leest nu ook de filters van een telling over een vereniging (zij
+    gaf daar een leeg bereik), en een vouw over een verzameling zonder bereik faalt bij naam. Tests:
+    `OpenExplanationFormsHttpTest.a_quantifier_fold_whose_filter_reads_an_open_member_and_is_decided` (de twee gevallen
+    van de review) en `.a_quantifier_fold_whose_filter_counts_a_union_with_an_open_member`. Gedrag dat het besluit
+    verandert: `OpenExplanationFormsHttpTest.a_quantifier_fold_whose_filter_tests_an_open_member` en
+    `OpenExplanationHttpTest.a_quantifier_fold_with_an_open_filter` eindigen nu op "is voldaan", zonder leden.
+  - *OpenAPI.* De zin bij een volledig gegeven attribuut: "staat vast dat het leeg is. Schrijft alleen een initialisatie
+    het, dan is die aan de beurt: het krijgt haar waarde, is leeg waar zij niets geeft, en staat niet vast waar zij een
+    open waarde leest."; bij een kenmerk "staat vast dat het niet geldt". De zes openapi-goldens zijn niet strikt en
+    veranderen niet; `OpenValuesHttpTest` pint de twee zinnen.
+  - *README:* de getallen bij de gates (`EXPECTED_PLAYED` 385, `EXPECTED_REPLAY_PLAYED` 376, `EXPECTED_REPLAY_CASES` 1050,
+    `EXPECTED_RED_FAULTS` 67), de replay vraagt de uitleg van een strikte golden op en toetst haar, en de contractsectie
+    noemt `holds: false` in `situation.objects[].characteristics[]`, de initialisatie van een volledig gegeven lid in
+    `openInputs` en de vouw zonder `MEMBERS`.
+  - *`docs/ENGINE.md`:* wat `OpenReads` doet (geen evaluatie; het filter over knopen en koppelingen, ruim gelezen); de
+    initialisatie van een stapel onder een open default met haar knopen en uitkomst, alleen haar naam bij een losse
+    initialisatieregel of een open invoerlid; het volledig gegeven lid achter een initialisatie.
+  - Testgevallen per module 211/631/68 → 212/634/68.
+- **Gates** (`make gates-no-docker` op `fd39874c3`, log in `werk/one-empty-in-service/fix-gates1.log`):
 
   ```
-  gates: 1 pin        GROEN      1s  PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit, die op uchars main staat; de versies zijn gelijk
-  gates: 2 reactor    GROEN   2m52s  testgevallen per module 211/631/68
+  gates: 1 pin        GROEN      0s  PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit, die op uchars main staat; de versies zijn gelijk
+  gates: 2 reactor    GROEN   2m46s  testgevallen per module 212/634/68
   gates: 3 twins      GROEN      3s  3 tweelingen, 18 cases via HTTP met de gepinde verwachtingen; vocabulairetweeling jutterswet-vocabulaires: 2 cases in 34 verzoeken; getuige: 4 getuigenissen
   gates: 4 replay     GROEN   2m14s  376 goldens (pin 376), 1050 cases (pin 1050)
   gates: 5 manifest   GROEN      2s  32 regels, 29 ok, 3 uitgesloten, 0 mismatch
-  gates: GROEN — 5 stappen in 5m07s; de uitvoer staat in out/gates/
+  gates: GROEN — 5 stappen in 5m00s; de uitvoer staat in out/gates/
   ```
 
   De replay daarbij: 6132 zinnen, 4092 uitgelegde voorwaarden (vloer 1241), 3415 berekende waarden (vloer 1852), 6367
   gelezen waarden aan hun zin (vloer 4248); rode leg 58 mappen, 67 cases met hun foutsoort, 14 geweigerd met reden. De
   volle `make gates` (image en kind) draait de hoofdsessie vóór de landing.
 - **Open.**
-  - Het filter van een kwantorvouw: `OpenReads.reads` zegt of het filter op een lid een open lid leest, niet of het filter
-    daar toch vaststaat ("A of B" met A waar); zo'n lid heet dan "niet vast". Exact wordt het pas als uchars
-    `ConditionReading.Contributor` het oordeel van het lid zelf draagt (filter en matrix samen, Kleene), een kaart in uchar.
+  - Vervolgpunt, een kaart in uchar: het filteroordeel per lid op `ConditionReading.Contributor` (uchars
+    `SessionReaders` heeft `MemberTest.filter()` in handen en geeft het niet mee). Dan kan `OpenReads.reads` weg en noemt
+    de uitleg ook bij een filter dat een open lid leest de leden en dragers van een kwantorvouw.
   - Een waarde van een sum type (alleen uit een `uchar-ir-v1`-document van een andere producer, dat Drools nu nergens
     speelt) staat in de uitleg als de tekst van uchars constructorwaarde, de terugval van `renderValue` zoals vóór de
     markers; het fixpunt weigert haar bij naam (`UnrenderableValue`), het antwoord bij de start.
