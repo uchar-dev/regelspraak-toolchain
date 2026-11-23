@@ -236,8 +236,8 @@ public final class OpenReads {
     /** Whether {@code filter}, the filter of a quantifier fold in a form on {@code subject}, can read an open member on
      *  {@code element}, a member of its range: uchar's reading of the fold gives per member the verdict of its matrix, and not
      *  whether its filter stands there (ch. 1.5, "A quantifier fold"). Read over the nodes of the filter and the links of the
-     *  end state, not evaluated: every branch of a choice and the value of every binder count, so the answer is yes wherever
-     *  the evaluation can have read an open member, and also where it did not. */
+     *  end state, not evaluated: every branch of a choice, the value of every binder and the fallback of every sum count, so
+     *  the answer is yes wherever the evaluation can have read an open member, and also where it did not. */
     boolean reads(Condition filter, Object element, Object subject) {
         if (filter == null) return false;
         Set<OpenValue> out = new LinkedHashSet<>();
@@ -246,7 +246,8 @@ public final class OpenReads {
     }
 
     /** The open members {@code root}, a condition or an expression evaluated on {@code on} in a form on {@code subject}, reads
-     *  there: an attribute or a characteristic of its own or over a role, and those of the members of a fold in it. */
+     *  there: an attribute or a characteristic of its own or over a role, those of the members of a fold in it, and those of
+     *  the fallback of a sum in it. */
     private void read(Object root, Object on, Object subject, Set<OpenValue> out) {
         if (root == null) return;
         List<Object> nodes = document.positions().subtree(root);
@@ -276,6 +277,9 @@ public final class OpenReads {
                         read(f.arguments().get(0), e, subject, out);
                     }
                 }
+                // the fallback of a sum is evaluated every time the sum is, on what the sum is evaluated on, also over an
+                // empty range (RUNTIME-SEMANTICS ch. 5.11)
+                read(f.emptyFallback(), on, subject, out);
                 i += document.positions().subtree(f).size() - 1;
             }
         }

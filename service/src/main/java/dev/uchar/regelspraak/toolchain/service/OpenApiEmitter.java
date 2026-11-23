@@ -955,8 +955,9 @@ public final class OpenApiEmitter {
                     + " niet vaststaat draagt undetermined: true en geen holds; een READING van een lezing die op een open lid"
                     + " afbrak draagt open, dat lid (object zoals SUBJECT het noemt, canonical, en kind: attribute of characteristic), en geen VALUE;"
                     + " MEMBERS van een kwantorvouw draagt unsettled, het aantal leden waarvoor niet vaststaat of de toets"
-                    + " geldt; een VARIANT van een defaults-groep die niet aan de beurt was en waarvan de lezing niet vaststaat,"
-                    + " undetermined: true (dan de naam alleen).");
+                    + " geldt; een kwantorvouw waarvan het filter op een lid een open waarde kan lezen, heeft geen MEMBERS:"
+                    + " de uitleg geeft dan alleen het oordeel van de vouw; een VARIANT van een defaults-groep die niet aan de"
+                    + " beurt was en waarvan de lezing niet vaststaat, undetermined: true (dan de naam alleen).");
             props.putObject("unsettled").put("type", "integer");
             props.putObject("undetermined").put("type", "boolean");
             ObjectNode open = props.putObject("open");
