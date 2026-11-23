@@ -247,7 +247,12 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # leeg en gevuld op een enumeratie, een tekst, een boolean en een attribuut met markers), en met
 # jutterswet-afleiden-uit-leeg en jutterswet-volledig-gegeven, regelsets die uit leeg niets afleiden (het verzoek en het
 # antwoord geven een stand). Alle drie spelen door de dienst.
-EXPECTED_REPLAY_PLAYED=377
+# Pin uchar e25f201ef (kaarten one-empty en strict-scenarios, toolchainkaart one-empty-in-service): 376 — de set van gate
+# 12 gaat van 386 naar 385: de zes goldens met afwezigheidsmarkers vervallen met de markers (jutterswet-afwezigheidsmarkers,
+# -cel, -creatie, -initialisatie, -kopie en jutterswet-opgave-afwezigheidsmarkers), en jutterswet-afhaalbaar,
+# jutterswet-afhaalbaar-strikt, jutterswet-heffing-strikt, jutterswet-loonkopie en jutterswet-opgave-teruggavetermijn
+# komen erbij. Alle vijf spelen door de dienst.
+EXPECTED_REPLAY_PLAYED=376
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -263,7 +268,9 @@ EXPECTED_REPLAY_PLAYED=377
 # 1042 (pin uchar c24de6c58): de case van jutterswet-vondsten-van-de-meester.
 # 1057 (pin uchar 2e54dd254): de vijftien cases van jutterswet-opgave-afwezigheidsmarkers.
 # 1072 (pin uchar b9232544e): de drie cases van jutterswet-gevuldtoets-soorten en de zes van elk van de twee strikte goldens.
-EXPECTED_REPLAY_CASES=1072
+# 1050 (pin uchar e25f201ef): de 39 cases van de zes goldens met markers vervallen (10, 4, 4, 3, 3 en 15), de 17 van de vijf
+# nieuwe goldens komen erbij (3, 4, 3, 3 en 4).
+EXPECTED_REPLAY_CASES=1050
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
@@ -343,8 +350,9 @@ RED_REFUSED=(
 # 2663bd6c8: 70 van de 83 cases van de 59 rode mappen waarop gate 8 de Drools-tak laat falen (64 bij 1b42bea65; de
 # zes rode mappen van EF-041 tot en met EF-046 kwamen erbij en geven elk hun foutsoort). Pin uchar 72df0d028: 69 — de
 # rode map fractional-power-negative-base (EF-044) werd een golden: een negatieve basis onder een gebroken exponent is
-# leeg met een §9.5-feit, geen evaluatiefout.
-EXPECTED_RED_FAULTS=69
+# leeg met een §9.5-feit, geen evaluatiefout. Pin uchar e25f201ef: 67 — de rode map jutterswet-afwezigheidsmarkers-botsing
+# (twee cases, EF-016 tussen een marker en een waarde) verviel met de markers.
+EXPECTED_RED_FAULTS=67
 
 is_red_refused() {
   local e; for e in "${RED_REFUSED[@]+"${RED_REFUSED[@]}"}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1
