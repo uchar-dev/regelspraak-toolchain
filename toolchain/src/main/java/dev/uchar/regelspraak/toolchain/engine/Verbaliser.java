@@ -25,7 +25,6 @@ import dev.uchar.regelspraak.loader.NodePositions;
 import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
-import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint.OpenValue;
 import dev.uchar.regelspraak.cases.EndState;
@@ -481,9 +480,8 @@ public final class Verbaliser {
             Object given = given(m);
             String text = x.characteristic() ? (given == null ? "onwaar" : "waar")
                     : renderHeld(given, created.attribute(x.attribute()));
-            // a literal, a nullary constructor or one of a literal is its own rule text: once, as the value
+            // a literal is its own rule text: once, as the value
             boolean literal = x.value() instanceof Expr.Literal
-                    || x.value() instanceof Expr.Construct k && (k.argument() == null || k.argument() instanceof Expr.Literal)
                     || x.value().source() == null || x.value().source().snippet() == null
                     || x.value().source().snippet().isBlank();
             if (literal) {
@@ -3717,8 +3715,7 @@ public final class Verbaliser {
     /** De waarde van een operand zoals de motor haar las, in NL-notatie met haar eenheid; {@link #EMPTY} voor een lege
      *  waarde. Een getal staat met de decimalen van zijn type, of van de declaratie van het gelezen lid; een
      *  getalliteral met de decimalen die zijn lexeem schrijft ("30.00" als "30,00"), want het type van een literal noemt
-     *  ze niet. Een constructorwaarde staat als haar payload of, zonder payload, bij de naam van haar constructor
-     *  ({@link #render}). */
+     *  ze niet. */
     private String renderOperand(Expr e, Read read) {
         ConditionReading.NodeReading n = read.of(e);
         return renderRead(e, n.value(), n.unit());
@@ -3729,14 +3726,6 @@ public final class Verbaliser {
     private String renderRead(Expr e, Object v, Unit u) {
         if (v == null) return EMPTY;
         if (v instanceof List<?> timeline) return renderTimeline(e, timeline, u);
-        if (v instanceof ConstructorValue c) {
-            if (c.payload() == null) return c.constructor();
-            Datatype payload = payloadType(typeOf(e), c.constructor());
-            String number = nlExact(c.payload(), payload);
-            if (number == null) return render(c.payload(), payload);
-            String unit = u != null ? u.rendering() : unitWord(payload);
-            return unit == null ? number : number + " " + unit;
-        }
         Datatype.Enumeration enumArray = enumerationOf(e);
         if (enumArray != null) return render(v, enumArray);
         // een jaartal schrijft geen duizendtalpunt: "2026", niet "2.026"
@@ -3857,9 +3846,6 @@ public final class Verbaliser {
 
     /** {@link #renderValue}, met een enumeratiewaarde in het gekozen vocabulaire: een waarde is een declaratie. */
     private String render(Object v, Datatype type) {
-        // de lezer kent de payload en de naam van een constructor, niet uchars constructorwaarde (RUNTIME-SEMANTICS ch. 9.1)
-        if (v instanceof ConstructorValue c)
-            return c.payload() != null ? render(c.payload(), payloadType(type, c.constructor())) : c.constructor();
         if (v instanceof String s && type instanceof Datatype.Enumeration e) return enumerationValue(e, s);
         return renderValue(v, type);
     }
@@ -3895,7 +3881,7 @@ public final class Verbaliser {
             describe(b, e, ucharText);
             return;
         }
-        if (e instanceof Expr.Literal || e instanceof Expr.Construct c && c.argument() == null) {
+        if (e instanceof Expr.Literal) {
             value(b, renderOperand(e, read), read.of(e).value() == null);
             return;
         }
@@ -3920,16 +3906,6 @@ public final class Verbaliser {
                     dt.getYear(), dt.getHour(), dt.getMinute());
         if (v instanceof Boolean b) return b ? "ja" : "nee";
         return v.toString();
-    }
-
-    /** Het datatype van de payload van constructor {@code constructor} van sum type {@code type}, zoals uchar
-     *  constructornamen vergelijkt ({@link Namen#norm}); voor een ander type dat type zelf. */
-    private static Datatype payloadType(Datatype type, String constructor) {
-        if (!(type instanceof Datatype.SumType sum)) return type;
-        for (Datatype.Constructor c : sum.constructors())
-            if (Namen.norm(c.name()).equals(Namen.norm(constructor))) return c.payload();
-        throw new IllegalStateException("de motor las de constructor '" + constructor + "', die het sum type '"
-                + sum.domain() + "' niet declareert");
     }
 
     /** Een getal zoals de motor het las, in NL-notatie: een decimaal zoals {@link #nlNumber} het schrijft, of een

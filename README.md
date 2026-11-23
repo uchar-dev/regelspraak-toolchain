@@ -273,8 +273,8 @@ writes one does not start:
   de objectcreatie toegekende waarde 10 van 01-01-2025 tot 01-03-2025 bleef staan"`, `"houdt als meldwaarde de bij de
   objectcreatie toegekende waarde 7"`, `"omdat zijn aanvulloon bij de objectcreatie leeg was"`, where a sentence on an
   object of the request says `de invoerwaarde` and `in de invoer leeg was`. A
-  value of an initialisation or a creation on a timeline target that is neither period arithmetic nor the constructor
-  of a literal makes the entry point a marker with uchar's sentence (DROOLS-316); an allocation that names a
+  value of an initialisation or a creation on a timeline target that is not period arithmetic makes the entry point a
+  marker with uchar's sentence (DROOLS-316); an allocation that names a
   time-dependent attribute refuses the start with the frontend's error (RGS-378), and in a `uchar-ir-v1` document the
   entry point is a marker with uchar's sentence naming WF-128 (DROOLS-315).
 - **The value the creation assigned, in the fixpoint** (card `fixpoint-creation-value`): the `fixpoint` of the detail and of the
