@@ -1,8 +1,8 @@
 # one-empty-in-service: geen markers en geen sluitingen in dienst, uitleg en playground
 
 *Volgt op uchar's kaart `one-empty` (twee delen). Deel 1 is een besluit van de eigenaar (2026-11-23): de markers `onbekend`
-en `niet van toepassing` vervallen. Deel 2 volgt op uchar's deel 2 (een strikt document op zuivere Kleene), als dat besloten
-wordt. Nog niet begonnen; elk deel landt als pin-bump op het deel van uchar dat het volgt. Bijgewerkt na een tweede review
+en `niet van toepassing` vervallen. Deel 2 volgt op uchar's deel 2 (een strikt document op zuivere Kleene), ook besloten op
+2026-11-23. Nog niet begonnen; beide delen en uchar's `strict-scenarios` landen in één pin-bump. Bijgewerkt na een tweede review
 (extern model, 2026-11-23).*
 
 ## Deel 1 — de markers
@@ -39,7 +39,8 @@ een ander begrip.
 
 - Geen absence marker meer in `service`, `service-quarkus`, `toolchain`, `tools`, `scripts`, `README.md` en `docs/`, behalve
   waar een tekst het besluit noemt.
-- De regelset die `niet van toepassing` gebruikt, is vóór deze pin-bump herschreven (uchar's kaart, "Volgorde").
+- De werkbank pint de toolchain zelf en zet de regelset die `niet van toepassing` gebruikt om bij haar eigen bump (uchar's
+  kaart, "Volgorde").
 
 ## Deel 2 — geen sluitingen in een strikte regelset
 
@@ -55,7 +56,7 @@ een ander begrip.
   `playground.html`); "The scenarios" in `docs/ENGINE.md` ("A test document has no sentence that expects an open outcome")
   en de README volgen.
 - **Tests:** `OpenExplanationFormsHttpTest`, `OpenValuesHttpTest` en de verwante tests die deze zinnen en `openInputs`
-  vastpinnen, en strikte markertests die bij deze pin nog bestaan (deel 2 landt vóór deel 1).
+  vastpinnen.
 
 ## Voor beide delen
 
