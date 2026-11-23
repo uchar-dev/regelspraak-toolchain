@@ -243,3 +243,12 @@ Result (2026-11-23):
     markers; het fixpunt weigert haar bij naam (`UnrenderableValue`), het antwoord bij de start.
   - De werkbank pint de toolchain zelf en zet haar regelset om bij haar eigen bump; daarna de website (uchars kaart,
     "Volgorde").
+
+**Landing (hoofdsessie, 2026-11-24).** Pin uchar `e25f201ef` (strict-scenarios, one-empty deel 1 en 2). Na de bouwer en
+na elk herstel beoordeelde een extern model (xhigh) het werk, eerst op de grote lijn; wat het vond en de hoofdsessie
+narekende: `openInputs` bij een volledig gegeven lid met alleen een initialisatie die een open lid leest (volgt nu haar
+lezingen), de uitleg van een kwantorvouw met een open filter (zegt nu niets onwaars: geen leden of `MEMBERS`), de
+terugval van een som in een vouwfilter (ook bij een leeg bereik, op het vormonderwerp als de som verankerd is), en
+OpenAPI-, README- en ENGINE-tekst. Vervolgpunt, buiten deze kaart: de exacte uitleg van zo'n kwantorvouw vraagt dat uchar
+per lid het filteroordeel meegeeft (`ConditionReading.Contributor`). `make gates` op `03e5153e7`: alle zeven stappen
+groen in 6m53s (replay 376 goldens, 1050 cases; image en kind-smoke groen).
