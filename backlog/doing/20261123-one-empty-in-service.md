@@ -96,6 +96,8 @@ Result (2026-11-23):
 | `d2da55b2f` | uitleg: de weergave van een constructorwaarde, die alleen de markers gebruikten, vervalt |
 | `97ec6da2b` | dit Result |
 | `fd39874c3` | herstel na de externe review: open invoer achter een initialisatie, het filter van een kwantorvouw, OpenAPI, README en ENGINE |
+| `725a48568` | Result van dat herstel |
+| `91b2622c1` | tweede herstel: de terugval van een som in het filter van een kwantorvouw; `MEMBERS` in OpenAPI en `Part` |
 
 - **Deel 1, de markers.** `Markers` en de foutsoort `UNKNOWN_MARKER` vervallen. `RequestMapper` en `TimelineInput` lezen
   een waarde, ook een segment en een cel, alleen als waarde van het datatype: een markerobject `{"marker": "onbekend"}` is
@@ -202,15 +204,29 @@ Result (2026-11-23):
     initialisatie van een stapel onder een open default met haar knopen en uitkomst, alleen haar naam bij een losse
     initialisatieregel of een open invoerlid; het volledig gegeven lid achter een initialisatie.
   - Testgevallen per module 211/631/68 → 212/634/68.
-- **Gates** (`make gates-no-docker` op `fd39874c3`, log in `werk/one-empty-in-service/fix-gates1.log`):
+- **Tweede herstel na de externe review** (2026-11-24; review in
+  `werk/neon-review/antwoorden/xhigh-y2-tc-one-empty-fix.md`), in `91b2622c1`:
+  - *De terugval van een som in het filter.* `OpenReads.read` sloeg de deelboom van een som over en las alleen filter en
+    argument per lid, nooit `emptyFallback`; uchar evalueert die terugval altijd, ook over een leeg bereik
+    (RUNTIME-SEMANTICS ch. 5.11). Nu leest `read` haar mee, op het object waarop de som geëvalueerd wordt. uchars
+    Drools-backend weigert een som waarvan de terugval een lid leest dat open kan zijn (DROOLS-370, vorm `set-fold`):
+    de dienst start niet op zo'n document, dus de uitleg van zo'n vouw is op deze pin niet op te vragen. Daarom pint
+    `OpenReadsTest.the_fallback_of_a_sum_in_a_filter_is_read_over_an_empty_range` `OpenReads.reads` op een
+    eindtoestand met de hand (op V2 zonder onderdelen en zonder taxatie ja, op V1 met taxatie nee); op de oude code faalt
+    hij op V2.
+  - *`MEMBERS`.* De OpenAPI-beschrijving van `ExplanationPart` (strikte tak) en de javadoc van `Part.Kind.MEMBERS` zeggen
+    nu, zoals README en `docs/ENGINE.md`, dat een kwantorvouw waarvan het filter op een lid een open waarde kan lezen
+    geen `MEMBERS` heeft. De zes openapi-goldens zijn niet strikt en veranderen niet.
+  - Testgevallen per module 212/634/68 → 213/634/68.
+- **Gates** (`make gates-no-docker` op `91b2622c1`, log in `werk/one-empty-in-service/fix2-gates1.log`):
 
   ```
   gates: 1 pin        GROEN      0s  PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit, die op uchars main staat; de versies zijn gelijk
-  gates: 2 reactor    GROEN   2m46s  testgevallen per module 212/634/68
+  gates: 2 reactor    GROEN   2m38s  testgevallen per module 213/634/68
   gates: 3 twins      GROEN      3s  3 tweelingen, 18 cases via HTTP met de gepinde verwachtingen; vocabulairetweeling jutterswet-vocabulaires: 2 cases in 34 verzoeken; getuige: 4 getuigenissen
-  gates: 4 replay     GROEN   2m14s  376 goldens (pin 376), 1050 cases (pin 1050)
+  gates: 4 replay     GROEN   1m43s  376 goldens (pin 376), 1050 cases (pin 1050)
   gates: 5 manifest   GROEN      2s  32 regels, 29 ok, 3 uitgesloten, 0 mismatch
-  gates: GROEN — 5 stappen in 5m00s; de uitvoer staat in out/gates/
+  gates: GROEN — 5 stappen in 4m21s; de uitvoer staat in out/gates/
   ```
 
   De replay daarbij: 6132 zinnen, 4092 uitgelegde voorwaarden (vloer 1241), 3415 berekende waarden (vloer 1852), 6367
@@ -220,6 +236,8 @@ Result (2026-11-23):
   - Vervolgpunt, een kaart in uchar: het filteroordeel per lid op `ConditionReading.Contributor` (uchars
     `SessionReaders` heeft `MemberTest.filter()` in handen en geeft het niet mee). Dan kan `OpenReads.reads` weg en noemt
     de uitleg ook bij een filter dat een open lid leest de leden en dragers van een kwantorvouw.
+  - Draagt uchar ooit een som waarvan de terugval een open lid leest (nu DROOLS-370, `set-fold`), dan hoort er een
+    toets van de uitleg van zo'n kwantorvouw bij (zonder `MEMBERS`); `OpenReadsTest` dekt tot dan alleen de lezing.
   - Een waarde van een sum type (alleen uit een `uchar-ir-v1`-document van een andere producer, dat Drools nu nergens
     speelt) staat in de uitleg als de tekst van uchars constructorwaarde, de terugval van `renderValue` zoals vóór de
     markers; het fixpunt weigert haar bij naam (`UnrenderableValue`), het antwoord bij de start.
