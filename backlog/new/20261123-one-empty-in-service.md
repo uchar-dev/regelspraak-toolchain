@@ -1,10 +1,13 @@
-# absence-markers-out-of-service: de markers uit dienst, uitleg en playground
+# one-empty-in-service: geen markers en geen sluitingen in dienst, uitleg en playground
 
-*Besluit van de eigenaar, 2026-11-23, op uchar's kaart `remove-absence-markers`: de markers `onbekend` en `niet van
-toepassing` vervallen. Nog niet begonnen; volgt op de landing van die kaart in uchar, als pin-bump. Bijgewerkt na een tweede
-review (extern model, 2026-11-23).*
+*Volgt op uchar's kaart `one-empty` (twee delen). Deel 1 is een besluit van de eigenaar (2026-11-23): de markers `onbekend`
+en `niet van toepassing` vervallen. Deel 2 volgt op uchar's deel 2 (een strikt document op zuivere Kleene), als dat besloten
+wordt. Nog niet begonnen; elk deel landt als pin-bump op het deel van uchar dat het volgt. Bijgewerkt na een tweede review
+(extern model, 2026-11-23).*
 
-## Wat vervalt
+## Deel 1 — de markers
+
+### Wat vervalt
 
 - **Verzoek:** `{"marker": "onbekend"}` en `{"marker": "niet van toepassing"}` als waarde van een attribuut, van een segment
   van zijn tijdlijn, van een cel en van `opgegeven X` (`RequestMapper`, `TimelineInput`); de foutsoort `UNKNOWN_MARKER` en de
@@ -32,10 +35,22 @@ review (extern model, 2026-11-23).*
 Het woord `MARKER` van `scenario` en `serve` (een ingang die uchar niet draagt) en de vlag `--allow-markers` blijven: dat is
 een ander begrip.
 
-## Acceptatie
+### Acceptatie
 
 - Geen absence marker meer in `service`, `service-quarkus`, `toolchain`, `tools`, `scripts`, `README.md` en `docs/`, behalve
   waar een tekst het besluit noemt.
-- `make gates` groen op de nieuwe pin.
 - De regelset die `niet van toepassing` gebruikt, is vóór deze pin-bump herschreven (uchar's kaart, "Volgorde").
+
+## Deel 2 — geen sluitingen in een strikte regelset
+
+- **Uitleg:** de zinnen voor een uitkomst die door een sluiting vaststaat (`docs/ENGINE.md`, "A strict rule set": "wordt
+  zijn taxatie gegeven, dan kan dit veranderen", "komt zijn vindloon vast te staan, …", "omdat zijn taxatie niet gegeven is")
+  en de initialisatie onder een open default vervallen; een toets op leeg of gevuld over een open lid heet onbepaald, zoals
+  elke andere atomaire voorwaarde. De tests die deze zinnen vastpinnen (`OpenExplanationFormsHttpTest` en verwante) volgen.
+- **Scenario en playground:** met uchar's kaart `strict-scenarios` (zelfde pin): `characteristicsAbsent` als
+  `{"state": "holdsNot"}`, en `attributeOpen` en `characteristicOpen` als verwachting.
+
+## Voor beide delen
+
+- `make gates` groen op de nieuwe pin.
 - Geen `Co-Authored-By` of andere vermelding van een assistent in commits.
