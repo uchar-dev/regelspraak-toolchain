@@ -84,3 +84,107 @@ een ander begrip.
 
 - `make gates` groen op de nieuwe pin.
 - Geen `Co-Authored-By` of andere vermelding van een assistent in commits.
+
+Result (2026-11-23):
+
+| commit | wat |
+|---|---|
+| `ad64071ce` | claim |
+| `51c65d313` | pin uchar `e25f201ef` (alleen de submodule; de toolchain compileert daar nog niet) |
+| `66df66fec` | dienst, uitleg, OpenAPI, scenario en playground zonder markers en zonder sluitingen; de scenariolaag van `strict-scenarios` |
+| `cb0f92442` | replay: de gelijkheden op de nieuwe pin |
+| `d2da55b2f` | uitleg: de weergave van een constructorwaarde, die alleen de markers gebruikten, vervalt |
+
+- **Deel 1, de markers.** `Markers` en de foutsoort `UNKNOWN_MARKER` vervallen. `RequestMapper` en `TimelineInput` lezen
+  een waarde, ook een segment en een cel, alleen als waarde van het datatype: een markerobject `{"marker": "onbekend"}` is
+  de 400 `WRONG_TYPE` van een waarde van de verkeerde vorm (voor een getal "eenheid-object mist 'value'"). `AnswerBuilder`
+  en `FixpointGivens` hebben geen markervorm meer, `OpenValues` geen stand `marker`, en `DescriptorLoader` weigert elk sum
+  type in `output` (`UNSUPPORTED`). `OpenApiEmitter`: geen `oneOf` met het markerobject, geen `UNKNOWN_MARKER` in het
+  foutschema, geen `marker` op een stuk van de uitleg; de zes openapi-goldens verschillen alleen daarin (6 regels elk).
+  `Verbaliser` en `Part`: geen `marker` op `VALUE`, geen `PayloadAccess`, geen "een waarde heeft"/"geen waarde heeft", en
+  geen eigen weergave van een constructorwaarde of een `Construct` als literal (alleen de markers bereikten die: uchars
+  frontend bouwt geen sum type meer en geen golden met een sum type speelt in Drools). `ScenarioData`,
+  `SituationToRequest` en `playground.html` zonder constructorwaarden.
+- **Deel 2, geen sluitingen.** `OpenReads` verliest `closedBy`, `closedOver` en de bovengrens voor een sluiting in een vouw
+  (`inFolds`, `inFold`): een open lid in een vouw is een open lezing die uchar noemt. `OpenReads.written` telt een
+  initialisatie niet als schrijver (een regel, of een defaults-groep met alleen haar initialisatiedefault en zonder
+  uitzonderingsgroep), zoals uchars `OpenableMembers`; daardoor noemt `openInputs` een lid dat alleen een initialisatie
+  schrijft, en staat het in `completeInput` van `/info` waar het `(volledig gegeven)` is. `OpenReads.of(object, lid)` geeft
+  voor zo'n open invoerlid het lid zelf als oorzaak. `Verbaliser`: geen "wordt … gegeven, dan kan dit veranderen", geen
+  "omdat zijn taxatie niet gegeven is", geen `closure` op `CONDITION`; een toets op leeg of gevuld over een open lid is
+  onbepaald zoals elke andere voorwaarde. Een initialisatie die niet aan de beurt is omdat haar doel open is: `; niet aan
+  de beurt: de regel 'loodsgeld basis'` (een regel) of de initialisatiedefault bij haar naam, met `displaced: true`; een
+  lid met alleen een initialisatie: `V1: zijn vindloon staat niet vast, want zijn vindloon is niet gegeven; niet aan de
+  beurt: de regel 'basisvindloon'`. Een consistentie "moet gevuld zijn" over een open lid staat niet in
+  `inconsistencies`; de uitleg zegt dat zij niet vaststaat.
+- **Het filter van een kwantorvouw** (gemeten, niet in de opdracht). uchars bijdrager geeft het oordeel van de matrix, niet
+  of het filter op dat lid vaststaat. `OpenReads.reads(filter, lid, onderwerp)` (zonder de sluitingsvorm) blijft daarom: een
+  lid waarvan het filter een open lid leest, staat niet vast waar de matrix het niet alleen beslist (bij "alle" een
+  matrix die geldt, anders een die niet geldt). Zonder dat noemde de uitleg "niet voor V2" waar V2 open is
+  (`OpenExplanationHttpTest.a_quantifier_fold_with_an_open_filter`).
+- **De scenariolaag.** `ScenarioData` en `SituationToRequest` lezen `CharacteristicValue.holds()`: een niet geldend
+  kenmerk staat in de situatie met `holds: false` (de pagina: "onwaar"), in het verzoek als `{"state": "holdsNot"}` (strikt)
+  of `false`, en in de invoer van het fixpunt als niet geldend. `attributeOpen` en `characteristicOpen` lopen door uchars
+  replay op beide routes; de pagina kent ze als soort met een label. `ScenarioRunner.warnings` en `scenario` geven de
+  waarschuwingen van `ScenarioBundle.warnings` op stderr (`  WARNING regel 13: scenario: 'is niet betwist' verandert …`);
+  de playground zet ze bij `resolver.warnings`.
+- **Tests.** Vervallen met de markers: `AbsenceMarkerHttpTest` (18), `AbsenceMarkerCellHttpTest` (7),
+  `MarkerAsOpgaveHttpTest` (10), `PlaygroundAbsenceMarkersTest` (8), `OpenApiAbsenceMarkersTest` (3),
+  `ExplanationMarkerPartsTest` (3), `MarkersTest.the_source_and_the_document_give_the_same_markers`,
+  `OpenValuesHttpTest.a_marker_of_the_request_is_a_filled_value`, `OpenExplanationFormsHttpTest.a_marker_is_a_value`, en in
+  `TimelineStackHttpTest` de twee tests van de golden met een initialisatie op een marker (de tijdlijnstapel blijft gedekt
+  door `jutterswet-initialisatie-per-dag` en `-creatie-per-dag`). `MarkersTest.another_sum_type_…` werd
+  `SumTypeOutputTest` (een sum type in `output` weigert de start; het OpenAPI-document heeft er geen vorm voor), op een eigen
+  document met de meldpositie van `jutterswet-meldplichtspoor`. `OpenValuesSource`: de herkomst zonder marker (0 waar de
+  vondst onleesbaar is). Gedrag dat de kaart verandert, tests bijgewerkt en waar de naam de sluiting noemde hernoemd:
+  `OpenExplanationHttpTest` (`a_test_on_leeg_over_an_open_member_is_undetermined`, `a_test_on_gevuld_over_an_open_member`,
+  `a_fold_with_an_open_member_in_a_value_and_in_a_condition`,
+  `an_initialisation_below_an_open_default_and_beside_an_open_rule_is_not_at_its_turn`,
+  `an_initialisation_beside_an_input_does_not_decide`, `a_sum_whose_filter_tests_an_open_member`, en in
+  `no_sentence_calls_what_is_open_leeg_or_unknown` telt het woord van de toets "leeg is" na de lezing niet als een lege
+  waarde), `OpenExplanationFormsHttpTest` (`an_initialisation_below_an_exception_group_with_an_open_member`,
+  `a_quantifier_fold_whose_filter_tests_an_open_member`, `a_fold_names_no_member_the_filter_leaves_out`,
+  `a_binder_over_an_open_read_and_one_over_a_fold_with_an_open_filter`), `OpenInputsHttpTest`
+  (`an_outcome_that_a_test_on_gevuld_or_a_fold_leaves_open`: een vouw noemt haar eerste open lid; geen `closure` in de
+  OpenAPI), `OpenValuesHttpTest` (herkomst, de stand `marker` weg uit `AttributeState`), `TimelineStackHttpTest` (de tekst
+  van DROOLS-316 zoals uchar hem nu schrijft). Nieuw: `RequestMapperTest.a_marker_object_is_wrong_type`,
+  `OpenExplanationFormsHttpTest.a_member_that_only_an_initialisation_writes_is_input` en
+  `.a_consistency_on_gevuld_over_an_open_member_reports_nothing`, `ScenarioOpenValuesTest` (een strikt scenario met "- is
+  niet betwist" en "staat niet vast"; de waarschuwing in een gewoon document via `scenario`), `PlaygroundOpenValuesTest`
+  (het niet geldende kenmerk op beide routes en in het verzoek, de waarschuwing bij de resolver, een verwachting "staat niet
+  vast" op beide routes). Testgevallen per module 212/676/68 → 211/631/68 (berekend uit de vervallen en nieuwe tests).
+- **Vloeren** (`scripts/check-service-replay.sh`, gelijkheden): `EXPECTED_REPLAY_PLAYED` 377 → 376,
+  `EXPECTED_REPLAY_CASES` 1072 → 1050, `EXPECTED_RED_FAULTS` 69 → 67 (de zes goldens met markers, 39 cases, en de rode map
+  `jutterswet-afwezigheidsmarkers-botsing`, 2 cases, vervielen; vijf nieuwe goldens met 17 cases spelen). De lijsten van
+  uitsluitingen en weigeringen bleven gelijk; de ondergrenzen van de uitleg en `FLOORS` van `tools/check-skips.sh`
+  bleven staan.
+- **Contractwijzigingen** (README, "Contract change"): een markerobject in een verzoek is een gewone 400 `WRONG_TYPE`;
+  `UNKNOWN_MARKER`, de stand `marker`, het markerobject in OpenAPI en de sleutels `marker` (`VALUE`) en `closure`
+  (`CONDITION`) van `explanationParts` vervallen. In een strikte regelset: een uitkomst die een toets op leeg of gevuld of
+  een initialisatie besliste, is open, met de zin van een open uitkomst; een consistentie "moet gevuld zijn" over een open
+  lid staat niet in `inconsistencies`; `openInputs` noemt een lid met alleen een initialisatie en van een vouw haar eerste
+  open lid; `completeInput` noemt een volledig gegeven lid met alleen een initialisatie. `?via=service` geeft een kenmerk
+  dat de situatie als niet geldend geeft als `holdsNot` of `false`.
+- **Gates** (`make gates-no-docker` op `d2da55b2f`, logs in `werk/one-empty-in-service/gates-no-docker2.log`):
+
+  ```
+  gates: 1 pin        GROEN      1s  PASS: de submodule uchar is geïnitialiseerd, schoon en op de vastgelegde commit, die op uchars main staat; de versies zijn gelijk
+  gates: 2 reactor    GROEN   2m52s  testgevallen per module 211/631/68
+  gates: 3 twins      GROEN      3s  3 tweelingen, 18 cases via HTTP met de gepinde verwachtingen; vocabulairetweeling jutterswet-vocabulaires: 2 cases in 34 verzoeken; getuige: 4 getuigenissen
+  gates: 4 replay     GROEN   2m14s  376 goldens (pin 376), 1050 cases (pin 1050)
+  gates: 5 manifest   GROEN      2s  32 regels, 29 ok, 3 uitgesloten, 0 mismatch
+  gates: GROEN — 5 stappen in 5m07s; de uitvoer staat in out/gates/
+  ```
+
+  De replay daarbij: 6132 zinnen, 4092 uitgelegde voorwaarden (vloer 1241), 3415 berekende waarden (vloer 1852), 6367
+  gelezen waarden aan hun zin (vloer 4248); rode leg 58 mappen, 67 cases met hun foutsoort, 14 geweigerd met reden. De
+  volle `make gates` (image en kind) draait de hoofdsessie vóór de landing.
+- **Open.**
+  - Het filter van een kwantorvouw: `OpenReads.reads` zegt of het filter op een lid een open lid leest, niet of het filter
+    daar toch vaststaat ("A of B" met A waar); zo'n lid heet dan "niet vast". Exact wordt het pas als uchars
+    `ConditionReading.Contributor` het oordeel van het lid zelf draagt (filter en matrix samen, Kleene), een kaart in uchar.
+  - Een waarde van een sum type (alleen uit een `uchar-ir-v1`-document van een andere producer, dat Drools nu nergens
+    speelt) staat in de uitleg als de tekst van uchars constructorwaarde, de terugval van `renderValue` zoals vóór de
+    markers; het fixpunt weigert haar bij naam (`UnrenderableValue`), het antwoord bij de start.
+  - De werkbank pint de toolchain zelf en zet haar regelset om bij haar eigen bump; daarna de website (uchars kaart,
+    "Volgorde").
