@@ -277,9 +277,9 @@ public final class OpenReads {
                         read(f.arguments().get(0), e, subject, out);
                     }
                 }
-                // the fallback of a sum is evaluated every time the sum is, on what the sum is evaluated on, also over an
-                // empty range (RUNTIME-SEMANTICS ch. 5.11)
-                read(f.emptyFallback(), on, subject, out);
+                // the fallback of a sum is evaluated every time the sum is, on what the sum is evaluated on (the form
+                // subject for an anchored sum), also over an empty range (RUNTIME-SEMANTICS ch. 5.11)
+                read(f.emptyFallback(), from, subject, out);
                 i += document.positions().subtree(f).size() - 1;
             }
         }
