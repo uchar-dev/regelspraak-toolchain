@@ -28,8 +28,7 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         /** Rule text as written, with the three keys of {@link #NAME} where the operand reads one declaration, and
          *  {@code object} as on {@link #NAME}. */
         QUOTE,
-        /** A value as the engine read it, with its unit; {@code empty: true} for an empty one,
-         *  {@code marker}, the name of an absence marker in its declared spelling, for a marker, and
+        /** A value as the engine read it, with its unit; {@code empty: true} for an empty one, and
          *  {@code timeline: true} for the value of a timeline target, its periods with their values as RegelSpraak
          *  writes a period, and for the periods of a time-dependent characteristic. */
         VALUE,
@@ -42,8 +41,7 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         TEXT,
         /** A condition: {@code holds}, the verdict of the engine on its node, and on a compound or a fold its
          *  {@code quantifier} (the wire spelling of the IR) with the {@code threshold} of a count. In a strict document
-         *  {@code undetermined} where it has no verdict because of what is open, and {@code closure} where a test on leeg or
-         *  gevuld over an open member gave the verdict, which then stands for the form itself alone. */
+         *  {@code undetermined} where it has no verdict because of what is open. */
         CONDITION,
         /** The members of a quantifier fold that carry its outcome, with the colon before them: {@code members} (m, the
          *  members with a verdict),

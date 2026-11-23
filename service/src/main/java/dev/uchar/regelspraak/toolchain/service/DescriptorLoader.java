@@ -242,18 +242,17 @@ public final class DescriptorLoader {
 
     /** Whether the answer can carry the member output selector {@code sel} names: a time-dependent characteristic it
      *  cannot, since the answer gives a characteristic as a boolean and the bean holds its true periods; nor an
-     *  attribute of a sum type that is not that of an attribute with absence markers ({@link Markers}), which only a
-     *  {@code uchar-ir-v1} document of another producer declares and for which the answer has no form; nor, in a strict
-     *  rule set, an attribute that has no state ({@link #stateless}). A selector
+     *  attribute of a sum type, which only a {@code uchar-ir-v1} document of another producer declares and for which the
+     *  answer has no form; nor, in a strict rule set, an attribute that has no state ({@link #stateless}). A selector
      *  {@link #validateOutput} refuses has its violation there. */
     private static void answerable(RegelSpraakModel model, String sel, String field, List<Violation> sink) {
         OutputSelector u = OutputSelector.parse(sel);
         ObjectType ot = u == null ? null : objectType(model, u.objectType());
         Designatable a = ot == null || u.characteristic() ? null : attribute(ot, u.member());
-        if (a != null && ot.attribute(a.name()) instanceof Datatype.SumType sum && Markers.of(ot, a.name()) == null)
+        if (a != null && ot.attribute(a.name()) instanceof Datatype.SumType sum)
             sink.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "attribuut '" + u.member() + "' op objecttype '"
-                    + u.objectType() + "' heeft het sum type '" + sum.domain() + "', dat geen attribuut met markers is;"
-                    + " het antwoord van de dienst heeft er geen vorm voor"));
+                    + u.objectType() + "' heeft het sum type '" + sum.domain() + "'; het antwoord van de dienst heeft er"
+                    + " geen vorm voor"));
         if (a != null && OpenValues.in(model)) stateless(model, ot, u, a, field, sink);
         Designatable k = ot == null || !u.characteristic() ? null : characteristic(ot, u.member());
         if (k == null) return;

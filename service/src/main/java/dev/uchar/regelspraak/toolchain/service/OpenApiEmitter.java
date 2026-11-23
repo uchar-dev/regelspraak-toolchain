@@ -49,9 +49,7 @@ import java.util.List;
  * description. Kenmerken are boolean properties on the same schema (the description says which are kenmerken).
  * A time-dependent attribuut is a property of its timeline ({@link #timelineSchema}), a time-dependent kenmerk one of the
  * periods in which it holds ({@link #periodsSchema}), as {@link RequestMapper} takes them. A dimensioned attribuut is
- * a property of its cells. The value of an attribuut with absence markers ({@link Markers}), also in a segment or a
- * cell, is {@code oneOf} the schema of its datatype and the marker object {@code {"marker": <naam>}}, with an
- * {@code enum} of the markers it declares ({@link #valueSchema}).
+ * a property of its cells.
  *
  * <p><b>Per vocabulary.</b> {@link #emit(ServiceDescriptor, RegelSpraakModel, String)} writes the document of one
  * vocabulary the model declares, or of the canonical names: the object types, properties, enumeration values and
@@ -392,11 +390,10 @@ public final class OpenApiEmitter {
         // attributen (own first, then inherited — declared order within each)
         for (var e : ot.attributeMembers().entrySet()) {
             String name = sp.in.attribute(ot, e.getKey());
-            Markers markers = Markers.of(ot, e.getKey());
             ObjectNode attribute = temporalAttribute(ot, e.getKey())
-                    ? timelineSchema(e.getValue(), markers, ot.granularityOf(e.getKey()), sp)
-                    : ot.dimensionsOf(e.getKey()).isEmpty() ? valueSchema(e.getValue(), markers, sp)
-                    : cellsSchema(e.getValue(), markers, ot.dimensionsOf(e.getKey()), model, sp);
+                    ? timelineSchema(e.getValue(), ot.granularityOf(e.getKey()), sp)
+                    : ot.dimensionsOf(e.getKey()).isEmpty() ? attributeSchema(e.getValue(), sp)
+                    : cellsSchema(e.getValue(), ot.dimensionsOf(e.getKey()), model, sp);
             if (OpenValues.in(model)) notGiven(attribute, complete(ot, e.getKey(), false), "de waarde");
             comment(attribute, model, Naming.attributeOf(ot, e.getKey()));
             if (sp.enabled()) spellings(attribute, sp.of(Naming.attributeOf(ot, e.getKey())));
@@ -499,18 +496,13 @@ public final class OpenApiEmitter {
     private static ObjectNode attributeStateSchema() {
         ObjectNode s = NF.objectNode();
         s.put("description", "De stand van een attribuut. filled: het heeft de waarde value, in de vorm van het"
-                + " objecttype-schema, een getal in precies de decimalen van zijn type. marker: het heeft een"
-                + " afwezigheidsmarker, een gevulde waarde, met haar naam onder marker. empty: het staat vast dat er geen"
+                + " objecttype-schema, een getal in precies de decimalen van zijn type. empty: het staat vast dat er geen"
                 + " waarde is. open: het staat niet vast.");
         ArrayNode oneOf = s.putArray("oneOf");
         ObjectNode filled = stateSchema(OpenValues.FILLED);
         ((ArrayNode) filled.get("required")).add("value");
         ((ObjectNode) filled.get("properties")).putObject("value");
         oneOf.add(filled);
-        ObjectNode marker = stateSchema(OpenValues.MARKER);
-        ((ArrayNode) marker.get("required")).add(Markers.KEY);
-        ((ObjectNode) marker.get("properties")).putObject(Markers.KEY).put("type", "string");
-        oneOf.add(marker);
         oneOf.add(stateSchema(OpenValues.EMPTY, OpenValues.OPEN));
         return s;
     }
@@ -555,9 +547,8 @@ public final class OpenApiEmitter {
 
     /** A time-dependent attribuut of datatype {@code dt} on grid {@code g} as {@link RequestMapper} takes it and
      *  {@link AnswerBuilder} gives it: {@code {"timeline": [{"from": <datum>, "to": <datum>, "value": ...}, ...]}}, the
-     *  value as {@link #valueSchema} describes a scalar of {@code dt}, a bound left out where it is open. */
-    private static ObjectNode timelineSchema(Datatype dt, Markers markers, RegelSpraakModel.Granularity g,
-                                             Spellings sp) {
+     *  value as {@link #attributeSchema} describes a scalar of {@code dt}, a bound left out where it is open. */
+    private static ObjectNode timelineSchema(Datatype dt, RegelSpraakModel.Granularity g, Spellings sp) {
         ObjectNode s = NF.objectNode();
         s.put("type", "object");
         s.put("description", "tijdsafhankelijk" + (g == null ? "" : " (" + TimelineInput.perGrid(g) + ")")
@@ -577,7 +568,7 @@ public final class OpenApiEmitter {
         ObjectNode props = segment.putObject("properties");
         dateProperty(props, "from");
         dateProperty(props, "to");
-        props.set("value", valueSchema(dt, markers, sp));
+        props.set("value", attributeSchema(dt, sp));
         return s;
     }
 
@@ -612,10 +603,9 @@ public final class OpenApiEmitter {
 
     /** A dimensioned attribuut of datatype {@code dt} as {@link RequestMapper} takes it and {@link AnswerBuilder} gives
      *  it: {@code {"cells": [{"labels": [...], "value": ...}, ...]}}, one label per dimension of {@code dimensions} in
-     *  their order, the value as {@link #valueSchema} describes a scalar of {@code dt}, null for an empty cell. The
+     *  their order, the value as {@link #attributeSchema} describes a scalar of {@code dt}, null for an empty cell. The
      *  description names the dimensions with their labels in declared order. */
-    private static ObjectNode cellsSchema(Datatype dt, Markers markers, List<String> dimensions, RegelSpraakModel model,
-                                          Spellings sp) {
+    private static ObjectNode cellsSchema(Datatype dt, List<String> dimensions, RegelSpraakModel model, Spellings sp) {
         List<String> named = new ArrayList<>();
         for (String d : dimensions) {
             RegelSpraakModel.Dimension dimension = model.dimensionByName(d);
@@ -644,31 +634,9 @@ public final class OpenApiEmitter {
         labels.putObject("items").put("type", "string");
         labels.put("minItems", dimensions.size());
         labels.put("maxItems", dimensions.size());
-        ObjectNode value = valueSchema(dt, markers, sp);
+        ObjectNode value = attributeSchema(dt, sp);
         value.put("nullable", true);
         cellProps.set("value", value);
-        return s;
-    }
-
-    /** The schema of a value of an attribuut of datatype {@code dt}: {@link #attributeSchema}, or for an attribuut with
-     *  absence {@code markers} (uchar's RUNTIME-SEMANTICS ch. 9.5) {@code oneOf} the schema of its payload datatype and
-     *  the marker object {@code {"marker": <naam>}}, whose name is an {@code enum} of the markers it declares. */
-    private static ObjectNode valueSchema(Datatype dt, Markers markers, Spellings sp) {
-        if (markers == null) return attributeSchema(dt, sp);
-        ObjectNode s = NF.objectNode();
-        s.put("description", "een waarde, of een marker: {\"marker\": <naam>} met als naam "
-                + String.join(" of ", markers.declared()) + "; een antwoord geeft het in dezelfde vorm. Een marker die"
-                + " het attribuut niet declareert is een 400 (UNKNOWN_MARKER).");
-        ArrayNode oneOf = s.putArray("oneOf");
-        oneOf.add(attributeSchema(markers.payload(), sp));
-        ObjectNode marker = oneOf.addObject();
-        marker.put("type", "object");
-        marker.putArray("required").add(Markers.KEY);
-        marker.put("additionalProperties", false);
-        ObjectNode name = marker.putObject("properties").putObject(Markers.KEY);
-        name.put("type", "string");
-        ArrayNode names = name.putArray("enum");
-        markers.declared().forEach(names::add);
         return s;
     }
 
@@ -703,7 +671,7 @@ public final class OpenApiEmitter {
             }
             case Datatype.Unknown o -> s.put("type", "string");
             case Datatype.SumType st -> throw new IllegalStateException("het sum type '" + st.domain()
-                    + "' is niet dat van een attribuut met markers en heeft in het contract van de dienst geen vorm");
+                    + "' heeft in het contract van de dienst geen vorm");
         }
         if (unit != null) {
             String rendering = unit.rendering();
@@ -917,8 +885,7 @@ public final class OpenApiEmitter {
                 + " een rol, de tekst en het filter van een vouw over een verzameling (per lid gelezen; de leden staan"
                 + " in MEMBERS) en een lezing die de motor niet bereikte; QUOTE regeltekst zoals geschreven, met"
                 + " dezelfde drie waar het operand één declaratie leest, en object zoals bij NAME; VALUE een"
-                + " waarde met haar eenheid, met empty: true bij een lege, marker, de naam van een afwezigheidsmarker"
-                + " in de gedeclareerde spelling, bij een marker, en timeline: true bij de waarde van een"
+                + " waarde met haar eenheid, met empty: true bij een lege, en timeline: true bij de waarde van een"
                 + " tijdlijn-doel, haar perioden met hun waarden, en bij de perioden van een tijdsafhankelijk kenmerk;"
                 + " RULE de naam van een regel of van een variant"
                 + " van een defaults-groep; CONNECTIVE een woord dat de logica tussen de delen draagt (omdat, want,"
@@ -965,7 +932,7 @@ public final class OpenApiEmitter {
         parts.put("type", "array");
         parts.putObject("items").put("$ref", "#/components/schemas/ExplanationPart");
         for (String key : new String[]{"declaration", "canonical", "quantifier", "bwb", "article", "paragraph", "part",
-                "rule", "pointer", "variant", "follows", "marker"})
+                "rule", "pointer", "variant", "follows"})
             props.putObject(key).put("type", "string");
         ObjectNode between = props.putObject("between");
         between.put("type", "array");
@@ -978,14 +945,13 @@ public final class OpenApiEmitter {
             props.putObject(key).put("type", "integer");
         if (strict) {
             s.put("description", s.get("description").asText() + " In een regelset die uit leeg niets afleidt: een CONDITION die"
-                    + " niet vaststaat draagt undetermined: true en geen holds, een die door een toets op leeg of gevuld over een"
-                    + " open lid beslist is closure: true; een READING van een lezing die op een open lid afbrak draagt open, dat"
-                    + " lid (object zoals SUBJECT het noemt, canonical, en kind: attribute of characteristic), en geen VALUE;"
+                    + " niet vaststaat draagt undetermined: true en geen holds; een READING van een lezing die op een open lid"
+                    + " afbrak draagt open, dat lid (object zoals SUBJECT het noemt, canonical, en kind: attribute of characteristic), en geen VALUE;"
                     + " MEMBERS van een kwantorvouw draagt unsettled, het aantal leden waarvoor niet vaststaat of de toets"
                     + " geldt; een VARIANT van een defaults-groep die niet aan de beurt was en waarvan de lezing niet vaststaat,"
                     + " undetermined: true (dan de naam alleen).");
             props.putObject("unsettled").put("type", "integer");
-            for (String key : new String[]{"undetermined", "closure"}) props.putObject(key).put("type", "boolean");
+            props.putObject("undetermined").put("type", "boolean");
             ObjectNode open = props.putObject("open");
             open.put("type", "object");
             ObjectNode openProps = open.putObject("properties");

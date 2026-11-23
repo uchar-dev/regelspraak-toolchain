@@ -19,8 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * The scenarios of a rule set that infers nothing from an empty value ({@link OpenValuesSource}) in the playground, on the
  * ordinary route and with {@code via=service}: the verdict of a scenario that expects a value where the outcome is open is
  * FAIL, with uchar's word for it; the fixpoint lists what is open, with the input that does not stand; the explanation
- * says what keeps an outcome open, and {@code openInputs} what can be given. The situation of a scenario asserts a
- * characteristic or leaves it out, so its request states that one holds, and none that does not hold.
+ * says what keeps an outcome open, and {@code openInputs} what can be given. A scenario that expects an outcome to stay open
+ * ("staat niet vast") passes where it is open. The situation of a scenario gives a characteristic as holding or as not
+ * holding ("- is niet betwist"), so its request gives it as {@code holds} or {@code holdsNot}; in a rule set that is not
+ * strict such a sentence changes nothing, and the playground shows uchar's warning among those of the resolver.
  */
 class PlaygroundOpenValuesTest {
 
@@ -103,6 +105,79 @@ class PlaygroundOpenValuesTest {
             assertTrue(bundle.isOk(), () -> bundle.model().errors().toString());
             assertEquals(c[1], SituationToRequest.assemble(bundle.scenarios().get(0), bundle.model())
                     .at("/instances/0/characteristics").toString());
+        }
+    }
+
+    private static final String NOT_BETWIST = """
+
+        Scenario onbetwiste vondst
+        toetst de regel premie
+        Gegeven is de volgende situatie:
+        een Vondst V1
+        - is niet betwist
+        Met als verwacht resultaat:
+        - de premie van V1 is 10
+        - V1 is niet betwist
+        """;
+
+    /** A characteristic the situation gives as not holding stands not to hold on both routes, so the base decides the premie;
+     *  the situation carries it with {@code holds: false}, and the request as {@code holdsNot}, or {@code false} in a rule
+     *  set that is not strict. */
+    @Test
+    void a_characteristic_the_situation_gives_as_not_holding() {
+        DecisionCore core = OpenValuesSource.core(CoreConfig.strict().withDetail());
+        String source = OpenValuesSource.SOURCE + NOT_BETWIST;
+        for (JsonNode s : new JsonNode[]{Playground.analyze(source).at("/scenario/results/0"),
+                Playground.analyze(source, null, core, null, false).at("/scenario/results/0")}) {
+            assertEquals("PASS", s.at("/status").asText(), s.toString());
+            assertEquals(false, s.at("/situation/objects/0/characteristics/0/holds").asBoolean(true), s.toString());
+        }
+        String ordinary = source.replace("Afleiden uit leeg: nee", "").replace(" (volledig gegeven)", "");
+        for (String[] c : new String[][]{{source, "{\"betwist\":{\"state\":\"holdsNot\"}}"}, {ordinary, "{\"betwist\":false}"}}) {
+            ScenarioBundle bundle = ScenarioResolver.resolve(c[0]);
+            assertTrue(bundle.isOk(), () -> bundle.model().errors().toString());
+            assertEquals(c[1], SituationToRequest.assemble(bundle.scenarios().get(0), bundle.model())
+                    .at("/instances/0/characteristics").toString());
+        }
+    }
+
+    /** In a rule set that is not strict "- is niet betwist" changes nothing: the playground gives uchar's warning beside the
+     *  diagnostics of the model, and none in a strict one. */
+    @Test
+    void a_characteristic_given_as_not_holding_in_an_ordinary_rule_set_is_a_warning() {
+        String source = OpenValuesSource.SOURCE + NOT_BETWIST;
+        JsonNode warnings = Playground.analyze(source.replace("Afleiden uit leeg: nee", "").replace(" (volledig gegeven)", ""))
+                .at("/resolver/warnings");
+        assertEquals(1, warnings.size(), warnings.toString());
+        assertTrue(warnings.at("/0/message").asText().contains("'is niet betwist' verandert in een document zonder 'Afleiden uit"
+                + " leeg: nee' niets"), warnings.toString());
+        assertEquals(ScenarioData.lines(source).indexOf("- is niet betwist") + 1, warnings.at("/0/line").asInt(),
+                warnings.toString());
+        assertEquals(0, Playground.analyze(source).at("/resolver/warnings").size());
+    }
+
+    private static final String EXPECTED_OPEN = """
+
+        Scenario open verwacht
+        toetst de regels kostbaarheid, vindloon en bergloon
+        Gegeven is de volgende situatie:
+        een Vondst V1
+        - het bergloon is 7
+        Met als verwacht resultaat:
+        - het vindloon van V1 staat niet vast
+        - het bergloon van V1 staat niet vast
+        - of V1 kostbaar is, staat niet vast
+        """;
+
+    /** An expectation that an outcome stays open passes on both routes where it is open. */
+    @Test
+    void an_expectation_that_an_outcome_stays_open_passes() {
+        DecisionCore core = OpenValuesSource.core(CoreConfig.strict().withDetail());
+        String source = OpenValuesSource.SOURCE + EXPECTED_OPEN;
+        for (JsonNode s : new JsonNode[]{Playground.analyze(source).at("/scenario/results/0"),
+                Playground.analyze(source, null, core, null, false).at("/scenario/results/0")}) {
+            assertEquals("PASS", s.at("/status").asText(), s.toString());
+            assertEquals(3, s.get("expectations").size(), s.toString());
         }
     }
 

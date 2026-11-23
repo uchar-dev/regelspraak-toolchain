@@ -32,7 +32,9 @@ import java.util.stream.Collectors;
  * {@code --explanation} prints under each played scenario the explanation of its outcome
  * ({@link ScenarioRunner#runWithExplanation}), or why there is none; {@code --vocabulary} names the rules of the trace
  * and the coverage, and the declarations in the explanation, in a vocabulary the model declares ({@link Naming};
- * {@code canonical} for the canonical names), and an unknown one is a wrong invocation. Exit codes: {@code 1} as soon
+ * {@code canonical} for the canonical names), and an unknown one is a wrong invocation. The warnings of uchar's scenario
+ * layer, which speak of the test document only ({@code ScenarioBundle.warnings}), go to stderr before the report
+ * ({@link ScenarioRunner#warnings}). Exit codes: {@code 1} as soon
  * as a scenario FAILS (or the source does not resolve — with the diagnostics — or carries no Scenario block); else
  * {@code 3} as soon as a scenario is a MARKER (uchar does not carry its document); else {@code 0}. With no files, or a
  * file it cannot read: exit {@code 2}.
@@ -119,6 +121,7 @@ public final class ScenarioRunnerCli {
         Naming naming = null;
         try {
             var bundle = dev.uchar.regelspraak.resolver.ScenarioResolver.resolve(source);
+            for (String w : ScenarioRunner.warnings(bundle)) System.err.println("  " + w);
             // the vocabulary is the model's: known only once the source resolves, and asked before anything runs
             if (vocabulary != null && bundle.isOk()) {
                 try {

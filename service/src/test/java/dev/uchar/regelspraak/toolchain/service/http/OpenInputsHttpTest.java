@@ -103,18 +103,16 @@ class OpenInputsHttpTest {
                 "bergingsloon"));
     }
 
-    /** gepeild is open by the test on gevuld; volledig gepeild and the gepeilde ladingsom by a closure inside a fold, whose node
-     *  carries no open read: the diepte of the wrecks without one. */
+    /** gepeild and ongepeild are open by the test on gevuld and on leeg over the diepte; volledig gepeild, the aantal gepeilde
+     *  wrakken and the gepeilde ladingsom by their fold, which breaks off at the diepte of the first wreck without one. */
     @Test
-    void an_outcome_that_a_closure_leaves_open() throws Exception {
+    void an_outcome_that_a_test_on_gevuld_or_a_fold_leaves_open() throws Exception {
         assertEquals(json("[\"diepte\"]"), namesFor(wrak(""), "W1", "gepeild"));
+        assertEquals(json("[\"diepte\"]"), namesFor(wrak(""), "W1", "ongepeild"));
         JsonNode open = jutter("\"lading\": 5", "\"lading\": 7, \"diepte\": 3", "");
-        assertEquals(json("[\"W1 diepte\", \"W3 diepte\"]"), membersFor(open, "J1", "volledig gepeild"));
-        assertEquals(json("[\"W1 diepte\", \"W2 diepte\", \"W3 diepte\"]"), membersFor(jutter("\"lading\": 5", "", ""), "J1",
-                "gepeilde ladingsom"));
-        // what a closure decided stands, and nothing keeps it open
-        assertEquals(json("[]"), membersFor(open, "J1", "aantal gepeilde wrakken"));
-        assertEquals(json("[]"), namesFor(wrak(""), "W1", "ongepeild"));
+        assertEquals(json("[\"W1 diepte\"]"), membersFor(open, "J1", "volledig gepeild"));
+        assertEquals(json("[\"W1 diepte\"]"), membersFor(open, "J1", "aantal gepeilde wrakken"));
+        assertEquals(json("[\"W1 diepte\"]"), membersFor(jutter("\"lading\": 5", "", ""), "J1", "gepeilde ladingsom"));
     }
 
     /** A read over a role: the bonus of the vinder, asked of J1. */
@@ -147,7 +145,7 @@ class OpenInputsHttpTest {
         assertEquals(json("[\"attribute\", \"characteristic\"]"), item.at("/forOutputs/items/properties/kind/enum"));
         JsonNode part = doc.at("/components/schemas/ExplanationPart/properties");
         assertEquals("boolean", part.at("/undetermined/type").asText());
-        assertEquals("boolean", part.at("/closure/type").asText());
+        assertTrue(part.at("/closure").isMissingNode(), part.toString());
         assertEquals("integer", part.at("/unsettled/type").asText());
         assertTrue(part.at("/open/properties").has("canonical"));
     }

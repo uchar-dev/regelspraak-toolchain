@@ -21,9 +21,6 @@ import java.util.List;
  * ({@link #state(String)} and its sisters) and no null or boolean, and a request gives a characteristic as its state, that
  * it holds or stands not to hold ({@link #characteristic}). {@link #in} is the one place where the service asks whether a
  * rule set is strict; every other rule set is read and answered without this class.
- *
- * <p>An absence marker ({@link Markers}) is a filled value, with a state of its own so that it is not taken for the value
- * of the datatype.
  */
 public final class OpenValues {
 
@@ -32,10 +29,10 @@ public final class OpenValues {
     /** The key of the state of a member, in a request and in an answer. */
     static final String STATE = "state";
 
-    static final String FILLED = "filled", MARKER = "marker", EMPTY = "empty", OPEN = "open", HOLDS_NOT = "holdsNot";
+    static final String FILLED = "filled", EMPTY = "empty", OPEN = "open";
 
-    /** The state of a characteristic that holds. */
-    public static final String HOLDS = "holds";
+    /** The states of a characteristic that holds, and of one that stands not to hold. */
+    public static final String HOLDS = "holds", HOLDS_NOT = "holdsNot";
 
     private OpenValues() {}
 
@@ -54,8 +51,9 @@ public final class OpenValues {
     /** The input members of {@code model} whose declaration says that their input is complete ({@code (volledig gegeven)},
      *  uchar's RUNTIME-SEMANTICS ch. 1.5), as {@code /info} lists them: {@code {"kind": "attribute" | "characteristic",
      *  "objectType", "name"}}, per object type its attributes and then its characteristics, as declared. A member that a
-     *  rule or one of {@code groups}, the defaults groups of the document, writes on the objects of the type that declares
-     *  it, such as the {@code berekende X} of the opgave marker, is no input. */
+     *  form other than an initialisation writes on the objects of the type that declares it ({@link OpenReads#written},
+     *  with {@code groups}, the defaults groups of the document), such as the {@code berekende X} of the opgave marker, is
+     *  no input. */
     static ArrayNode completeInput(RegelSpraakModel model, List<PrioritizedDefaults> groups) {
         ArrayNode out = NF.arrayNode();
         for (ObjectType ot : model.objectTypes.values()) {
@@ -78,9 +76,6 @@ public final class OpenValues {
         n.set("value", value);
         return n;
     }
-
-    /** An attribute that holds the absence marker {@code marker}. */
-    static ObjectNode marker(String marker) { return state(MARKER).put(Markers.KEY, marker); }
 
     /**
      * What a request says of a characteristic ({@code name} as it writes it) on {@code field}: true where it holds

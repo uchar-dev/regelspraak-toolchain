@@ -13,7 +13,6 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.transpiler.tms.ComputeHelpers;
-import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 import dev.uchar.regelspraak.transpiler.tms.Fault;
 
 import java.math.BigDecimal;
@@ -595,14 +594,10 @@ public final class FixpointGivens {
     }
 
     /** A scalar value as the fixpoint shows it, a number in the decimals of its type
-     *  ({@link AnswerBuilder#inDecimalsOf}); uchar's constructor value of an attribute with absence markers in the
-     *  form of the answer ({@link Markers}): {@code waarde(…)} as its payload, a marker as {@code {"marker": <naam>}}.
-     *  {@code attribute} names the attribute of the value, null for a bound of a segment. */
+     *  ({@link AnswerBuilder#inDecimalsOf}). {@code attribute} names the attribute of the value, null for a bound of a
+     *  segment. */
     private static JsonNode scalar(Object v, Datatype dt, String attribute) {
         if (v == null) return NF.nullNode();
-        if (v instanceof ConstructorValue c)
-            return c.payload() != null ? scalar(c.payload(), payloadOf(dt, c.constructor()), attribute)
-                    : NF.objectNode().put(Markers.KEY, c.constructor());
         if (v instanceof BigDecimal b)
             return NF.textNode(AnswerBuilder.inDecimalsOf(b, dt, "het attribuut '" + attribute + "'").toPlainString());
         if (v instanceof LocalDate d) return NF.textNode(d.toString());
@@ -611,16 +606,6 @@ public final class FixpointGivens {
         if (v instanceof String s) return NF.textNode(s);
         throw new UnrenderableValue("een waarde van de vorm " + v.getClass().getName() + " ("
                 + (dt == null ? "zonder datatype" : dt.name()) + ") toont het fixpunt niet");
-    }
-
-    /** The datatype of the payload of {@code constructor}: the model of a RegelSpraak source gives an attribute with
-     *  markers the datatype of its value, the model uchar's loader reads from a document the sum type itself
-     *  ({@link Markers}). */
-    private static Datatype payloadOf(Datatype dt, String constructor) {
-        if (!(dt instanceof Datatype.SumType sum)) return dt;
-        for (Datatype.Constructor c : sum.constructors()) if (c.name().equals(constructor)) return c.payload();
-        throw new IllegalStateException("het sum type '" + sum.domain() + "' declareert de constructor '" + constructor
-                + "' niet");
     }
 
     /** An enumeration value under {@code waarde}, in the chosen vocabulary, with its canonical spelling beside it. */

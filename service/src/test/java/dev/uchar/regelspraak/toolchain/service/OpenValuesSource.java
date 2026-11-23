@@ -4,8 +4,8 @@ import java.util.Map;
 
 /**
  * Test fixture: a rule set of the Jutterswet that infers nothing from an empty value ({@code Afleiden uit leeg: nee}), with
- * a rule, a characteristic, a defaults group, a fold over a set, an attribute with an absence marker, a consistency, and
- * two members whose input is complete. The entry point {@code vracht} reads a parameter nothing binds unless the request
+ * a rule, a characteristic, a defaults group, a fold over a set, an attribute a rule writes only under a complete
+ * characteristic, a consistency, and two members whose input is complete. The entry point {@code vracht} reads a parameter nothing binds unless the request
  * does. {@link #WRAK_SOURCE} is a second such rule set, with the forms whose explanation the tests read: rules on one
  * attribute, an initialisation, composites, the tests on leeg and gevuld, stacks with and without an order, an opgave, folds
  * and quantifier folds, and a read over a role.
@@ -25,7 +25,7 @@ public final class OpenValuesSource {
         Objecttype de Vondst (mv: Vondsten)
             de taxatie Numeriek (geheel getal);
             de toeslag Numeriek (geheel getal) (volledig gegeven);
-            de herkomst Numeriek (geheel getal) (of onbekend);
+            de herkomst Numeriek (geheel getal);
             het vindloon Numeriek (geheel getal);
             de uitbetaling Numeriek (geheel getal);
             de bewakingstoeslag Numeriek (geheel getal);
@@ -61,9 +61,9 @@ public final class OpenValuesSource {
             geldig altijd
                 Het bergloon van een Vondst moet gesteld worden op 20 indien zijn taxatie groter is dan 1000.
 
-        Regel herkomst onbekend
+        Regel herkomst onleesbaar
             geldig altijd
-                De herkomst van een Vondst moet gesteld worden op onbekend indien hij onleesbaar is.
+                De herkomst van een Vondst moet gesteld worden op 0 indien hij onleesbaar is.
 
         Regel premie
             geldig altijd
@@ -91,7 +91,7 @@ public final class OpenValuesSource {
           "entrypoints": [
             { "name":"vondst","path":"vondst",
               "scope": {"ruleNames": ["kostbaarheid", "vindloon", "uitbetaling", "bewakingstoeslag", "bergloon",
-                                      "herkomst onbekend", "premie", "totaaltaxatie", "taxatiegrens"]},
+                                      "herkomst onleesbaar", "premie", "totaaltaxatie", "taxatiegrens"]},
               "input": [],
               "output": ["Vondst.taxatie", "Vondst.toeslag", "Vondst.herkomst", "Vondst.vindloon", "Vondst.uitbetaling",
                          "Vondst.bewakingstoeslag", "Vondst.bergloon", "Vondst.premie", "Vondst:kostbaar",

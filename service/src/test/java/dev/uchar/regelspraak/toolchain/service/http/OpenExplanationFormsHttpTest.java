@@ -25,7 +25,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The explanation of a strict rule set in forms that meet each other: an exception group above an initialisation that a subtype
  * inherits, a characteristic the request gives beside a stack that is open, a rule beside the stack of a subtype, and a
- * quantifier fold whose filter is a closure. Every test has a rule set of its own; the sentences are written by hand.
+ * quantifier fold whose filter tests an open member. Every test has a rule set of its own; the sentences are written by
+ * hand.
  */
 class OpenExplanationFormsHttpTest {
 
@@ -60,10 +61,10 @@ class OpenExplanationFormsHttpTest {
 
         """;
 
-    /** One member of the exception group gave 0 and did not decide beside one that is open, and the initialisation closed over
-     *  the group. */
+    /** One member of the exception group gave 0 and did not decide beside one that is open, so the default is open, and below it
+     *  its content and the initialisation are not at their turn. */
     @Test
-    void an_initialisation_over_an_exception_group_with_an_open_member() throws Exception {
+    void an_initialisation_below_an_exception_group_with_an_open_member() throws Exception {
         JsonNode answer = ask(VONDST + """
             Regel basisvindloon
                 geldig altijd
@@ -83,11 +84,11 @@ class OpenExplanationFormsHttpTest {
                     Het vindloon van een Wrakvondst moet gesteld worden op 5 indien hij beschadigd is.
             """, "{\"instances\": [{\"type\": \"Wrakvondst\", \"id\": \"W1\", \"attributes\": {\"gewicht\": 50},"
                 + " \"characteristics\": {\"betwist\": {\"state\": \"holds\"}}}]}");
-        assertSentence("W1 heeft als vindloon 25 volgens de regel 'basisvindloon': 25, omdat zijn vindloon in de invoer niet"
-                + " gegeven was; 'betwist vindloon' (uitzondering op 'vindloon') gaf 0, maar beslist niet zolang 'beschadigd"
-                + " vindloon' (uitzondering op 'vindloon') niet vaststaat; voor 'beschadigd vindloon' (uitzondering op"
-                + " 'vindloon') staat niet vast: het onderwerp beschadigd is (niet gegeven); niet aan de beurt: de regel"
-                + " 'vindloon' (onvoorwaardelijk, 100); wordt gegeven of hij beschadigd is, dan kan dit veranderen", answer);
+        assertSentence("W1: zijn vindloon staat niet vast, want het is niet gegeven of hij beschadigd is; 'betwist vindloon'"
+                + " (uitzondering op 'vindloon') gaf 0, maar beslist niet zolang 'beschadigd vindloon' (uitzondering op"
+                + " 'vindloon') niet vaststaat; voor 'beschadigd vindloon' (uitzondering op 'vindloon') staat niet vast: het"
+                + " onderwerp beschadigd is (niet gegeven); niet aan de beurt: de regel 'vindloon' (onvoorwaardelijk, 100), de"
+                + " regel 'basisvindloon' (onvoorwaardelijk, 25)", answer);
     }
 
     /** The request gives the characteristic, so it holds, and nobody decided: one exception would not attribute it, beside one
@@ -146,32 +147,92 @@ class OpenExplanationFormsHttpTest {
                 + " diepte (1) is groter dan 2", answer);
     }
 
-    /** The filter is a closure, so the fold counts a member without a taxatie as left out (gevuld) or in (leeg) for itself. */
+    // ---------------- an initialisation alone, and a consistency on gevuld ----------------
+
+    /** A member that only an initialisation writes is an input member with a default value: open where the request does not give
+     *  it, and then its own open input; the value the request gives; and where it is complete and not given, the value of the
+     *  initialisation, which is at its turn there. */
     @Test
-    void a_quantifier_fold_whose_filter_is_a_closure() throws Exception {
+    void a_member_that_only_an_initialisation_writes_is_input() throws Exception {
+        String rules = """
+            Regel basisvindloon
+                geldig altijd
+                    Het vindloon van een Vondst moet geïnitialiseerd worden op 25.
+            """;
+        JsonNode open = ask(VONDST + rules, vondst("", ""), "&openInputs=true");
+        assertEquals("open", open.at("/instances/0/attributes/vindloon/state").asText(), open.toString());
+        assertSentence("V1: zijn vindloon staat niet vast, want zijn vindloon is niet gegeven; niet aan de beurt: de regel"
+                + " 'basisvindloon'", open);
+        List<String> vindloon = new ArrayList<>();
+        for (JsonNode i : open.get("openInputs"))
+            if (i.get("name").asText().equals("vindloon"))
+                for (JsonNode o : i.get("forOutputs")) vindloon.add(o.get("instance").asText() + " " + o.get("name").asText());
+        assertEquals(List.of("V1 vindloon"), vindloon, open.get("openInputs").toString());
+
+        JsonNode given = ask(VONDST + rules, vondst("\"vindloon\": 7", ""));
+        assertEquals(json("{\"state\": \"filled\", \"value\": 7}"), given.at("/instances/0/attributes/vindloon"));
+
+        String complete = VONDST.replace("het vindloon Numeriek (geheel getal);",
+                "het vindloon Numeriek (geheel getal) (volledig gegeven);") + rules;
+        JsonNode initialised = ask(complete, vondst("", ""));
+        assertEquals(json("{\"state\": \"filled\", \"value\": 25}"), initialised.at("/instances/0/attributes/vindloon"));
+        assertSentence("V1 heeft als vindloon 25 volgens de regel 'basisvindloon': 25, omdat zijn vindloon in de invoer niet"
+                + " gegeven was", initialised);
+        DecisionCore core = DecisionCore.assemble(descriptor(json(UcharBuild.document(Resolver.resolve(complete)))),
+                java.util.Map.of("b.rgs", complete), CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        assertEquals(json("[{\"kind\": \"attribute\", \"objectType\": \"Vondst\", \"name\": \"vindloon\"}]"),
+                core.completeInput());
+    }
+
+    /** A consistency "moet gevuld zijn" over a taxatie that is not given does not decide: it is not among the inconsistencies, and
+     *  the explanation says that it does not stand. Over a complete taxatie without a value it is inconsistent. */
+    @Test
+    void a_consistency_on_gevuld_over_an_open_member_reports_nothing() throws Exception {
+        String rules = """
+            Regel taxatieplicht
+                geldig altijd
+                    De taxatie van een Vondst moet gevuld zijn.
+            """;
+        JsonNode open = ask(VONDST + rules, vondst("", ""));
+        assertEquals(json("[]"), open.get("inconsistencies"), open.toString());
+        assertSentence("of V1 voldoet aan de regel 'taxatieplicht', staat niet vast, want zijn taxatie is niet gegeven; het staat"
+                + " niet vast: De taxatie van een Vondst (niet gegeven) gevuld is", open);
+        assertEquals(json("[]"), ask(VONDST + rules, vondst("\"taxatie\": 5", "")).get("inconsistencies"));
+        String complete = VONDST.replace("de taxatie Numeriek (geheel getal);",
+                "de taxatie Numeriek (geheel getal) (volledig gegeven);") + rules;
+        assertEquals(json("[\"taxatieplicht\"]"), ask(complete, vondst("", "")).get("inconsistencies"));
+    }
+
+    /** The filter tests the taxatie on gevuld or leeg, so it is undetermined on a member without one, and so is that member
+     *  where its matrix does not decide it alone: for "alle" a matrix that holds, for the others one that does not. */
+    @Test
+    void a_quantifier_fold_whose_filter_tests_an_open_member() throws Exception {
         String rules = """
             Regel kundig
                 geldig altijd
                     Een Jutter is kundig indien het gewicht van %s vondsten van de Jutter die aan de volgende voorwaarde voldoen: zijn taxatie is %s groter is dan 10.
             """;
-        // V2 of gewicht 5 does not count without its taxatie
-        assertFold("is kundig, omdat", "is voldaan: voor V1 (1 van de 2); wordt van V2 zijn taxatie gegeven, dan kan dit veranderen",
+        // V2 of gewicht 5 fails the matrix, and whether it counts is open
+        assertFold("J1: of hij kundig is, staat niet vast, want van V2 is zijn taxatie niet gegeven;",
+                "is voldaan: wel voor V1, niet vast voor V2",
                 ask(VONDST + rules.formatted("alle", "gevuld"), jutter("\"gewicht\": 20, \"taxatie\": 5", "\"gewicht\": 5")));
-        // V2 of gewicht 50 does not count without its taxatie, and would be the second
-        assertFold("is kundig, omdat", "is voldaan: niet vast voor V2; wordt van V2 zijn taxatie gegeven, dan kan dit veranderen",
+        // V2 of gewicht 50 holds the matrix, and would be the second where it counts
+        assertFold("J1: of hij kundig is, staat niet vast, want van V2 is zijn taxatie niet gegeven;",
+                "is voldaan: wel voor V1, niet vast voor V2",
                 ask(VONDST + rules.formatted("ten hoogste één van de", "gevuld"),
                         jutter("\"gewicht\": 20, \"taxatie\": 5", "\"gewicht\": 50")));
-        // V1 has neither, and V2 counts without its taxatie
-        assertFold("is kundig, omdat", "is voldaan: voor V2 (1 van de 2); wordt van V1 zijn taxatie gegeven, dan kan dit veranderen",
+        // V1 has neither, and V2 holds the matrix where it counts
+        assertFold("J1: of hij kundig is, staat niet vast, want van V1 is zijn taxatie niet gegeven;",
+                "is voldaan: niet vast voor V1 en V2",
                 ask(VONDST + rules.formatted("ten minste één van de", "leeg"), jutter("", "\"gewicht\": 50")));
     }
 
     /** The test of a fold over the others reads nothing of the Vondst itself, which the filter leaves out. */
     @Test
-    void a_closure_names_no_member_the_filter_leaves_out() throws Exception {
-        assertSentence("V1 is alleen, omdat aan de voorwaarde \"de taxatie van geen van de vondsten van de jutter van de Vondst die"
-                + " niet de Vondst zelf zijn gevuld is\" is voldaan: niet voor V2, het enige lid; wordt van V2 zijn taxatie"
-                + " gegeven, dan kan dit veranderen", ask(VONDST + """
+    void a_fold_names_no_member_the_filter_leaves_out() throws Exception {
+        assertSentence("V1: of hij alleen is, staat niet vast, want van V2 is zijn taxatie niet gegeven; voor de regel 'alleen'"
+                + " staat niet vast: aan de voorwaarde \"de taxatie van geen van de vondsten van de jutter van de Vondst die niet"
+                + " de Vondst zelf zijn gevuld is\" is voldaan: niet vast voor V2", ask(VONDST + """
                 Regel alleen
                     geldig altijd
                         Een Vondst is alleen indien de taxatie van geen van de vondsten van de jutter van de Vondst die niet de Vondst zelf zijn gevuld is.
@@ -212,7 +273,7 @@ class OpenExplanationFormsHttpTest {
               {"type": "Vondst", "id": "V1", "characteristics": {"betwist": {"state": "holdsNot"}}},
               {"type": "Vondst", "id": "V2", "characteristics": {"betwist": {"state": "holds"}}},
               {"type": "Vondst", "id": "V3"}]}""", "");
-        assertFold("is niet kundig, want", "is niet voldaan: niet voor V1 (1 van de 2) (1 lid niet beoordeeld)", answer);
+        assertFold("J1 is niet kundig, want", "is niet voldaan: niet voor V1 (1 van de 2) (1 lid niet beoordeeld)", answer);
     }
 
     // ---------------- the quantifiers ----------------
@@ -259,7 +320,7 @@ class OpenExplanationFormsHttpTest {
                 + " … " + end);
     }
 
-    // ---------------- composites, binders, markers, ground, vocabulary ----------------
+    // ---------------- composites, binders, ground, vocabulary ----------------
 
     @Test
     void a_nested_composite_names_the_member_that_keeps_it_open() throws Exception {
@@ -280,7 +341,7 @@ class OpenExplanationFormsHttpTest {
     }
 
     @Test
-    void a_binder_that_is_open_and_one_that_is_leeg_after_a_closure() throws Exception {
+    void a_binder_over_an_open_read_and_one_over_a_fold_with_an_open_filter() throws Exception {
         assertSentence("V1: zijn vindloon staat niet vast, want zijn taxatie is niet gegeven; voor de regel 'vindloon' staat niet"
                 + " vast: de meerwaarde maal 3, met zijn gewicht (5), zijn taxatie (niet gegeven) en de meerwaarde is zijn gewicht"
                 + " plus zijn taxatie (staat niet vast)", ask(VONDST + """
@@ -338,29 +399,6 @@ class OpenExplanationFormsHttpTest {
                 ask(source, "{\"instances\": [{\"type\": \"Wrakvondst\", \"id\": \"W1\", \"attributes\": {\"gewicht\": 8}}]}"));
         assertSentence("V1 heeft als vindloon 8 volgens de regel 'vindloon' (onvoorwaardelijk): zijn gewicht (8)",
                 ask(source, vondst("\"gewicht\": 8", "")));
-    }
-
-    /** A marker is a value: it is not leeg, and the test on leeg over an attribute that is not given is a closure. */
-    @Test
-    void a_marker_is_a_value() throws Exception {
-        String source = VONDST.replace("    het keurgewicht", "    de herkomst Numeriek (geheel getal) (of onbekend);\n    het"
-                + " keurgewicht") + """
-            Regel zonder herkomst
-                geldig altijd
-                    Een Vondst is beschadigd indien zijn herkomst leeg is.
-
-            Regel onbekende herkomst
-                geldig altijd
-                    Een Vondst is verkoopbaar indien zijn herkomst onbekend is.
-            """;
-        JsonNode open = ask(source, vondst("", ""));
-        assertSentence("V1 is beschadigd, omdat zijn herkomst niet gegeven is; wordt zijn herkomst gegeven, dan kan dit veranderen",
-                open);
-        assertSentence("V1: of hij verkoopbaar is, staat niet vast, want zijn herkomst is niet gegeven; voor de regel 'onbekende"
-                + " herkomst' staat niet vast: zijn herkomst (niet gegeven) is gelijk aan onbekend", open);
-        JsonNode marker = ask(source, vondst("\"herkomst\": {\"marker\": \"onbekend\"}", ""));
-        assertSentence("V1 is niet beschadigd, want niet geldt: zijn herkomst (onbekend) leeg is", marker);
-        assertSentence("V1 is verkoopbaar, omdat zijn herkomst (onbekend) is gelijk aan onbekend", marker);
     }
 
     /** The ground of the rule that leaves a characteristic open, and the names of the vocabulary of the answer in the head, the cause
@@ -438,7 +476,7 @@ class OpenExplanationFormsHttpTest {
         descriptor.putObject("service").put("name", "vormen").put("version", "1");
         ObjectNode ep = descriptor.putArray("entrypoints").addObject().put("name", "vormen").put("path", "vormen");
         ArrayNode names = ep.putObject("scope").putArray("ruleNames");
-        for (String list : List.of("rules", "prioritizedDefaults"))
+        for (String list : List.of("rules", "prioritizedDefaults", "consistencies"))
             for (JsonNode f : document.at("/rules/" + list)) names.add(f.get("name").asText());
         ep.putArray("input");
         ArrayNode output = ep.putArray("output");
@@ -477,9 +515,9 @@ class OpenExplanationFormsHttpTest {
                 + String.join("\n", texts));
     }
 
-    /** The one sentence about J1, whose text of the fold is left out. */
+    /** The one sentence about J1 that begins with {@code begin}, whose text of the fold is left out. */
     private static void assertFold(String begin, String end, JsonNode answer) {
-        List<String> texts = texts(answer).stream().filter(t -> t.startsWith("J1 " + begin)).toList();
+        List<String> texts = texts(answer).stream().filter(t -> t.startsWith(begin)).toList();
         assertEquals(1, texts.size(), answer.get("explanation").toString());
         assertTrue(texts.get(0).endsWith("\" " + end), texts.get(0) + "\neindigt niet op\n" + end);
     }

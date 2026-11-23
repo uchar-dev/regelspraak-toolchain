@@ -280,8 +280,6 @@ function scalar(w) {
   if (w === null || w === undefined) return '<span class="muted">leeg</span>';
   if (w === true) return "waar";
   if (w === false) return "onwaar";
-  // an absence marker, {"marker": <naam>}, as situation and fixpoint give it: its name, set apart from a text value
-  if (typeof w === "object" && typeof w.marker === "string") return '<span class="muted">' + esc(w.marker) + "</span>";
   return esc(w);
 }
 // A segment or a period leaves out an open bound: it begins before every day, or runs past every day.
@@ -321,11 +319,11 @@ function objectWithType(label, types, declared) {
        + esc(o.objectType) + "</span>";
 }
 // The label an expectation is about, from uchar's short form of it (CaseRunner.source): "<kind> <LABEL> <member>" for an
-// attribute value, an empty attribute, a timeline, a cell value, an empty cell and a characteristic present or absent,
-// and "inconsistent (<rule> @ <LABEL>)" for an inconsistency on an object. "consistent" and an inconsistency without an
-// object name none. A label is one word (UPPER_ID).
+// attribute value, an empty attribute, a timeline, a cell value, an empty cell, a characteristic present or absent, and
+// an open attribute or characteristic, and "inconsistent (<rule> @ <LABEL>)" for an inconsistency on an object.
+// "consistent" and an inconsistency without an object name none. A label is one word (UPPER_ID).
 const KINDS_WITH_LABEL = ["attributeValue", "attributeEmpty", "attributeTimeline", "cellValue", "cellEmpty",
-                          "characteristicPresent", "characteristicAbsent"];
+                          "characteristicPresent", "characteristicAbsent", "attributeOpen", "characteristicOpen"];
 function labelOfSource(source) {
   const m = /^inconsistent \(.* @ (\S+)\)$/.exec(source);
   if (m) return m[1];
@@ -401,7 +399,7 @@ function situationHtml(sit) {
     for (const k of o.characteristics)
       if (whole || matches(k.characteristic, k.characteristicCanonical))
         rows.push("<tr><td>" + nameOf(k, "characteristic") + "</td><td>" + (k.periods
-          ? k.periods.map(interval).join("<br>") : "waar")
+          ? k.periods.map(interval).join("<br>") : k.holds === false ? "onwaar" : "waar")
           + '</td><td class="num">' + k.line + "</td></tr>");
     for (const r of o.roles)
       if (whole || matches(r.role, r.roleCanonical) || (r.labels.length && matchesLabel(...r.labels)))

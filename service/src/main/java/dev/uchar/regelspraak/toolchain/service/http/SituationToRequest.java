@@ -15,7 +15,6 @@ import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Segment;
 import dev.uchar.regelspraak.ir.ResolvedScenario.TimeWindow;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
-import dev.uchar.regelspraak.toolchain.service.Markers;
 import dev.uchar.regelspraak.toolchain.service.OpenValues;
 
 import java.math.BigDecimal;
@@ -35,13 +34,13 @@ import java.util.List;
  * {@code BigDecimal} node, never a double) with no eenheid object; a date/datetime as its ISO string; a
  * boolean/tekst/enum as its plain JSON scalar. Those are exactly the forms
  * {@link dev.uchar.regelspraak.toolchain.service.ValueCoder} accepts (a plain number is read in the declared unit),
- * so no request value is ever approximated. A value of an attribute with absence markers, which the resolver gives as a
- * constructor value, goes as the payload of {@code waarde} in that form and a marker as {@code {"marker": <naam>}}. The
- * cells of a dimensioned attribute go as {@code cells}, each with its labels and its value in that form, the timeline of
- * a time-dependent parameter or attribute as {@code timeline}, each segment with its bounds and its value in that form,
- * and a time-dependent kenmerk as the {@code periods} in which it holds. A kenmerk the situation asserts goes as
- * {@code true}, or in a strict rule set ({@link OpenValues}) as its state. A fraction that has no exact decimal form has
- * no request form, and fails here by name ({@link NonPortable}).
+ * so no request value is ever approximated. The cells of a dimensioned attribute go as {@code cells}, each with its
+ * labels and its value in that form, the timeline of a time-dependent parameter or attribute as {@code timeline}, each
+ * segment with its bounds and its value in that form, and a time-dependent kenmerk as the {@code periods} in which it
+ * holds. A kenmerk the situation asserts goes as {@code true}, one it gives as not holding ("- is niet drijfhout",
+ * {@link CharacteristicValue#holds} false) as {@code false}; in a strict rule set ({@link OpenValues}) each as its
+ * state, {@code holds} or {@code holdsNot}. A fraction that has no exact decimal form has no request form, and fails here
+ * by name ({@link NonPortable}).
  *
  * <p>The request it builds has the shape of {@link dev.uchar.regelspraak.toolchain.service.Request}:
  * {@code instances[]{type,id,attributes,characteristics,roles}}, {@code parameters}, {@code rekendatum}.
@@ -96,9 +95,10 @@ final class SituationToRequest {
                             periods.addObject().put("from", p.van().toString()).put("to", p.until().toString());
                         continue;
                     }
-                    // a situatie only ever ASSERTS a kenmerk: a test document has no sentence that one stands not to hold
-                    if (OpenValues.in(model)) characteristics.set(k.characteristic(), OpenValues.state(OpenValues.HOLDS));
-                    else characteristics.put(k.characteristic(), Boolean.TRUE);
+                    if (OpenValues.in(model))
+                        characteristics.set(k.characteristic(),
+                                OpenValues.state(k.holds() ? OpenValues.HOLDS : OpenValues.HOLDS_NOT));
+                    else characteristics.put(k.characteristic(), k.holds());
                 }
             }
             if (!i.roles().isEmpty()) {
@@ -147,9 +147,7 @@ final class SituationToRequest {
     }
 
     /** The already-normalised value → its JSON form the request mapper accepts. A number lexeme → exact number;
-     *  LocalDate/LocalDateTime → ISO string; Boolean → boolean; String/enum → string; a constructor value of an
-     *  attribute with absence markers ({@link #constructorToJson}) → the payload of {@code waarde} in its own form, a
-     *  marker as {@code {"marker": <naam>}}.
+     *  LocalDate/LocalDateTime → ISO string; Boolean → boolean; String/enum → string.
      *
      *  @throws IllegalStateException a value of no known form, which uchar's scenario resolver does not give */
     static com.fasterxml.jackson.databind.JsonNode valueToJson(ScenarioValue w) {
@@ -159,23 +157,7 @@ final class SituationToRequest {
         if (w.bool() != null) return NF.booleanNode(w.bool());
         if (w.enumValue() != null) return NF.textNode(w.enumValue());  // enum literal
         if (w.text() != null) return NF.textNode(w.text());
-        if (w.constructor() != null) return constructorToJson(w);
         throw new IllegalStateException("uchars scenarioresolver gaf een waarde zonder variant");
-    }
-
-    /** A constructor value of an attribute with absence markers (uchar's RUNTIME-SEMANTICS ch. 9.5) as the request
-     *  gives it ({@link Markers}): a marker, a constructor without payload, as {@code {"marker": <naam>}}, which the
-     *  mapper holds to the markers the attribute declares; the payload of {@code waarde} as the value it holds.
-     *
-     *  @throws IllegalStateException a constructor with a payload other than {@code waarde}, which no attribute of
-     *          uchar's RegelSpraak frontend holds */
-    private static com.fasterxml.jackson.databind.JsonNode constructorToJson(ScenarioValue w) {
-        if (w.payload() == null) return NF.objectNode().put(Markers.KEY, w.constructor());
-        if (!RegelSpraakModel.VALUE_CONSTRUCTOR.equals(w.constructor()))
-            throw new IllegalStateException("uchars scenarioresolver gaf de constructorwaarde '" + w.constructor()
-                    + "' met een payload; een attribuut met markers heeft alleen '" + RegelSpraakModel.VALUE_CONSTRUCTOR
-                    + "' met een payload");
-        return valueToJson(w.payload());
     }
 
     /** A case number lexeme as an exact BigDecimal: a decimal with a dot, or a reduced fraction {@code p/q} whose

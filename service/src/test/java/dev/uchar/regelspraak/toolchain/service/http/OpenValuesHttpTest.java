@@ -31,8 +31,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * A rule set that infers nothing from an empty value through the service ({@link OpenValuesSource}; uchar's
- * RUNTIME-SEMANTICS ch. 1.5): the answer gives every member of {@code output} with its state, filled, a marker, settled
- * leeg or open; the request states that a characteristic holds or stands not to hold, and refuses a bare boolean;
+ * RUNTIME-SEMANTICS ch. 1.5): the answer gives every member of {@code output} with its state, filled, settled leeg or
+ * open; the request states that a characteristic holds or stands not to hold, and refuses a bare boolean;
  * {@code /info}, the OpenAPI document and {@code fixpoint} say what is open and whose input is complete. The expected
  * states are computed by hand from the rules of the source.
  */
@@ -53,7 +53,7 @@ class OpenValuesHttpTest {
             { "service": {"name":"open-waarden","version":"1"},
               "entrypoints": [ { "name":"vondst","path":"vondst",
                 "scope": {"ruleNames": ["kostbaarheid", "vindloon", "uitbetaling", "bewakingstoeslag", "bergloon",
-                                        "herkomst onbekend", "premie", "totaaltaxatie", "taxatiegrens", "vrachtprijs"]},
+                                        "herkomst onleesbaar", "premie", "totaaltaxatie", "taxatiegrens", "vrachtprijs"]},
                 "input": [],
                 "output": ["Vondst.taxatie", "Vondst.toeslag", "Vondst.herkomst", "Vondst.vindloon",
                            "Vondst.uitbetaling", "Vondst.bewakingstoeslag", "Vondst.bergloon", "Vondst.premie",
@@ -83,12 +83,12 @@ class OpenValuesHttpTest {
               "onleesbaar": {"state": "holdsNot"}}}""", "");
     }
 
-    /** taxatie 1500: kostbaar, so no bewakingstoeslag and a bergloon of 20; betwist: premie 0; onleesbaar: the marker. */
+    /** taxatie 1500: kostbaar, so no bewakingstoeslag and a bergloon of 20; betwist: premie 0; onleesbaar: herkomst 0. */
     @Test
-    void a_filled_member_a_marker_and_a_member_that_is_settled_leeg() throws Exception {
+    void a_filled_member_and_a_member_that_is_settled_leeg() throws Exception {
         assertVondst("""
             {"attributes": {"taxatie": {"state": "filled", "value": 1500}, "toeslag": {"state": "filled", "value": 3},
-              "herkomst": {"state": "marker", "marker": "onbekend"}, "vindloon": {"state": "filled", "value": 1510},
+              "herkomst": {"state": "filled", "value": 0}, "vindloon": {"state": "filled", "value": 1510},
               "uitbetaling": {"state": "filled", "value": 1503}, "bewakingstoeslag": {"state": "empty"},
               "bergloon": {"state": "filled", "value": 20}, "premie": {"state": "filled", "value": 0}},
              "characteristics": {"kostbaar": {"state": "holds"}, "betwist": {"state": "holds"},
@@ -110,13 +110,6 @@ class OpenValuesHttpTest {
               "onleesbaar": {"state": "holdsNot"}}}""", """
             "attributes": {"taxatie": 50, "herkomst": 3},
             "characteristics": {"betwist": {"state": "holdsNot"}}""");
-    }
-
-    /** A herkomst given as its marker stands beside a writer that fills nothing. */
-    @Test
-    void a_marker_of_the_request_is_a_filled_value() throws Exception {
-        JsonNode v = vondst(service, "\"attributes\": {\"herkomst\": {\"marker\": \"onbekend\"}}");
-        assertEquals(json("{\"state\": \"marker\", \"marker\": \"onbekend\"}"), v.at("/attributes/herkomst"));
     }
 
     /** The fold over the taxaties of J1: 50 + 70 = 120, and open where that of V2 is not given. */
@@ -256,7 +249,7 @@ class OpenValuesHttpTest {
              "V1 heeft als uitbetaling 1.500 volgens de regel 'uitbetaling' (onvoorwaardelijk): zijn taxatie plus zijn toeslag, met zijn taxatie (1.500) en zijn toeslag (leeg)",
              "V1 heeft geen bewakingstoeslag, want geen regel gold; de regel 'bewakingstoeslag' gold niet, want niet geldt: het onderwerp niet kostbaar is",
              "V1 heeft als bergloon 20 volgens de regel 'bergloon': 20, omdat zijn taxatie (1.500) is groter dan 1.000",
-             "V1 heeft als herkomst onbekend volgens de regel 'herkomst onbekend': onbekend, omdat het onderwerp onleesbaar is",
+             "V1 heeft als herkomst 0 volgens de regel 'herkomst onleesbaar': 0, omdat het onderwerp onleesbaar is",
              "de regel 'vrachtprijs' staat buiten deze berekening"]"""), answer.get("explanation"));
     }
 
@@ -339,8 +332,8 @@ class OpenValuesHttpTest {
                 schemas.at("/Answer/properties/instances/items/properties/characteristics/additionalProperties/$ref").asText());
         assertEquals(json("[\"holds\", \"holdsNot\", \"open\"]"), schemas.at("/CharacteristicState/properties/state/enum"));
         assertEquals(json("[\"filled\"]"), schemas.at("/AttributeState/oneOf/0/properties/state/enum"));
-        assertEquals(json("[\"marker\"]"), schemas.at("/AttributeState/oneOf/1/properties/state/enum"));
-        assertEquals(json("[\"empty\", \"open\"]"), schemas.at("/AttributeState/oneOf/2/properties/state/enum"));
+        assertEquals(json("[\"empty\", \"open\"]"), schemas.at("/AttributeState/oneOf/1/properties/state/enum"));
+        assertEquals(2, schemas.at("/AttributeState/oneOf").size());
         // a characteristic of a request is a state, and no boolean
         JsonNode input = schemas.get("CharacteristicInput");
         assertEquals(json("""

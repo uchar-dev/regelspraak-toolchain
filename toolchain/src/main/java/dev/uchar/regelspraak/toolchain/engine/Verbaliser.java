@@ -178,9 +178,8 @@ import java.util.regex.Pattern;
  *
  * <p>In een strikt document ({@code inferFromEmpty: false}, uchars RUNTIME-SEMANTICS ch. 1.5) zegt een zin van een uitkomst die
  * openstaat dat zij niet vaststaat, met het lid dat haar openhoudt ("niet gegeven" van invoer, "staat niet vast" van een
- * afgeleid lid), en dan per vorm wat zij vond; van een uitkomst die door een sluiting vaststaat dat zij kan veranderen; en
- * van een consistentieregel die niet beslist dat dat niet vaststaat. Wat openstaat en waardoor, zegt {@link OpenReads}. Geen
- * zin noemt iets wat openstaat leeg of onbekend.
+ * afgeleid lid), en dan per vorm wat zij vond; en van een consistentieregel die niet beslist dat dat niet vaststaat.
+ * Wat openstaat en waardoor, zegt {@link OpenReads}. Geen zin noemt iets wat openstaat leeg.
  */
 public final class Verbaliser {
 
@@ -482,17 +481,17 @@ public final class Verbaliser {
             Object given = given(m);
             String text = x.characteristic() ? (given == null ? "onwaar" : "waar")
                     : renderHeld(given, created.attribute(x.attribute()));
-            // a literal, a marker or a value of a literal is its own rule text: once, as the value
+            // a literal, a nullary constructor or one of a literal is its own rule text: once, as the value
             boolean literal = x.value() instanceof Expr.Literal
                     || x.value() instanceof Expr.Construct k && (k.argument() == null || k.argument() instanceof Expr.Literal)
                     || x.value().source() == null || x.value().source().snippet() == null
                     || x.value().source().snippet().isBlank();
             if (literal) {
-                value(b, text, given == null && !x.characteristic(), given);
+                value(b, text, given == null && !x.characteristic());
                 continue;
             }
             b.leaf(Part.Kind.QUOTE, x.value().source().snippet().trim());
-            reading(b, text, given == null && !x.characteristic(), given);
+            reading(b, text, given == null && !x.characteristic());
         }
         b.close(Part.Kind.COMPUTATION);
     }
@@ -943,22 +942,8 @@ public final class Verbaliser {
             if (d.characteristic() && Boolean.FALSE.equals(d.decider().decision())
                     && given(member(bean, d.member(), true, null)) != null)
                 b.text("; de invoer kende het kenmerk toe, en dat blijft staan");
-            if (open != null) mayChange(b, decider, firstOpen);
             ground(b, groundOf(decider), deciderOf(decider));
             return b.build();
-        }
-
-        /** Dat een uitkomst die beslist is door een sluiting kan veranderen (uchars RUNTIME-SEMANTICS ch. 1.5): een
-         *  initialisatie besliste over een default die open is ({@code firstOpen}), of de voorwaarde of de waarde van de
-         *  beslisser geldt alleen zolang een open lid niet gegeven is. */
-        private void mayChange(Sentence.Builder b, Variant decider, Variant firstOpen) {
-            if (firstOpen != null) {
-                laterGiven(b, open.of(readingOf(firstOpen)).get(0), label);
-                return;
-            }
-            ConditionReading r = readingOf(decider);
-            List<OpenValue> closed = r == null ? List.of() : open.closedBy(r);
-            if (!closed.isEmpty()) laterGiven(b, closed.get(0), label);
         }
 
         private Sentence conflicted(DefaultsDecision d) {
@@ -1061,21 +1046,31 @@ public final class Verbaliser {
 
         /** De varianten die aan de beurt waren en niet beslisten, elk met de reden. Staat er een open ({@code firstOpen} de
          *  eerste): die met wat niet vaststaat, een default daaronder als niet aan de beurt, en een lid naast haar dat iets
-         *  besluit als een dat niet beslist zolang zij niet vaststaat. */
+         *  besluit als een dat niet beslist zolang zij niet vaststaat. Staat het doel open, dan is de initialisatiedefault
+         *  niet aan de beurt (uchars RUNTIME-SEMANTICS ch. 1.5). */
         private void notDecidedVariants(Sentence.Builder b, List<Variant> variants, Variant firstOpen,
                                         DefaultsDecision d) {
             boolean waiting = false;
             for (Variant v : variants) {
-                ConditionReading r = firstOpen == null ? null : readingOf(v);
-                if (r != null && r.status() == ConditionReading.Status.DISPLACED
-                        && !(r.nodes().isEmpty() && isInitialisation(v))) {
-                    displacedVariant(b, v, waiting ? ", " : "; niet aan de beurt: ", d);
+                ConditionReading r = open == null ? null : readingOf(v);
+                if (r != null && r.status() == ConditionReading.Status.DISPLACED) {
+                    String separator = waiting ? ", " : "; niet aan de beurt: ";
+                    if (!r.nodes().isEmpty() || !isInitialisation(v)) displacedVariant(b, v, separator, d);
+                    else if (isOpen(d)) {
+                        b.open(Part.Kind.VARIANT, Part.meta("decided", false, "displaced", true)).text(separator);
+                        name(b, v);
+                        b.close(Part.Kind.VARIANT);
+                    } else {
+                        notDecidedVariant(b, v, d);
+                        waiting = false;
+                        continue;
+                    }
                     waiting = true;
                     continue;
                 }
                 waiting = false;
-                if (r != null && r.status() == ConditionReading.Status.OPEN) openVariant(b, v);
-                else if (r != null && r.status() == ConditionReading.Status.HOLDS && decides(v, r, d))
+                if (firstOpen != null && r.status() == ConditionReading.Status.OPEN) openVariant(b, v);
+                else if (firstOpen != null && r.status() == ConditionReading.Status.HOLDS && decides(v, r, d))
                     heldBack(b, v, firstOpen, d);
                 else notDecidedVariant(b, v, d);
             }
@@ -1104,7 +1099,7 @@ public final class Verbaliser {
             } else {
                 Object found = valueOf(v, readingOf(v));
                 b.text(" gaf ");
-                value(b, render(found, type.attribute(d.member())), false, found);
+                value(b, render(found, type.attribute(d.member())), false);
             }
             b.text(", maar beslist niet zolang ");
             name(b, beside);
@@ -1209,7 +1204,7 @@ public final class Verbaliser {
         }
 
         /** Of wat de lezing van variant {@code v} met voorwaarde {@code c} vond, niet vaststaat, in een strikt document: haar
-         *  voorwaarde is onbepaald of gold niet door een sluiting, of haar waarde is onbepaald of leeg na een sluiting. */
+         *  voorwaarde of haar waarde is onbepaald. */
         private boolean undetermined(Variant v, Condition c, boolean characteristic) {
             if (open == null) return false;
             ConditionReading r = readingOf(v);
@@ -1218,7 +1213,7 @@ public final class Verbaliser {
             Expr value = v.rule() != null ? v.rule().value() : v.d().consequence();
             ConditionReading.NodeReading n = read(v.pointer(), bean, label, value,
                     c == null ? 0 : document.positions().subtree(c).size()).of(value);
-            return n.undetermined() || n.value() == null && !open.closedOver(value, bean, true).isEmpty();
+            return n.undetermined();
         }
 
         /** De waarde die verdrongen variant {@code v} van een attribuut gaf, uit haar lezing: de knopen van haar waarde
@@ -1228,7 +1223,7 @@ public final class Verbaliser {
             int offset = c == null ? 0 : document.positions().subtree(c).size();
             Object found = read(v.pointer(), bean, label, value, offset).of(value).value();
             if (found == null) b.text("gaf geen waarde");
-            else value(b, render(found, type.attribute(member)), false, found);
+            else value(b, render(found, type.attribute(member)), false);
         }
 
         /** Een variant die aan de beurt was en niet besliste, als groep met de "; " ervoor: haar naam en de reden. */
@@ -1304,7 +1299,7 @@ public final class Verbaliser {
             b.text("heeft als ");
             attributeName(b, type, member, new On(label));
             b.text(" ");
-            value(b, render(decision, type.attribute(member)), decision == null, decision);
+            value(b, render(decision, type.attribute(member)), decision == null);
         }
 
         /** Wat het doel houdt waar de groep niets schreef: het kenmerk zoals de invoer of een regel naast de groep het gaf, de
@@ -1430,13 +1425,6 @@ public final class Verbaliser {
 
         private void initialisationNotDecided(Sentence.Builder b, String member) {
             EndState.Member m = member(bean, member, false, null);
-            EndState.Open o = open == null ? null : open.open(bean, member, false);
-            if (o != null && o.given() != null) {
-                didNotHoldBecause(b).text(" zijn ");
-                attributeName(b, type, member, new On(label));
-                b.text(" had een invoerwaarde");
-                return;
-            }
             if (m == null) {
                 b.text("gaf geen waarde");
                 return;
@@ -1836,8 +1824,8 @@ public final class Verbaliser {
                 b.text("heeft als ");
                 targetName(b, member, cell);
                 b.text(" ");
-                if (!wrote.isEmpty()) value(b, written(wrote.get(0), member), false, writtenValue(wrote.get(0)));
-                else value(b, render(standing.value(), type.attribute(member)), false, standing.value());
+                if (!wrote.isEmpty()) value(b, written(wrote.get(0), member), false);
+                else value(b, render(standing.value(), type.attribute(member)), false);
                 for (int i = 0; i < wrote.size(); i++) {
                     b.text(i == 0 ? " volgens " : ", en volgens ");
                     decider(b, wrote.get(i), member, null, false, false);
@@ -1867,45 +1855,23 @@ public final class Verbaliser {
             boolean initialised = !wrote.isEmpty() && wrote.get(0).rule().kind() == ResolvedRule.Kind.INITIALISATIE;
             for (Writer w : writers) if (!deciders.contains(w)) variant(b, w, initialised);
             for (Allocated a : allocationNot) allocationVariant(b, a);
-            if (open != null && !wrote.isEmpty()) mayChange(b, wrote, writers);
             if (!deciders.isEmpty())
                 ground(b, sourceAnnotations(deciders.get(0).rule()), ruleDecider(deciders.get(0).rule()));
             return b.build();
         }
 
         /** De zin over attribuut {@code member} dat openstaat (uchars RUNTIME-SEMANTICS ch. 1.5): geen van de schrijvers
-         *  {@code writers} gaf een waarde en ten minste één staat open. Dat het niet vaststaat, met wat de eerste open
-         *  schrijver openhoudt; dan per schrijver wat zij vond. */
+         *  {@code writers} gaf een waarde, en ten minste één staat open of het is een invoerlid dat alleen een
+         *  initialisatie schrijft. Dat het niet vaststaat, met wat het openhoudt ({@link OpenReads#of(Object, String,
+         *  boolean)}); dan per schrijver wat zij vond. */
         private Sentence leftOpen(String member, List<Writer> writers) {
-            Writer first = writers.stream().filter(w -> w.reading().status() == ConditionReading.Status.OPEN).findFirst()
-                    .orElseThrow(() -> new IllegalStateException("de motor gaf '" + member + "' van " + label
-                            + " als open, en geen regel die het schrijft staat open"));
             Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label);
             openAttribute(b, type, member, label);
             b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" ");
-            cause(b, open.of(first.reading()).get(0), label);
+            cause(b, open.of(bean, member, false).get(0), label);
             inputWaits(b, bean, type, member);
             for (Writer w : writers) variant(b, w, true);
             return b.build();
-        }
-
-        /** Dat een waarde die regels {@code wrote} schreven door een sluiting kan veranderen (uchars RUNTIME-SEMANTICS ch.
-         *  1.5): een initialisatie besliste over een schrijver die open is, of elk van hen rust op een open lid dat niet
-         *  gegeven is. */
-        private void mayChange(Sentence.Builder b, List<Writer> wrote, List<Writer> writers) {
-            if (wrote.get(0).rule().kind() == ResolvedRule.Kind.INITIALISATIE)
-                for (Writer w : writers)
-                    if (w.reading().status() == ConditionReading.Status.OPEN) {
-                        laterGiven(b, open.of(w.reading()).get(0), label);
-                        return;
-                    }
-            List<OpenValue> closed = null;
-            for (Writer w : wrote) {
-                List<OpenValue> by = open.closedBy(w.reading());
-                if (by.isEmpty()) return;
-                if (closed == null) closed = by;
-            }
-            laterGiven(b, closed.get(0), label);
         }
 
         /** Hoe verdeling {@code a} uitkwam op haar bron: de status van haar lezing daar, of null zonder voorwaarde,
@@ -1977,7 +1943,7 @@ public final class Verbaliser {
             attributeName(b, v.sourceType(), v.sourceAttribute(), new On(source));
             EndState.Member amount = member(a.source(), v.sourceAttribute(), false, null);
             Object total = amount == null ? null : amount.value();
-            reading(b, render(total, v.sourceType().attribute(v.sourceAttribute())), total == null, total);
+            reading(b, render(total, v.sourceType().attribute(v.sourceAttribute())), total == null);
             switch (v.method()) {
                 case GELIJKE_DELEN -> b.text(" in gelijke delen");
                 case NAAR_RATO -> {
@@ -2021,7 +1987,7 @@ public final class Verbaliser {
                 if (i > 0) b.text(i == shown - 1 && m <= 5 ? " en " : ", ");
                 Object share = shares.get(names.get(i));
                 b.leaf(Part.Kind.SUBJECT, names.get(i));
-                reading(b, render(share, v.targetType().attribute(v.targetAttribute())), share == null, share);
+                reading(b, render(share, v.targetType().attribute(v.targetAttribute())), share == null);
             }
             if (m > 5) b.text(" en nog " + (m - 5));
             if (m > 0) b.text(m == 1 ? ", het enige lid" : " (" + m + " leden)");
@@ -2121,11 +2087,6 @@ public final class Verbaliser {
             return unit == null ? number : number + " " + unit;
         }
 
-        /** De waarde die regel {@code w} schreef, zoals de motor haar las: die van {@link #written}, als waarde. */
-        private Object writtenValue(Writer w) {
-            return valueRead(w).of(w.rule().value()).value();
-        }
-
         /** Wat tijdsafhankelijk attribuut {@code member} houdt waar geen regel een dag besliste: leeg, of de waarde
          *  die het aan het fixpunt houdt als haar perioden ({@link #standingWord}). Geeft of er een waarde staat. */
         private boolean timelineStanding(Sentence.Builder b, String member) {
@@ -2150,7 +2111,7 @@ public final class Verbaliser {
             cellName(b, type, member, cell, new On(label));
             if (m != null) {
                 b.text(" " + standingWord(bean, m) + " ");
-                value(b, render(m.value(), type.attribute(member)), false, m.value());
+                value(b, render(m.value(), type.attribute(member)), false);
             }
             return m != null;
         }
@@ -2217,7 +2178,11 @@ public final class Verbaliser {
             b.open(Part.Kind.VARIANT, displaced ? Part.meta("decided", false, "displaced", true)
                     : Part.meta("decided", false));
             if (displaced) {
-                b.text("; verdrongen: de regel '").leaf(Part.Kind.RULE, formName(w)).text("'");
+                // an initialisation is not at its turn where its target is open (ch. 1.5), and displaced by a value elsewhere
+                boolean targetOpen = open != null && w.labels() == null
+                        && open.open(bean, w.target().attribute(), false) != null;
+                b.text(targetOpen ? "; niet aan de beurt: de regel '" : "; verdrongen: de regel '")
+                        .leaf(Part.Kind.RULE, formName(w)).text("'");
             } else {
                 b.text("; de regel '").leaf(Part.Kind.RULE, formName(w)).text("' ");
                 Condition c = w.rule().condition();
@@ -2420,7 +2385,7 @@ public final class Verbaliser {
             if (!read.reached(e)) return;
             ConditionReading.NodeReading n = read.of(e);
             Object v = within((List<?>) n.value(), in);
-            reading(b, renderRead(e, v, n.unit()), v == null, v);
+            reading(b, renderRead(e, v, n.unit()), v == null);
             if (fold != null) contributors(b, fold, n, in);
         }
 
@@ -2431,10 +2396,10 @@ public final class Verbaliser {
                         || read.status() == ConditionReading.Status.OPEN && read.of(n).value() == null) continue;
                 if (n instanceof Expr.Rounding r) {
                     b.text("; vóór de afronding ");
-                    value(b, unrounded(r.base(), read), read.of(r.base()).value() == null, read.of(r.base()).value());
+                    value(b, unrounded(r.base(), read), read.of(r.base()).value() == null);
                 } else if (n instanceof Expr.Clamp c) {
                     b.text("; vóór de begrenzing ");
-                    value(b, unrounded(c.base(), read), read.of(c.base()).value() == null, read.of(c.base()).value());
+                    value(b, unrounded(c.base(), read), read.of(c.base()).value() == null);
                 }
             }
         }
@@ -2483,7 +2448,7 @@ public final class Verbaliser {
             if (!read.reached(e)) return;
             if (openOperand(b, e, read)) return;
             ConditionReading.NodeReading n = read.of(e);
-            reading(b, renderOperand(e, read), n.value() == null, n.value());
+            reading(b, renderOperand(e, read), n.value() == null);
             if (fold != null) contributors(b, fold, n);
         }
 
@@ -2643,7 +2608,7 @@ public final class Verbaliser {
                     if (count) continue;
                     Object v = member.getValue(), held = timelines.get(member.getKey());
                     if (held == null) {
-                        reading(b, renderRead(f, v, n.unit()), v == null, v);
+                        reading(b, renderRead(f, v, n.unit()), v == null);
                         continue;
                     }
                     if (!(held instanceof List<?> segments))
@@ -2652,7 +2617,7 @@ public final class Verbaliser {
                     Datatype datatype = ((Expr.AttributeReference) f.arguments().get(0)).objectType()
                             .attribute(totalled);
                     b.open(Part.Kind.READING, Map.of()).text(" (");
-                    value(b, renderRead(f, v, n.unit()), v == null, v);
+                    value(b, renderRead(f, v, n.unit()), v == null);
                     b.text(" uit ").leaf(Part.Kind.VALUE, renderPeriods(Period.list(segments), null,
                             x -> render(x, datatype)), Part.meta("timeline", true));
                     b.text(")").close(Part.Kind.READING);
@@ -2718,7 +2683,6 @@ public final class Verbaliser {
                     Read read = read(pointer, bean, label, v);
                     b.text(", ").leaf(Part.Kind.CONNECTIVE, "omdat").text(" ");
                     verbaliseCondition(b, v, read, subject, ucharText);
-                    if (open != null) mayChange(b, bean, characteristic, pointer, label);
                 }
                 case FAILS -> {
                     Read read = read(pointer, bean, label, v);
@@ -2786,21 +2750,6 @@ public final class Verbaliser {
         return b.build();
     }
 
-    /** Dat een kenmerk dat de regel op {@code pointer} op {@code bean} toekende, door een sluiting kan veranderen (uchars
-     *  RUNTIME-SEMANTICS ch. 1.5): zij geldt alleen zolang een open lid niet gegeven is, en de invoer en de andere regels
-     *  kennen het niet zonder zo'n sluiting toe. */
-    private void mayChange(Sentence.Builder b, Object bean, String characteristic, String pointer, String label) {
-        List<OpenValue> closed = open.closedBy(reading(pointer, bean, label));
-        if (closed.isEmpty() || given(member(bean, characteristic, true, null)) != null) return;
-        for (ResolvedRule r : model.resolvedRules) {
-            if (r.kind() != ResolvedRule.Kind.KENMERKTOEKENNING || !(r.target() instanceof Expr.AttributeReference a)
-                    || !Namen.norm(a.attribute()).equals(Namen.norm(characteristic))) continue;
-            ConditionReading other = readings.getOrDefault(document.positions().versionOf(r), Map.of()).get(bean);
-            if (other != null && other.status() == ConditionReading.Status.HOLDS && open.closedBy(other).isEmpty()) return;
-        }
-        laterGiven(b, closed.get(0), label);
-    }
-
     // ---------------- wat niet vaststaat (RUNTIME-SEMANTICS ch. 1.5, 5.12 "Open values") ----------------
 
     /** Dat attribuut {@code member} van het object van de zin niet vaststaat, na het onderwerp. */
@@ -2823,7 +2772,7 @@ public final class Verbaliser {
         Object given = open.open(bean, member, false).given();
         if (given == null) return;
         b.text("; de invoerwaarde ");
-        value(b, render(given, type.attribute(member)), false, given);
+        value(b, render(given, type.attribute(member)), false);
         b.text(" geldt pas als vaststaat dat geen regel een waarde geeft");
     }
 
@@ -2846,23 +2795,6 @@ public final class Verbaliser {
         b.text("zijn ");
         attributeName(b, typeOf(v.object()), v.member(), new On(nameOf(v.object())));
         b.text(own ? input ? " is niet gegeven" : " staat niet vast" : input ? " niet gegeven" : " niet vast");
-    }
-
-    /** "; wordt zijn taxatie gegeven, dan kan dit veranderen": dat een uitkomst op een sluiting over open lid {@code v}
-     *  rust. */
-    private void laterGiven(Sentence.Builder b, OpenValue v, String label) {
-        boolean input = open.input(v);
-        b.text(input ? "; wordt " : "; komt ");
-        of(b, v, label);
-        if (v.characteristic()) {
-            b.text(input ? "gegeven of hij " : "vast te staan of hij ");
-            openPredicate(v).clause(b, new On(nameOf(v.object())));
-        } else {
-            b.text("zijn ");
-            attributeName(b, typeOf(v.object()), v.member(), new On(nameOf(v.object())));
-            b.text(input ? " gegeven" : " vast te staan");
-        }
-        b.text(", dan kan dit veranderen");
     }
 
     /** "van J1 ", waar lid {@code v} van een ander object is dan dat van de zin. */
@@ -2904,16 +2836,10 @@ public final class Verbaliser {
         return m;
     }
 
-    /** De lezing van operand {@code e} waar zij niet vaststaat, als {@link #openReading}: op een open lid afgebroken, of leeg
-     *  na een sluiting. Geeft of dat zo is, en schrijft anders niets. */
+    /** De lezing van operand {@code e} waar zij niet vaststaat, als {@link #openReading}: op een open lid afgebroken. Geeft
+     *  of dat zo is, en schrijft anders niets. */
     private boolean openOperand(Sentence.Builder b, Expr e, Read read) {
-        ConditionReading.NodeReading n = read.of(e);
-        OpenValue v = n.open();
-        if (v == null && open != null && n.value() == null) {
-            List<OpenValue> closed = open.closedOver(e, read.object(),
-                    read.status() != ConditionReading.Status.OPEN);
-            if (!closed.isEmpty()) v = closed.get(0);
-        }
+        OpenValue v = read.of(e).open();
         if (v == null) return false;
         openReading(b, v, read.label(), reads(e, v));
         return true;
@@ -2925,14 +2851,11 @@ public final class Verbaliser {
                 && Namen.norm(a.attribute()).equals(Namen.norm(v.member()));
     }
 
-    /** Of voorwaarde {@code c} van de vorm van {@code r} niet vaststaat: onbepaald, of onwaar door een sluiting, die voor een
-     *  andere vorm niet staat. */
+    /** Of voorwaarde {@code c} van de vorm van {@code r} niet vaststaat: onbepaald. */
     private boolean conditionOpen(ConditionReading r, Condition c, String label) {
         if (c == null) return false;
         Read read = read(r.form(), r.object(), label, c);
-        if (!read.has(c)) return false;
-        ConditionReading.NodeReading n = read.of(c);
-        return n.undetermined() || n.closure() && !Boolean.TRUE.equals(n.value());
+        return read.has(c) && read.of(c).undetermined();
     }
 
     /** Wat van de vorm van {@code r}, die haar doel openliet, niet vaststaat, na "staat niet vast": haar voorwaarde, of haar
@@ -2963,9 +2886,7 @@ public final class Verbaliser {
      *  wat de motor las. */
     private void openCondition(Sentence.Builder b, Condition c, Read read, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Compound s) {
-            boolean own = read.of(s).undetermined();
-            Condition d = s.components().stream().filter(x -> read.reached(x)
-                            && (read.of(x).undetermined() || !own && read.of(x).closure())).findFirst()
+            Condition d = s.components().stream().filter(x -> read.reached(x) && read.of(x).undetermined()).findFirst()
                     .orElseThrow(() -> new IllegalStateException("de samenstelling van " + read.form() + " op "
                             + read.label() + " staat niet vast, en geen lid houdt haar open"));
             if (s.quantifier() == Condition.Quantifier.ALLE) {
@@ -2979,7 +2900,7 @@ public final class Verbaliser {
             b.close(Part.Kind.CONDITION);
             return;
         }
-        Consumer<Sentence.Builder> structured = structuredAtom(c, read, subject, ucharText, true);
+        Consumer<Sentence.Builder> structured = structuredAtom(c, read, subject, ucharText);
         if (structured != null) condition(b, c, read, structured);
         else unstructured(b, c, read, "voldaan");
     }
@@ -3136,27 +3057,15 @@ public final class Verbaliser {
         b.leaf(Part.Kind.NAME, naming.attribute(holder, member), declaration(Naming.attributeOf(holder, member), on));
     }
 
-    /** Een waarde in de opmaak van de zin; {@code empty} bij een lege, en {@code marker} waar {@code raw}, de waarde
-     *  zoals de motor haar gaf, een afwezigheidsmarker is: de tekst alleen onderscheidt een marker niet van een
-     *  enumeratiewaarde of een literal met dezelfde spelling. */
-    private static void value(Sentence.Builder b, String text, boolean empty, Object raw) {
-        Map<String, Object> meta = empty ? Part.meta("empty", true) : new LinkedHashMap<>();
-        String marker = markerOf(raw);
-        if (marker != null) meta.put("marker", marker);
-        b.leaf(Part.Kind.VALUE, text, meta);
+    /** Een waarde in de opmaak van de zin; {@code empty} bij een lege. */
+    private static void value(Sentence.Builder b, String text, boolean empty) {
+        b.leaf(Part.Kind.VALUE, text, empty ? Part.meta("empty", true) : Map.of());
     }
 
-    /** De naam van de afwezigheidsmarker die {@code raw} is, in de gedeclareerde spelling: een constructorwaarde zonder
-     *  payload (uchars RUNTIME-SEMANTICS ch. 9.5); null voor elke andere waarde, ook de waarde {@code waarde(…)}. */
-    private static String markerOf(Object raw) {
-        return raw instanceof ConstructorValue c && c.payload() == null ? c.constructor() : null;
-    }
-
-    /** De waarde die de motor las voor wat er direct voor staat, tussen haakjes, als groep: " (", de waarde, ")";
-     *  {@code raw} zoals bij {@link #value}. */
-    private static void reading(Sentence.Builder b, String text, boolean empty, Object raw) {
+    /** De waarde die de motor las voor wat er direct voor staat, tussen haakjes, als groep: " (", de waarde, ")". */
+    private static void reading(Sentence.Builder b, String text, boolean empty) {
         b.open(Part.Kind.READING, Map.of()).text(" (");
-        value(b, text, empty, raw);
+        value(b, text, empty);
         b.text(")").close(Part.Kind.READING);
     }
 
@@ -3173,7 +3082,7 @@ public final class Verbaliser {
         b.text("houdt als ");
         attributeName(b, type, member, new On(label));
         b.text(" " + standingWord(bean, m) + " ");
-        value(b, render(m.value(), type.attribute(member)), false, m.value());
+        value(b, render(m.value(), type.attribute(member)), false);
         return true;
     }
 
@@ -3379,10 +3288,9 @@ public final class Verbaliser {
     }
 
     /** Of lid {@code d} van samenstelling {@code s}, waarvan het oordeel staat, in haar zin staat: de motor bereikte het, en het
-     *  draagt dat oordeel. Een lid dat onbepaald is, draagt niets bij, en een lid dat door een sluiting geldt alleen waar de
-     *  samenstelling zelf door een sluiting geldt. */
+     *  draagt dat oordeel. Een lid dat onbepaald is, draagt niets bij. */
     private static boolean carries(Condition.Compound s, Condition d, Read read) {
-        return read.reached(d) && !read.of(d).undetermined() && (!read.of(d).closure() || read.of(s).closure());
+        return read.reached(d) && !read.of(d).undetermined();
     }
 
     /** Of samenstelling {@code s} een telling is waarvan de uitleg de drempel noemt. Ten minste 1 leest als "A of B",
@@ -3435,14 +3343,12 @@ public final class Verbaliser {
     }
 
     /** Wat de groep van voorwaarde {@code c} draagt: {@code holds}, het oordeel van de motor op haar knoop (geen
-     *  sleutel waar de motor de knoop bereikte zonder oordeel, na een lege binder), {@code undetermined} waar zij onbepaald is
-     *  en {@code closure} waar haar oordeel door een sluiting alleen voor de vorm zelf staat, en bij een samenstelling of een
-     *  kwantorvouw {@code quantifier} in de spelling van de draad, met {@code threshold} bij een telling. */
+     *  sleutel waar de motor de knoop bereikte zonder oordeel, na een lege binder), {@code undetermined} waar zij onbepaald
+     *  is, en bij een samenstelling of een kwantorvouw {@code quantifier} in de spelling van de draad, met {@code threshold} bij een telling. */
     private static Map<String, Object> conditionMeta(Condition c, Read read) {
         Map<String, Object> meta = new LinkedHashMap<>();
         if (read.of(c).value() instanceof Boolean holds) meta.put("holds", holds);
         if (read.of(c).undetermined()) meta.put("undetermined", true);
-        if (read.of(c).closure()) meta.put("closure", true);
         Condition.Quantifier q = null;
         int threshold = 0;
         if (c instanceof Condition.Compound s) { q = s.quantifier(); threshold = s.threshold(); }
@@ -3457,9 +3363,8 @@ public final class Verbaliser {
 
     /** Een enkele (niet-samengestelde) conditie als proza met de waarden van haar operanden, als schrijver van haar
      *  stukken; null voor een vorm die de uitleg niet in woorden zet, die {@link #unstructured} met haar brontekst
-     *  noemt. {@code unsettled}: de zin zegt dat de voorwaarde niet vaststaat. */
-    private Consumer<Sentence.Builder> structuredAtom(Condition c, Read read, ObjectType subject, boolean ucharText,
-                                                      boolean unsettled) {
+     *  noemt. */
+    private Consumer<Sentence.Builder> structuredAtom(Condition c, Read read, ObjectType subject, boolean ucharText) {
         if (c instanceof Condition.Comparison vg) {
             return b -> {
                 operandProse(b, vg.left(), read, ucharText);
@@ -3488,24 +3393,9 @@ public final class Verbaliser {
                 b.text(" is");
             };
         if (c instanceof Condition.Predicate p) {
-            // de toets of een attribuut met afwezigheidsmarkers een waarde heeft, zoals het dialect hem schrijft
-            boolean value = p.operand() instanceof Expr.PayloadAccess access
-                    && Namen.norm(access.constructor()).equals(Namen.norm(RegelSpraakModel.VALUE_CONSTRUCTOR));
-            boolean closure = read.of(p).closure();
-            // de toets op leeg over een open lid geldt voor de vorm zelf omdat het niet gegeven is of niet vaststaat
-            if (p.kind() == Condition.PredicateKind.LEEG && closure && !unsettled) {
-                Expr operand = p.operand() instanceof Expr.PayloadAccess access && read.has(access.base())
-                        ? access.base() : p.operand();
-                OpenValue v = read.of(operand).open();
-                boolean notGiven = v != null && reads(operand, v) && open.input(v);
-                return b -> {
-                    describe(b, operand, ucharText, readOn(operand, read));
-                    b.text(notGiven ? " niet gegeven is" : " niet vaststaat");
-                };
-            }
             String core = switch (p.kind()) {
-                case LEEG -> value || closure ? "geen waarde heeft" : "leeg is";
-                case GEVULD -> value ? "een waarde heeft" : "gevuld is";
+                case LEEG -> "leeg is";
+                case GEVULD -> "gevuld is";
                 case NUMERIEK_MET_EXACT -> (p.negation() ? "niet " : "") + "numeriek is met exact " + p.digits()
                         + " cijfers";
                 // a day-kind check outside a day-kind definition is no form uchar carries
@@ -3525,7 +3415,7 @@ public final class Verbaliser {
     }
 
     private void verbaliseAtom(Sentence.Builder b, Condition c, Read read, ObjectType subject, boolean ucharText) {
-        Consumer<Sentence.Builder> structured = structuredAtom(c, read, subject, ucharText, false);
+        Consumer<Sentence.Builder> structured = structuredAtom(c, read, subject, ucharText);
         if (structured != null) condition(b, c, read, structured);
         else unstructured(b, c, read, "voldaan");
     }
@@ -3565,12 +3455,11 @@ public final class Verbaliser {
      */
     private void members(Sentence.Builder b, Condition.QuantifierFold q, Read read) {
         ConditionReading.NodeReading n = read.of(q);
-        if (n.undetermined() || n.closure() && !Boolean.TRUE.equals(n.value())) {
+        if (n.undetermined()) {
             openMembers(b, q, n, read);
             return;
         }
-        if (open != null && (n.closure() ? !countsItsMembers(q, n, read)
-                : n.contributors().stream().anyMatch(c -> !stands(q, c, read)))) {
+        if (open != null && n.contributors().stream().anyMatch(c -> !stands(q, c, read))) {
             carriers(b, q, n, read);
             return;
         }
@@ -3647,33 +3536,19 @@ public final class Verbaliser {
         };
     }
 
-    /** Of kwantorvouw {@code q}, die door een sluiting geldt, geldt naar het oordeel van de matrix op elk van haar bijdragers:
-     *  niet waar dat op een bijdrager onbepaald is, of waar een sluiting in het filter er een niet liet meetellen. */
-    private static boolean countsItsMembers(Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
-        if (n.contributors().stream().anyMatch(ConditionReading.Contributor::undetermined)) return false;
-        int k = 0, m = 0;
-        for (ConditionReading.Contributor c : n.contributors()) {
-            if (c.fault() != null) continue;
-            m++;
-            if (Boolean.TRUE.equals(c.value())) k++;
-        }
-        return Boolean.valueOf(verdict(q, k, m, read)).equals(n.value());
+    /** Of het oordeel van kwantorvouw {@code q} op bijdrager {@code c} vaststaat, in een strikt document: haar matrix is er niet
+     *  onbepaald, en leest haar filter er een open lid, dan hangt het oordeel niet van het filter af (bij "alle" een matrix
+     *  die geldt, anders een die niet geldt). De lezing geeft per bijdrager het oordeel van de matrix; of zijn filter
+     *  vaststaat, zeggen de open leden die het filter er leest ({@link OpenReads#reads}). */
+    private boolean stands(Condition.QuantifierFold q, ConditionReading.Contributor c, Read read) {
+        if (c.undetermined()) return false;
+        return !open.reads(q.filter(), c.member(), read.object())
+                || (q.quantifier() == Condition.Quantifier.ALLE) == Boolean.TRUE.equals(c.value());
     }
 
     /** " (1 lid niet beoordeeld)": de leden van een kwantorvouw waarvan de matrix een fout gaf, waar er zijn. */
     private static void unjudged(Sentence.Builder b, int members) {
         if (members > 0) b.text(" (" + members + (members == 1 ? " lid" : " leden") + " niet beoordeeld)");
-    }
-
-    /** Of het oordeel van kwantorvouw {@code q} op bijdrager {@code c} vaststaat, in een strikt document: haar matrix is er niet
-     *  onbepaald en geldt of geldt niet door een sluiting, en leest haar filter er een open lid, dan hangt het oordeel niet
-     *  van het filter af (bij "alle" een matrix die geldt, anders een die niet geldt). De lezing zegt van een bijdrager niet
-     *  of een sluiting zijn oordeel gaf en of zijn filter vaststaat; dat zeggen de open leden die een toets op leeg of gevuld
-     *  in de matrix en het filter er lezen. */
-    private boolean stands(Condition.QuantifierFold q, ConditionReading.Contributor c, Read read) {
-        if (c.undetermined() || open.reads(q.test(), c.member(), read.object(), true)) return false;
-        return !open.reads(q.filter(), c.member(), read.object(), false)
-                || (q.quantifier() == Condition.Quantifier.ALLE) == Boolean.TRUE.equals(c.value());
     }
 
     /** De leden van kwantorvouw {@code q}, waarvan het oordeel niet vaststaat: waarvoor haar matrix geldt, waarvoor zij niet
@@ -3700,18 +3575,14 @@ public final class Verbaliser {
 
     /** De leden die de uitkomst van kwantorvouw {@code q} dragen, waar het oordeel van de vouw vaststaat en dat op een lid
      *  niet: de leden waarvoor haar matrix geldt of die waarvoor zij niet geldt, naar wat de uitkomst draagt, met hun aantal
-     *  van alle leden; waar te weinig leden zijn voor de drempel hun aantal, en waar een sluiting geen lid liet meetellen de
-     *  leden waarvoor het niet vaststaat. Een lid na de stop waarvan de matrix een fout gaf, staat er zoals in
-     *  {@link #members}. */
+     *  van alle leden; waar te weinig leden zijn voor de drempel hun aantal. Een lid na de stop waarvan de matrix een fout
+     *  gaf, staat er zoals in {@link #members}. */
     private void carriers(Sentence.Builder b, Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
         boolean holds = Boolean.TRUE.equals(n.value());
         List<ConditionReading.Contributor> judged = n.contributors().stream().filter(c -> c.fault() == null).toList();
-        List<Object> holding = new ArrayList<>(), failing = new ArrayList<>(), unsettled = new ArrayList<>();
+        List<Object> holding = new ArrayList<>(), failing = new ArrayList<>();
         for (ConditionReading.Contributor c : judged)
-            (!stands(q, c, read) ? unsettled : Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
-        if (holding.isEmpty() && failing.isEmpty())
-            for (ConditionReading.Contributor c : judged)
-                if (!c.undetermined()) (Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
+            if (stands(q, c, read)) (Boolean.TRUE.equals(c.value()) ? holding : failing).add(c.member());
         int total = judged.size(), k = holding.size(), unjudged = n.contributors().size() - total;
         boolean byHolding = switch (q.quantifier()) {
             case ALLE -> holds;
@@ -3723,15 +3594,6 @@ public final class Verbaliser {
                     + " heeft de kwantor 'de', die een kwantorvouw niet draagt (WF-108 (a))");
         };
         List<Object> carrying = byHolding ? holding : failing;
-        if (carrying.isEmpty() && n.closure()) {
-            b.open(Part.Kind.MEMBERS, Part.meta("members", total - unsettled.size(), "holding",
-                    unsettled.size() == total ? 0 : k, "unjudged", unjudged, "unsettled", unsettled.size()));
-            b.text(": niet vast voor ");
-            names(b, unsettled, q, read);
-            unjudged(b, unjudged);
-            b.close(Part.Kind.MEMBERS);
-            return;
-        }
         b.open(Part.Kind.MEMBERS, Part.meta("members", k + failing.size(), "holding", k, "unjudged", unjudged, "unsettled",
                 total - k - failing.size()));
         if (carrying.isEmpty()) {
@@ -3775,7 +3637,7 @@ public final class Verbaliser {
                     + ", en de zin zegt waarom ze niet gold");
         if (c instanceof Condition.Compound s && s.quantifier() == Condition.Quantifier.ALLE) {
             for (Condition d : s.components())
-                if (read.reached(d) && !read.holds(d) && !read.of(d).undetermined() && !read.of(d).closure()) {
+                if (read.reached(d) && !read.holds(d) && !read.of(d).undetermined()) {
                     firstFailing(b, d, read, subject, ucharText);
                     return;
                 }
@@ -3787,7 +3649,7 @@ public final class Verbaliser {
             verbaliseCondition(b, c, read, subject, ucharText);
             return;
         }
-        Consumer<Sentence.Builder> structured = structuredAtom(c, read, subject, ucharText, false);
+        Consumer<Sentence.Builder> structured = structuredAtom(c, read, subject, ucharText);
         if (structured != null) {
             notHolds(b);
             condition(b, c, read, structured);
@@ -3849,9 +3711,7 @@ public final class Verbaliser {
 
     // ---------------- rendering ----------------
 
-    /** Het woord voor een lege waarde, op elk operand en elk attribuut, zoals RegelSpraak het schrijft ("is leeg"): een
-     *  attribuut met afwezigheidsmarkers kan de waarde "onbekend" houden (RUNTIME-SEMANTICS ch. 9.5), dus dat woord is
-     *  de marker en nooit leeg. */
+    /** Het woord voor een lege waarde, op elk operand en elk attribuut, zoals RegelSpraak het schrijft ("is leeg"). */
     private static final String EMPTY = "leeg";
 
     /** De waarde van een operand zoals de motor haar las, in NL-notatie met haar eenheid; {@link #EMPTY} voor een lege
@@ -3968,7 +3828,7 @@ public final class Verbaliser {
     private static boolean heldInPeriods(Sentence.Builder b, Condition c, Read read) {
         if (!(read.has(c) && read.reached(c) && read.of(c).value() instanceof List<?> periods)) return false;
         b.leaf(Part.Kind.QUOTE, summary(c));
-        reading(b, renderPeriods(periods, null, null), false, null);
+        reading(b, renderPeriods(periods, null, null), false);
         return true;
     }
 
@@ -3997,7 +3857,7 @@ public final class Verbaliser {
 
     /** {@link #renderValue}, met een enumeratiewaarde in het gekozen vocabulaire: een waarde is een declaratie. */
     private String render(Object v, Datatype type) {
-        // de lezer kent de waarde en de afwezigheidsmarker, niet uchars constructorwaarde (RUNTIME-SEMANTICS ch. 9.5)
+        // de lezer kent de payload en de naam van een constructor, niet uchars constructorwaarde (RUNTIME-SEMANTICS ch. 9.1)
         if (v instanceof ConstructorValue c)
             return c.payload() != null ? render(c.payload(), payloadType(type, c.constructor())) : c.constructor();
         if (v instanceof String s && type instanceof Datatype.Enumeration e) return enumerationValue(e, s);
@@ -4031,23 +3891,17 @@ public final class Verbaliser {
      *  tussen haakjes ("de maandloon nieuw van EOver (3.000,00 EUR)"), zodat de jurist de norm én het feit ziet. Een
      *  operand dat de motor niet bereikte, staat er zonder waarde. */
     private void operandProse(Sentence.Builder b, Expr e, Read read, boolean ucharText) {
-        // de lezing van de waarde van een attribuut met afwezigheidsmarkers is leeg op een marker: de zin noemt het
-        // attribuut met wat het hield, de waarde of de marker (uchars RUNTIME-SEMANTICS ch. 9.5)
-        if (e instanceof Expr.PayloadAccess p && read.has(p.base())) {
-            operandProse(b, p.base(), read, ucharText);
-            return;
-        }
         if (!read.reached(e)) {
             describe(b, e, ucharText);
             return;
         }
         if (e instanceof Expr.Literal || e instanceof Expr.Construct c && c.argument() == null) {
-            value(b, renderOperand(e, read), read.of(e).value() == null, read.of(e).value());
+            value(b, renderOperand(e, read), read.of(e).value() == null);
             return;
         }
         describe(b, e, ucharText, readOn(e, read));
         if (openOperand(b, e, read)) return;
-        reading(b, renderOperand(e, read), read.of(e).value() == null, read.of(e).value());
+        reading(b, renderOperand(e, read), read.of(e).value() == null);
     }
 
     /** Een Java-waarde in helder Nederlands: getallen met punt-duizend/komma-decimaal en de eenheid uit het type;

@@ -55,8 +55,7 @@ class OpenValuesParityTest {
         JsonNode given = compare("vondst", ", \"attributes\": {\"taxatie\": 50}, \"characteristics\": {\"betwist\":"
                 + " {\"state\": \"holdsNot\"}, \"onleesbaar\": {\"state\": \"holds\"}}", 200);
         assertEquals("{\"state\":\"filled\",\"value\":60}", given.at("/instances/0/attributes/vindloon").toString());
-        assertEquals("{\"state\":\"marker\",\"marker\":\"onbekend\"}",
-                given.at("/instances/0/attributes/herkomst").toString());
+        assertEquals("{\"state\":\"filled\",\"value\":0}", given.at("/instances/0/attributes/herkomst").toString());
         assertEquals("{\"state\":\"holdsNot\"}", given.at("/instances/0/characteristics/betwist").toString());
         assertEquals("{\"state\":\"holds\"}", given.at("/instances/0/characteristics/onleesbaar").toString());
     }

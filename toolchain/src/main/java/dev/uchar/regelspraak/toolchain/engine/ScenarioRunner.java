@@ -277,6 +277,16 @@ public final class ScenarioRunner {
         return sink;
     }
 
+    /** The warnings of uchar's scenario layer in {@code bundle}, beside its model ({@code ScenarioBundle.warnings}: a
+     *  sentence of the test document that changes no outcome), rendered as "WARNING regel N: message" lines as
+     *  {@link #diagnostics} renders an error. */
+    public static List<String> warnings(ScenarioBundle bundle) {
+        List<String> sink = new ArrayList<>();
+        String line = MessageLanguage.label("regel", "line");
+        for (var d : bundle.warnings()) sink.add(d.severity() + " " + line + " " + d.line() + ": " + d.message());
+        return sink;
+    }
+
     /** Thrown when a bundle does not resolve — the CLI maps it to exit 1. */
     public static final class ResolveError extends RuntimeException {
         private final transient List<String> diagnostics;

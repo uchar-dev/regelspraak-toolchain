@@ -31,13 +31,12 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * The stack of a timeline target per day through the service (uchar's RUNTIME-SEMANTICS ch. 7.8): the writers decide
  * their days, the input, the request's or on a made object the value the creation assigned, stands on the other days, and the
- * initialisation decides the days that leaves leeg, over all time. uchar's goldens jutterswet-initialisatie-per-dag,
- * jutterswet-creatie-per-dag and jutterswet-afwezigheidsmarkers-initialisatie give their pinned timelines through the
- * service, and the explanation names per period who decided: a rule, the input, the value the creation assigned or the
- * initialisation. The fixpoint of the detail and of the playground gives on a made object the value the creation assigned
+ * initialisation decides the days that leaves leeg, over all time. uchar's goldens jutterswet-initialisatie-per-dag and
+ * jutterswet-creatie-per-dag give their pinned timelines through the service, and the explanation names per period who
+ * decided: a rule, the input, the value the creation assigned or the initialisation. The fixpoint of the detail and of the playground gives on a made object the value the creation assigned
  * beside the derived timeline, as it gives the input of an object of the request, with {@code inputOrigin}
  * {@code creation}. What uchar's Drools branch refuses on a timeline target reaches the service as its refusal: the value
- * of an initialisation that is neither period arithmetic nor the constructor of a literal (DROOLS-316) is a marker, and
+ * of an initialisation that is not period arithmetic (DROOLS-316) is a marker, and
  * an allocation that names a time-dependent attribute is refused by the frontend (RGS-378) and, in a document, by the
  * branch as not well-formed (DROOLS-315, WF-128).
  */
@@ -46,7 +45,6 @@ class TimelineStackHttpTest {
     private static final Path GOLDEN = TokaSource.REPO.resolve("uchar/corpus/golden");
     private static final Path INITIALISATION = GOLDEN.resolve("jutterswet-initialisatie-per-dag");
     private static final Path CREATION = GOLDEN.resolve("jutterswet-creatie-per-dag");
-    private static final Path MARKERS = GOLDEN.resolve("jutterswet-afwezigheidsmarkers-initialisatie");
     /** uchar's document of an allocation over a time-dependent bergingsaandeel (ref's fixture of WF-128). */
     private static final Path ALLOCATION = TokaSource.REPO.resolve("uchar/ref/test/fixtures/writers-stack/timeline-allocation");
 
@@ -73,17 +71,9 @@ class TimelineStackHttpTest {
                        "Jutter.seizoensloontotaal", "Jutter.aanvulloontotaal"] } ],
           "parameters": {} }""";
 
-    private static final String MARKERS_DESCRIPTOR = """
-        { "service": {"name":"opslag","version":"1"},
-          "entrypoints": [ { "name":"opslag","path":"opslag",
-            "scope": {"ruleNames": ["opslag in het voorjaar", "opslag onbekend", "keuring onbekend"]},
-            "input": ["Vondst"], "output": ["Vondst.opslagkosten", "Vondst.keurkosten"] } ],
-          "parameters": {} }""";
-
     private static ServiceHttp initialisation;
     private static ServiceHttp creation;
     private static ServiceHttp creationDetail;
-    private static ServiceHttp markers;
     private static final HttpClient CLIENT = HttpClient.newHttpClient();
 
     @BeforeAll
@@ -98,9 +88,6 @@ class TimelineStackHttpTest {
         creationDetail = ServiceHttp.bind(DecisionCore.assemble(CREATION_DESCRIPTOR,
                 Map.of("source.rgs", Files.readString(CREATION.resolve("source.rgs"))), CoreConfig.strict().withDetail(),
                 cl), "127.0.0.1", 0).start();
-        markers = ServiceHttp.bind(DecisionCore.assemble(MARKERS_DESCRIPTOR,
-                Map.of("source.rgs", Files.readString(MARKERS.resolve("source.rgs"))), CoreConfig.strict(), cl),
-                "127.0.0.1", 0).start();
     }
 
     @AfterAll
@@ -108,7 +95,6 @@ class TimelineStackHttpTest {
         if (initialisation != null) initialisation.stop(0);
         if (creation != null) creation.stop(0);
         if (creationDetail != null) creationDetail.stop(0);
-        if (markers != null) markers.stop(0);
     }
 
     // ---------------- the answer: uchar's pins ----------------
@@ -135,13 +121,6 @@ class TimelineStackHttpTest {
         HttpResponse<String> r = post(creation, "meldingen", "", CREATION_CASE1);
         assertEquals(200, r.statusCode(), r.body());
         assertPins(CREATION.resolve("case1-strandloon-tot-juli.json"), "J1", tree(r.body()));
-    }
-
-    @Test
-    void an_initialisation_on_a_marker_beside_a_rule_and_the_input_gives_uchars_pins() throws Exception {
-        HttpResponse<String> r = post(markers, "opslag", "", MARKERS_CASE2);
-        assertEquals(200, r.statusCode(), r.body());
-        assertPins(MARKERS.resolve("case2-invoer.json"), "V2", tree(r.body()));
     }
 
     // ---------------- the explanation: who decided per period ----------------
@@ -306,34 +285,10 @@ class TimelineStackHttpTest {
         assertEquals(playground.get("fixpoint"), tree(r.body()).get("fixpoint"), r.body());
     }
 
-    /** case2 of jutterswet-afwezigheidsmarkers-initialisatie: the input niet van toepassing in January and February
-     *  beside the rule of the spring and the initialisation on onbekend; a keurkosten of 4 over 2025 that the
-     *  conditional initialisation, which does not hold, leaves. */
-    private static final String MARKERS_CASE2 = """
-        {"instances":[{"type":"Vondst","id":"V2",
-          "attributes":{
-            "opslagkosten":{"timeline":[{"from":"2025-01-01","to":"2025-04-01","value":{"marker":"niet van toepassing"}}]},
-            "keurkosten":{"timeline":[{"from":"2025-01-01","to":"2026-01-01","value":4}]}}}]}""";
-
-    @Test
-    void the_explanation_names_an_initialisation_on_a_marker_per_period() throws Exception {
-        HttpResponse<String> r = post(markers, "opslag", "explanation=true", MARKERS_CASE2);
-        assertEquals(200, r.statusCode(), r.body());
-        assertEquals(List.of(
-                "V2 heeft als opslagkosten 10 van 01-03-2025 tot 01-06-2025 volgens de regel 'opslag in het voorjaar': 10,"
-                        + " omdat van dd. 01-03-2025 tot dd. 01-06-2025 (van 01-03-2025 tot 01-06-2025), en onbekend tot"
-                        + " 01-01-2025 en onbekend vanaf 01-06-2025 volgens de regel 'opslag onbekend': onbekend, omdat zijn"
-                        + " opslagkosten in de invoer leeg was; de invoerwaarde niet van toepassing van 01-01-2025 tot"
-                        + " 01-03-2025 bleef staan",
-                "V2 houdt als keurkosten de invoerwaarde 4 van 01-01-2025 tot 01-01-2026, want geen regel gold; de"
-                        + " regel 'keuring onbekend' gold niet, want niet geldt: het onderwerp ongekeurd is"),
-                sentences(r.body()), r.body());
-    }
-
     // ---------------- what uchar refuses on a timeline target ----------------
 
     /** An initialisation of a time-dependent attribute whose value is the time-proportional part: uchar's branch
-     *  writes an initialisation per day only as period arithmetic or the constructor of a literal (DROOLS-316). */
+     *  writes an initialisation per day only as period arithmetic (DROOLS-316). */
     private static final String PROPORTIONAL = """
         Objecttype de Bakenmeester (mv: Bakenmeesters) (bezield)
             het onderhoudstarief Numeriek (getal met 2 decimalen) voor elk jaar;
@@ -363,9 +318,9 @@ class TimelineStackHttpTest {
         assertEquals("regel 'standaardbijdrage' in de scope van entrypoint 'bijdrage' is een marker (niet gedragen):"
                 + " transpiler SKIP: regel: standaardbijdrage — de waarde van een initialisatie op het"
                 + " tijdsafhankelijke attribuut 'onderhoudsbijdrage' van Bakenmeester is geen rekenen per periode van"
-                + " ch. 3.4 en 3.5 en geen constructor van een literal ('het tijdsevenredig deel per maand van zijn"
-                + " onderhoudstarief gedurende de tijd dat hij dienstdoend is'): deze tak schrijft haar per dag alleen als een van die twee (RUNTIME-SEMANTICS"
-                + " ch. 3.12 rij 10, 7.8)", v.message(), e.violations().toString());
+                + " ch. 3.4 en 3.5 ('het tijdsevenredig deel per maand van zijn onderhoudstarief gedurende de tijd dat hij"
+                + " dienstdoend is'): deze tak schrijft haar per dag alleen als dat rekenen (RUNTIME-SEMANTICS ch. 3.12 rij"
+                + " 10, 7.8)", v.message(), e.violations().toString());
     }
 
     /** With markers allowed the service starts, and a request to the entry point is refused with uchar's sentence. */
@@ -428,7 +383,7 @@ class TimelineStackHttpTest {
 
     /** Every attributeTimeline expectation of uchar's case file {@code caseFile} on {@code id} is the timeline of that
      *  attribute in {@code answer}, compared in canonical form (adjacent equal segments joined, a number without
-     *  trailing zeros, a marker by its name, an open bound empty), as uchar's replay compares a timeline. */
+     *  trailing zeros, an open bound empty), as uchar's replay compares a timeline. */
     private static void assertPins(Path caseFile, String id, JsonNode answer) throws Exception {
         JsonNode c = tree(Files.readString(caseFile));
         int compared = 0;
@@ -447,8 +402,7 @@ class TimelineStackHttpTest {
     }
 
     /** The segments of a timeline in canonical form; {@code ucharCase} reads a value as uchar's case writes it
-     *  ({@code {"number": …}}, {@code {"constructor": …, "payload": …}}), otherwise as the answer writes it (a number, a
-     *  marker as {@code {"marker": …}}). */
+     *  ({@code {"number": …}}), otherwise as the answer writes it (a number). */
     private static List<String> canonical(JsonNode timeline, boolean ucharCase) {
         List<String[]> joined = new ArrayList<>();
         for (JsonNode s : timeline) {
@@ -463,14 +417,11 @@ class TimelineStackHttpTest {
 
     private static String caseValue(JsonNode v) {
         if (v.has("number")) return new java.math.BigDecimal(v.get("number").asText()).stripTrailingZeros().toPlainString();
-        if (v.has("constructor")) return "waarde".equals(v.get("constructor").asText())
-                ? caseValue(v.get("payload")) : "marker:" + v.get("constructor").asText();
         throw new IllegalStateException("een waarde van uchars case die deze test niet leest: " + v);
     }
 
     private static String answerValue(JsonNode v) {
         if (v.isNumber()) return v.decimalValue().stripTrailingZeros().toPlainString();
-        if (v.has("marker")) return "marker:" + v.get("marker").asText();
         throw new IllegalStateException("een waarde van het antwoord die deze test niet leest: " + v);
     }
 

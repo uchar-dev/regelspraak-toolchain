@@ -236,54 +236,18 @@ writes one does not start:
   borgdeel een tijdlijn volgens de regel 'borgdeel van een jutter' (onvoorwaardelijk)"`; an input on which no rule
   decided a day is its periods, where it was `de invoerwaarde een tijdlijn`. Such a `VALUE` carries `timeline: true`,
   as `een tijdlijn` did.
-- **Absence markers** (card `absence-markers-in-service`, on uchar's card `absence-markers`): an attribute declared
-  `(of onbekend)`, `(of niet van toepassing)` or `(of onbekend of niet van toepassing)` holds uchar's sum type
-  (RUNTIME-SEMANTICS ch. 9.5). A request gives it a value of its datatype, which is the value `waarde(…)`, or a marker,
-  `{"marker": "onbekend"}` or `{"marker": "niet van toepassing"}`, also as the `value` of a segment of its timeline;
-  where a marker was a 400 `WRONG_TYPE` ("eenheid-object mist 'value'") and a plain value a 500. A marker the attribute
-  does not declare is a 400 of the new kind `UNKNOWN_MARKER`, and a marker on an attribute without markers a 400
-  `WRONG_TYPE` whose sentence names the attribute ("heeft geen markers"). The answer, and the `fixpoint` of the detail,
-  give the attribute in the same form, where they gave the text of uchar's value (`"waarde(300)"`, `"onbekend"`). The
-  explanation writes the value as its payload (`"V1 heeft als taxatie 300,00 volgens …"`) and a marker by its name,
-  also per period; the test whether such an attribute holds a value reads `"zijn taxatie (niet van toepassing) een
-  waarde heeft"`, and a marker in a comparison stands once (`"is gelijk aan onbekend"`). In `explanationParts` the
-  `VALUE` of a marker carries `marker`, its name (card `marker-on-value-part`): in the head of a sentence, as a value
-  read and as the literal of a comparison, so a consumer tells it from an enumeration value spelled the same; a
-  timeline is one `VALUE` with all its periods and carries none. In the OpenAPI document such
-  an attribute is `oneOf` the schema of its datatype and the marker object, with an `enum` of the markers it declares.
-  An attribute of another sum type, which only an IR document of another producer declares, refuses the start in
-  `output` (`UNSUPPORTED`).
+- **No absence markers** (card `one-empty-in-service`, on uchar's card `one-empty`): uchar's dialect has no absence
+  markers any more (`(of onbekend)`, `(of niet van toepassing)`); a status such as "komt er niet" is a characteristic the
+  rules write, and what is not yet known is open in a strict rule set. A request that gives an attribute a marker object,
+  `{"marker": "onbekend"}`, gets the 400 a value of the wrong type gets (`WRONG_TYPE`, for a number "eenheid-object mist
+  'value'"), where an attribute with markers took it; the kind `UNKNOWN_MARKER` is gone. The answer, the `fixpoint`, the
+  playground and the situation of a test document give no marker object, the answer of a strict rule set has no state
+  `marker`, the OpenAPI document no `oneOf` with the marker object, and a `VALUE` of `explanationParts` no key `marker`. An
+  attribute of a sum type refuses the start in `output` (`UNSUPPORTED`).
 - **Empty is leeg** (card `empty-as-leeg-in-explanation`): the explanation writes an empty value as `leeg` on every
   attribute, as RegelSpraak writes it (`is leeg`), also as a value the engine read (`"zijn leeftijd (leeg) is groter
   dan de minimumleeftijd (17)"`, `"met zijn schatting (leeg)"`); the `VALUE` of an empty value (`empty: true`) has the
-  text `leeg`. `onbekend` in an explanation is the absence marker alone. The answer is unchanged: an empty attribute
-  is `null`.
-- **Markers in a test document** (card `markers-in-test-documents`, on uchar's card `absence-markers-residue`): uchar's
-  scenario layer reads a marker as the value of a situation and an expectation (`- de taxatie is onbekend`), also in a
-  segment and in a cell, where it refused one as a syntax error. The playground gives such a value in the `situation`
-  in the form of the request, a marker as `{"marker": "onbekend"}` under `value` and a value of an attribute with
-  markers as its payload (`"40.00"`), and `?via=service` sends it so; the page shows a marker by its name. A marker on
-  a cell of a dimensioned attribute with markers, which a rule now writes and a condition tests, goes in the request,
-  the answer, the `fixpoint` and the explanation as a marker on a scalar does (`"V1 heeft als gewicht in voorjaar
-  onbekend volgens de regel 'voorjaarsgewicht onbekend': onbekend, …"`).
-- **A marker as opgave** (card `marker-as-opgave-in-service`, on uchar's card `absence-markers-with-opgave`): an
-  attribute carries an absence marking and the opgave marker together, the absence marking first (`de teruggavedatum
-  Datum in dagen (of onbekend of niet van toepassing) (mag opgegeven worden);`), where uchar's frontend refused that
-  as a syntax error and the service did not start on it; the other order is refused with a message that names this
-  one (uchar's RGS-461), where it was the bare syntax error. `opgegeven X` and
-  `berekende X` carry X's markers, so a request gives `opgegeven X` a value or a marker, `{"marker": "niet van
-  toepassing"}`, also as the `value` of a segment, and the answer, the `fixpoint` and the OpenAPI document give X,
-  `opgegeven X` and `berekende X` in the form of an attribute with markers. The opgave decides above the computation, a
-  marker included, and differs from a filled computation also where one of the two is a marker or the two are
-  different markers (`afwijkende opgave X` and the inconsistency `controle opgave X`); two equal markers do not differ.
-  The explanation names the marker in the sentence of the default that decides (`"V heeft als teruggavedatum niet van
-  toepassing volgens 'opgegeven teruggavedatum' (onvoorwaardelijk): zijn opgegeven teruggavedatum (niet van
-  toepassing); verdrongen: 'berekende teruggavedatum' (onvoorwaardelijk, 24-03-2026)"`) and in that of the deviation
-  (`"… zijn opgegeven teruggavedatum (niet van toepassing) is ongelijk aan zijn berekende teruggavedatum
-  (24-03-2026)"`). A marker X does not declare is the 400 `UNKNOWN_MARKER` on `opgegeven X` too, and a marker on the
-  `opgegeven X` of an attribute without markers the 400 `WRONG_TYPE`. With the same pin a number in another unit that a
-  rule writes into an attribute with markers stands in the declared unit (uchar's RUNTIME-SEMANTICS ch. 9.1): 2 t into
-  a `gewicht` in kg is answered `2000`, where uchar's branch wrote `2`.
+  text `leeg`. The answer is unchanged: an empty attribute is `null`.
 - **The sentence of an initialisation reads `zijn`** (card `initialisation-reason-reads-zijn`): the explanation of an
   initialisation says `omdat zijn <attribuut> in de invoer leeg was`, and `… bij de objectcreatie leeg was` on an
   object a creation made, where it wrote `omdat de <attribuut> …` for every attribute, a het-word included (`omdat de
@@ -401,6 +365,19 @@ writes one does not start:
   document as they were. Two answers change for every rule set, both from a 500: an
   attribute a request gives as `null` is not given, as one it leaves out; and the explanation of a characteristic that a
   rule on a supertype attributes where the defaults group of the subtype decided nothing says so.
+- **One empty in a strict rule set** (card `one-empty-in-service`, on uchar's cards `one-empty` and `strict-scenarios`):
+  a test on leeg or gevuld over an open member is undetermined, as every other condition over an open value, and so are
+  the filled-value count and a filter that tests on gevuld; an initialisation is not at its turn while its target is
+  open. An outcome that such a test or initialisation decided is now open: its explanation says that it does not stand,
+  where it ended in "wordt zijn taxatie gegeven, dan kan dit veranderen", and `CONDITION` has no key `closure`. A
+  consistency "moet gevuld zijn" over a member that is not given is not in `inconsistencies`. A member that only an
+  initialisation writes is an input member: `openInputs` names it, and `/info` lists it in `completeInput` where it is
+  `(volledig gegeven)`. Of a fold `openInputs` names the first of its members that is open, where it named every open
+  member its filter or count read. A test document of a strict rule set gives a characteristic as not holding ("- is
+  niet drijfhout") and expects an open outcome ("- de afhaaldatum van V1 staat niet vast"); `?via=service` sends such a
+  characteristic as `{"state": "holdsNot"}`, where it sent every characteristic of a situation as holding. In a rule
+  set that is not strict such a sentence changes no outcome: `bin/regelspraak scenario` prints uchar's warning (RGS-469)
+  on stderr and the playground shows it among the resolver's warnings.
 
 ## The pin
 
@@ -546,7 +523,7 @@ explanation of its outcome: uchar's replay plays it on the build with readings a
 (`CaseRunner.report` with a handoff), and the verbaliser renders each condition from the engine's readings of that
 session (`DroolsBackend.readingsOf`: per form and object how the condition came out, per node what the engine reached
 and the value and unit it read), here and in the service's `?explanation=true`; it computes nothing itself. An empty
-value stands as "(leeg)" on every attribute, and `onbekend` is only the absence marker; a member the engine did not
+value stands as "(leeg)" on every attribute; a member the engine did not
 reach is not named, and a condition that did not hold names the member where the engine stopped. The engine reads a
 number exactly: a value that does not terminate stands as its
 fraction, as uchar's reading writes it (`vóór de afronding 100/3 EUR`), and a value of the unbounded form (`Numeriek
@@ -567,8 +544,8 @@ the URL of its own: a path twice, `info`, `openapi`, `playground` or a path with
 
 `GET /openapi` serves the service's OpenAPI document, `?vocabulary=<name>` in a vocabulary of the model; `bin/regelspraak
 openapi` writes the same bytes without a running service. A caller reads there per entry point the input object types
-and output selectors, and per object type its attributes and characteristics with datatype, unit, markers, timeline
-form and dimensions. The `description` of an object type, an attribute, a characteristic and a parameter starts with
+and output selectors, and per object type its attributes and characteristics with datatype, unit, timeline form and
+dimensions. The `description` of an object type, an attribute, a characteristic and a parameter starts with
 the comment the author wrote directly above its declaration, verbatim, and then says the form; a service started on a
 `uchar-ir-v1` document has no comment there, since the IR carries none.
 
@@ -576,13 +553,12 @@ the comment the author wrote directly above its declaration, verbatim, and then 
 
 A rule set whose source says `Afleiden uit leeg: nee` infers nothing from what is open (uchar's RUNTIME-SEMANTICS ch. 1.5):
 a member of an object is filled, settled leeg, or open, which means that neither a value nor leeg stands. A settled leeg
-value computes as in any rule set. A service in a conversation that is still asking needs that difference, so the answer of such a rule set gives every member of
-`output` with its state, and an absence marker, which is a filled value, with a state of its own:
+value computes as in any rule set, and a condition over an open value is undetermined. A service in a conversation that
+is still asking needs that difference, so the answer of such a rule set gives every member of `output` with its state:
 
 | member | in the answer | means |
 |---|---|---|
 | attribute | `{"state": "filled", "value": 60}` | it has this value |
-| attribute with absence markers | `{"state": "marker", "marker": "onbekend"}` | it holds this marker |
 | attribute | `{"state": "empty"}` | it stands that there is no value |
 | attribute, characteristic | `{"state": "open"}` | it does not stand |
 | characteristic | `{"state": "holds"}`, `{"state": "holdsNot"}` | it holds; it stands not to hold |
@@ -590,7 +566,8 @@ value computes as in any rule set. A service in a conversation that is still ask
 A request gives a characteristic as `{"state": "holds"}`, as `{"state": "holdsNot"}` where it stands not to hold, and
 leaves it out (or `null`) where it is not given; a bare boolean, `true` or `false`, is a 400. An attribute that is left
 out or `null` is not given. What is not given is open, unless its declaration says `(volledig gegeven)`; `/info` lists those
-members (`completeInput`) beside `"inferFromEmpty": false`. `inconsistencies` names what stands, so an empty list does not
+members (`completeInput`) beside `"inferFromEmpty": false`. A member that only an initialisation writes is input, with
+the initialisation as its default value where it is `(volledig gegeven)`. `inconsistencies` names what stands, so an empty list does not
 say that every consistency holds. The explanation says of an open outcome that it does not stand and which member keeps it open.
 `?openInputs=true` (a 400 on any other rule set) adds `openInputs`: the input members that keep an open outcome of `output` open now, with the
 outcomes each keeps open, `{"kind", "instance", "name", "forOutputs": [{"instance", "name", "kind"}]}`. It is what can be
@@ -682,10 +659,9 @@ and the command that deletes the cluster. Both targets need Docker and run on th
   names the variant that decided, the conflict or the input that stood (`DroolsBackend.periodDecisionsOf`), and not the
   variants before or after it in that period: uchar reads each default once per object, not per period.
 - **A `uchar-ir-v1` document is served whole**: a scope that drops forms needs the model the document came from.
-- **A sum type other than that of absence markers.** The request, the answer and the OpenAPI document carry the sum
-  type uchar's frontend writes for an attribute with absence markers. Another sum type, which only an IR document of
-  another producer declares (whose `Match` uchar's Drools branch refuses), has no form there: a value on it is a 400
-  `UNSUPPORTED`, it refuses the start in `output`, and the OpenAPI emitter fails on it.
+- **A sum type.** A sum type, which only an IR document of another producer declares, has no form in the request, the
+  answer and the OpenAPI document: a value on it is a 400 `UNSUPPORTED`, it refuses the start in `output`, and the
+  OpenAPI emitter fails on it.
 - **The explanation** explains characteristic-attribution rules, defaults groups and the values ordinary rules
   compute, not consistencies or creations, whose readings uchar has as well. A rule outside the scope of an entry point
   has no rule in its build and gets the one sentence "de regel '…' staat buiten deze berekening".

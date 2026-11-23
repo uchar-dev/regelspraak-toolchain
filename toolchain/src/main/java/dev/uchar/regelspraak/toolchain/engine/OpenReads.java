@@ -17,7 +17,6 @@ import dev.uchar.regelspraak.transpiler.tms.ConditionReading.NodeReading;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint.OpenValue;
 
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
@@ -32,14 +31,9 @@ import java.util.Set;
  * RUNTIME-SEMANTICS ch. 1.5): the open reads uchar recorded in its readings (ch. 5.12, "Open values"), laid on the forms of
  * the document. Nothing is evaluated here. A form that left its target open is a reading with the status {@code OPEN}; what
  * left it so is the open read at its undetermined condition, per member of a composite that is undetermined itself, or at
- * its value ({@link #of}); and a derived member is followed over its open forms to the members no form writes, the input
- * that can be given ({@link #openInputs}).
- *
- * <p>uchar's readings name the read a closure closed over where that is the operand of a test on leeg or gevuld. Where the
- * closure is inside a fold — the filled-value count, a filter or a quantified test on gevuld — its node carries no open
- * read: there the reads are the open members that the filter, the test or the counted attribute reads on the members of
- * the range, over the links of the end state ({@link #closed}, {@link #inFold}), so one of them can be a member the outcome
- * does not rest on.
+ * its value ({@link #of}); a derived member is followed over its open forms to the input members, the input that can be
+ * given ({@link #openInputs}); and whether the filter of a quantifier fold reads an open member on a member of its range
+ * ({@link #reads}).
  */
 public final class OpenReads {
 
@@ -108,25 +102,30 @@ public final class OpenReads {
         return null;
     }
 
-    /** Whether {@code member} is input on its object: no rule and no defaults group of the document writes it there. */
+    /** Whether {@code member} is input on its object: nothing but an initialisation writes it there. */
     boolean input(OpenValue member) {
         return !written(model, document.groups(), typeOf(member.object()), member.member(), member.characteristic());
     }
 
-    /** Whether a rule or one of {@code groups}, the defaults groups of the document, writes member {@code name}, a
-     *  characteristic where {@code characteristic}, on the objects of {@code type}: one on {@code type} or on a type above it
-     *  (ch. 1.5, "An input member"). */
+    /** Whether a form other than an initialisation writes member {@code name}, a characteristic where
+     *  {@code characteristic}, on the objects of {@code type}, one on {@code type} or on a type above it: a rule other than an
+     *  initialisation, or one of {@code groups}, the defaults groups of the document, with a default other than its
+     *  initialisation default or with an exception group. An initialisation is the lowest writer of its target and makes no
+     *  member derived: a member that only an initialisation writes is an input member with a default value (ch. 1.5, "The
+     *  three states", "An initialisation"). */
     public static boolean written(RegelSpraakModel model, List<PrioritizedDefaults> groups, ObjectType type, String name,
                                   boolean characteristic) {
         for (ResolvedRule r : model.resolvedRules)
-            if (r.target() instanceof Expr.AttributeReference a && a.objectType() != null && a.attribute() != null
+            if (r.kind() != ResolvedRule.Kind.INITIALISATIE
+                    && r.target() instanceof Expr.AttributeReference a && a.objectType() != null && a.attribute() != null
                     && (r.kind() == ResolvedRule.Kind.KENMERKTOEKENNING) == characteristic
                     && Namen.norm(a.attribute()).equals(Namen.norm(name)) && type.isA(a.objectType()))
                 return true;
         for (PrioritizedDefaults g : groups)
             if (g.isCharacteristic() == characteristic && g.target() != null
                     && Namen.norm(g.target()).equals(Namen.norm(name))
-                    && type.isA(model.objectTypeByName(g.subject())))
+                    && type.isA(model.objectTypeByName(g.subject()))
+                    && g.defaults().stream().anyMatch(d -> !d.initialisation() || d.exceptions() != null))
                 return true;
         return false;
     }
@@ -164,34 +163,33 @@ public final class OpenReads {
     }
 
     /** The open reads that left the form of {@code r}, a reading with the status {@code OPEN}, so: of its condition where that
-     *  does not stand, of its value otherwise; the first one is the one uchar's reading names at the root where it names one.
+     *  is undetermined, of its value otherwise; the first one is the one uchar's reading names at the root.
      *
      * @throws IllegalStateException where there is none, which an open outcome does not have */
     List<OpenValue> of(ConditionReading r) {
         Form f = form(r);
         Nodes n = new Nodes(f, r);
         Set<OpenValue> out = new LinkedHashSet<>();
-        if (f.condition() != null && n.of(f.condition()) != null) {
-            NodeReading c = n.of(f.condition());
-            if (c.undetermined()) undetermined(f.condition(), n, out);
-            else if (c.closure() && !Boolean.TRUE.equals(c.value())) closed(f.condition(), n, r.object(), true, out);
-        }
-        if (out.isEmpty() && f.value() != null && n.of(f.value()) != null) {
-            if (n.undetermined(f.value())) out.add(n.of(f.value()).open());
-            else inFolds(f.value(), n, r.object(), false, out);
-        }
+        if (f.condition() != null && n.undetermined(f.condition())) undetermined(f.condition(), n, out);
+        if (out.isEmpty() && f.value() != null && n.undetermined(f.value())) out.add(n.of(f.value()).open());
         if (out.isEmpty())
             throw new IllegalStateException("de motor liet " + r.form() + " op " + r.object().getClass().getSimpleName()
                     + " open, en haar lezing noemt geen open lid");
         return List.copyOf(out);
     }
 
-    /** {@link #of(ConditionReading)} of the first form that leaves member {@code name} of {@code object} open, a characteristic
-     *  where {@code characteristic}. */
+    /** What keeps member {@code name} of {@code object} open, a characteristic where {@code characteristic}:
+     *  {@link #of(ConditionReading)} of the first form that leaves it open, or, where none does, the member itself, an input
+     *  member that only an initialisation writes, which is not at its turn while the member is open (ch. 1.5, "An
+     *  initialisation"). */
     List<OpenValue> of(Object object, String name, boolean characteristic) {
-        return of(writers(object, name, characteristic).stream().findFirst()
-                .orElseThrow(() -> new IllegalStateException("de motor gaf '" + name + "' als open, en geen vorm die het"
-                        + " schrijft staat open")));
+        List<ConditionReading> open = writers(object, name, characteristic);
+        if (!open.isEmpty()) return of(open.get(0));
+        EndState.Open o = open(object, name, characteristic);
+        OpenValue member = o == null ? null : new OpenValue(object, o.name(), characteristic);
+        if (member == null || !input(member))
+            throw new IllegalStateException("de motor gaf '" + name + "' als open, en geen vorm die het schrijft staat open");
+        return List.of(member);
     }
 
     /** The readings of the forms that leave member {@code name} of {@code object} open. */
@@ -205,27 +203,6 @@ public final class OpenReads {
         return out;
     }
 
-    /** The open reads over which a closure decided the form of {@code r}, a reading with the status {@code HOLDS}: its condition
-     *  holds for the form itself alone, or its value rests on a closure; empty where what it gave stands for another form as
-     *  well. A closure in a value is known where it is certain ({@link #inFolds}). */
-    List<OpenValue> closedBy(ConditionReading r) {
-        Form f = form(r);
-        Nodes n = new Nodes(f, r);
-        Set<OpenValue> out = new LinkedHashSet<>();
-        if (f.condition() != null && n.of(f.condition()) != null && n.of(f.condition()).closure())
-            closed(f.condition(), n, r.object(), false, out);
-        if (f.value() != null) inFolds(f.value(), n, r.object(), true, out);
-        return List.copyOf(out);
-    }
-
-    /** The open reads over which a closure made {@code value}, a value of a form on {@code subject} that was read leeg, so; with
-     *  {@code certain} only those that are certain. */
-    List<OpenValue> closedOver(Expr value, Object subject, boolean certain) {
-        Set<OpenValue> out = new LinkedHashSet<>();
-        inFolds(value, null, subject, certain, out);
-        return List.copyOf(out);
-    }
-
     private Form form(ConditionReading r) {
         Form f = forms.get(r.form());
         if (f == null)
@@ -233,8 +210,8 @@ public final class OpenReads {
         return f;
     }
 
-    /** The open reads of condition {@code c}, undetermined for the form itself: of a composite those of its undetermined
-     *  members, of any other the read its node names. */
+    /** The open reads of condition {@code c}, which is undetermined: of a composite those of its undetermined members, of any
+     *  other the read its node names. */
     private void undetermined(Condition c, Nodes n, Set<OpenValue> out) {
         if (c instanceof Condition.Compound s) {
             for (Condition d : s.components()) if (n.undetermined(d)) undetermined(d, n, out);
@@ -243,115 +220,16 @@ public final class OpenReads {
         out.add(n.of(c).open());
     }
 
-    /** The open reads a closure in condition {@code c} closed over, {@code c} standing for the form itself alone: of a
-     *  composite those of its members that do so, and with {@code all} of the undetermined ones too; of a test on leeg or
-     *  gevuld the read of its operand; and of a fold {@link #inFold}. */
-    private void closed(Condition c, Nodes n, Object subject, boolean all, Set<OpenValue> out) {
-        if (c instanceof Condition.Compound s) {
-            for (Condition d : s.components()) {
-                NodeReading r = n.of(d);
-                if (r == null || !r.reached()) continue;
-                if (r.closure()) closed(d, n, subject, all, out);
-                else if (all && r.undetermined()) undetermined(d, n, out);
-            }
-            return;
-        }
-        if (c instanceof Condition.QuantifierFold q) {
-            // a member its filter leaves out is no contributor: the engine tested the others alone
-            Set<Object> tested = Collections.newSetFromMap(new IdentityHashMap<>());
-            n.of(q).contributors().forEach(x -> tested.add(x.member()));
-            for (Object e : range(q, subject)) {
-                read(q.filter(), e, subject, out);
-                if (tested.contains(e)) read(q.test(), e, subject, out);
-            }
-            return;
-        }
-        int before = out.size();
-        for (Object node : document.positions().subtree(c))
-            if (node != c && n.undetermined(node)) {
-                out.add(n.of(node).open());
-                break;
-            }
-        if (out.size() == before) for (Expr side : sides(c)) inFolds(side, n, subject, false, out);
-    }
+    // ---------------- an open filter of a quantifier fold ----------------
 
-    /** The operands of an atomic condition. */
-    private static List<Expr> sides(Condition c) {
-        return c instanceof Condition.Comparison v ? List.of(v.left(), v.right())
-                : c instanceof Condition.Predicate p ? List.of(p.operand()) : List.of();
-    }
-
-    // ---------------- a closure inside a fold ----------------
-
-    /** The open reads the folds of {@code root}, evaluated on {@code subject}, closed over, where the engine reached them
-     *  ({@code n}, null where that is not asked); with {@code certain} only those that a closure surely closed over: a filter
-     *  that is the test itself, or a filled-value count without a filter. */
-    private void inFolds(Expr root, Nodes n, Object subject, boolean certain, Set<OpenValue> out) {
-        List<Object> nodes = document.positions().subtree(root);
-        for (int i = 0; i < nodes.size(); i++) {
-            Object node = nodes.get(i);
-            if (node instanceof Expr.BinderRef b) {
-                Expr.Let let = letOf(b);
-                if (let != null && let.value() != root) inFolds(let.value(), n, subject, certain, out);
-                continue;
-            }
-            if (!(node instanceof Expr.FunctionCall f) || !overASet(f)) continue;
-            if (n == null || n.of(f) != null && n.of(f).reached() && !n.of(f).undetermined())
-                inFold(f, subject, subject, certain, out);
-            // the nodes below are read per member of this fold
-            i += document.positions().subtree(f).size() - 1;
-        }
-    }
-
-    /** The Let whose binder {@code ref} reads, the nearest around it; null where the document has none. */
-    private Expr.Let letOf(Expr.BinderRef ref) {
-        String at = document.positions().of(ref).pointer();
-        Expr.Let found = null;
-        int depth = -1;
-        for (Expr.Let l : document.loaded().lets()) {
-            String p = document.positions().of(l).pointer();
-            if (l.binder().equals(ref.name()) && at.startsWith(p + "/") && p.length() > depth) {
-                depth = p.length();
-                found = l;
-            }
-        }
-        return found;
-    }
-
-    /** The open members the closures of {@code f}, a fold over a set whose range starts at {@code on}, read on the members of
-     *  that range: in its filter, and as the attribute of a filled-value count. */
-    private void inFold(Expr.FunctionCall f, Object on, Object subject, boolean certain, Set<OpenValue> out) {
-        if (f.arguments().size() == 1 && f.arguments().get(0) instanceof Expr.InstanceSetUnion u) {
-            for (Expr.InstanceSetUnion.Branch b : u.branches())
-                for (Object e : walk(on, List.of(b.sourceRole())))
-                    if (typeOf(e).isA(b.elementType()) && (!certain || test(b.filter()))) read(b.filter(), e, subject, out);
-            return;
-        }
-        for (Object e : range(f, on)) {
-            if (!certain || test(f.filter())) read(f.filter(), e, subject, out);
-            if (f.kind() == Expr.FunctionKind.AANTAL_GEVULDE && (!certain || f.filter() == null))
-                read(f.arguments().get(0), e, subject, out);
-        }
-    }
-
-    /** Whether {@code filter} is a test on leeg or gevuld and nothing else. */
-    private static boolean test(Condition filter) {
-        if (filter instanceof Condition.Compound s && s.components().size() == 1) return test(s.components().get(0));
-        return filter instanceof Condition.Predicate p
-                && (p.kind() == Condition.PredicateKind.LEEG || p.kind() == Condition.PredicateKind.GEVULD);
-    }
-
-    /** Whether {@code c}, a filter or a test of a quantifier fold in a form on {@code subject}, reads an open member on
-     *  {@code element}, a member of its range; with {@code closures} only in a test on leeg or gevuld or inside a fold. */
-    boolean reads(Condition c, Object element, Object subject, boolean closures) {
-        if (c == null) return false;
+    /** Whether {@code filter}, the filter of a quantifier fold in a form on {@code subject}, reads an open member on
+     *  {@code element}, a member of its range: uchar's reading of the fold gives per member the verdict of its matrix, and
+     *  an open read in the filter leaves the member undetermined where the matrix does not decide it alone (ch. 1.5, "A
+     *  quantifier fold"). Read over the links of the end state. */
+    boolean reads(Condition filter, Object element, Object subject) {
+        if (filter == null) return false;
         Set<OpenValue> out = new LinkedHashSet<>();
-        if (!closures) read(c, element, subject, out);
-        else for (Object node : document.positions().subtree(c)) {
-            if (node instanceof Condition.Predicate p && test(p)) read(p.operand(), element, subject, out);
-            else if (node instanceof Condition.QuantifierFold q) read(q, element, subject, out);
-            else if (node instanceof Expr.FunctionCall f && overASet(f)) inFold(f, element, subject, false, out);
-        }
+        read(filter, element, subject, out);
         return !out.isEmpty();
     }
 

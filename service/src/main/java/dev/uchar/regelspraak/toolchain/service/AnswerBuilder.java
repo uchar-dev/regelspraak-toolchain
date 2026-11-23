@@ -14,7 +14,6 @@ import dev.uchar.regelspraak.schema.FactModelGenerator;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ComputeHelpers;
-import dev.uchar.regelspraak.transpiler.tms.ConstructorValue;
 
 import java.math.BigDecimal;
 import java.math.RoundingMode;
@@ -52,13 +51,9 @@ import java.util.Map;
  * without {@code from} begins before every day and one without {@code to} runs past every day (an open bound, uchar's
  * RUNTIME-SEMANTICS ch. 3.1), as uchar's write-back puts a null bound on the bean.
  *
- * <p>An attribute with absence markers ({@link Markers}, uchar's RUNTIME-SEMANTICS ch. 9.5) is answered in the form of
- * the request: its value {@code waarde(…)} as the payload, a marker as {@code {"marker": "onbekend"}}, also as the value
- * of a segment or a cell.
- *
  * <p>In a strict rule set ({@link OpenValues}) every attribute and characteristic is answered with its state, in place of
- * the value, null or boolean: {@code {"state": "filled", "value": <waarde>}}, {@code {"state": "marker", "marker":
- * "onbekend"}}, {@code {"state": "empty"}} (settled leeg), {@code {"state": "open"}}, and of a characteristic
+ * the value, null or boolean: {@code {"state": "filled", "value": <waarde>}}, {@code {"state": "empty"}} (settled leeg),
+ * {@code {"state": "open"}}, and of a characteristic
  * {@code {"state": "holds"}}, {@code {"state": "holdsNot"}} and {@code {"state": "open"}}.
  *
  * <p>Response shape, of every other rule set:
@@ -176,8 +171,7 @@ public final class AnswerBuilder {
         if (a == null || a.value() instanceof List<?>)
             throw new IllegalStateException("het attribuut '" + name + "' van " + ot.name + " heeft dimensies of een"
                     + " tijdlijn, en die heeft in een regelset die uit leeg niets afleidt geen stand");
-        return a.value() instanceof ConstructorValue c && c.payload() == null && Markers.of(ot, name) != null
-                ? OpenValues.marker(c.constructor()) : OpenValues.filled(rend(a.value(), ot, name));
+        return OpenValues.filled(rend(a.value(), ot, name));
     }
 
     /** Whether member {@code name} of {@code object} is open, a characteristic where {@code characteristic}. */
@@ -267,20 +261,11 @@ public final class AnswerBuilder {
     /** Render a value of attribute {@code attribute} of {@code ot} as {@link #rend(Object, Datatype)} renders a value
      *  of its datatype. The end state holds a derived number of the unbounded form that does not terminate as the
      *  runtime's exact rational; the answer gives it as the decimal a bean holds ({@link ComputeHelpers#collapse}), the
-     *  form a timeline and the request carry. A value of an attribute with absence markers ({@link Markers}) is uchar's
-     *  constructor value: the value {@code waarde(…)} as its payload, a marker as {@code {"marker": <naam>}}, as the
-     *  request gives them. The descriptor refuses another sum type in {@code output} ({@link DescriptorLoader}), so a
-     *  constructor value on an attribute without markers is a broken promise, and fails. */
+     *  form a timeline and the request carry. The descriptor refuses a sum type in {@code output}
+     *  ({@link DescriptorLoader}), for which the answer has no form. */
     private JsonNode rend(Object exact, ObjectType ot, String attribute) {
-        Object v = ComputeHelpers.collapse(exact);
-        String place = "het attribuut '" + attribute + "' van " + ot.name;
-        if (!(v instanceof ConstructorValue c)) return rend(v, ot.attribute(attribute), place);
-        Markers markers = Markers.of(ot, attribute);
-        if (markers == null)
-            throw new IllegalStateException(place + " heeft de waarde " + c
-                    + " van een sum type, die het antwoord alleen geeft voor een attribuut met markers");
-        return c.payload() != null ? rend(c.payload(), markers.payload(), place)
-                : NF.objectNode().put(Markers.KEY, c.constructor());
+        return rend(ComputeHelpers.collapse(exact), ot.attribute(attribute), "het attribuut '" + attribute + "' van "
+                + ot.name);
     }
 
     /** Render an attribute value of datatype {@code dt} as an EXACT JSON node: BigDecimal as a number (no double) in

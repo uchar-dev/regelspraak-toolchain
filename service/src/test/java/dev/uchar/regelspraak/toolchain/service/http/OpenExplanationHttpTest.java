@@ -91,9 +91,9 @@ class OpenExplanationHttpTest {
                 + " het onderwerp gemeld is (niet gegeven)", wrak("\"attributes\": {\"diepte\": 5}"));
     }
 
-    /** The sum of no wreck is leeg, but only because the filter takes the diepte that is not given as leeg. */
+    /** The filter of the sum tests the diepte that is not given on gevuld, so the sum is open. */
     @Test
-    void a_value_that_is_leeg_after_a_closure() throws Exception {
+    void a_sum_whose_filter_tests_an_open_member() throws Exception {
         assertSentence("J1: zijn gepeilde ladingsom staat niet vast, want van W1 is zijn diepte niet gegeven; voor de regel"
                 + " 'gepeilde ladingsom' staat niet vast: de som van de lading van alle gevonden wrakken van de Jutter die aan"
                 + " de volgende voorwaarde voldoen: zijn diepte is gevuld (staat niet vast)",
@@ -143,22 +143,27 @@ class OpenExplanationHttpTest {
                 + " 'beloonbaarheid' (gold, toekennen)", wrak("\"attributes\": {\"lengte\": 30}"));
     }
 
+    /** Below the open default of the opgave and beside the open rule the initialisation is not at its turn, so the target is
+     *  open. */
     @Test
-    void an_initialisation_decides_over_an_open_default_and_over_an_open_rule() throws Exception {
+    void an_initialisation_below_an_open_default_and_beside_an_open_rule_is_not_at_its_turn() throws Exception {
         JsonNode answer = wrak("");
-        assertSentence("W1 heeft als kadegeld 25 volgens 'kadegeld basis': 25, omdat zijn kadegeld in de invoer niet gegeven was;"
-                + " 'opgegeven kadegeld' gaf geen waarde; voor 'berekende kadegeld' staat niet vast: zijn berekende kadegeld"
-                + " (staat niet vast); komt zijn berekende kadegeld vast te staan, dan kan dit veranderen", answer);
-        assertSentence("W1 heeft als loodsgeld 25 volgens de regel 'loodsgeld basis': 25, omdat zijn loodsgeld in de invoer niet"
-                + " gegeven was; voor de regel 'loodsgeld' staat niet vast: het onderwerp gemeld is (niet gegeven); wordt"
-                + " gegeven of hij gemeld is, dan kan dit veranderen", answer);
+        assertSentence("W1: zijn kadegeld staat niet vast, want zijn berekende kadegeld staat niet vast; 'opgegeven kadegeld' gaf"
+                + " geen waarde; voor 'berekende kadegeld' staat niet vast: zijn berekende kadegeld (staat niet vast); niet aan"
+                + " de beurt: 'kadegeld basis' (onvoorwaardelijk, 25)", answer);
+        assertSentence("W1: zijn loodsgeld staat niet vast, want het is niet gegeven of hij gemeld is; voor de regel 'loodsgeld'"
+                + " staat niet vast: het onderwerp gemeld is (niet gegeven); niet aan de beurt: de regel 'loodsgeld basis'",
+                answer);
+        assertEquals("VARIANT{decided=false, displaced=true}[«; niet aan de beurt: de regel '» RULE«loodsgeld basis» «'»]",
+                ExplanationPartsCheck.render(ServiceHttp.MAPPER.createArrayNode().add(group(sentence(answer,
+                        "W1: zijn loodsgeld"), "VARIANT", "displaced"))));
     }
 
     @Test
     void an_initialisation_beside_an_input_does_not_decide() throws Exception {
         assertSentence("W1: zijn loodsgeld staat niet vast, want het is niet gegeven of hij gemeld is; de invoerwaarde 8 geldt pas"
                 + " als vaststaat dat geen regel een waarde geeft; voor de regel 'loodsgeld' staat niet vast: het onderwerp"
-                + " gemeld is (niet gegeven); verdrongen: de regel 'loodsgeld basis'",
+                + " gemeld is (niet gegeven); niet aan de beurt: de regel 'loodsgeld basis'",
                 wrak("\"attributes\": {\"loodsgeld\": 8}"));
     }
 
@@ -238,22 +243,22 @@ class OpenExplanationHttpTest {
                   {"type": "Wrak", "id": "W2", "attributes": {"diepte": 5}}]}"""));
     }
 
-    // ---------------- closures ----------------
+    // ---------------- the tests on leeg and gevuld ----------------
 
+    /** A test on leeg or gevuld over an open member is undetermined, as every other condition over an open value. */
     @Test
-    void a_test_on_leeg_decides_over_an_open_member() throws Exception {
+    void a_test_on_leeg_over_an_open_member_is_undetermined() throws Exception {
         JsonNode answer = wrak("");
-        assertSentence("W1 is ongepeild, omdat zijn diepte niet gegeven is; wordt zijn diepte gegeven, dan kan dit veranderen",
-                answer);
-        assertSentence("W1 is ongewaardeerd, omdat zijn ladingwaarde niet vaststaat; komt zijn ladingwaarde vast te staan, dan kan"
-                + " dit veranderen", answer);
-        assertSentence("W1 is zeldzaam, omdat niet zijn diepte (niet gegeven) gevuld is; wordt zijn diepte gegeven, dan kan dit"
-                + " veranderen", answer);
-        assertEquals("SUBJECT«W1» «is » NAME{declaration=KENMERK, owner=Wrak, canonical=ongepeild, object=W1}«ongepeild» «, »"
-                + " CONNECTIVE«omdat» « » CONDITION{holds=true, closure=true}[QUOTE{declaration=ATTRIBUUT, owner=Wrak,"
-                + " canonical=diepte, object=W1}«zijn diepte» « niet gegeven is»] «; wordt zijn »"
-                + " NAME{declaration=ATTRIBUUT, owner=Wrak, canonical=diepte, object=W1}«diepte» « gegeven, dan kan dit veranderen»",
-                ExplanationPartsCheck.render(sentence(answer, "W1 is ongepeild")).replace("« is »", "«is »"));
+        assertSentence("W1: of hij ongepeild is, staat niet vast, want zijn diepte is niet gegeven; voor de regel 'ongepeild' staat"
+                + " niet vast: zijn diepte (niet gegeven) leeg is", answer);
+        assertSentence("W1: of hij ongewaardeerd is, staat niet vast, want zijn ladingwaarde staat niet vast; voor de regel"
+                + " 'ongewaardeerd' staat niet vast: zijn ladingwaarde (staat niet vast) leeg is", answer);
+        assertSentence("W1: of hij zeldzaam is, staat niet vast, want zijn diepte is niet gegeven; voor de regel 'zeldzaam' staat"
+                + " niet vast: niet zijn diepte (niet gegeven) gevuld is", answer);
+        assertEquals("CONDITION{undetermined=true}[QUOTE{declaration=ATTRIBUUT, owner=Wrak, canonical=diepte, object=W1}«zijn"
+                + " diepte» READING{open={\"object\":\"W1\",\"canonical\":\"diepte\",\"kind\":\"attribute\"}}"
+                + "[« (niet gegeven)»] « leeg is»]", ExplanationPartsCheck.render(ServiceHttp.MAPPER.createArrayNode()
+                .add(group(sentence(answer, "W1: of hij ongepeild is"), "CONDITION"))));
     }
 
     @Test
@@ -262,24 +267,25 @@ class OpenExplanationHttpTest {
         assertSentence("W1: of hij gepeild is, staat niet vast, want zijn diepte is niet gegeven; voor de regel 'gepeild' staat niet"
                 + " vast: zijn diepte (niet gegeven) gevuld is", answer);
         JsonNode condition = group(sentence(answer, "W1: of hij gepeild is"), "CONDITION");
-        assertEquals(false, condition.get("holds").asBoolean(true));
-        assertEquals(true, condition.get("closure").asBoolean());
-        assertNull(condition.get("undetermined"));
+        assertNull(condition.get("holds"));
+        assertEquals(true, condition.get("undetermined").asBoolean());
+        assertNull(condition.get("closure"));
     }
 
+    /** The filled-value count and the sum with a filter on gevuld break off at the diepte of W3, so they are open, and so is the
+     *  comparison that reads the count. */
     @Test
-    void a_closure_inside_a_value_and_inside_a_condition() throws Exception {
+    void a_fold_with_an_open_member_in_a_value_and_in_a_condition() throws Exception {
         JsonNode answer = jutter("\"diepte\": 20, \"lading\": 5", "\"diepte\": 15, \"lading\": 7", "");
-        assertSentence("J1 heeft als aantal gepeilde wrakken 2 volgens de regel 'aantal gepeild' (onvoorwaardelijk): het aantal"
-                + " gevulde waarden van de diepte van alle gevonden wrakken van de Jutter (2): over W1 en W2 (2 leden met een"
-                + " waarde); wordt van W3 zijn diepte gegeven, dan kan dit veranderen", answer);
-        assertSentence("J1 heeft als gepeilde ladingsom 12 volgens de regel 'gepeilde ladingsom' (onvoorwaardelijk): de som van de"
-                + " lading van alle gevonden wrakken van de Jutter die aan de volgende voorwaarde voldoen: zijn diepte is gevuld"
-                + " (12): over W1 (5) en W2 (7) (2 leden met een waarde); wordt van W3 zijn diepte gegeven, dan kan dit veranderen",
-                answer);
+        assertSentence("J1: zijn aantal gepeilde wrakken staat niet vast, want van W3 is zijn diepte niet gegeven; voor de regel"
+                + " 'aantal gepeild' staat niet vast: het aantal gevulde waarden van de diepte van alle gevonden wrakken van de"
+                + " Jutter (staat niet vast)", answer);
+        assertSentence("J1: zijn gepeilde ladingsom staat niet vast, want van W3 is zijn diepte niet gegeven; voor de regel"
+                + " 'gepeilde ladingsom' staat niet vast: de som van de lading van alle gevonden wrakken van de Jutter die aan de"
+                + " volgende voorwaarde voldoen: zijn diepte is gevuld (staat niet vast)", answer);
         assertSentence("J1: of hij volledig gepeild is, staat niet vast, want van W3 is zijn diepte niet gegeven; voor de regel"
                 + " 'volledige peiling' staat niet vast: het aantal gevulde waarden van de diepte van alle gevonden wrakken van"
-                + " de Jutter (2) is gelijk aan 3", answer);
+                + " de Jutter (staat niet vast) is gelijk aan 3", answer);
     }
 
     // ---------------- consistency, and what stands ----------------
@@ -358,14 +364,14 @@ class OpenExplanationHttpTest {
     }
 
     /** No sentence calls an open value leeg or onbekend: the word stands of what is settled leeg alone, the opgegeven kadegeld,
-     *  whose input is complete. */
+     *  whose input is complete, and as the word of a test on leeg after the reading of its operand, which is the rule's. */
     @Test
     void no_sentence_calls_what_is_open_leeg_or_unknown() throws Exception {
         for (JsonNode answer : List.of(wrak(""), jutter("", "", ""), wrak("\"attributes\": {\"lengte\": 5}")))
             for (String text : texts(answer)) {
                 assertFalse(text.contains("onbekend"), text);
-                assertFalse(text.replace("zijn opgegeven kadegeld (leeg)", "").replace("het Wrak (leeg)", "").contains("leeg"),
-                        text);
+                assertFalse(text.replace("zijn opgegeven kadegeld (leeg)", "").replace("het Wrak (leeg)", "")
+                        .replace(") leeg is", ")").contains("leeg"), text);
             }
     }
 

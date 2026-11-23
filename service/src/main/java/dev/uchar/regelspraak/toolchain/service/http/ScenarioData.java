@@ -23,7 +23,6 @@ import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.toolchain.service.AnswerBuilder;
 import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
-import dev.uchar.regelspraak.toolchain.service.Markers;
 import dev.uchar.regelspraak.toolchain.service.ValueCoder;
 
 import java.math.BigDecimal;
@@ -42,8 +41,7 @@ import java.util.TreeMap;
  * canonical name stands beside it under the key with {@code Canoniek} appended ({@code attribuut} and
  * {@code attribuutCanoniek}). <b>A value</b> is a JSON string for a number (the exact lexeme or plain decimal, with its
  * scale), a date, a date-time, a text and an enumeration value (in the chosen vocabulary), a JSON boolean for a truth
- * value, {@code {"marker": <naam>}} for an absence marker (a value of an attribute with markers otherwise being the
- * value it holds) and null for leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}; a
+ * value and null for leeg; a timeline is {@code timeline}, a list of {@code {from, to, value}}; a
  * dimensioned attribute is {@code cells}, a list of {@code {labels, value}}, one label per dimension in their declared
  * spelling, as the request of the service gives it, and the fixpoint has a row per cell ({@link FixpointGivens}).
  * {@code unit} is the declared unit of a number.
@@ -62,7 +60,9 @@ final class ScenarioData {
      *  {@code rekendatum}; null without one), {@code objects} with their label, type, attribute values,
      *  characteristics and roles, each role with the fact type uchar's scenario resolver found it in, and
      *  {@code parameters}: the values of the chosen parameter set on the peildatum first, then those of the
-     *  situation. Every assignment carries its source line ({@code line}). */
+     *  situation. A characteristic the situation gives as not holding ("- is niet drijfhout", the case's
+     *  {@code characteristicsAbsent}) carries {@code holds: false}. Every assignment carries its source line
+     *  ({@code line}). */
     static ObjectNode situation(ResolvedScenario s, RegelSpraakModel model, Naming ng) {
         ObjectNode n = NF.objectNode();
         if (s.asOfDate() == null) n.putNull("asOfDate"); else n.put("asOfDate", s.asOfDate().toString());
@@ -87,6 +87,7 @@ final class ScenarioData {
             for (CharacteristicValue k : i.characteristics()) {
                 ObjectNode kn = characteristics.addObject();
                 name(kn, "characteristic", ng.characteristic(ot, k.characteristic()), k.characteristic());
+                if (!k.holds()) kn.put("holds", false);
                 if (k.periods() != null) {
                     ArrayNode periods = kn.putArray("periods");
                     for (TimeWindow p : k.periods())
@@ -159,9 +160,14 @@ final class ScenarioData {
                 else value(an, a.value(), dt, true, ng);
                 attributes.put(a.attribute(), an);
             }
-            Set<String> characteristics = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            Set<String> characteristics = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER),
+                    absent = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             Map<String, ArrayNode> periods = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
             for (CharacteristicValue k : i.characteristics()) {
+                if (!k.holds()) {
+                    absent.add(k.characteristic());
+                    continue;
+                }
                 if (k.periods() == null) {
                     characteristics.add(k.characteristic());
                     continue;
@@ -170,8 +176,7 @@ final class ScenarioData {
                 for (TimeWindow w : k.periods()) p.addObject().put("from", w.van().toString()).put("to", w.until().toString());
                 periods.put(k.characteristic(), p);
             }
-            // a situation asserts a characteristic or leaves it out: it has no sentence that one stands not to hold
-            input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods, Set.of()));
+            input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods, absent));
         }
         return FixpointGivens.fixpoint(session.standing(), input, model, ng);
     }
@@ -181,10 +186,7 @@ final class ScenarioData {
     }
 
     /** A value of the situation under {@code waarde}: the case value as uchar's resolver normalised it, a number for the
-     *  fixpoint ({@code inType}) in the decimals of its type as {@link FixpointGivens} writes every number there; a
-     *  constructor value of an attribute with absence markers in the form of the request, a marker as
-     *  {@code {"marker": <naam>}} and the payload of {@code waarde} as the value it holds, {@code dt} being the datatype
-     *  of that payload. */
+     *  fixpoint ({@code inType}) in the decimals of its type as {@link FixpointGivens} writes every number there. */
     private static void value(ObjectNode n, ScenarioValue w, Datatype dt, boolean inType, Naming ng) {
         if (w.number() != null) n.put("value", inType ? inType(w.number(), dt) : w.number());
         else if (w.date() != null) n.put("value", w.date().toString());
@@ -192,12 +194,6 @@ final class ScenarioData {
         else if (w.bool() != null) n.put("value", w.bool());
         else if (w.text() != null) n.put("value", w.text());
         else if (w.enumValue() != null) enumValue(n, w.enumValue(), dt, ng);
-        else if (w.constructor() != null && w.payload() == null) n.putObject("value").put(Markers.KEY, w.constructor());
-        else if (RegelSpraakModel.VALUE_CONSTRUCTOR.equals(w.constructor())) value(n, w.payload(), dt, inType, ng);
-        else if (w.constructor() != null)
-            throw new IllegalStateException("uchars resolver gaf de constructorwaarde '" + w.constructor() + "' met een"
-                    + " payload; een attribuut met markers heeft alleen '" + RegelSpraakModel.VALUE_CONSTRUCTOR
-                    + "' met een payload");
         else throw new IllegalStateException("uchars resolver gaf een waarde zonder variant");
     }
 

@@ -187,14 +187,17 @@ public final class Playground {
             for (String t : f.expected()) expected.add(t);
         }
 
-        // 2. RESOLVER — for a scenario source the bundle's model carries the scenario diagnostics as well.
+        // 2. RESOLVER — for a scenario source the bundle's model carries the errors of the scenario layer as well, and its
+        //    warnings stand beside the model, after its diagnostics
         ScenarioBundle bundle = scenario ? ScenarioResolver.resolve(source) : null;
         RegelSpraakModel model = scenario ? bundle.model() : Resolver.resolve(source);
         ObjectNode resolver = root.putObject("resolver");
         resolver.put("ok", model.isOk());
         ArrayNode errors = resolver.putArray("errors");
         ArrayNode warnings = resolver.putArray("warnings");
-        for (Diagnostic d : model.diagnostics) {
+        List<Diagnostic> diagnostics = new ArrayList<>(model.diagnostics);
+        if (scenario) diagnostics.addAll(bundle.warnings());
+        for (Diagnostic d : diagnostics) {
             ObjectNode n = (d.severity() == Severity.ERROR ? errors : warnings).addObject();
             n.put("line", d.line());
             n.put("message", locale == null ? d.message() : d.message(locale));

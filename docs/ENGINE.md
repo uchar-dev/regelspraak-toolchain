@@ -220,33 +220,8 @@ refuse the start as well.
   6.00}]}`), an open bound left out, and null where no rule wrote one and the input gave none. A time-dependent
   characteristic in `output` refuses the start (`UNSUPPORTED`): the answer gives a characteristic as a boolean, and
   the bean holds its true periods.
-- An attribute with absence markers (`(of onbekend)`, `(of niet van toepassing)` or `(of onbekend of niet van
-  toepassing)`, uchar's RUNTIME-SEMANTICS ch. 9.5) holds uchar's sum type: the constructor `waarde` with the declared
-  datatype as its payload, and a constructor without payload per marker; uchar's branch puts a `ConstructorValue` on the
-  bean (`Markers` reads the markers off the model of a source, where they stand beside the attribute, and off the model
-  of an IR document, where the attribute is that sum type). A request gives such an attribute a value of its datatype,
-  which is the value `waarde(…)`, or a marker, `"taxatie": {"marker": "onbekend"}`, also as the `value` of a segment
-  of its timeline and of a cell of a dimensioned attribute with markers (`"gewicht": {"cells": [{"labels": ["najaar"],
-  "value": {"marker": "onbekend"}}]}`), and `RequestMapper` writes them into the case as uchar's case gives them,
-  `{"constructor": "waarde", "payload": {"number": "40.00"}}` and `{"constructor": "onbekend"}`; a marker name compares
-  as a name (case and spacing aside) and goes in its declared spelling. A marker the attribute does not declare is a
-  400 `UNKNOWN_MARKER` that names the declared ones, a marker on an attribute without markers a 400 `WRONG_TYPE`, and a
-  marker object with another key a 400 `MALFORMED`. The answer gives the attribute in the same form, the value as its
-  payload and a marker as `{"marker": "onbekend"}`, also per segment (`"opslagkosten": {"timeline": [{"from":
-  "2025-01-01", "to": "2025-03-01", "value": {"marker": "onbekend"}}, {"from": "2025-03-01", "to": "2025-06-01",
-  "value": 10}, …]}`) and per cell, and so does the `fixpoint` of the detail. A marker decides as a value does (uchar's
-  ch. 9.5): it displaces an input, and a writer that writes a marker and one that writes a value on the same day are a
-  fault EF-016 (two writers that disagree). A number in another unit that a rule writes as the value is in the
-  declared unit (ch. 9.1). With the opgave marker beside the absence marking (`(of onbekend) (mag opgegeven worden)`,
-  uchar's grammar/DIVERGENCES.md §7) `opgegeven X` and `berekende X` carry X's markers and X's sum type: the request
-  gives `opgegeven X` a marker as it gives X one, also per segment, with the same violations, and the answer, the
-  `fixpoint` and the OpenAPI document give the three members in the same form. The group `opgave boven berekening X`
-  passes a marker on as it passes a value, and `afwijkende opgave X` holds where a filled opgave and a filled
-  computation differ, a marker against a date or two different markers (uchar's ch. 9.5, "An opgave above a
-  computation"); the explanation names the marker in the sentence of the deciding default and in that of the
-  deviation. An attribute of another sum type, which only an IR document of another
-  producer declares, has no form in the service: a value on it is a 400 `UNSUPPORTED`, and in `output` it refuses the
-  start (`UNSUPPORTED`).
+- An attribute of a sum type, which only an IR document of another producer declares, has no form in the service: a
+  value on it is a 400 `UNSUPPORTED`, and in `output` it refuses the start (`UNSUPPORTED`).
 - A request on which the rules give an evaluation fault that stands at the fixpoint gets 422 with
   `{"status": "EVALUATION_FAULT", "error": …, "faults": [{"code": "EF-###", "params": {…}, "error": <uchar's
   sentence>}, …]}`, one element per fault in uchar's order. Every fault at the fixpoint is such an element, whatever
@@ -351,10 +326,7 @@ refuse the start as well.
   a model with vocabularies every object type, property and entry point lists its other spellings in `x-spellings`,
   every enumeration its values' in `x-valueSpellings`, the descriptions say the service accepts them, the
   operations document `vocabulary` and `inputVocabulary`, and `info.x-vocabulary` names the document's
-  vocabulary. A model without vocabularies gets none of it. The value of an attribute with absence markers, also of a
-  segment or a cell, is `oneOf` the schema of its datatype and the marker object, `{"type": "object", "required":
-  ["marker"], "additionalProperties": false, "properties": {"marker": {"type": "string", "enum": ["onbekend", "niet van
-  toepassing"]}}}`, the `enum` the markers the attribute declares. Every operation documents the flags `explanation`,
+  vocabulary. A model without vocabularies gets none of it. Every operation documents the flags `explanation`,
   `explanationParts`, `trace`, `coverage` and `fixpoint`; `Answer` has the fields they add, `EvaluationFault` those of
   the detail, with the components `ExplanationPart` (recursive through `parts`), `Trace`, `Coverage` and `Fixpoint`. The 422 is one of `EvaluationFault`, `NoFixpoint` and `Limit`.
 - The `description` of an object type, of an attribute and of a characteristic starts with the comment the source
@@ -388,7 +360,7 @@ refuse the start as well.
   (`ALLOW_MARKERS=true` for Quarkus) it starts, and every request to that entry point gets 503 with
   `{"status": "MARKER", "error": …, "reason": <uchar's sentence>, "markers": […]}`: an answer without the construct
   would be an answer to another rule set. On a timeline target such a construct is the value of an initialisation or
-  of a creation's member that is neither period arithmetic nor the constructor of a literal (DROOLS-316: `regel
+  of a creation's member that is not period arithmetic (DROOLS-316: `regel
   'standaardbijdrage' in de scope van entrypoint 'bijdrage' is een marker (niet gedragen): transpiler SKIP: regel:
   standaardbijdrage — de waarde van een initialisatie op het tijdsafhankelijke attribuut 'onderhoudsbijdrage' van
   Bakenmeester is geen rekenen per periode …`). An allocation that names a time-dependent attribute is not
@@ -453,10 +425,9 @@ refuse the start as well.
   `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`line`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in; a dimensioned
-  attribute in `objects[].attributes[]` as `cells`, `[{labels, value}]`, as a request gives it; a value of an attribute
-  with absence markers, which uchar's resolver gives as a constructor value, as a request gives it too, a marker as
-  `{"marker": "onbekend"}` under `value` and the value `waarde(…)` as its payload, also in a segment and a cell; the
-  page shows a marker by its name), and the `fixpoint`
+  attribute in `objects[].attributes[]` as `cells`, `[{labels, value}]`, as a request gives it; a characteristic the
+  situation gives as not holding, "- is niet drijfhout" or "- heeft geen strandrecht" (the case's
+  `characteristicsAbsent`), with `holds: false`, which the page shows as `onwaar`), and the `fixpoint`
   of the case's own session as uchar reads it: per object every value and characteristic with
   its origin, on a made object the value the creation assigned as the service gives it (above, `?fixpoint=true`), read
   through `DroolsBackend.standingOf` in the session uchar's replay hands over before its write-back
@@ -596,10 +567,10 @@ refuse the start as well.
     it as `path`, after `rule`. Without one the result is a MARKER whose `diagnosis` says what each entry point lacks,
     with `path` null; there is no fallback to the ordinary route;
   - the situation becomes a request (`SituationToRequest`, each instance with its label as its id, the names
-    canonical, read with `inputVocabulary=canonical`, a dimensioned attribute as its `cells`, a marker as `{"marker":
-    <naam>}` and the value `waarde(…)` as its payload; a value of a form uchar's RegelSpraak frontend does not write, a
-    constructor with a payload other than `waarde` or a value without a variant, is a 500 `interne fout` with the
-    sentence that names it on stderr, as on the ordinary route), and the core answers it
+    canonical, read with `inputVocabulary=canonical`, a dimensioned attribute as its `cells`, a characteristic the
+    situation gives as not holding as `false`, in a strict rule set as `{"state": "holdsNot"}`; a value without a
+    variant, which uchar's RegelSpraak frontend does not write, is a 500 `interne fout` with the sentence that names it
+    on stderr, as on the ordinary route), and the core answers it
     with `explanation`, `explanationParts`,
     `trace`, `coverage` and `fixpoint`, in the vocabulary of `?vocabulary=` (canonical without it). uchar compares the `expected` of the case
     its frontend writes for the scenario with the written-back session of that request, the ids of the request as
@@ -627,10 +598,14 @@ refuse the start as well.
 A rule set whose source says `Afleiden uit leeg: nee` infers nothing from what is open (`inferFromEmpty: false` in its
 document; uchar's RUNTIME-SEMANTICS ch. 1.5). A member of an object is then **filled**, **settled leeg** (it stands that
 an attribute has no value, or that a characteristic does not hold) or **open** (neither stands); a settled leeg value
-computes as in any rule set. The absence markers
-`onbekend` and `niet van toepassing` are filled values. An input member that the request does not give is open, unless
-its declaration says `(volledig gegeven)`: then it is settled leeg, or stands not to hold. A derived member follows its
-writers, so an outcome can be open now and stand once the input it lacks is given. `OpenValues.in` is the one place where
+computes as in any rule set, and a condition over an open value is undetermined, a test on leeg or gevuld as any other
+(Kleene's three values). An input member that the request does not give is open, unless its declaration says
+`(volledig gegeven)`: then it is settled leeg, or stands not to hold. An initialisation is the lowest writer of its
+target and makes no member derived: a member that only an initialisation writes (a rule, or the initialisation default
+of a defaults group without an exception group) is an input member with a default value, open where the request does
+not give it, and with `(volledig gegeven)` settled leeg above the initialisation, which then gives its value. A derived
+member follows its writers, so an outcome can be open now and stand once the input it lacks is given. `OpenValues.in`
+is the one place where
 the service asks whether its rule set is strict (`RegelSpraakModel.inferFromEmpty()`); for every other rule set the
 request, the answer, `/info`, the OpenAPI document and `fixpoint` are what the sections above describe, byte for byte.
 
@@ -650,7 +625,6 @@ holds whatever its rules do.
 | member | in the answer | means |
 |---|---|---|
 | attribute | `{"state": "filled", "value": <value>}` | it has this value, in the form of any answer |
-| attribute with absence markers | `{"state": "marker", "marker": "onbekend"}` | it holds this marker |
 | attribute | `{"state": "empty"}` | settled leeg: it stands that there is no value |
 | attribute, characteristic | `{"state": "open"}` | open: it does not stand |
 | characteristic | `{"state": "holds"}`, `{"state": "holdsNot"}` | it holds; it stands not to hold |
@@ -658,14 +632,14 @@ holds whatever its rules do.
 A state is an object on every member, so code that does not read it goes wrong on every member and not only where
 something is open; where a language takes every object for true, it does so without a message. A rule set that becomes
 strict has another contract, which neither a header nor its path announces: give it a path or a service of its own, so
-that no consumer of the old one reads a state as a value. An attribute has a value in the states `filled` and `marker`. A
-member of `output` that the instance does not have is left out, as in any answer. `inconsistencies` and
-`inconsistencyDetails` name what stands: a consistency that does not decide is not among them, so an empty list does not
-say that every consistency holds. The states are those of uchar's end state of the session (`DroolsBackend.endStateOf`):
+that no consumer of the old one reads a state as a value. An attribute has a value in the state `filled`. A member of
+`output` that the instance does not have is left out, as in any answer. `inconsistencies` and `inconsistencyDetails` name
+what stands: a consistency that does not decide is not among them, so an empty list does not say that every consistency
+holds. "De taxatie van een Vondst moet gevuld zijn" over a taxatie that is not given does not decide. The states are those of uchar's end state of the session (`DroolsBackend.endStateOf`):
 a member among the `members` of its object, among its `open`, or in neither, which is settled leeg.
 
 **`/info`** has `"inferFromEmpty": false` and `completeInput`, the input members whose declaration says `(volledig
-gegeven)` (the `opgegeven X` of the opgave marker among them), `[{"kind": "attribute", "objectType": "Vondst", "name":
+gegeven)` (the `opgegeven X` of the opgave marker and a member that only an initialisation writes among them), `[{"kind": "attribute", "objectType": "Vondst", "name":
 "toeslag"}, {"kind": "characteristic", …}]`, per object type as declared. **The OpenAPI document** has the states as enumerations:
 the components `AttributeState` and `CharacteristicState`, to which `Answer` refers, and `CharacteristicInput` (`holds` and
 `holdsNot`), to which the characteristics of `Request` and of every object type refer; and in the description of every
@@ -685,14 +659,13 @@ open, "zijn taxatie is niet gegeven" of input, "zijn vindloon staat niet vast" o
 niet gegeven" of another object. Then every form follows in a `VARIANT` (`decided: false`) with what it found: `; voor de regel 'vindloon' staat niet
 vast: …` with its condition or its computation up to the open read, `; de regel … gold niet, want …`, and in a stack
 `; niet aan de beurt: …` for what stands below an open default (a default whose own reading does not stand by its name alone), and "gaf 0, maar beslist
-niet zolang '…' niet vaststaat" for a member of an exception group or an unordered group beside an open one. A value the
-request gives beside an open writer waits: `; de invoerwaarde 7 geldt pas als vaststaat dat geen regel een waarde geeft`. Other sentences:
+niet zolang '…' niet vaststaat" for a member of an exception group or an unordered group beside an open one. An
+initialisation is not at its turn where its target is open: `; niet aan de beurt: de regel 'basisstrandloon'`, the
+initialisation default of a stack by its name. A member that only an initialisation writes is open by its own input:
+`V1: zijn strandloon staat niet vast, want zijn strandloon is niet gegeven; niet aan de beurt: de regel
+'basisstrandloon'`. A value the request gives beside an open writer waits: `; de invoerwaarde 7 geldt pas als vaststaat
+dat geen regel een waarde geeft`. Other sentences:
 
-- an outcome that stands by a closure — a test on leeg or gevuld over an open member, a filled-value count or a filter that
-  tests on gevuld, an initialisation below an open default or beside an open rule — ends in `; wordt zijn taxatie gegeven,
-  dan kan dit veranderen` (of a derived member `; komt zijn vindloon vast te staan, …`); the test itself reads "omdat zijn
-  taxatie niet gegeven is". A closure in the value of an outcome is named where it is certain, the filter being the test
-  itself or the count having no filter;
 - a writer that is open beside an outcome that stands says only that: `of de regel '…' geldt, staat niet vast`, or `wat de
   regel '…' geeft, staat niet vast` where its condition holds; a member of a composite that is undetermined beside one that
   decides has no word;
@@ -702,7 +675,7 @@ request gives beside an open writer waits: `; de invoerwaarde 7 geldt pas als va
 - a consistency that does not decide: `of <SUBJECT> voldoet aan de regel '…', staat niet vast, want <cause>; het staat niet
   vast: …`, which begins with no `SUBJECT`, since it is about no member. One that stands has no sentence.
 
-No sentence calls what is open leeg or onbekend.
+No sentence calls what is open leeg.
 
 **`?openInputs=true`** adds `openInputs` to the answer of a POST, with or without `explanation`: the input members that keep an open outcome of
 `output` open now, each once, in the order of the instances of the request and then of the declarations, with the outcomes
@@ -713,16 +686,12 @@ each keeps open, in the vocabulary of the answer:
                  "forOutputs": [{"instance": "V1", "name": "vindloon", "kind": "attribute"}]}]}
 ```
 
-An open outcome is followed over the forms that leave it open to the members no form writes; an input member in `output`
-that is open is under its own name, and an outcome that stands is under none. An open outcome without such a member is a
-fault of the engine, and a 500. The list is what can be asked now, not the whole questionnaire: an evaluation "that reaches an
-open value is broken off" (ch. 1.5), so a value names the first open member it read and a fold the first of its members that is open, and once
-that is given another read can turn out open; a composite is read past its first undetermined member, and names all of
-them. Of a closure inside a fold uchar's reading does not name the member it closed over (a node carries `open` only where
-it is undetermined, ch. 5.12), so there the list has the open members that the filter, the test of a quantifier fold or the
-counted attribute reads on the members of the range: an upper bound, in which one can be a member that does not affect the
-outcome, such as one that another condition of the filter leaves out already. The cause in a sentence is then the first of
-them.
+An open outcome is followed over the forms that leave it open to the input members, those that nothing but an
+initialisation writes; an input member in `output` that is open is under its own name, and an outcome that stands is
+under none. An open outcome without such a member is a fault of the engine, and a 500. The list is what can be asked now,
+not the whole questionnaire: an evaluation "that reaches an open value is broken off" (ch. 1.5), so a value names the
+first open member it read and a fold the first of its members that is open, and once that is given another read can turn
+out open; a composite is read past its first undetermined member, and names all of them.
 
 `openInputs` is a 400 `UNSUPPORTED` on a rule set that is not strict, and, as `explanation`, on an entry point that does
 not explain. uchar refuses some strict documents only with readings (DROOLS-318, a fold that can be open over a relation
@@ -731,9 +700,14 @@ sentence; the scenario runner and the playground give it in the place of the exp
 such a refusal makes the entry point a marker. The playground shows per scenario the `openInputs` of every derived member
 of the situation, and with `?via=service` those of the `output` of the entry point.
 
-**The scenarios.** A test document has no sentence that expects an open outcome. An expectation on one is FAIL with uchar's
-word for it, `openstaand`, on the ordinary route and with `?via=service`. A situation asserts a characteristic or leaves
-it out, so the request of `via=service` gives one as `{"state": "holds"}` and states none that does not hold.
+**The scenarios.** A test document of a strict rule set gives a characteristic as not holding in a situation ("- is niet
+drijfhout", "- heeft geen strandrecht": the case's `characteristicsAbsent`), and expects that an outcome stays open ("- de
+afhaaldatum van V1 staat niet vast", "- of V1 afhaalbaar is, staat niet vast": `attributeOpen` and `characteristicOpen`,
+uchar's scenario layer). uchar's replay judges them as any expectation, on the ordinary route and with `?via=service`,
+whose request gives a characteristic of the situation as `{"state": "holds"}` or `{"state": "holdsNot"}`. In a rule set
+that is not strict a characteristic the situation gives as not holding changes no outcome, and uchar's scenario layer
+warns (RGS-469) beside the model: `bin/regelspraak scenario` prints the warning on stderr, and the playground shows it
+among the warnings of the resolver.
 
 **The start.** A dimensioned attribute in `output` refuses the start (`UNSUPPORTED`): uchar does not say whether a cell is
 open. So does an attribute without a bean field of its own. A form whose reading of ch. 1.5 uchar's Drools branch does
@@ -756,11 +730,11 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `SUBJECT` | leaf | the label of an instance, or the name of an object a creation made, `«"<creation>"»(<subject>)#1` as uchar's canonical text names it with the subject as the explanation names it: the subject, or a member of a fold | — |
 | `NAME` | leaf | a declared name as `Naming` names it (the name part of a predicate, an attribute, a role, a parameter, the object type an object creation made) | `declaration` (`KENMERK`, `ATTRIBUUT`, `ROL`, `PARAMETER`, `OBJECTTYPE`), `owner`, `canonical`: the keys `kind`, `owner`, `canonical` of `vocabularies.elements[]`; `object` where the sentence names the value of an attribute or a characteristic of one object (below); `labels` where it names a cell of a dimensioned attribute, one label per dimension in their declared spelling |
 | `QUOTE` | leaf | rule text as written: an operand, the text of a fold | the three keys of `NAME` where the operand reads one attribute, a cell of one, or a parameter, and `object` and `labels` as on `NAME` |
-| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`), a value of an attribute with absence markers as its payload or the name of its marker; a literal | `empty: true` for an empty one ("leeg", on every attribute); `marker`, the name of the absence marker in its declared spelling, for a marker (`"marker": "onbekend"`), in the head of a sentence, as a value read and as the literal of a comparison, never on a payload or an enumeration value; `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic, which carries no `marker` |
+| `VALUE` | leaf | a value as the engine read it, with its unit, a number that does not terminate as its fraction `t/n` (uchar's RUNTIME-SEMANTICS ch. 5.12), a timeline as its periods (`5,00 van 01-12-2023 tot 01-01-2024`, `0,00 vanaf 01-03-2024`); a literal | `empty: true` for an empty one ("leeg", on every attribute); `timeline: true` for the value of a timeline target, its periods with their values (`12,00 van 01-01-2024 tot 01-03-2024`), and for the periods of a time-dependent characteristic |
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, staat niet vast, gold op geen dag, gold alleen op dagen die al een waarde hadden | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
-| `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count; in a strict rule set `undetermined: true` and no `holds` where it has no verdict, and `closure: true` where a closure gave the verdict, which stands for the form itself alone |
+| `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count; in a strict rule set `undetermined: true` and no `holds` where it has no verdict |
 | `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone; of a quantifier fold in a strict rule set `unsettled`, the members on which the verdict does not stand, where there can be any |
 | `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, how an allocation divided, or the waardetoekenningen of an object creation, after its name, with its colon (below) | — |
 | `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn; on a displaced variant of a defaults group `holds` (absent without a condition), `decision` for a characteristic, `unreadable: true` where its reading carried a fault (below); in a strict rule set `undetermined: true` on a displaced variant whose reading does not stand, which is its name alone |
@@ -913,8 +887,7 @@ computed values, as an ordinary rule does. An object creation that made an objec
 `"H1 heeft een Premiepot «"premiepot"»(H1)#1 volgens de regel 'premiepot' (onvoorwaardelijk): met als pot het aantal
 havenjutters van de Haven maal de premie per havenjutter (100)"`, the created type a `NAME` with the keys of its
 declaration (`OBJECTTYPE`), the made object a `SUBJECT`, and the waardetoekenningen a `COMPUTATION`, each with the rule
-text of its value and the value the made object got from it (`EndState.Member.given`; a literal or a marker once, as
-its value); with a condition `", omdat <CONDITION>"`. One that made none: `"J2 heeft geen Penning volgens de regel
+text of its value and the value the made object got from it (`EndState.Member.given`; a literal once, as its value); with a condition `", omdat <CONDITION>"`. One that made none: `"J2 heeft geen Penning volgens de regel
 'geef een bonuspenning', want niet geldt: zijn vangst (8 EUR) is groter dan 20 EUR"`, or `"…, want de regel valt op de
 rekendatum buiten haar geldigheid"`, or, for the 1:1 shape on a subject the input already links, `"…, want de koppeling
 stond al in de invoer"`. A fact creation that laid links from its anchor: `"H1 heeft S1 en S2 als winterschuit volgens
@@ -973,21 +946,6 @@ sentence per period, in the order of the days:
 A period without a decider and without input has no sentence; where no variant decided on any day and no input
 stands, one sentence says so: `"J2 heeft geen toelage, want geen variant besliste"`. The variants that did not decide a
 period are not named in its sentence.
-
-**Absence markers** (card `absence-markers-in-service`). The engine reads the value of an attribute with absence
-markers as uchar's `ConstructorValue` (RUNTIME-SEMANTICS ch. 9.5). The explanation writes the value `waarde(…)` as
-its payload, with the decimals and the unit of the declared datatype, and a marker by its declared name, as the head of
-a sentence (`"V1 heeft als taxatie onbekend volgens de regel 'taxatie onbekend': onbekend, omdat …"`), as a value a
-condition or a computation read, on a cell (`"V1 heeft als gewicht in voorjaar onbekend volgens de regel
-'voorjaarsgewicht onbekend': onbekend, …"`, `"zijn gewicht in voorjaar (onbekend) is gelijk aan onbekend"`), and per
-period (`"V1 heeft als opslagkosten onbekend van 01-01-2025 tot 01-03-2025
-volgens de regel 'opslag onbekend in de winter', …, en niet van toepassing van 01-06-2025 tot 01-01-2026 volgens …;
-de invoerwaarde 10 van 01-03-2025 tot 01-06-2025 bleef staan"`). A read of the value under a test of it (uchar's
-`PayloadAccess`) is empty where the attribute holds a marker, so the sentence names the attribute with what it holds:
-`"zijn taxatie (niet van toepassing) een waarde heeft"`, the test of a value in the words of the dialect; a marker in a
-comparison stands once, as a literal does (`"zijn taxatie (onbekend) is gelijk aan onbekend"`). An empty value stands
-as `leeg`, here as on an attribute without markers (`"zijn taxatie (leeg) is gelijk aan onbekend"`), so `onbekend` in
-an explanation is always the marker.
 
 **What a displaced variant found** (card `explanation-read-objects-and-displaced`). Every variant of a defaults group
 after the decider says, after its name, what it found, from uchar's reading of a displaced default (RUNTIME-SEMANTICS

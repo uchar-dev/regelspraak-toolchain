@@ -5,6 +5,12 @@ import dev.uchar.regelspraak.resolver.ScenarioResolver;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.PrintStream;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -13,9 +19,10 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * Scenarios of a rule set that infers nothing from an empty value ({@code Afleiden uit leeg: nee}, uchar's
- * RUNTIME-SEMANTICS ch. 1.5). A scenario has no sentence that expects an open outcome: one that expects a value, leeg or
- * the absence of a characteristic where the outcome is open fails, with uchar's word for it. The explanation says what
- * keeps an outcome open.
+ * RUNTIME-SEMANTICS ch. 1.5). A scenario that expects a value, leeg or the absence of a characteristic where the outcome is
+ * open fails, with uchar's word for it; one that expects it open ("staat niet vast") passes; a situation gives a
+ * characteristic as not holding ("- is niet betwist"), which in a document without the property changes nothing and is a
+ * warning of uchar's scenario layer. The explanation says what keeps an outcome open.
  */
 class ScenarioOpenValuesTest {
 
@@ -108,6 +115,80 @@ class ScenarioOpenValuesTest {
         assertEquals(1, p.openInputs().size());
         assertEquals("gewicht", p.openInputs().get(0).input().member());
         assertEquals(List.of("vindloon"), p.openInputs().get(0).outcomes().stream().map(o -> o.member()).toList());
+    }
+
+    private static final String PREMIE = """
+        Objecttype de Vondst (mv: Vondsten)
+            de taxatie Numeriek (geheel getal);
+            de premie Numeriek (geheel getal);
+            is betwist kenmerk (bijvoeglijk);
+
+        Regel premie
+            geldig altijd
+                De premie van een Vondst moet gesteld worden op 5 indien hij niet betwist is.
+
+        Scenario niet betwist
+        Gegeven is de volgende situatie:
+        een Vondst V1
+        - is niet betwist
+        Met als verwacht resultaat:
+        - de premie van V1 is 5
+        - V1 is niet betwist
+        """;
+
+    /** A situation gives betwist as not holding, so the premie stands; without it the premie and betwist are open, as the
+     *  second scenario expects. */
+    @Test
+    void a_scenario_gives_a_characteristic_as_not_holding_and_expects_an_open_outcome() {
+        List<ScenarioRunner.Explained> played = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(
+                "Afleiden uit leeg: nee\n\n" + PREMIE + """
+
+                Scenario betwist open
+                Gegeven is de volgende situatie:
+                een Vondst V1
+                Met als verwacht resultaat:
+                - de premie van V1 staat niet vast
+                - of V1 betwist is, staat niet vast
+                """));
+        assertEquals(2, played.size());
+        for (ScenarioRunner.Explained p : played) {
+            assertEquals(Status.PASS, p.result().status(), p.result()::diagnostic);
+            assertEquals(2, p.result().expectations().size(), p.result()::diagnostic);
+        }
+        assertEquals(List.of("V1 heeft als premie 5 volgens de regel 'premie': 5, omdat het onderwerp niet betwist is"),
+                played.get(0).explanation());
+        assertEquals(List.of("V1: zijn premie staat niet vast, want het is niet gegeven of hij betwist is; voor de regel"
+                + " 'premie' staat niet vast: het onderwerp niet betwist is (niet gegeven)"), played.get(1).explanation());
+    }
+
+    /** In a document without the property "- is niet betwist" changes nothing: the scenario plays as without it, and the
+     *  scenario command prints uchar's warning on stderr. */
+    @Test
+    void a_characteristic_given_as_not_holding_in_an_ordinary_document_is_a_warning() throws IOException {
+        assertEquals(List.of("WARNING regel 13: scenario: 'is niet betwist' verandert in een document zonder 'Afleiden uit"
+                + " leeg: nee' niets: daar geldt een kenmerk dat de situatie niet noemt al niet; de zin telt alleen in een"
+                + " document met 'Afleiden uit leeg: nee'"), ScenarioRunner.warnings(ScenarioResolver.resolve(PREMIE)));
+        Path doc = Files.createTempFile("premie-", ".rgs");
+        try {
+            Files.writeString(doc, PREMIE, StandardCharsets.UTF_8);
+            PrintStream out = System.out, err = System.err;
+            ByteArrayOutputStream o = new ByteArrayOutputStream(), e = new ByteArrayOutputStream();
+            System.setOut(new PrintStream(o, true, StandardCharsets.UTF_8));
+            System.setErr(new PrintStream(e, true, StandardCharsets.UTF_8));
+            int code;
+            try {
+                code = ScenarioRunnerCli.run(new String[]{doc.toString()});
+            } finally {
+                System.setOut(out);
+                System.setErr(err);
+            }
+            assertEquals(0, code, o.toString(StandardCharsets.UTF_8));
+            assertEquals("PASS  niet betwist\n", o.toString(StandardCharsets.UTF_8));
+            assertTrue(e.toString(StandardCharsets.UTF_8).contains("  WARNING regel 13: scenario: 'is niet betwist'"
+                    + " verandert in een document zonder 'Afleiden uit leeg: nee' niets"), e.toString(StandardCharsets.UTF_8));
+        } finally {
+            Files.delete(doc);
+        }
     }
 
     /** A fold that can be open over a relation both of whose roles are to-many: uchar plays the document without readings and

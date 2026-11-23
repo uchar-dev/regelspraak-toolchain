@@ -88,6 +88,20 @@ class RequestMapperTest {
                 && s.field().equals("instances[0].attributes.geboortedatum")), r.violations().toString());
     }
 
+    /** The dialect has no absence markers: a marker object, {@code {"marker": "onbekend"}}, is a value of no datatype, the
+     *  violation of the type a value of another form gets, on a number and on a date. */
+    @Test
+    void a_marker_object_is_wrong_type() {
+        for (String attribute : List.of("te betalen belasting", "geboortedatum")) {
+            var r = map("""
+                { "instances": [ { "type": "Natuurlijk persoon", "id": "P1",
+                    "attributes": { "%s": {"marker": "onbekend"} } } ] }""".formatted(attribute));
+            assertEquals(1, r.violations().size(), r.violations().toString());
+            assertEquals(Violation.Kind.WRONG_TYPE, r.violations().get(0).kind(), r.violations().toString());
+            assertEquals("instances[0].attributes." + attribute, r.violations().get(0).field(), r.violations().toString());
+        }
+    }
+
     @Test
     void unit_bearing_number_accepts_object_with_correct_unit() {
         // afstand tot bestemming: Numeriek (geheel getal) met eenheid km

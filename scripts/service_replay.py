@@ -89,31 +89,11 @@ def same_rule(a, b):
 
 # ---------------------------------------------------------------- case -> verzoek
 
-# De afwezigheidsmarkers van uchars RUNTIME-SEMANTICS ch. 9.5: een attribuut met markers houdt een constructorwaarde,
-# de waarde als payload van "waarde" of een marker zonder payload. Het verzoek en het antwoord van de dienst geven de
-# waarde als waarde van het datatype en een marker als {"marker": <naam>}.
-VALUE_CONSTRUCTOR = "waarde"
-MARKERS = ("onbekend", "niet van toepassing")
-
-
-def marker_of(node, place):
-    """De naam van de marker van de constructorwaarde `node`, of None voor de waarde; een andere constructorwaarde heeft
-    in de dienst geen vorm."""
-    tag = norm(node["constructor"])
-    if tag == VALUE_CONSTRUCTOR and "payload" in node:
-        return None
-    if tag in MARKERS and "payload" not in node:
-        return tag
-    raise NotExpressible(f"constructorwaarde {node['constructor']!r} buiten de afwezigheidsmarkers ({place})")
-
-
 def value_of(node, place):
-    """De verzoekwaarde van een casewaarde; getallen als tekst, zodat de dienst ze exact als BigDecimal leest."""
+    """De verzoekwaarde van een casewaarde; getallen als tekst, zodat de dienst ze exact als BigDecimal leest. Een
+    constructorwaarde van een sum type heeft in de dienst geen vorm."""
     if node is None:
         return None
-    if "constructor" in node:
-        m = marker_of(node, place)
-        return {"marker": m} if m is not None else value_of(node["payload"], place)
     if "number" in node:
         lexeme = node["number"]
         if "/" in lexeme:
@@ -233,14 +213,7 @@ def descriptor(name, document, cases):
 # ---------------------------------------------------------------- antwoord -> vergelijking
 
 def equal(expected, given, place):
-    """uchars gelijkeWaarde: een getal op waarde, een enumeratie op genormaliseerde naam, de rest exact; van een
-    constructorwaarde de waarde als payload en een marker als {"marker": <naam>}, op genormaliseerde naam."""
-    if "constructor" in expected:
-        m = marker_of(expected, place)
-        if m is None:
-            return equal(expected["payload"], given, place)
-        return isinstance(given, dict) and list(given) == ["marker"] and isinstance(given["marker"], str) \
-            and norm(given["marker"]) == m
+    """uchars gelijkeWaarde: een getal op waarde, een enumeratie op genormaliseerde naam, de rest exact."""
     if "number" in expected:
         if not isinstance(given, decimal.Decimal):
             return False
@@ -263,26 +236,20 @@ def canonical(segments, place):
     """De canonieke vorm van RUNTIME-SEMANTICS ch. 3.1, zoals uchars replay (CaseRunner.canonical) een tijdlijn
     vergelijkt: de maximale reeksen gelijke gevulde waarden, gaten weggelaten, een open grens zoals hij staat. Een lege
     waarde leest als een gat, en een segment waarvan to niet na from ligt evenmin. Per segment (from, to, waarde), een
-    open grens als None; een marker, van een constructorwaarde van de case of {"marker": <naam>} van het antwoord, als
-    ("marker", <naam>), de waarde van een constructorwaarde als haar payload."""
+    open grens als None."""
     filled = []
     for s in segments:
         v = s.get("value")
         if v is None:
             continue
-        if isinstance(v, dict) and "constructor" in v:
-            m = marker_of(v, place)
-            v = ("marker", m) if m is not None else v["payload"]
-        elif isinstance(v, dict) and list(v) == ["marker"] and isinstance(v["marker"], str):
-            v = ("marker", norm(v["marker"]))
         if isinstance(v, dict):
             if "number" not in v:
                 raise NotExpressible(f"tijdlijnwaarde {sorted(v)} ({place})")
             if "/" in v["number"]:
                 raise NotExpressible(f"breuk als verwachte waarde ({place})")
             v = decimal.Decimal(v["number"])
-        if not isinstance(v, (decimal.Decimal, tuple)):
-            raise Deviation(f"{place}: een segment draagt geen getal en geen marker: {s}")
+        if not isinstance(v, decimal.Decimal):
+            raise Deviation(f"{place}: een segment draagt geen getal: {s}")
         f, t = s.get("from"), s.get("to")
         if f is not None and t is not None and not t > f:
             continue
@@ -324,11 +291,7 @@ def compare_state(e, members, place):
         return
     if e["value"] is None:
         raise NotExpressible(f"attributeValue zonder waarde ({place})")
-    m = marker_of(e["value"], place) if "constructor" in e["value"] else None
-    if m is not None:
-        if list(given) != ["state", "marker"] or given["state"] != "marker" or norm(given["marker"]) != m:
-            raise Deviation(f"{place}: verwacht de marker {m}, kreeg {given}")
-    elif list(given) != ["state", "value"] or given["state"] != "filled" or not equal(e["value"], given["value"], place):
+    if list(given) != ["state", "value"] or given["state"] != "filled" or not equal(e["value"], given["value"], place):
         raise Deviation(f"{place}: verwacht {json.dumps(e['value'])}, kreeg {given}")
 
 
