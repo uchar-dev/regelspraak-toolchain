@@ -81,8 +81,9 @@ public final class FixpointGivens {
      * (as uchar keys a cell) and {@code value}, keyed case-insensitively; {@code characteristics} the characteristics
      * the input set, case-insensitively, and {@code periods} per time-dependent characteristic the input gave periods
      * those periods, as {@code from}, {@code to} nodes ({@link #periodNodes}), keyed case-insensitively; {@code absent}
-     * the characteristics the input states not to hold ({@link OpenValues}), by their declared names. Its object in
-     * the session is the one uchar's reading labels so ({@link EndState.EndObject#label}).
+     * the characteristics the input states not to hold ({@link OpenValues}), by their declared names,
+     * case-insensitively. Its object in the session is the one uchar's reading labels so
+     * ({@link EndState.EndObject#label}).
      */
     public record InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
                                Map<String, ArrayNode> periods, Set<String> absent) {}
