@@ -10,14 +10,12 @@ import dev.uchar.regelspraak.ir.ResolvedConsistency;
 import dev.uchar.regelspraak.ir.ResolvedRule;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
-import dev.uchar.regelspraak.model.RegelSpraakModel.RoleBindingRef;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading.NodeReading;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint.OpenValue;
 
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.HashMap;
 import java.util.IdentityHashMap;
 import java.util.LinkedHashMap;
@@ -33,10 +31,7 @@ import java.util.Set;
  * {@code OPEN}; what left it so is the open read at its undetermined condition, per member of a composite that is
  * undetermined itself, or at its value ({@link #of}); a member that no form left open is open by its own input
  * ({@link #notGiven}); a member open by a form is followed over its open forms to the members open by their input, the
- * input that can be given ({@link #openInputs}). Beside that, {@link #reads} says whether the filter of a quantifier fold
- * reads an open member on a member of its range: it walks the nodes of the filter and the links of uchar's end state and
- * looks the members it reaches up among the open members of that state, every branch of a choice and every value of a
- * binder included, so it says yes also where the evaluation did not read that member.
+ * input that can be given ({@link #openInputs}).
  */
 public final class OpenReads {
 
@@ -52,20 +47,13 @@ public final class OpenReads {
     private final RegelSpraakModel model;
     private final Map<String, Form> forms = new HashMap<>();
     private final Map<Object, EndState.EndObject> ends = new IdentityHashMap<>();
-    /** The place of every object among those of the end state. */
-    private final Map<Object, Integer> order = new IdentityHashMap<>();
-    private final List<EndState.Link> links;
     /** The readings that left a target open, per object. */
     private final Map<Object, List<ConditionReading>> open = new IdentityHashMap<>();
 
     public OpenReads(Verbaliser.Document document, List<ConditionReading> readings, EndState standing) {
         this.document = document;
         this.model = document.model();
-        this.links = standing.links();
-        for (EndState.EndObject o : standing.objects()) {
-            order.put(o.object(), ends.size());
-            ends.put(o.object(), o);
-        }
+        for (EndState.EndObject o : standing.objects()) ends.put(o.object(), o);
         for (ResolvedRule r : document.rules())
             if (r.target() instanceof Expr.AttributeReference a) {
                 boolean characteristic = r.kind() == ResolvedRule.Kind.KENMERKTOEKENNING;
@@ -229,122 +217,6 @@ public final class OpenReads {
             return;
         }
         out.add(n.of(c).open());
-    }
-
-    // ---------------- an open filter of a quantifier fold ----------------
-
-    /** Whether {@code filter}, the filter of a quantifier fold in a form on {@code subject}, can read an open member on
-     *  {@code element}, a member of its range: uchar's reading of the fold gives per member the verdict of its matrix, and not
-     *  whether its filter stands there (ch. 1.5, "A quantifier fold"). Read over the nodes of the filter and the links of the
-     *  end state, not evaluated: every branch of a choice, the value of every binder and the fallback of every sum count, so
-     *  the answer is yes wherever the evaluation can have read an open member, and also where it did not. */
-    boolean reads(Condition filter, Object element, Object subject) {
-        if (filter == null) return false;
-        Set<OpenValue> out = new LinkedHashSet<>();
-        read(filter, element, subject, out);
-        return !out.isEmpty();
-    }
-
-    /** The open members {@code root}, a condition or an expression evaluated on {@code on} in a form on {@code subject}, reads
-     *  there: an attribute or a characteristic of its own or over a role, those of the members of a fold in it, and those of
-     *  the fallback of a sum in it. */
-    private void read(Object root, Object on, Object subject, Set<OpenValue> out) {
-        if (root == null) return;
-        List<Object> nodes = document.positions().subtree(root);
-        for (int i = 0; i < nodes.size(); i++) {
-            Object node = nodes.get(i);
-            if (node instanceof Expr.AttributeReference a) {
-                for (Object o : reached(a, a.anchored(), on, subject)) add(o, a.attribute(), false, out);
-            } else if (node instanceof Condition.CharacteristicCheck k) {
-                for (Object o : reached(k, k.anchored(), on, subject)) add(o, k.characteristic(), true, out);
-            } else if (node instanceof Condition.QuantifierFold q) {
-                Object from = document.loaded().anchored().contains(q) ? subject : on;
-                for (Object e : range(q, from)) {
-                    read(q.filter(), e, subject, out);
-                    read(q.test(), e, subject, out);
-                }
-                i += document.positions().subtree(q).size() - 1;
-            } else if (node instanceof Expr.FunctionCall f && overASet(f)) {
-                Object from = f.anchored() || document.loaded().anchored().contains(f) ? subject : on;
-                if (f.arguments().get(0) instanceof Expr.InstanceSetUnion u) {
-                    // a count over a union reads nothing but the filter of each selection, on the members of its one step
-                    for (Expr.InstanceSetUnion.Branch t : u.branches())
-                        for (Object e : range(List.of(t.sourceRole()), t.elementType(), from))
-                            read(t.filter(), e, subject, out);
-                } else {
-                    for (Object e : range(f, from)) {
-                        read(f.filter(), e, subject, out);
-                        read(f.arguments().get(0), e, subject, out);
-                    }
-                }
-                // the fallback of a sum is evaluated every time the sum is, on what the sum is evaluated on (the form
-                // subject for an anchored sum), also over an empty range (RUNTIME-SEMANTICS ch. 5.11)
-                read(f.emptyFallback(), from, subject, out);
-                i += document.positions().subtree(f).size() - 1;
-            }
-        }
-    }
-
-    private void add(Object object, String name, boolean characteristic, Set<OpenValue> out) {
-        EndState.Open o = open(object, name, characteristic);
-        if (o != null) out.add(new OpenValue(object, o.name(), characteristic));
-    }
-
-    /** Whether {@code f} is a fold over a set with a range of its own ({@link #range}). */
-    private boolean overASet(Expr.FunctionCall f) {
-        return document.loaded().roleBindings().containsKey(f) || document.loaded().sourcePaths().containsKey(f)
-                || f.arguments().size() == 1 && f.arguments().get(0) instanceof Expr.InstanceSetUnion;
-    }
-
-    /** The members of the range of {@code f}, a fold over a set, from {@code on}. */
-    private List<Object> range(Expr.FunctionCall f, Object on) {
-        List<RoleBindingRef> path = document.loaded().sourcePaths().get(f);
-        RoleBindingRef role = document.loaded().roleBindings().get(f);
-        if (path == null && role == null)
-            throw new IllegalStateException("een vouw " + f.kind() + " over een verzameling heeft geen bereik in het document");
-        return range(path != null ? path : List.of(role), f.elementObjectType(), on);
-    }
-
-    private List<Object> range(Condition.QuantifierFold q, Object on) {
-        return range(q.sourceRole() != null ? List.of(q.sourceRole()) : q.sourcePath(), q.elementObjectType(), on);
-    }
-
-    private List<Object> range(List<RoleBindingRef> steps, ObjectType element, Object on) {
-        List<Object> out = new ArrayList<>();
-        if (steps.isEmpty()) return out;
-        for (Object o : walk(on, steps)) if (element == null || typeOf(o).isA(element)) out.add(o);
-        return out;
-    }
-
-    /** The objects the read {@code node} reads its member on, from {@code on}, or from {@code subject} where it is anchored to
-     *  the form (IR-SPEC ch. 4.1a). */
-    private List<Object> reached(Object node, boolean anchored, Object on, Object subject) {
-        Object from = anchored || document.loaded().anchored().contains(node) ? subject : on;
-        List<RoleBindingRef> walk = document.loaded().navigationBindings().get(node);
-        return walk == null || walk.isEmpty() ? List.of(from) : walk(from, walk);
-    }
-
-    /** The objects {@code steps} reach from {@code from} over the links of the end state, each once and in the order of its
-     *  objects: every step names the role the object it reaches fills. */
-    private List<Object> walk(Object from, List<RoleBindingRef> steps) {
-        List<Object> at = List.of(from);
-        for (RoleBindingRef step : steps) {
-            String factType = Namen.norm(step.factType()), role = Namen.norm(step.role());
-            List<Object> next = new ArrayList<>();
-            for (Object o : at)
-                for (EndState.Link k : links) {
-                    if (!Namen.norm(k.factType()).equals(factType)) continue;
-                    if (k.first() == o && Namen.norm(k.secondRole()).equals(role)) once(next, k.second());
-                    if (k.second() == o && Namen.norm(k.firstRole()).equals(role)) once(next, k.first());
-                }
-            next.sort(Comparator.comparingInt(order::get));
-            at = next;
-        }
-        return at;
-    }
-
-    private static void once(List<Object> sink, Object o) {
-        if (sink.stream().noneMatch(p -> p == o)) sink.add(o);
     }
 
     // ---------------- the input that can be given ----------------

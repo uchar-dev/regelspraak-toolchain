@@ -954,11 +954,14 @@ public final class OpenApiEmitter {
             s.put("description", s.get("description").asText() + " In een regelset die uit leeg niets afleidt: een CONDITION die"
                     + " niet vaststaat draagt undetermined: true en geen holds; een READING van een lezing die op een open lid"
                     + " afbrak draagt open, dat lid (object zoals SUBJECT het noemt, canonical, en kind: attribute of characteristic), en geen VALUE;"
-                    + " MEMBERS van een kwantorvouw draagt unsettled, het aantal leden waarvoor niet vaststaat of de toets"
-                    + " geldt; een kwantorvouw waarvan het filter op een lid een open waarde kan lezen, heeft geen MEMBERS:"
-                    + " de uitleg geeft dan alleen het oordeel van de vouw; een VARIANT van een defaults-groep die niet aan de"
+                    + " MEMBERS van een kwantorvouw waarvan het oordeel of dat van een lid niet vaststaat, draagt unsettled,"
+                    + " het aantal leden waarvoor niet vaststaat of de toets geldt, en filterUnsettled, het aantal leden"
+                    + " waarvan het filter onbepaald is, zodat niet vaststaat of zij meetellen; zo'n lid telt alleen daar,"
+                    + " members, holding, unjudged en unsettled tellen de leden met een vaststaand filter, en de zin noemt"
+                    + " het apart ('niet vast of V2 meetelt'), zonder totaal; een VARIANT van een defaults-groep die niet aan de"
                     + " beurt was en waarvan de lezing niet vaststaat, undetermined: true (dan de naam alleen).");
             props.putObject("unsettled").put("type", "integer");
+            props.putObject("filterUnsettled").put("type", "integer");
             props.putObject("undetermined").put("type", "boolean");
             ObjectNode open = props.putObject("open");
             open.put("type", "object");

@@ -147,6 +147,7 @@ class OpenInputsHttpTest {
         assertEquals("boolean", part.at("/undetermined/type").asText());
         assertTrue(part.at("/closure").isMissingNode(), part.toString());
         assertEquals("integer", part.at("/unsettled/type").asText());
+        assertEquals("integer", part.at("/filterUnsettled/type").asText());
         assertTrue(part.at("/open/properties").has("canonical"));
     }
 

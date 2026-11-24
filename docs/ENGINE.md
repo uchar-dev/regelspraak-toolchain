@@ -656,10 +656,7 @@ member is in no other row; a member in no row is settled leeg, or stands not to 
 one place that says what. It evaluates no condition and no value: it takes the open reads from uchar's readings
 (RUNTIME-SEMANTICS ch. 5.12, "Open values"), lays them on the forms of the document, and follows a member that a form left
 open over those forms to the members that are open by their own input, the input members that no form left open.
-Of the filter of a quantifier fold it says whether it can read an open member on a member of the fold: it walks the nodes
-of the filter over the links of uchar's end state and looks the members it reaches up among the open members of that
-state, every branch of a choice and the value of every binder included, so it also says so where the evaluation did not
-read that member. An open attribute is `<SUBJECT>: zijn <NAME> staat niet vast, want <cause>`, an open characteristic
+An open attribute is `<SUBJECT>: zijn <NAME> staat niet vast, want <cause>`, an open characteristic
 `<SUBJECT>: of hij <NAME> is, staat niet vast, want <cause>`, with one cause: the member that keeps the first open form
 open, "zijn taxatie is niet gegeven" of an input member that is open by its own input, "zijn vindloon staat niet vast" of
 a derived member and of a complete member that its initialisation leaves open, "van J1 is zijn bonus niet gegeven" of
@@ -684,11 +681,18 @@ sentences:
 - a writer that is open beside an outcome that stands says only that: `of de regel '…' geldt, staat niet vast`, or `wat de
   regel '…' geeft, staat niet vast` where its condition holds; a member of a composite that is undetermined beside one that
   decides has no word;
-- a composite that is undetermined names the first member that keeps it so; a quantifier fold whose matrix is undetermined
-  on a member the members by the verdict of the matrix: "wel voor V1, niet voor V2, niet vast voor V3"; one that stands
-  beside such a member the members that carry it, counted among all: "niet voor V2 (1 van de 3)"; a quantifier fold whose
-  filter can read an open member on one of its members (`OpenReads`) gives its verdict alone and names no member, since
-  uchar's reading gives per member the verdict of the matrix and not whether the filter stands there;
+- a composite that is undetermined names the first member that keeps it so; a quantifier fold that is undetermined the
+  members by the verdict of the matrix: "wel voor V1, niet voor V2, niet vast voor V3"; one that stands beside a member on
+  which the matrix is undetermined the members that carry it, counted among all: "niet voor V2 (1 van de 3)"; uchar's
+  reading gives per member the verdict of the matrix and whether the filter is undetermined there
+  (`ConditionReading.Contributor`, `undetermined` and `filterUndetermined`), and the explanation judges neither;
+- a member of a quantifier fold whose filter is undetermined is one of which it does not stand whether it counts: the
+  sentence names it apart, "niet vast of V2 meetelt", and nowhere else, and beside it counts no member. A fold that stands
+  is carried by members whose filter holds: "alle" that does not hold by those for which the matrix does not hold, "niet
+  voor V1, niet vast of V2 meetelt", "alle" that holds by those for which it holds, "voor V1, niet vast of V2 meetelt";
+  where no such member carries the outcome, the sentence names those for which the matrix holds, "ten minste twee" that
+  does not hold "voor V1, niet vast of V2 meetelt". A fold that does not stand: "wel voor V1, niet vast voor V3, niet vast
+  of V2 meetelt";
 - a consistency that does not decide: `of <SUBJECT> voldoet aan de regel '…', staat niet vast, want <cause>; het staat niet
   vast: …`, which begins with no `SUBJECT`, since it is about no member. One that stands has no sentence.
 
@@ -755,7 +759,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, staat niet vast, gold op geen dag, gold alleen op dagen die al een waarde hadden | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
 | `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count; in a strict rule set `undetermined: true` and no `holds` where it has no verdict |
-| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone; of a quantifier fold in a strict rule set `unsettled`, the members on which its matrix is undetermined, where there can be any; no `MEMBERS` where its filter can read an open member |
+| `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone; of a quantifier fold in a strict rule set, where the fold or one of its members does not stand, also `unsettled`, the members on which its matrix is undetermined, and `filterUnsettled`, those on which its filter is undetermined, which count there alone: the other four count the members whose filter holds |
 | `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, how an allocation divided, or the waardetoekenningen of an object creation, after its name, with its colon (below) | — |
 | `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn; on a displaced variant of a defaults group `holds` (absent without a condition), `decision` for a characteristic, `unreadable: true` where its reading carried a fault (below); in a strict rule set `undetermined: true` on a displaced variant whose reading does not stand, which is its name alone |
 | `READING` | group | the value the engine read for the operand or the member right before it, with its brackets: `" ("`, the `VALUE`, `")"` | —; in a strict rule set `open`, `{"object", "canonical", "kind": "attribute" \| "characteristic"}`, where the read broke off at that open member: it then has no `VALUE` and says "(niet gegeven)" or "(staat niet vast)" |

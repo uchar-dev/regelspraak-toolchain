@@ -45,11 +45,12 @@ public record Part(Kind kind, String text, Map<String, Object> meta, List<Part> 
         CONDITION,
         /** The members of a quantifier fold that carry its outcome, with the colon before them: {@code members} (m, the
          *  members with a verdict),
-         *  {@code holding} (k, those for which its matrix holds) and {@code unjudged} (those whose matrix faulted); in a
-         *  strict document {@code unsettled}, those on which its matrix is undetermined, where there are any. In a strict
-         *  document a quantifier fold whose filter can read an open value on one of its members has no {@code MEMBERS}:
-         *  its explanation gives the verdict of the fold alone. Of a fold in a computation, the members it folded over,
-         *  each with what it contributed: {@code members} (m) alone. */
+         *  {@code holding} (k, those for which its matrix holds) and {@code unjudged} (those whose matrix faulted). In a
+         *  strict document, where the fold or one of its members does not stand, also {@code unsettled}, the members on
+         *  which its matrix is undetermined, and {@code filterUnsettled}, the members on which its filter is undetermined,
+         *  of which it does not stand whether they count; such a member is counted there alone, and the other four count
+         *  the members whose filter stands. Of a fold in a computation, the members it folded over, each with what it
+         *  contributed: {@code members} (m) alone. */
         MEMBERS,
         /** How the rule of a computed value computed it, after the rule's name, with its colon: the rule text of its
          *  value, every value the computation read or folded with the value of its node (a fold with its

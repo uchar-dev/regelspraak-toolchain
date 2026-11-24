@@ -374,13 +374,21 @@ writes one does not start:
   initialisation writes is an input member: `openInputs` names it, and `/info` lists it in `completeInput` where it is
   `(volledig gegeven)`; there its initialisation is at its turn, and where that reads an open member, `openInputs` names
   that member. Of a fold `openInputs` names the first of its members that is open, where it named every open member its
-  filter or count read; the explanation of a quantifier fold whose filter can read an open member gives its verdict and
-  no `MEMBERS`. A test document of a strict rule set gives a characteristic as not holding ("- is niet drijfhout") and
+  filter or count read. A test document of a strict rule set gives a characteristic as not holding ("- is niet drijfhout") and
   expects an open outcome ("- de afhaaldatum van V1 staat niet vast"); `?via=service` sends such a characteristic as
   `{"state": "holdsNot"}`, where it sent every characteristic of a situation as holding, and the JSON of the playground
   gives it in `situation.objects[].characteristics[]` with `holds: false`. In a rule set that is not strict such a
   sentence changes no outcome: `bin/regelspraak scenario` prints uchar's warning (RGS-469) on stderr and the playground
   shows it among the resolver's warnings.
+- **A quantifier fold with an undetermined filter** (card `quantifier-filter-in-explanation`, on uchar's
+  `contributor-filter-verdict`): in a strict rule set the explanation of a quantifier fold names its members also where
+  its filter is undetermined on a member, from uchar's reading of each member. Such a member, of which it does not stand
+  whether it counts, is named apart, and the sentence then counts no member: `"… is niet voldaan: niet voor V1, niet
+  vast of V2 meetelt"`, `"… is voldaan: wel voor V1, niet vast of V2 en V3 meetellen"` of a fold that does not stand. A
+  filter "A of B" that holds by A while B is open stands, and its fold is explained as any other (`"niet voor V2 (1 van
+  de 2)"`). `MEMBERS` has `filterUnsettled`, the members whose filter is undetermined, beside `unsettled`; the other
+  counts leave those members out. Where the explanation gave the verdict of the fold alone, without `MEMBERS`, it now
+  names the members.
 
 ## The pin
 

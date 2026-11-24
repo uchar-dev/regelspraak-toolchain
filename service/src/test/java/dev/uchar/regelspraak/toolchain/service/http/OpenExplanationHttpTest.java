@@ -220,7 +220,7 @@ class OpenExplanationHttpTest {
         assertSentence("J1: of hij kundig is, staat niet vast, want van W3 is zijn diepte niet gegeven; voor de regel 'kundigheid'"
                 + " staat niet vast: aan de voorwaarde \"de diepte van alle gevonden wrakken van de Jutter groter is dan 10\" is"
                 + " voldaan: wel voor W1 en W2, niet vast voor W3", answer);
-        assertEquals("MEMBERS{members=2, holding=2, unjudged=0, unsettled=1}[«: wel voor » SUBJECT«W1» « en » SUBJECT«W2»"
+        assertEquals("MEMBERS{members=2, holding=2, unjudged=0, unsettled=1, filterUnsettled=0}[«: wel voor » SUBJECT«W1» « en » SUBJECT«W2»"
                 + " «, niet vast voor » SUBJECT«W3»]", ExplanationPartsCheck.render(ServiceHttp.MAPPER.createArrayNode()
                 .add(group(sentence(answer, "J1: of hij kundig is"), "MEMBERS"))));
     }
@@ -232,16 +232,36 @@ class OpenExplanationHttpTest {
                 + " 10\" is niet voldaan: niet voor W2 (1 van de 3)", jutter("\"diepte\": 20", "\"diepte\": 5", ""));
     }
 
-    /** It is open whether W2 counts (gemerkt): the filter reads an open member, so the fold gives its verdict and names no
-     *  member, and the head says what keeps it open. */
+    /** It is open whether W2 counts (gemerkt), and its diepte of 5 fails the test: uchar's reading says that its filter is
+     *  undetermined, so the sentence names it apart and counts it in {@code filterUnsettled} alone; the head says what keeps
+     *  the fold open. */
     @Test
     void a_quantifier_fold_with_an_open_filter() throws Exception {
-        assertSentence("J1: of hij keurder is, staat niet vast, want het is van W2 niet gegeven of hij gemerkt is; voor de regel"
-                + " 'keurderschap' staat niet vast: aan de voorwaarde \"de diepte van alle gevonden wrakken van de Jutter die"
-                + " gemerkt zijn groter is dan 10\" is voldaan", post("""
+        JsonNode answer = post("""
                 {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2"]}},
                   {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20}, "characteristics": {"gemerkt": {"state": "holds"}}},
-                  {"type": "Wrak", "id": "W2", "attributes": {"diepte": 5}}]}"""));
+                  {"type": "Wrak", "id": "W2", "attributes": {"diepte": 5}}]}""");
+        assertSentence("J1: of hij keurder is, staat niet vast, want het is van W2 niet gegeven of hij gemerkt is; voor de regel"
+                + " 'keurderschap' staat niet vast: aan de voorwaarde \"de diepte van alle gevonden wrakken van de Jutter die"
+                + " gemerkt zijn groter is dan 10\" is voldaan: wel voor W1, niet vast of W2 meetelt", answer);
+        assertEquals("MEMBERS{members=1, holding=1, unjudged=0, unsettled=0, filterUnsettled=1}[«: wel voor » SUBJECT«W1»"
+                + " «, niet vast of » SUBJECT«W2» « meetelt»]", ExplanationPartsCheck.render(ServiceHttp.MAPPER.createArrayNode()
+                .add(group(sentence(answer, "J1: of hij keurder is"), "MEMBERS"))));
+    }
+
+    /** W2 counts where it is gemerkt, and holds the test either way: the fold holds, W1 carries it, and the sentence counts no
+     *  members, since whether W2 is one does not stand. */
+    @Test
+    void a_quantifier_fold_that_holds_beside_an_open_filter() throws Exception {
+        JsonNode answer = post("""
+                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2"]}},
+                  {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20}, "characteristics": {"gemerkt": {"state": "holds"}}},
+                  {"type": "Wrak", "id": "W2", "attributes": {"diepte": 30}}]}""");
+        assertSentence("J1 is keurder, omdat aan de voorwaarde \"de diepte van alle gevonden wrakken van de Jutter die gemerkt"
+                + " zijn groter is dan 10\" is voldaan: voor W1, niet vast of W2 meetelt", answer);
+        assertEquals("MEMBERS{members=1, holding=1, unjudged=0, unsettled=0, filterUnsettled=1}[«: voor » SUBJECT«W1»"
+                + " «, niet vast of » SUBJECT«W2» « meetelt»]", ExplanationPartsCheck.render(ServiceHttp.MAPPER.createArrayNode()
+                .add(group(sentence(answer, "J1 is keurder"), "MEMBERS"))));
     }
 
     // ---------------- the tests on leeg and gevuld ----------------
