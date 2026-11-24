@@ -252,7 +252,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # -cel, -creatie, -initialisatie, -kopie en jutterswet-opgave-afwezigheidsmarkers), en jutterswet-afhaalbaar,
 # jutterswet-afhaalbaar-strikt, jutterswet-heffing-strikt, jutterswet-loonkopie en jutterswet-opgave-teruggavetermijn
 # komen erbij. Alle vijf spelen door de dienst.
-EXPECTED_REPLAY_PLAYED=376
+# Pin uchar 2e6319e69 (kaart contributor-filter-verdict, toolchainkaart quantifier-filter-in-explanation): 377 — de set
+# van gate 12 groeit van 385 naar 386 met jutterswet-zwaarkeurder-strikt (een kwantorvouw waarvan het filter op een lid
+# onbepaald is), en die speelt door de dienst.
+EXPECTED_REPLAY_PLAYED=377
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -270,7 +273,8 @@ EXPECTED_REPLAY_PLAYED=376
 # 1072 (pin uchar b9232544e): de drie cases van jutterswet-gevuldtoets-soorten en de zes van elk van de twee strikte goldens.
 # 1050 (pin uchar e25f201ef): de 39 cases van de zes goldens met markers vervallen (10, 4, 4, 3, 3 en 15), de 17 van de vijf
 # nieuwe goldens komen erbij (3, 4, 3, 3 en 4).
-EXPECTED_REPLAY_CASES=1050
+# 1053 (pin uchar 2e6319e69): de drie cases van jutterswet-zwaarkeurder-strikt.
+EXPECTED_REPLAY_CASES=1053
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
