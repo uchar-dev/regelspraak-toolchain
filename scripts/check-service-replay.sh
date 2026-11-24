@@ -258,7 +258,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar 62c393c94 (kaart absent-characteristic-property): 379 — de set van gate 12 groeit van 386 naar 388 met
 # jutterswet-kenmerknamen en jutterswet-kenmerknamen-strikt (kenmerken die vast niet gelden, met namen die geen
 # eigenschapsnaam zijn), en beide spelen door de dienst.
-EXPECTED_REPLAY_PLAYED=379
+# Pin uchar 332970c4e (kaarten fold-order-in-readings en concurrent-open-reads): 380 — de set van gate 12 groeit van
+# 388 naar 389 met jutterswet-keurder-strikt (drie ongeordende kwantorvouwen met een samengesteld filter in een strikt
+# document), en die speelt door de dienst.
+EXPECTED_REPLAY_PLAYED=380
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -278,7 +281,8 @@ EXPECTED_REPLAY_PLAYED=379
 # nieuwe goldens komen erbij (3, 4, 3, 3 en 4).
 # 1053 (pin uchar 2e6319e69): de drie cases van jutterswet-zwaarkeurder-strikt.
 # 1059 (pin uchar 62c393c94): de twee cases van jutterswet-kenmerknamen en de vier van jutterswet-kenmerknamen-strikt.
-EXPECTED_REPLAY_CASES=1059
+# 1062 (pin uchar 332970c4e): de drie cases van jutterswet-keurder-strikt.
+EXPECTED_REPLAY_CASES=1062
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
