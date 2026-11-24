@@ -71,3 +71,44 @@ Out of scope: de semantiek (uchar); `Part.java` (geen nieuwe `Part.Kind` nodig);
        same-conclusion-zin; als `!d.open().isEmpty()` (open stapel, `havenloon` case 5) gewone `openVariant` zodat er geen
        loshangend `"hetzelfde"` staat terwijl `firstOpen` `'havenloon bij melding'` is.
 - **`coverage` en `trace`:** zijn per vorm; de stapel is één vorm. Zeg in het `Result:` expliciet of daar iets verandert.
+
+## Result (2026-11-24)
+
+- **Pin `uchar`:** bijgewerkt naar `4d6bbe6be` (kaart `same-conclusion-open-variant`, met vijf-uitkomsten-stapel,
+  `DefaultsDecision.open()`, en de zeven `jutterswet-zelfde-conclusie-*` goldens).
+- **Uitleg en `openInputs` zonder eigen semantiek:**
+  - `OpenReads` neemt `List<DefaultsDecision>` aan (aangeroepen vanuit `Verbaliser`, `DecisionCore` en `ScenarioRunner`)
+    en neemt voor `OPEN`-lezingen van een defaults-stapel alleen vormen op die in `DefaultsDecision.open()` staan
+    (losse regels en consistenties ongewijzigd).
+  - `Verbaliser`: in `decided` (`Role.BEFORE` en `case SIBLING`) en in `notDecidedVariants` bij lege `d.open()` krijgt
+    een open variant de zin `"; " + name(b, v) + " staat niet vast, maar kan alleen hetzelfde beslissen"` in
+    `Part.Kind.VARIANT{decided=false}`; `firstOpen` kiest uit `d.open()` (dus `null` bij wortelsluiting zodat een losse
+    open supertype-regel de kop draagt, en het blokkerende lid bij 3-leden-groepen zoals `havenloon` case 5); een
+    voorlopig gefaalde variant (fout op de wortelknoop van voorwaarde of waarde) wordt `VARIANT{decided=false,
+    unreadable=true}` met naam alleen; null-guard op onvoorwaardelijke kenmerkvariant zonder `ConditionReading`.
+- **Documentatie en OpenAPI:** `README.md`, `docs/ENGINE.md` en de `VARIANT`-omschrijving in `OpenApiEmitter` bijgewerkt.
+- **Tests en replay-pinnen:**
+  - `SameConclusionExplanationHttpTest` (7/7 groen) dekt attribuutstapel + rode tegencasus, kenmerkstapel (beslist,
+    wortelsluiting, naast open supertype-regel en naast invoer `holds`), ongeordende groepen in beide volgordes (`BEFORE`
+    en `SIBLING`) + 3-leden-open-casus, geneste uitzonderingsgroepen in beide vormen, voorlopige fout onder open
+    constante (`jutterswet-zelfde-conclusie-fout`, 200 met `unreadable: true`), initialisatie-default onder open constante
+    (ch. 7.10-subtypestapel én `jutterswet-zelfde-conclusie-initialisatie/ir.json`), `GROUND`, `explanationParts` en
+    `withoutOmissibleParts`.
+  - `OpenInputsPropertyTest` uitgebreid met alle zeven `jutterswet-zelfde-conclusie-*` goldens (inclusief `ir.json`-only
+    `-initialisatie` en `-fout`).
+  - Meeschuivende pinnen bijgewerkt in `OpenExplanationHttpTest`, `OpenExplanationFormsHttpTest` en `OpenInputsHttpTest`.
+  - `scripts/check-service-replay.sh`: `EXPECTED_REPLAY_PLAYED=387`, `EXPECTED_REPLAY_CASES=1102`,
+    `EXPECTED_RED_FAULTS=68`.
+- **`coverage` en `trace`:** `coverage` is ongewijzigd (per vorm `FIRED`/`NOT_FIRED`; een defaults-stapel is één vorm).
+  Ook `trace` rapporteert nog altijd één regel per stapelvorm met zijn `labels`; alleen `count` kan bij een strikte
+  stapel met een open constante hoger uitvallen omdat lagere defaults onder een open constante nu voorlopig meevuren
+  binnen diezelfde vorm (gewone documenten en strikte stapels zonder open constante zijn ongewijzigd).
+- **Poorten (`make gates`, 7/7 GROEN in 7m15s):**
+  - 1 `pin`: GROEN (`4d6bbe6be` op `origin/main`, versies gelijk)
+  - 2 `reactor`: GROEN (`212/653/68`, 0 skips)
+  - 3 `twins`: GROEN (3 tweelingen 18 cases, vocabulairetweeling 2 cases / 34 verzoeken, 4 getuigenissen)
+  - 4 `replay`: GROEN (387/387 goldens, 1102/1102 cases, 6286 zinnen, 4334 voorwaarden, 3478 berekeningen, 6546
+    koppelingen, 0 onbepaalde goldens; rode leg 68/68 fouten)
+  - 5 `manifest`: GROEN (32 regels, 29 ok, 3 uitgesloten, 0 mismatch)
+  - 6 `image`: GROEN (`decision-service:dev`)
+  - 7 `kind-smoke`: GROEN (H2 PASS, H3 PASS, H4 PASS)
