@@ -101,3 +101,7 @@ niet dat de invoer het tegendeel zei.
 
 - **Open.** Geen. De hoofdletterongevoeligheid van `absent` heeft geen eigen test: `RequestMapper` schrijft de canonieke
   naam in `characteristicsAbsent`, dus de vergelijking is een vangnet.
+
+**Landing (hoofdsessie, 2026-11-24).** Een extern model (xhigh) las het werk: groen, alle eisen gevolgd; de javadoc van
+`FixpointGivens.InputObject` noemt nu ook bij `absent` dat het hoofdletterongevoelig is. Geland samen met
+`quantifier-filter-in-explanation` op pin uchar `62c393c94`; `make gates` op `3710c4b4d`: 7 stappen groen in 7m06s.

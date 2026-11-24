@@ -172,3 +172,10 @@ of gepusht. Twee rondes: de bouw, en een herstelronde na de review van een exter
      vervangen door herstelpunt 3.
   3. De ongeordende kwantorvouw van Drools (uchars open punt 5 van `contributor-filter-verdict`) raakt de uitleg niet: een
      vouw waarvan het filter onbepaald kan zijn, leest Drools in volgorde, en `filterUndetermined` komt er dus altijd mee.
+
+**Landing (hoofdsessie, 2026-11-24).** Na de eerste bouw las een extern model (xhigh) het werk: in lijn, met een
+herstelronde (`kleene` weg, beide groepen bij een telkwantor, validatie van de matrixwaarde, tests, README). Besluit van de
+eigenaar daarbij: de uitleg noemt bij een lid met een onbepaald filter het oordeel van zijn matrix ("(wel voor V2)"). Na de
+herstelronde: groen, ook de eigen keuze voor de groep "niet vast voor". Geland samen met `fixpoint-replaced-holdsnot` en de
+pin uchar `62c393c94` (`absent-characteristic-property`); `make gates` op `3710c4b4d`: 7 stappen groen in 7m06s, replay
+379 goldens en 1059 cases.
