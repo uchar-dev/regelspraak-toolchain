@@ -255,7 +255,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar 2e6319e69 (kaart contributor-filter-verdict, toolchainkaart quantifier-filter-in-explanation): 377 — de set
 # van gate 12 groeit van 385 naar 386 met jutterswet-zwaarkeurder-strikt (een kwantorvouw waarvan het filter op een lid
 # onbepaald is), en die speelt door de dienst.
-EXPECTED_REPLAY_PLAYED=377
+# Pin uchar 62c393c94 (kaart absent-characteristic-property): 379 — de set van gate 12 groeit van 386 naar 388 met
+# jutterswet-kenmerknamen en jutterswet-kenmerknamen-strikt (kenmerken die vast niet gelden, met namen die geen
+# eigenschapsnaam zijn), en beide spelen door de dienst.
+EXPECTED_REPLAY_PLAYED=379
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -274,7 +277,8 @@ EXPECTED_REPLAY_PLAYED=377
 # 1050 (pin uchar e25f201ef): de 39 cases van de zes goldens met markers vervallen (10, 4, 4, 3, 3 en 15), de 17 van de vijf
 # nieuwe goldens komen erbij (3, 4, 3, 3 en 4).
 # 1053 (pin uchar 2e6319e69): de drie cases van jutterswet-zwaarkeurder-strikt.
-EXPECTED_REPLAY_CASES=1053
+# 1059 (pin uchar 62c393c94): de twee cases van jutterswet-kenmerknamen en de vier van jutterswet-kenmerknamen-strikt.
+EXPECTED_REPLAY_CASES=1059
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
@@ -344,6 +348,7 @@ RED_REFUSED=(
   "jutterswet-emmerscalair-knip/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
   "jutterswet-emmerscalair-per-periode/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
   "jutterswet-kenmerk-wel-en-niet/case1.json|een kenmerk dat geldt en niet geldt (EF-047): het verzoek geeft een kenmerk één keer"
+  "jutterswet-kenmerknaam-wel-en-niet/case1.json|een kenmerk dat geldt en niet geldt (EF-047): het verzoek geeft een kenmerk één keer"
   "undeclared-input-name/case1.json|een attribuut dat het document niet declareert (EF-040): 400 UNKNOWN_FIELD op het attribuut"
   "unknown-role-target-label/case1.json|een rol naar een id dat geen instantie draagt (EF-002): 400 UNKNOWN_FIELD op de rol"
   "unresolved-behind-a-holding-condition/case1.json|een Unresolved-knoop in het document (EF-019 waar de evaluatie hem bereikt): de dienst start niet op een onopgeloste naam"
