@@ -96,8 +96,8 @@ class OpenInputsHttpTest {
         assertEquals(json("[\"diepte\", \"lengte\"]"), namesFor(wrak("\"attributes\": {\"lading\": 5}"), "W1", "gevaarlijk"));
         assertEquals(json("[\"diepte\"]"), namesFor(wrak("\"attributes\": {\"lading\": 5, \"lengte\": 5}"), "W1", "gevaarlijk"));
         assertEquals(json("[]"), namesFor(wrak("\"attributes\": {\"lengte\": 30}"), "W1", "gevaarlijk"));
-        // the default that is open keeps the stack open, and not those below it
-        assertEquals(json("[\"betwist\"]"), namesFor(wrak(""), "W1", "wrakpremie"));
+        // an open constant default lets the next default read provisionally: gemerkt=holds with lading=0 would decide 0
+        assertEquals(json("[\"betwist\", \"gemerkt\"]"), namesFor(wrak(""), "W1", "wrakpremie"));
         // two exceptions without an order between them, both open
         assertEquals(json("[\"betwist\", \"beschadigd\"]"), namesFor(wrak("\"attributes\": {\"lengte\": 30}"), "W1",
                 "bergingsloon"));

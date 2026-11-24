@@ -399,6 +399,17 @@ writes one does not start:
   "holdsNot"}`, the form `objects[].open` gives that input; it was the row `derived` alone. `input` of such a row is
   therefore `true` or `{"state": "holdsNot"}`. A rule set that is not strict is unchanged: there `false` is a
   characteristic not given. The playground writes the new row with "(invoer geldt niet)".
+- **An open default that can only decide the same** (card `same-conclusion-explanation`, on uchar's
+  `same-conclusion-open-variant`): in a strict rule set an open default that can only decide the constant that a lower or
+  sibling default decides — or an open `"is niet …"` at the root of a characteristic stack above only giving-way defaults
+  — no longer leaves the stack open. The explanation names the lower or sibling default as the decider with its `GROUND`
+  (or says that no variant decided at root closing, without a `GROUND`), and names the open variant as `VARIANT` with
+  `decided: false`: `"; 'betwist vindloon' staat niet vast, maar kan alleen hetzelfde beslissen"`. Where a lower default
+  is read provisionally under an open constant and its condition or value faults, the service answers 200 with the open
+  outcome and names that variant alone as `VARIANT` with `decided: false` and `unreadable: true`. `openInputs` omits an
+  input member that only kept such a harmless or root-closed open variant open; where a lower default below an open
+  constant now reads at its turn (`HOLDS` or `OPEN`), the explanation and `openInputs` show that reading where they
+  previously stopped at `niet aan de beurt`.
 
 ## The pin
 

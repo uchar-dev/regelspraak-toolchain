@@ -119,13 +119,16 @@ class OpenExplanationHttpTest {
     @Test
     void an_open_default_and_the_defaults_below_it() throws Exception {
         assertSentence("W1: zijn wrakpremie staat niet vast, want het is niet gegeven of hij betwist is; voor 'betwiste"
-                + " wrakpremie' staat niet vast: het onderwerp betwist is (niet gegeven); niet aan de beurt: 'gemerkte"
-                + " wrakpremie' (gold, 5), de regel 'wrakpremie' (onvoorwaardelijk, 10)",
+                + " wrakpremie' staat niet vast: het onderwerp betwist is (niet gegeven); 'gemerkte wrakpremie' gaf 5, maar"
+                + " beslist niet zolang 'betwiste wrakpremie' niet vaststaat; niet aan de beurt: de regel 'wrakpremie'"
+                + " (onvoorwaardelijk, 10)",
                 wrak("\"attributes\": {\"lading\": 5}, \"characteristics\": {\"gemerkt\": {\"state\": \"holds\"}}"));
-        // a displaced default whose reading does not stand is named alone
+        // below an open constant default, the next default is read at its turn; only below an open non-constant does the
+        // stack stop at niet aan de beurt
         assertSentence("W1: zijn wrakpremie staat niet vast, want het is niet gegeven of hij betwist is; voor 'betwiste"
-                + " wrakpremie' staat niet vast: het onderwerp betwist is (niet gegeven); niet aan de beurt: 'gemerkte"
-                + " wrakpremie', de regel 'wrakpremie' (onvoorwaardelijk, 10)", wrak(""));
+                + " wrakpremie' staat niet vast: het onderwerp betwist is (niet gegeven); voor 'gemerkte wrakpremie' staat"
+                + " niet vast: het onderwerp gemerkt is (niet gegeven); niet aan de beurt: de regel 'wrakpremie'"
+                + " (onvoorwaardelijk, 10)", wrak(""));
     }
 
     @Test
@@ -139,8 +142,9 @@ class OpenExplanationHttpTest {
     @Test
     void an_open_stack_on_a_characteristic() throws Exception {
         assertSentence("W1: of hij beloonbaar is, staat niet vast, want het is niet gegeven of hij betwist is; voor 'betwiste"
-                + " beloonbaarheid' staat niet vast: het onderwerp betwist is (niet gegeven); niet aan de beurt: de regel"
-                + " 'beloonbaarheid' (gold, toekennen)", wrak("\"attributes\": {\"lengte\": 30}"));
+                + " beloonbaarheid' staat niet vast: het onderwerp betwist is (niet gegeven); de regel 'beloonbaarheid' gold"
+                + " (toekennen), maar beslist niet zolang 'betwiste beloonbaarheid' niet vaststaat",
+                wrak("\"attributes\": {\"lengte\": 30}"));
     }
 
     /** Below the open default of the opgave and beside the open rule the initialisation is not at its turn, so the target is
@@ -357,7 +361,7 @@ class OpenExplanationHttpTest {
                 {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
                                {"type": "Wrak", "id": "W1", "attributes": {"lengte": 30}}]}"""), "W1: zijn vindpremie"),
                 "READING", "open").get("open"));
-        assertEquals(true, group(sentence(wrak(""), "W1: zijn wrakpremie"), "VARIANT", "undetermined").get("displaced").asBoolean());
+        assertEquals(true, group(sentence(wrak(""), "W1: zijn bergingsloon"), "VARIANT", "undetermined").get("displaced").asBoolean());
     }
 
     /** The parts of every sentence are the sentence; without the groups a reader may leave out it is a sentence still, and

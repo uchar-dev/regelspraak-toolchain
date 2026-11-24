@@ -960,7 +960,10 @@ public final class OpenApiEmitter {
                     + " members, holding, unjudged en unsettled tellen de leden met een vaststaand filter, en de zin noemt"
                     + " het apart, met het oordeel van de matrix op dat lid waar het vaststaat ('niet vast of V2 meetelt (wel"
                     + " voor V2)'), zonder totaal; een VARIANT van een defaults-groep die niet aan de"
-                    + " beurt was en waarvan de lezing niet vaststaat, undetermined: true (dan de naam alleen).");
+                    + " beurt was en waarvan de lezing niet vaststaat, undetermined: true (dan de naam alleen), een"
+                    + " voorlopig gelezen variant waarvan de evaluatie faalde, unreadable: true (eveneens de naam alleen),"
+                    + " en een open variant die alleen hetzelfde kan beslissen als wat de stapel vaststelde, zegt dat"
+                    + " ('staat niet vast, maar kan alleen hetzelfde beslissen') in een VARIANT met decided: false.");
             props.putObject("unsettled").put("type", "integer");
             props.putObject("filterUnsettled").put("type", "integer");
             props.putObject("undetermined").put("type", "boolean");

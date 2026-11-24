@@ -261,7 +261,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar 332970c4e (kaarten fold-order-in-readings en concurrent-open-reads): 380 — de set van gate 12 groeit van
 # 388 naar 389 met jutterswet-keurder-strikt (drie ongeordende kwantorvouwen met een samengesteld filter in een strikt
 # document), en die speelt door de dienst.
-EXPECTED_REPLAY_PLAYED=380
+# Pin uchar 4d6bbe6be (kaart same-conclusion-open-variant, toolchainkaart same-conclusion-explanation): 387 — de set
+# van gate 12 groeit van 389 naar 396 met de zeven jutterswet-zelfde-conclusie-* goldens, en alle zeven spelen door de
+# dienst.
+EXPECTED_REPLAY_PLAYED=387
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -282,7 +285,9 @@ EXPECTED_REPLAY_PLAYED=380
 # 1053 (pin uchar 2e6319e69): de drie cases van jutterswet-zwaarkeurder-strikt.
 # 1059 (pin uchar 62c393c94): de twee cases van jutterswet-kenmerknamen en de vier van jutterswet-kenmerknamen-strikt.
 # 1062 (pin uchar 332970c4e): de drie cases van jutterswet-keurder-strikt.
-EXPECTED_REPLAY_CASES=1062
+# 1102 (pin uchar 4d6bbe6be): de 40 cases van de zeven jutterswet-zelfde-conclusie-* goldens (8 waarde, 9 kenmerk, 6
+# ongeordend, 5 genest, 3 deponering, 2 fout, 7 initialisatie).
+EXPECTED_REPLAY_CASES=1102
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
@@ -364,8 +369,9 @@ RED_REFUSED=(
 # zes rode mappen van EF-041 tot en met EF-046 kwamen erbij en geven elk hun foutsoort). Pin uchar 72df0d028: 69 — de
 # rode map fractional-power-negative-base (EF-044) werd een golden: een negatieve basis onder een gebroken exponent is
 # leeg met een §9.5-feit, geen evaluatiefout. Pin uchar e25f201ef: 67 — de rode map jutterswet-afwezigheidsmarkers-botsing
-# (twee cases, EF-016 tussen een marker en een waarde) verviel met de markers.
-EXPECTED_RED_FAULTS=67
+# (twee cases, EF-016 tussen een marker en een waarde) verviel met de markers. Pin uchar 4d6bbe6be: 68 — de rode map
+# jutterswet-zelfde-conclusie-fout (EF-011 zonder peildatum wanneer de hogere constante default niet geldt) kwam erbij.
+EXPECTED_RED_FAULTS=68
 
 is_red_refused() {
   local e; for e in "${RED_REFUSED[@]+"${RED_REFUSED[@]}"}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1

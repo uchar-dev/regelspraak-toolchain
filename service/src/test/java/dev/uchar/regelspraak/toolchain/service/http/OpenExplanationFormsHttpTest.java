@@ -679,7 +679,8 @@ class OpenExplanationFormsHttpTest {
                     Het vindloon van een Wrakvondst moet gesteld worden op 55 indien zijn diepte groter is dan 20.
             """;
         assertSentence("W1: zijn vindloon staat niet vast, want zijn diepte is niet gegeven; voor 'diep wrakloon' staat niet vast: zijn"
-                + " diepte (niet gegeven) is groter dan 20; niet aan de beurt: de regel 'wrakloon' (onvoorwaardelijk, 16)",
+                + " diepte (niet gegeven) is groter dan 20; de regel 'wrakloon' gaf 16, maar beslist niet zolang 'diep wrakloon'"
+                + " niet vaststaat",
                 ask(source, "{\"instances\": [{\"type\": \"Wrakvondst\", \"id\": \"W1\", \"attributes\": {\"gewicht\": 8}}]}"));
         assertSentence("V1 heeft als vindloon 8 volgens de regel 'vindloon' (onvoorwaardelijk): zijn gewicht (8)",
                 ask(source, vondst("\"gewicht\": 8", "")));

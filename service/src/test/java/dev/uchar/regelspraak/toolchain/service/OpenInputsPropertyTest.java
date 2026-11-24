@@ -37,17 +37,29 @@ class OpenInputsPropertyTest {
     @Test
     void the_strict_goldens() throws Exception {
         int checked = 0;
-        for (String golden : List.of("jutterswet-afleiden-uit-leeg", "jutterswet-volledig-gegeven")) {
+        List<String> goldens = List.of(
+                "jutterswet-afleiden-uit-leeg",
+                "jutterswet-volledig-gegeven",
+                "jutterswet-zelfde-conclusie-waarde",
+                "jutterswet-zelfde-conclusie-kenmerk",
+                "jutterswet-zelfde-conclusie-ongeordend",
+                "jutterswet-zelfde-conclusie-genest",
+                "jutterswet-zelfde-conclusie-deponering",
+                "jutterswet-zelfde-conclusie-initialisatie",
+                "jutterswet-zelfde-conclusie-fout");
+        for (String golden : goldens) {
             Path dir = TokaSource.REPO.resolve("uchar/corpus/golden").resolve(golden);
-            DecisionCore core = core(Files.readString(dir.resolve("source.rgs")));
+            DecisionCore core = core(dir);
             List<Path> cases;
             try (Stream<Path> files = Files.list(dir)) {
                 cases = files.filter(f -> f.getFileName().toString().matches("case.*\\.json")).sorted().toList();
             }
-            assertEquals(6, cases.size());
-            for (Path c : cases) checked += leavingOneOut(core, "replay", request(DescriptorLoader.MAPPER.readTree(c.toFile())));
+            assertFalse(cases.isEmpty(), golden);
+            boolean faultOnInput = golden.equals("jutterswet-zelfde-conclusie-fout");
+            for (Path c : cases)
+                checked += leavingOneOut(core, "replay", request(DescriptorLoader.MAPPER.readTree(c.toFile())), faultOnInput);
         }
-        assertTrue(checked >= 50, "open uitkomsten gezien: " + checked);
+        assertTrue(checked >= 100, "open uitkomsten gezien: " + checked);
     }
 
     @Test
@@ -82,8 +94,12 @@ class OpenInputsPropertyTest {
 
     /** The property on {@code request} and on it without each member it gives. */
     private static int leavingOneOut(DecisionCore core, String path, String request) throws Exception {
+        return leavingOneOut(core, path, request, false);
+    }
+
+    private static int leavingOneOut(DecisionCore core, String path, String request, boolean faultOnInput) throws Exception {
         JsonNode full = read(request);
-        int checked = holds(core, path, full);
+        int checked = holds(core, path, full, faultOnInput);
         for (int i = 0; i < full.get("instances").size(); i++)
             for (String list : List.of("attributes", "characteristics")) {
                 JsonNode members = full.get("instances").get(i).get(list);
@@ -91,7 +107,7 @@ class OpenInputsPropertyTest {
                 for (String name : (Iterable<String>) members::fieldNames) {
                     JsonNode less = full.deepCopy();
                     ((ObjectNode) less.get("instances").get(i).get(list)).remove(name);
-                    checked += holds(core, path, less);
+                    checked += holds(core, path, less, faultOnInput);
                 }
             }
         return checked;
@@ -99,6 +115,10 @@ class OpenInputsPropertyTest {
 
     /** The property on one request; returns the number of open outcomes of its answer. */
     private static int holds(DecisionCore core, String path, JsonNode request) throws Exception {
+        return holds(core, path, request, false);
+    }
+
+    private static int holds(DecisionCore core, String path, JsonNode request, boolean faultOnInput) throws Exception {
         ObjectNode answer = core.process(path, request, ASKED);
         Map<String, Set<String>> inputs = inputsPerOutcome(answer);
         Set<String> open = new TreeSet<>(), states = new TreeSet<>();
@@ -123,7 +143,14 @@ class OpenInputsPropertyTest {
                 assertTrue(spoken, head + "\nniet in " + answer.get("explanation"));
             }
             for (String input : inputs.get(outcome)) {
-                ObjectNode after = core.process(path, with(request, input), ASKED);
+                ObjectNode after;
+                try {
+                    after = core.process(path, with(request, input, "holdsNot"), ASKED);
+                } catch (EvaluationFault fault) {
+                    if (!faultOnInput) throw fault;
+                    // a provisional fault uncovered by giving the input changes the outcome; giving "holds" settles it
+                    after = core.process(path, with(request, input, "holds"), ASKED);
+                }
                 String state = outcomes(after).get(outcome);
                 if (state.equals("open"))
                     assertNotEquals(inputs.get(outcome), inputsPerOutcome(after).get(outcome),
@@ -161,8 +188,8 @@ class OpenInputsPropertyTest {
         return member.get("instance").asText() + "|" + member.get("kind").asText() + "|" + member.get("name").asText();
     }
 
-    /** {@code request} with {@code input} given: 3 for an attribute, stated not to hold for a characteristic. */
-    private static JsonNode with(JsonNode request, String input) {
+    /** {@code request} with {@code input} given: 3 for an attribute, {@code charState} for a characteristic. */
+    private static JsonNode with(JsonNode request, String input, String charState) {
         String[] member = input.split("\\|");
         ObjectNode out = request.deepCopy();
         for (JsonNode i : out.get("instances"))
@@ -170,7 +197,7 @@ class OpenInputsPropertyTest {
                 boolean attribute = member[1].equals("attribute");
                 ObjectNode list = ((ObjectNode) i).withObject(attribute ? "/attributes" : "/characteristics");
                 if (attribute) list.put(member[2], 3);
-                else list.putObject(member[2]).put("state", "holdsNot");
+                else list.putObject(member[2]).put("state", charState);
             }
         return out;
     }
@@ -195,10 +222,25 @@ class OpenInputsPropertyTest {
         return request.toString();
     }
 
+    /** A service of a golden directory ({@code source.rgs}, or {@code ir.json} where the golden has no source). */
+    private static DecisionCore core(Path dir) throws Exception {
+        Path source = dir.resolve("source.rgs");
+        if (Files.exists(source)) return core(Files.readString(source));
+        String documentJson = Files.readString(dir.resolve("ir.json"));
+        JsonNode document = DescriptorLoader.MAPPER.readTree(documentJson);
+        return DecisionCore.buildFromDocument(descriptor(document), documentJson, CoreConfig.strict(),
+                Thread.currentThread().getContextClassLoader(), null);
+    }
+
     /** A service of {@code source} with every form in its scope and every member in its output. */
     private static DecisionCore core(String source) throws Exception {
         JsonNode document = DescriptorLoader.MAPPER.readTree(dev.uchar.regelspraak.toolchain.engine.UcharBuild.document(
                 dev.uchar.regelspraak.resolver.Resolver.resolve(source)));
+        return DecisionCore.assemble(descriptor(document), Map.of("b.rgs", source), CoreConfig.strict(),
+                Thread.currentThread().getContextClassLoader());
+    }
+
+    private static String descriptor(JsonNode document) {
         List<String> forms = new ArrayList<>(), output = new ArrayList<>();
         for (String list : List.of("rules", "prioritizedDefaults"))
             for (JsonNode f : document.at("/rules/" + list)) forms.add(f.get("name").asText());
@@ -215,8 +257,7 @@ class OpenInputsPropertyTest {
         ArrayNode members = ep.putArray("output");
         output.forEach(members::add);
         descriptor.putObject("parameters");
-        return DecisionCore.assemble(descriptor.toString(), Map.of("b.rgs", source), CoreConfig.strict(),
-                Thread.currentThread().getContextClassLoader());
+        return descriptor.toString();
     }
 
     private static JsonNode read(String text) throws Exception {

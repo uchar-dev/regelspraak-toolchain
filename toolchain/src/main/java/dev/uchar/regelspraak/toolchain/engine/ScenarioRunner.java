@@ -254,7 +254,7 @@ public final class ScenarioRunner {
         List<Sentence> sentences = new Verbaliser(explained, Naming.of(model, vocabulary), h.readings(), h.standing())
                 .sentences(session.beans(), types, h.decisions(), h.periodDecisions());
         if (model.inferFromEmpty()) return new Explained(r, sentences, null, session, null);
-        OpenReads reads = new OpenReads(explained, h.readings(), h.standing());
+        OpenReads reads = new OpenReads(explained, h.readings(), h.standing(), h.decisions());
         List<Object> instances = List.copyOf(session.beans().values());
         return new Explained(r, sentences, null, session, null, reads.openInputs(instances, reads.derived(instances)));
     }

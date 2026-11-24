@@ -858,8 +858,8 @@ public final class DecisionCore {
                 mr.typePerLabel());
         if (options.explanation()) addExplanation(answer, outcome, mr, ep, output, options.explanationParts());
         if (options.openInputs())
-            answer.set("openInputs", OpenInputs.of(new OpenReads(ep.document(), outcome.readings(), outcome.endState()), model,
-                    outcome, ep.descriptor().output(), mr.typePerLabel(), output));
+            answer.set("openInputs", OpenInputs.of(new OpenReads(ep.document(), outcome.readings(), outcome.endState(),
+                    outcome.decisions()), model, outcome, ep.descriptor().output(), mr.typePerLabel(), output));
         if (withDetail) answer.setAll(detail(options, ep, observer, outcome.endState(), null, mr, output));
         return new Assessment(answer, outcome.comparison());
     }

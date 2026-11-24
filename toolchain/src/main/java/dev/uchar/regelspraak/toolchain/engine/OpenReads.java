@@ -13,6 +13,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading.NodeReading;
+import dev.uchar.regelspraak.transpiler.tms.DefaultsDecision;
 import dev.uchar.regelspraak.transpiler.tms.Fixpoint.OpenValue;
 
 import java.util.ArrayList;
@@ -50,7 +51,8 @@ public final class OpenReads {
     /** The readings that left a target open, per object. */
     private final Map<Object, List<ConditionReading>> open = new IdentityHashMap<>();
 
-    public OpenReads(Verbaliser.Document document, List<ConditionReading> readings, EndState standing) {
+    public OpenReads(Verbaliser.Document document, List<ConditionReading> readings, EndState standing,
+                     List<DefaultsDecision> decisions) {
         this.document = document;
         this.model = document.model();
         for (EndState.EndObject o : standing.objects()) ends.put(o.object(), o);
@@ -67,9 +69,26 @@ public final class OpenReads {
         }
         for (ResolvedConsistency c : model.consistencies)
             forms.put(document.positions().versionOf(c), new Form(null, false, c.assertion(), null));
-        for (ConditionReading r : readings)
-            if (r.status() == ConditionReading.Status.OPEN)
-                open.computeIfAbsent(r.object(), o -> new ArrayList<>()).add(r);
+        Map<Object, List<DefaultsDecision>> stacksOf = new IdentityHashMap<>();
+        for (DefaultsDecision d : decisions)
+            stacksOf.computeIfAbsent(d.object(), o -> new ArrayList<>()).add(d);
+        for (ConditionReading r : readings) {
+            if (r.status() != ConditionReading.Status.OPEN) continue;
+            DefaultsDecision stack = stackOf(stacksOf.get(r.object()), r.form());
+            if (stack != null && !stack.open().contains(r.form())) continue;
+            open.computeIfAbsent(r.object(), o -> new ArrayList<>()).add(r);
+        }
+    }
+
+    /** The stack decision of {@code object} whose root chains contain {@code pointer} (directly or under
+     *  {@code /exceptions/...}), or null where {@code pointer} is a loose rule or consistency. */
+    private static DefaultsDecision stackOf(List<DefaultsDecision> decisions, String pointer) {
+        if (decisions == null) return null;
+        for (DefaultsDecision d : decisions)
+            for (List<String> chain : d.rootChains())
+                for (String root : chain)
+                    if (pointer.equals(root) || pointer.startsWith(root + "/")) return d;
+        return null;
     }
 
     private void defaults(String pointer, PrioritizedDefaults g, Default d) {

@@ -198,8 +198,11 @@ public final class Verbaliser {
     private final Map<Object, EndState.EndObject> ends = new IdentityHashMap<>();
     /** Elke koppeling van de sessie aan het fixpunt, ook die een creatie legde. */
     private final List<EndState.Link> links;
+    /** De ruwe lezingen en eindstand van de sessie, waarmee {@link #sentences} per aanroep {@link OpenReads} bouwt. */
+    private final List<ConditionReading> rawReadings;
+    private final EndState standing;
     /** Wat in deze sessie openstaat en waardoor, in een strikt document; null in elk ander document. */
-    private final OpenReads open;
+    private OpenReads open;
 
     /**
      * Een verbalisator voor één sessie van een build met lezingen: {@code document} is het document van die build zoals
@@ -214,14 +217,15 @@ public final class Verbaliser {
         this.document = Objects.requireNonNull(document, "document");
         this.model = document.model();
         this.naming = Objects.requireNonNull(naming, "naming");
-        this.made = Objects.requireNonNull(standing, "standing").objects().stream()
+        this.rawReadings = List.copyOf(readings);
+        this.standing = Objects.requireNonNull(standing, "standing");
+        this.made = standing.objects().stream()
                 .filter(o -> o.creation() != null).toList();
         for (EndState.EndObject o : standing.objects()) ends.put(o.object(), o);
         this.links = standing.links();
         for (ConditionReading r : readings)
             if (this.readings.computeIfAbsent(r.form(), k -> new IdentityHashMap<>()).put(r.object(), r) != null)
                 throw new IllegalStateException("de motor gaf twee lezingen van " + r.form() + " op één object");
-        this.open = model.inferFromEmpty() ? null : new OpenReads(document, readings, standing);
     }
 
     /**
@@ -253,6 +257,7 @@ public final class Verbaliser {
                                     List<DefaultsDecision> decisions, List<PeriodDecisions> periodDecisions) {
         Objects.requireNonNull(decisions, "decisions");
         Objects.requireNonNull(periodDecisions, "periodDecisions");
+        this.open = model.inferFromEmpty() ? null : new OpenReads(document, rawReadings, standing, decisions);
         Subjects subjects = subjects(instances, typePerLabel);
         List<Sentence> sink = new ArrayList<>();
         Set<String> outside = new LinkedHashSet<>();
@@ -921,15 +926,18 @@ public final class Verbaliser {
                 reason(b, decider, d.characteristic());
             }
             List<Variant> before = turns.stream().filter(t -> t.role() == Role.BEFORE).map(Turn::variant).toList();
-            Variant firstOpen = firstOpen(before);
-            notDecidedVariants(b, before, firstOpen, d);
+            notDecidedVariants(b, before, null, d);
             List<Variant> after = new ArrayList<>();
             for (Turn t : turns) {
                 switch (t.role()) {
                     case SIBLING -> {
-                        b.open(Part.Kind.VARIANT, Part.meta("decided", false)).text("; ");
-                        name(b, t.variant());
-                        b.text(" besliste niet anders").close(Part.Kind.VARIANT);
+                        if (open != null && statusOf(t.variant()) == ConditionReading.Status.OPEN)
+                            sameConclusionVariant(b, t.variant());
+                        else {
+                            b.open(Part.Kind.VARIANT, Part.meta("decided", false)).text("; ");
+                            name(b, t.variant());
+                            b.text(" besliste niet anders").close(Part.Kind.VARIANT);
+                        }
                     }
                     case AFTER -> after.add(t.variant());
                     case BEFORE, DECIDER -> { }
@@ -997,7 +1005,7 @@ public final class Verbaliser {
             standing(b, d.member(), d.characteristic());
             b.text(", ").leaf(Part.Kind.CONNECTIVE, "want").text(" geen variant besliste");
             List<Variant> variants = turns.stream().map(Turn::variant).toList();
-            notDecidedVariants(b, variants, firstOpen(variants), d);
+            notDecidedVariants(b, variants, firstOpen(variants, d), d);
             return b.build();
         }
 
@@ -1013,7 +1021,7 @@ public final class Verbaliser {
                     all(v, Role.BEFORE, turns);
                 }
             List<Variant> variants = turns.stream().map(Turn::variant).toList();
-            Variant first = firstOpen(variants);
+            Variant first = firstOpen(variants, d);
             Sentence.Builder b = Sentence.builder().leaf(Part.Kind.SUBJECT, label);
             openHead(b, d, first);
             notDecidedVariants(b, variants, first, d);
@@ -1036,16 +1044,19 @@ public final class Verbaliser {
             if (!d.characteristic()) inputWaits(b, bean, type, d.member());
         }
 
-        /** De eerste default van {@code variants} die open is, in een strikt document; null waar er geen is. */
-        private Variant firstOpen(List<Variant> variants) {
-            return open == null ? null : variants.stream().filter(v -> statusOf(v) == ConditionReading.Status.OPEN)
-                    .findFirst().orElse(null);
+        /** De eerste default van {@code variants} die de stapel {@code d} volgens uchar openhoudt ({@link DefaultsDecision#open}),
+         *  in een strikt document; null waar geen default van de stapel de uitkomst openhoudt (onder meer bij sluiting aan de
+         *  wortel van een kenmerkstapel). */
+        private Variant firstOpen(List<Variant> variants, DefaultsDecision d) {
+            if (open == null || d.open().isEmpty()) return null;
+            return variants.stream().filter(v -> d.open().contains(v.pointer())).findFirst().orElse(null);
         }
 
         /** De varianten die aan de beurt waren en niet beslisten, elk met de reden. Staat er een open ({@code firstOpen} de
-         *  eerste): die met wat niet vaststaat, een default daaronder als niet aan de beurt, en een lid naast haar dat iets
-         *  besluit als een dat niet beslist zolang zij niet vaststaat. Staat het doel open, dan is de initialisatiedefault
-         *  niet aan de beurt (uchars RUNTIME-SEMANTICS ch. 1.5). */
+         *  eerste die de stapel openhoudt): die met wat niet vaststaat, een default daaronder als niet aan de beurt, een
+         *  voorlopig gefaalde default alleen bij naam ({@code unreadable}), en een variant die iets besluit als een dat niet
+         *  beslist zolang zij niet vaststaat. Staat de stapel vast ({@code d.open()} leeg), dan kan een open variant alleen
+         *  hetzelfde beslissen (ch. 1.5). Staat het doel open, dan is de initialisatiedefault niet aan de beurt. */
         private void notDecidedVariants(Sentence.Builder b, List<Variant> variants, Variant firstOpen,
                                         DefaultsDecision d) {
             boolean waiting = false;
@@ -1067,11 +1078,59 @@ public final class Verbaliser {
                     continue;
                 }
                 waiting = false;
-                if (firstOpen != null && r.status() == ConditionReading.Status.OPEN) openVariant(b, v);
-                else if (firstOpen != null && r.status() == ConditionReading.Status.HOLDS && decides(v, r, d))
+                if (r == null) {
+                    if (firstOpen != null && d.characteristic()) heldBack(b, v, firstOpen, d);
+                    else notDecidedVariant(b, v, d);
+                } else if (r.status() == ConditionReading.Status.OPEN) {
+                    if (provisionalFault(v, r)) unreadableVariant(b, v);
+                    else if (d.open().isEmpty()) sameConclusionVariant(b, v);
+                    else openVariant(b, v);
+                } else if (firstOpen != null && r.status() == ConditionReading.Status.HOLDS && decides(v, r, d)) {
                     heldBack(b, v, firstOpen, d);
-                else notDecidedVariant(b, v, d);
+                } else {
+                    notDecidedVariant(b, v, d);
+                }
             }
+        }
+
+        /** Een open variant die alleen hetzelfde kan beslissen als wat de stapel al vaststelde (ch. 1.5), als groep met de "; "
+         *  ervoor. */
+        private void sameConclusionVariant(Sentence.Builder b, Variant v) {
+            b.open(Part.Kind.VARIANT, Part.meta("decided", false)).text("; ");
+            name(b, v);
+            b.text(" ").leaf(Part.Kind.CONNECTIVE, "staat niet vast").text(", ")
+                    .leaf(Part.Kind.CONNECTIVE, "maar").text(" kan alleen hetzelfde beslissen")
+                    .close(Part.Kind.VARIANT);
+        }
+
+        /** Een voorlopig gelezen variant waarvan de evaluatie van voorwaarde of waarde faalde (ch. 1.5, 5.12): de naam alleen,
+         *  met {@code unreadable: true}, zonder een sessiefout te suggereren. */
+        private void unreadableVariant(Sentence.Builder b, Variant v) {
+            b.open(Part.Kind.VARIANT, Part.meta("decided", false, "unreadable", true)).text("; ");
+            name(b, v);
+            b.close(Part.Kind.VARIANT);
+        }
+
+        /** Of de open lezing {@code r} van variant {@code v} een voorlopige evaluatiefout op de wortelknoop van haar voorwaarde
+         *  of van haar waarde draagt (ch. 5.12): controleert alleen de wortelknopen, zodat een fout in een voorlopig gelezen
+         *  lid van een samenstelling waarvan de wortel zelf onbepaald is (WV-5.12-open-past-undetermined) gewoon als open
+         *  voorwaarde wordt verwoord. */
+        private boolean provisionalFault(Variant v, ConditionReading r) {
+            Condition c = conditionOf(v);
+            Expr value = v.rule() != null ? v.rule().value() : v.d().consequence();
+            Map<Integer, ConditionReading.NodeReading> byNum = new HashMap<>();
+            for (ConditionReading.NodeReading n : r.nodes()) byNum.put(n.node(), n);
+            int offset = 0;
+            if (c != null) {
+                ConditionReading.NodeReading root = byNum.get(0);
+                if (root != null && root.fault() != null) return true;
+                offset = document.positions().subtree(c).size();
+            }
+            if (value != null) {
+                ConditionReading.NodeReading root = byNum.get(offset);
+                if (root != null && root.fault() != null) return true;
+            }
+            return false;
         }
 
         /** Of variant {@code v}, met de lezing {@code r} die geldt, iets besluit: een kenmerkvariant altijd, een
