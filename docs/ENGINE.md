@@ -687,12 +687,18 @@ sentences:
   reading gives per member the verdict of the matrix and whether the filter is undetermined there
   (`ConditionReading.Contributor`, `undetermined` and `filterUndetermined`), and the explanation judges neither;
 - a member of a quantifier fold whose filter is undetermined is one of which it does not stand whether it counts: the
-  sentence names it apart, "niet vast of V2 meetelt", and nowhere else, and beside it counts no member. A fold that stands
-  is carried by members whose filter holds: "alle" that does not hold by those for which the matrix does not hold, "niet
-  voor V1, niet vast of V2 meetelt", "alle" that holds by those for which it holds, "voor V1, niet vast of V2 meetelt";
-  where no such member carries the outcome, the sentence names those for which the matrix holds, "ten minste twee" that
-  does not hold "voor V1, niet vast of V2 meetelt". A fold that does not stand: "wel voor V1, niet vast voor V3, niet vast
-  of V2 meetelt";
+  sentence names it apart, "niet vast of V2 meetelt", and nowhere else, and beside it counts no member. After it stands
+  the verdict of the matrix on it as uchar's reading gives it, which the explanation does not judge (decision of the
+  owner, 2026-11-24): "(wel voor V2)" where the matrix holds, "(niet voor V2)" where it does not, by group for several
+  members, "niet vast of V2 en V3 meetellen (wel voor V2, niet voor V3)". A member on which the matrix is undetermined or
+  faulted, or whose matrix the evaluation did not reach (after the stop of uchar's ch. 5.10), has nothing there, and where
+  no member has, the brackets fall away. A fold that stands is carried by members whose filter holds: "alle" that does not
+  hold by those for which the matrix does not hold, "niet voor V1, niet vast of V2 meetelt", "alle" that holds by those
+  for which it holds, "voor V1, niet vast of V2 meetelt (wel voor V2)", and "geen van de" alike; a count ("ten minste",
+  "ten hoogste", "precies") names every group of those members that is not empty, those for which the matrix holds, does
+  not hold and is undetermined, so that none of them drops out: "ten minste twee" that does not hold "wel voor V1, niet
+  voor V2, niet vast of V3 meetelt (niet voor V3)", and with V1 alone "voor V1, niet vast of V2 meetelt (niet voor V2)".
+  A fold that does not stand: "wel voor V1, niet vast voor V3, niet vast of V2 meetelt (wel voor V2)";
 - a consistency that does not decide: `of <SUBJECT> voldoet aan de regel '…', staat niet vast, want <cause>; het staat niet
   vast: …`, which begins with no `SUBJECT`, since it is about no member. One that stands has no sentence.
 

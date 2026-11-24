@@ -958,7 +958,8 @@ public final class OpenApiEmitter {
                     + " het aantal leden waarvoor niet vaststaat of de toets geldt, en filterUnsettled, het aantal leden"
                     + " waarvan het filter onbepaald is, zodat niet vaststaat of zij meetellen; zo'n lid telt alleen daar,"
                     + " members, holding, unjudged en unsettled tellen de leden met een vaststaand filter, en de zin noemt"
-                    + " het apart ('niet vast of V2 meetelt'), zonder totaal; een VARIANT van een defaults-groep die niet aan de"
+                    + " het apart, met het oordeel van de matrix op dat lid waar het vaststaat ('niet vast of V2 meetelt (wel"
+                    + " voor V2)'), zonder totaal; een VARIANT van een defaults-groep die niet aan de"
                     + " beurt was en waarvan de lezing niet vaststaat, undetermined: true (dan de naam alleen).");
             props.putObject("unsettled").put("type", "integer");
             props.putObject("filterUnsettled").put("type", "integer");

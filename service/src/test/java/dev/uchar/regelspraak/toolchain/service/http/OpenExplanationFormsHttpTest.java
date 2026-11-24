@@ -248,8 +248,8 @@ class OpenExplanationFormsHttpTest {
     }
 
     /** The filter tests the taxatie on gevuld or leeg, so it is undetermined on a member without one: the explanation of the
-     *  fold names that member apart, as one of which it does not stand whether it counts, and the head names the taxatie that
-     *  keeps it open. */
+     *  fold names that member apart, as one of which it does not stand whether it counts, with the verdict of the matrix on it
+     *  where that stands, and the head names the taxatie that keeps it open. */
     @Test
     void a_quantifier_fold_whose_filter_tests_an_open_member() throws Exception {
         String rules = """
@@ -259,16 +259,16 @@ class OpenExplanationFormsHttpTest {
             """;
         // V2 of gewicht 5 fails the matrix, and whether it counts is open
         assertFold("J1: of hij kundig is, staat niet vast, want van V2 is zijn taxatie niet gegeven;",
-                "is voldaan: wel voor V1, niet vast of V2 meetelt",
+                "is voldaan: wel voor V1, niet vast of V2 meetelt (niet voor V2)",
                 ask(VONDST + rules.formatted("alle", "gevuld"), jutter("\"gewicht\": 20, \"taxatie\": 5", "\"gewicht\": 5")));
         // V2 of gewicht 50 holds the matrix, and would be the second where it counts
         assertFold("J1: of hij kundig is, staat niet vast, want van V2 is zijn taxatie niet gegeven;",
-                "is voldaan: wel voor V1, niet vast of V2 meetelt",
+                "is voldaan: wel voor V1, niet vast of V2 meetelt (wel voor V2)",
                 ask(VONDST + rules.formatted("ten hoogste één van de", "gevuld"),
                         jutter("\"gewicht\": 20, \"taxatie\": 5", "\"gewicht\": 50")));
         // V1 has neither, and V2 holds the matrix where it counts
         assertFold("J1: of hij kundig is, staat niet vast, want van V1 is zijn taxatie niet gegeven;",
-                "is voldaan: niet vast of V1 en V2 meetellen",
+                "is voldaan: niet vast of V1 en V2 meetellen (wel voor V2)",
                 ask(VONDST + rules.formatted("ten minste één van de", "leeg"), jutter("", "\"gewicht\": 50")));
     }
 
@@ -324,7 +324,8 @@ class OpenExplanationFormsHttpTest {
      *  undetermined there, and J2, whose leeftijd fails the test, keeps the fold open. */
     @Test
     void a_quantifier_fold_whose_filter_counts_a_union_with_an_open_member() throws Exception {
-        assertFold("H1: of hij druk is, staat niet vast, want", "is voldaan: wel voor J1, niet vast of J2 meetelt", ask("""
+        assertFold("H1: of hij druk is, staat niet vast, want", "is voldaan: wel voor J1, niet vast of J2 meetelt (niet voor J2)",
+                ask("""
             Afleiden uit leeg: nee
 
             Objecttype de Haven (mv: Havens)
@@ -387,21 +388,7 @@ class OpenExplanationFormsHttpTest {
                 geldig altijd
                     Een Jutter is kundig indien het keurgewicht van alle vondsten van de Jutter groter is dan het TARIEF.
             """)));
-        for (JsonNode r : document.at("/rules/rules")) {
-            JsonNode test = r.at("/versions/0/condition/test");
-            if (test.isMissingNode()) continue;
-            ObjectNode quotient = ((ObjectNode) test).putObject("left");
-            quotient.put("node", "Binary").put("op", "dividedBy");
-            quotient.set("left", json("""
-                {"node": "AttributeReference", "attribute": "keurgewicht", "subjectType": "Vondst",
-                 "source": {"snippet": "het keurgewicht van alle vondsten van de Jutter"}}"""));
-            quotient.set("right", test.get("right"));
-            quotient.set("type", json("{\"node\": \"Number\", \"whole\": false, \"decimals\": 0, \"sign\": \"unspecified\"}"));
-            quotient.putObject("source").put("snippet", "keurgewicht gedeeld door TARIEF");
-            ((ObjectNode) test).set("right", json("""
-                {"node": "Literal", "value": {"number": "3"}, "type": {"node": "Number", "whole": true, "decimals": 0,
-                 "sign": "unspecified"}, "source": {"snippet": "3"}}"""));
-        }
+        divideTheTestByTheTarief(document);
         JsonNode answer = post(DecisionCore.buildFromDocument(descriptor(document), document.toString(), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader(), null), """
             {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2", "V3"]}},
@@ -438,64 +425,170 @@ class OpenExplanationFormsHttpTest {
     /** The filter "zijn taxatie is gevuld" is undetermined on a vondst without a taxatie: whether it counts does not stand.
      *  Per quantifier a fold that holds, one that does not and one that does not stand, with such a member beside members
      *  whose filter holds, and with filter and matrix undetermined on one member. No sentence counts the members or names
-     *  one whose filter is undetermined among those that carry the outcome. */
+     *  one whose filter is undetermined among those that carry the outcome; after such a member stands the verdict of the
+     *  matrix on it, where the evaluation reached it and it stands (decision of the owner, 2026-11-24). */
     @Test
     void every_quantifier_beside_an_undetermined_filter() throws Exception {
         String given = "\"taxatie\": 5, \"gewicht\": ";
         String holds = "J1 is kundig, omdat", fails = "J1 is niet kundig, want";
         String open = "J1: of hij kundig is, staat niet vast, want van V2 is zijn taxatie niet gegeven;";
-        // alle: V2 of 30 holds the test, of 5 does not
-        assertFiltered("alle", given + "20|\"gewicht\": 30", holds, "is voldaan: voor V1, niet vast of V2 meetelt");
+        // alle: V2 of 30 holds the test, of 5 does not; V1 of 5 stops the fold before V2
+        assertFiltered("alle", given + "20|\"gewicht\": 30", holds,
+                "is voldaan: voor V1, niet vast of V2 meetelt (wel voor V2)");
         assertFiltered("alle", given + "5|\"gewicht\": 5", fails, "is niet voldaan: niet voor V1, niet vast of V2 meetelt");
-        assertFiltered("alle", given + "20|\"gewicht\": 5", open, "is voldaan: wel voor V1, niet vast of V2 meetelt");
+        assertFiltered("alle", given + "20|\"gewicht\": 5", open,
+                "is voldaan: wel voor V1, niet vast of V2 meetelt (niet voor V2)");
+        // V2 holds the test whether it counts or not, so V3 keeps the fold open
+        assertFiltered("alle", given + "20|\"gewicht\": 30|\"gewicht\": 5",
+                "J1: of hij kundig is, staat niet vast, want van V3 is zijn taxatie niet gegeven;",
+                "is voldaan: wel voor V1, niet vast of V2 en V3 meetellen (wel voor V2, niet voor V3)");
         // filter and matrix undetermined on V2
         assertFiltered("alle", given + "5|", fails, "is niet voldaan: niet voor V1, niet vast of V2 meetelt");
         assertFiltered("alle", given + "20|", open, "is voldaan: wel voor V1, niet vast of V2 meetelt");
-        // geen van de
-        assertFiltered("geen van de", given + "5|\"gewicht\": 5", holds, "is voldaan: niet voor V1, niet vast of V2 meetelt");
+        // geen van de; V1 of 20 stops the fold before V2
+        assertFiltered("geen van de", given + "5|\"gewicht\": 5", holds,
+                "is voldaan: niet voor V1, niet vast of V2 meetelt (niet voor V2)");
+        assertFiltered("geen van de", given + "5|\"gewicht\": 5|\"gewicht\": 8", holds,
+                "is voldaan: niet voor V1, niet vast of V2 en V3 meetellen (niet voor V2 en V3)");
         assertFiltered("geen van de", given + "20|\"gewicht\": 20", fails,
                 "is niet voldaan: wel voor V1, niet vast of V2 meetelt");
-        assertFiltered("geen van de", given + "5|\"gewicht\": 20", open, "is voldaan: niet voor V1, niet vast of V2 meetelt");
-        // ten minste twee: too few members where V2 fails the test, whether it counts or not
+        assertFiltered("geen van de", given + "5|\"gewicht\": 20", open,
+                "is voldaan: niet voor V1, niet vast of V2 meetelt (wel voor V2)");
+        // ten minste twee: too few members where V2 fails the test, whether it counts or not; V1 and V2 stop the fold
+        // before V3
         assertFiltered("ten minste twee van de", given + "20|" + given + "30|\"gewicht\": 5", holds,
                 "is voldaan: voor V1 en V2, niet vast of V3 meetelt");
         assertFiltered("ten minste twee van de", given + "20|\"gewicht\": 5", fails,
-                "is niet voldaan: voor V1, niet vast of V2 meetelt");
+                "is niet voldaan: voor V1, niet vast of V2 meetelt (niet voor V2)");
         assertFiltered("ten minste twee van de", given + "20|\"gewicht\": 30", open,
-                "is voldaan: wel voor V1, niet vast of V2 meetelt");
+                "is voldaan: wel voor V1, niet vast of V2 meetelt (wel voor V2)");
         assertFiltered("ten minste twee van de", given + "20|\"taxatie\": 5|\"gewicht\": 30",
                 "J1: of hij kundig is, staat niet vast, want van V2 is zijn gewicht niet gegeven;",
-                "is voldaan: wel voor V1, niet vast voor V2, niet vast of V3 meetelt");
-        // ten hoogste één
+                "is voldaan: wel voor V1, niet vast voor V2, niet vast of V3 meetelt (wel voor V3)");
+        // ten hoogste één: after V1 one member is left, which cannot exceed one, so V1 stops the fold before V2; V1 and V2
+        // stop the fold that does not hold before V3
         assertFiltered("ten hoogste één van de", given + "5|\"gewicht\": 20", holds,
                 "is voldaan: niet voor V1, niet vast of V2 meetelt");
         assertFiltered("ten hoogste één van de", given + "20|" + given + "30|\"gewicht\": 5", fails,
                 "is niet voldaan: voor V1 en V2, niet vast of V3 meetelt");
         assertFiltered("ten hoogste één van de", given + "20|\"gewicht\": 30", open,
-                "is voldaan: wel voor V1, niet vast of V2 meetelt");
-        // precies één
-        assertFiltered("precies één van de", given + "20|\"gewicht\": 5", holds, "is voldaan: voor V1, niet vast of V2 meetelt");
+                "is voldaan: wel voor V1, niet vast of V2 meetelt (wel voor V2)");
+        // precies één; V1 and V2 stop the fold before V3
+        assertFiltered("precies één van de", given + "20|\"gewicht\": 5", holds,
+                "is voldaan: voor V1, niet vast of V2 meetelt (niet voor V2)");
         assertFiltered("precies één van de", given + "20|" + given + "30|\"gewicht\": 40", fails,
                 "is niet voldaan: voor V1 en V2, niet vast of V3 meetelt");
         assertFiltered("precies één van de", given + "20|\"gewicht\": 30", open,
-                "is voldaan: wel voor V1, niet vast of V2 meetelt");
+                "is voldaan: wel voor V1, niet vast of V2 meetelt (wel voor V2)");
         // no member whose filter stands, filter and matrix undetermined
         assertFiltered("ten minste één van de", "", "J1: of hij kundig is, staat niet vast, want van V1 is zijn taxatie niet"
                 + " gegeven;", "is voldaan: niet vast of V1 meetelt");
     }
 
+    /** A fold that stands although no member's filter stands: the verdict of the matrix on the member says why. "ten hoogste
+     *  één" over one member stands before the first member, which the evaluation then does not reach. */
+    @Test
+    void a_fold_that_stands_without_a_member_whose_filter_stands() throws Exception {
+        String holds = "J1 is kundig, omdat", fails = "J1 is niet kundig, want";
+        assertFiltered("alle", "\"gewicht\": 20", holds, "is voldaan: niet vast of V1 meetelt (wel voor V1)");
+        assertFiltered("geen van de", "\"gewicht\": 5", holds, "is voldaan: niet vast of V1 meetelt (niet voor V1)");
+        assertFiltered("ten minste één van de", "\"gewicht\": 5", fails, "is niet voldaan: niet vast of V1 meetelt (niet voor V1)");
+        assertFiltered("ten hoogste één van de", "\"gewicht\": 20", holds, "is voldaan: niet vast of V1 meetelt");
+        assertFiltered("precies één van de", "\"gewicht\": 5", fails, "is niet voldaan: niet vast of V1 meetelt (niet voor V1)");
+    }
+
+    /** A count that stands beside a member whose filter is undetermined names every member whose filter holds, by the verdict
+     *  of the matrix, so that none drops out: "ten minste drie" fails with V1 for which the matrix holds and V2 for which it
+     *  does not, which stop the fold before V3, and "ten minste twee" reads V3 too. */
+    @Test
+    void a_count_that_stands_names_the_members_for_which_the_matrix_holds_and_those_for_which_it_does_not()
+            throws Exception {
+        String given = "\"taxatie\": 5, \"gewicht\": ", fails = "J1 is niet kundig, want";
+        assertFiltered("ten minste drie van de", given + "20|" + given + "5|\"gewicht\": 5", fails,
+                "is niet voldaan: wel voor V1, niet voor V2, niet vast of V3 meetelt");
+        assertFiltered("ten minste twee van de", given + "20|" + given + "5|\"gewicht\": 5", fails,
+                "is niet voldaan: wel voor V1, niet voor V2, niet vast of V3 meetelt (niet voor V3)");
+        assertFiltered("ten hoogste één van de", given + "20|" + given + "5|\"gewicht\": 5", "J1 is kundig, omdat",
+                "is voldaan: wel voor V1, niet voor V2, niet vast of V3 meetelt (niet voor V3)");
+        assertFiltered("precies twee van de", given + "20|" + given + "5|\"gewicht\": 5", fails,
+                "is niet voldaan: wel voor V1, niet voor V2, niet vast of V3 meetelt (niet voor V3)");
+    }
+
+    /** A fold that stands beside a member on which the matrix is undetermined (V2, with a taxatie and no gewicht) and one on
+     *  which the filter is (V3): "ten hoogste één" holds by none for which the matrix holds, and names all three; "alle" fails
+     *  on V1, which stops it, and names V1 and V3. {@code MEMBERS} counts V2 in {@code unsettled} and V3 in
+     *  {@code filterUnsettled}. */
+    @Test
+    void a_fold_that_stands_beside_an_undetermined_matrix_and_an_undetermined_filter() throws Exception {
+        String given = "\"taxatie\": 5, \"gewicht\": ", vondsten = given + "5|\"taxatie\": 5|\"gewicht\": 5";
+        JsonNode atMost = filtered("ten hoogste één van de", vondsten);
+        assertFold("J1 is kundig, omdat", "is voldaan: niet voor V1, niet vast voor V2, niet vast of V3 meetelt (niet voor V3)",
+                atMost);
+        assertEquals("MEMBERS{members=1, holding=0, unjudged=0, unsettled=1, filterUnsettled=1}[«: niet voor » SUBJECT«V1»"
+                + " «, niet vast voor » SUBJECT«V2» «, niet vast of » SUBJECT«V3» « meetelt (niet voor » SUBJECT«V3» «)»]",
+                members(atMost, "J1 is kundig"));
+        JsonNode all = filtered("alle", vondsten);
+        assertFold("J1 is niet kundig, want", "is niet voldaan: niet voor V1, niet vast of V3 meetelt", all);
+        assertEquals("MEMBERS{members=1, holding=0, unjudged=0, unsettled=1, filterUnsettled=1}[«: niet voor » SUBJECT«V1»"
+                + " «, niet vast of » SUBJECT«V3» « meetelt»]", members(all, "J1 is niet kundig"));
+    }
+
+    /** V1 fails the matrix and stops "alle"; V2 and V3 are betwist, so their keurgewicht of 5 is divided by the TARIEF that
+     *  nothing binds, and V4 is not: the matrix faults on V2 and V3 after the stop. V3 and V4 have no taxatie, so whether they
+     *  count does not stand, and the evaluation did not reach them: no verdict of the matrix stands behind them. */
+    @Test
+    void a_fault_after_the_stop_beside_a_member_whose_filter_is_undetermined() throws Exception {
+        ObjectNode document = (ObjectNode) json(UcharBuild.document(Resolver.resolve(VONDST + """
+            Regel keurgewicht
+                geldig altijd
+                    Het keurgewicht van een Vondst moet gesteld worden op 5 indien hij betwist is.
+
+            Regel kundig
+                geldig altijd
+                    Een Jutter is kundig indien het keurgewicht van alle vondsten van de Jutter die aan de volgende voorwaarde voldoen: zijn taxatie is gevuld groter is dan het TARIEF.
+            """)));
+        divideTheTestByTheTarief(document);
+        JsonNode answer = post(DecisionCore.buildFromDocument(descriptor(document), document.toString(), CoreConfig.strict(),
+                Thread.currentThread().getContextClassLoader(), null), """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2", "V3", "V4"]}},
+              {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 5}, "characteristics": {"betwist": {"state": "holdsNot"}}},
+              {"type": "Vondst", "id": "V2", "attributes": {"taxatie": 5}, "characteristics": {"betwist": {"state": "holds"}}},
+              {"type": "Vondst", "id": "V3", "characteristics": {"betwist": {"state": "holds"}}},
+              {"type": "Vondst", "id": "V4", "characteristics": {"betwist": {"state": "holdsNot"}}}]}""", "");
+        assertFold("J1 is niet kundig, want", "is niet voldaan: niet voor V1, niet vast of V3 en V4 meetellen (1 lid niet"
+                + " beoordeeld)", answer);
+        assertEquals("MEMBERS{members=1, holding=0, unjudged=1, unsettled=0, filterUnsettled=2}[«: niet voor » SUBJECT«V1»"
+                + " «, niet vast of » SUBJECT«V3» « en » SUBJECT«V4» « meetellen (1 lid niet beoordeeld)»]",
+                members(answer, "J1 is niet kundig"));
+    }
+
     /** {@link #assertQuantifier} over the vondsten that pass the filter "zijn taxatie is gevuld". */
     private static void assertFiltered(String quantifier, String vondsten, String begin, String end) throws Exception {
-        assertQuantifier(quantifier, " die aan de volgende voorwaarde voldoen: zijn taxatie is gevuld", vondsten, begin, end);
+        assertQuantifier(quantifier, FILTER, vondsten, begin, end);
     }
+
+    /** The answer of {@link #quantifier} over the vondsten that pass the filter "zijn taxatie is gevuld". */
+    private static JsonNode filtered(String quantifier, String vondsten) throws Exception {
+        return quantifier(quantifier, FILTER, vondsten);
+    }
+
+    private static final String FILTER = " die aan de volgende voorwaarde voldoen: zijn taxatie is gevuld";
 
     private static void assertQuantifier(String quantifier, String vondsten, String begin, String end) throws Exception {
         assertQuantifier(quantifier, "", vondsten, begin, end);
     }
 
-    /** {@code vondsten}: the attributes of V1, V2, ..., with a bar between them; {@code filter} the text after the range. */
     private static void assertQuantifier(String quantifier, String filter, String vondsten, String begin, String end)
             throws Exception {
+        List<String> texts = texts(quantifier(quantifier, filter, vondsten));
+        assertEquals(1, texts.size(), texts.toString());
+        assertTrue(texts.get(0).startsWith(begin) && texts.get(0).endsWith("\" " + end), texts.get(0) + "\nis niet\n" + begin
+                + " … " + end);
+    }
+
+    /** The answer for J1, whether he is kundig by the gewicht of {@code quantifier} his vondsten; {@code vondsten}: the
+     *  attributes of V1, V2, ..., with a bar between them; {@code filter} the text after the range. */
+    private static JsonNode quantifier(String quantifier, String filter, String vondsten) throws Exception {
         String[] given = vondsten.split("\\|", -1);
         StringBuilder roles = new StringBuilder(), instances = new StringBuilder();
         for (int i = 1; i <= given.length; i++) {
@@ -503,15 +596,12 @@ class OpenExplanationFormsHttpTest {
             instances.append(", {\"type\": \"Vondst\", \"id\": \"V").append(i).append("\", \"attributes\": {").append(given[i - 1])
                     .append("}}");
         }
-        List<String> texts = texts(ask(VONDST + """
+        return ask(VONDST + """
             Regel kundig
                 geldig altijd
                     Een Jutter is kundig indien het gewicht van %s vondsten van de Jutter%s groter is dan 10.
             """.formatted(quantifier, filter), "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\", \"roles\": {\"vondsten\": ["
-                + roles + "]}}" + instances + "]}"));
-        assertEquals(1, texts.size(), texts.toString());
-        assertTrue(texts.get(0).startsWith(begin) && texts.get(0).endsWith("\" " + end), texts.get(0) + "\nis niet\n" + begin
-                + " … " + end);
+                + roles + "]}}" + instances + "]}");
     }
 
     // ---------------- composites, binders, ground, vocabulary ----------------
@@ -723,6 +813,49 @@ class OpenExplanationFormsHttpTest {
         List<String> texts = texts(answer).stream().filter(t -> t.startsWith(begin)).toList();
         assertEquals(1, texts.size(), answer.get("explanation").toString());
         assertTrue(texts.get(0).endsWith("\" " + end), texts.get(0) + "\neindigt niet op\n" + end);
+    }
+
+    /** The matrix "het keurgewicht … groter is dan het TARIEF" of the quantifier fold of {@code document} with the keurgewicht
+     *  divided by the TARIEF on the left and 3 on the right: on a member with a keurgewicht the division reads the TARIEF,
+     *  which nothing binds, and the matrix faults. */
+    private static void divideTheTestByTheTarief(ObjectNode document) throws Exception {
+        for (JsonNode r : document.at("/rules/rules")) {
+            JsonNode test = r.at("/versions/0/condition/test");
+            if (test.isMissingNode()) continue;
+            ObjectNode quotient = ((ObjectNode) test).putObject("left");
+            quotient.put("node", "Binary").put("op", "dividedBy");
+            quotient.set("left", json("""
+                {"node": "AttributeReference", "attribute": "keurgewicht", "subjectType": "Vondst",
+                 "source": {"snippet": "het keurgewicht van alle vondsten van de Jutter"}}"""));
+            quotient.set("right", test.get("right"));
+            quotient.set("type", json("{\"node\": \"Number\", \"whole\": false, \"decimals\": 0, \"sign\": \"unspecified\"}"));
+            quotient.putObject("source").put("snippet", "keurgewicht gedeeld door TARIEF");
+            ((ObjectNode) test).set("right", json("""
+                {"node": "Literal", "value": {"number": "3"}, "type": {"node": "Number", "whole": true, "decimals": 0,
+                 "sign": "unspecified"}, "source": {"snippet": "3"}}"""));
+        }
+    }
+
+    /** {@link ExplanationPartsCheck#render} of the first {@code MEMBERS} of the sentence of {@code answer} that begins with
+     *  {@code begin}. */
+    private static String members(JsonNode answer, String begin) {
+        for (int i = 0; i < answer.get("explanation").size(); i++)
+            if (answer.get("explanation").get(i).asText().startsWith(begin)) {
+                JsonNode members = find(answer.get("explanationParts").get(i), "MEMBERS");
+                assertTrue(members != null, () -> "geen MEMBERS in " + answer.get("explanationParts"));
+                return ExplanationPartsCheck.render(ServiceHttp.MAPPER.createArrayNode().add(members));
+            }
+        throw new AssertionError("geen zin begint met " + begin);
+    }
+
+    private static JsonNode find(JsonNode parts, String kind) {
+        for (JsonNode p : parts) {
+            if (p.get("kind").asText().equals(kind)) return p;
+            if (!p.has("parts")) continue;
+            JsonNode found = find(p.get("parts"), kind);
+            if (found != null) return found;
+        }
+        return null;
     }
 
     private static JsonNode json(String text) throws Exception {

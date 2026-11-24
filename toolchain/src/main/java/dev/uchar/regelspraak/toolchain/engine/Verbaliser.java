@@ -3451,11 +3451,12 @@ public final class Verbaliser {
      * <p>In een strikt document kan op een lid de matrix onbepaald zijn, en ook het filter: dan staat niet vast of het lid
      * meetelt. Beide zegt de lezing per lid ({@link ConditionReading.Contributor#undetermined},
      * {@link ConditionReading.Contributor#filterUndetermined}); de zin leest ze en oordeelt zelf niet. Een lid met een
-     * onbepaald filter staat er apart, als "niet vast of V2 meetelt", en nergens anders; staat er zo'n lid, dan noemt de zin
-     * geen totaal en geen aantal. Staat het oordeel van de vouw vast, dan noemt de zin de leden die het dragen
-     * ({@link #carriers}); staat het niet, dan de leden waarvoor de matrix geldt, die waarvoor zij niet geldt en die waarvoor
-     * zij onbepaald is ({@link #openMembers}); in beide gevallen alleen leden met een vaststaand filter. Wat de vouw
-     * openhoudt, zegt de oorzaak van de zin.
+     * onbepaald filter staat er apart, als "niet vast of V2 meetelt", met het oordeel van zijn matrix erachter waar de
+     * lezing het geeft ({@link #filterOpen}), en nergens anders; staat er zo'n lid, dan noemt de zin geen totaal en geen
+     * aantal. Staat het oordeel van de vouw vast, dan noemt de zin de leden die het dragen ({@link #carriers}); staat het
+     * niet, dan de leden waarvoor de matrix geldt, die waarvoor zij niet geldt en die waarvoor zij onbepaald is
+     * ({@link #openMembers}); in beide gevallen onder de leden met een vaststaand filter. Wat de vouw openhoudt, zegt de
+     * oorzaak van de zin.
      */
     private void members(Sentence.Builder b, Condition.QuantifierFold q, Read read) {
         ConditionReading.NodeReading n = read.of(q);
@@ -3463,13 +3464,13 @@ public final class Verbaliser {
             openMembers(b, q, n, read);
             return;
         }
-        if (open != null && n.contributors().stream().anyMatch(c -> c.undetermined() || c.filterUndetermined())) {
-            carriers(b, q, n, read);
-            return;
-        }
         if (!(n.value() instanceof Boolean holds))
             throw new IllegalStateException("de motor gaf voor de kwantorvouw \"" + summary(q) + "\" van "
                     + read.form() + " op " + read.label() + " geen oordeel, maar " + n.value());
+        if (open != null && n.contributors().stream().anyMatch(c -> c.undetermined() || c.filterUndetermined())) {
+            carriers(b, q, n, holds, read);
+            return;
+        }
         List<Object> holding = new ArrayList<>(), failing = new ArrayList<>();
         int unjudged = 0;
         for (ConditionReading.Contributor c : n.contributors()) {
@@ -3549,7 +3550,7 @@ public final class Verbaliser {
      *  {@code filterOpen}, hoe zijn matrix ook uitviel, en in geen van de andere lijsten; van de leden met een vaststaand
      *  filter, dat waar is, die waarvoor de matrix geldt, niet geldt of onbepaald is, en hoeveel er een fout gaven. */
     private record Split(List<Object> holding, List<Object> failing, List<Object> open, int unjudged,
-                         List<Object> filterOpen) {
+                         List<ConditionReading.Contributor> filterOpen) {
 
         /** {@code members} telt alleen leden met een vaststaand filter en een oordeel, {@code filterUnsettled} de leden met
          *  een onbepaald filter. */
@@ -3559,60 +3560,26 @@ public final class Verbaliser {
         }
     }
 
-    private static Split split(Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
-        List<Object> holding = new ArrayList<>(), failing = new ArrayList<>(), open = new ArrayList<>(),
-                filterOpen = new ArrayList<>();
+    /** De bijdragers van kwantorvouw {@code q} op haar knoop {@code n}, naar wat de lezing over hen zegt. De matrix van elk
+     *  lid is waar, onwaar, onbepaald of een fout, ook van een lid met een onbepaald filter, waarvan {@link #filterOpen} dat
+     *  oordeel noemt; geeft de lezing iets anders, dan faalt de uitleg hier met dat lid. */
+    private Split split(Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
+        List<Object> holding = new ArrayList<>(), failing = new ArrayList<>(), open = new ArrayList<>();
+        List<ConditionReading.Contributor> filterOpen = new ArrayList<>();
         int unjudged = 0;
         for (ConditionReading.Contributor c : n.contributors()) {
-            if (c.filterUndetermined()) filterOpen.add(c.member());
+            if (c.fault() == null && !c.undetermined() && !(c.value() instanceof Boolean))
+                throw new IllegalStateException("de motor gaf voor het lid "
+                        + labels.getOrDefault(c.member(), c.member().getClass().getSimpleName()) + " van de kwantorvouw \""
+                        + summary(q) + "\" van " + read.form() + " op " + read.label() + (c.filterUndetermined()
+                        ? ", waarvan het filter onbepaald is," : "") + " geen oordeel, geen fout en geen onbepaalde matrix,"
+                        + " maar " + c.value());
+            if (c.filterUndetermined()) filterOpen.add(c);
             else if (c.fault() != null) unjudged++;
             else if (c.undetermined()) open.add(c.member());
-            else if (c.value() instanceof Boolean verdict) (verdict ? holding : failing).add(c.member());
-            else throw new IllegalStateException("de motor gaf voor een lid van de kwantorvouw \"" + summary(q)
-                        + "\" van " + read.form() + " op " + read.label() + " geen oordeel, geen fout en geen onbepaalde matrix");
+            else ((Boolean) c.value() ? holding : failing).add(c.member());
         }
-        // de zin noemt de leden bij het oordeel van de vouw; spreken die twee elkaar tegen, dan liegt de zin
-        Boolean engine = null;
-        if (!n.undetermined()) {
-            if (!(n.value() instanceof Boolean v))
-                throw new IllegalStateException("de motor gaf voor de kwantorvouw \"" + summary(q) + "\" van "
-                        + read.form() + " op " + read.label() + " geen oordeel, maar " + n.value());
-            engine = v;
-        }
-        Boolean verdict = kleene(q, n, read);
-        if (!Objects.equals(verdict, engine))
-            throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form() + " op "
-                    + read.label() + " is volgens de motor " + (engine == null ? "onbepaald" : engine ? "waar" : "onwaar")
-                    + ", en volgens de lezing van haar leden " + (verdict == null ? "onbepaald" : verdict ? "waar" : "onwaar"));
         return new Split(holding, failing, open, unjudged, filterOpen);
-    }
-
-    /** Het oordeel van kwantorvouw {@code q} uit de lezing van haar bijdragers, met de tabel van Kleene (uchars
-     *  RUNTIME-SEMANTICS ch. 1.5, "A quantifier fold"): elk lid is een lid van een samenstelling, bij "alle" waar waar zijn
-     *  filter onwaar of zijn matrix waar is, bij de andere kwantoren waar waar beide waar zijn; null waar het onbepaald is.
-     *  Een lid waarvan de matrix een fout gaf, staat na de stop (ch. 5.10) en telt niet mee: de leden ervóór beslisten. */
-    private static Boolean kleene(Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
-        int t = 0, u = 0, f = 0;
-        for (ConditionReading.Contributor c : n.contributors()) {
-            if (c.fault() != null) continue;
-            Boolean matrix = c.undetermined() ? null : (Boolean) c.value(), member = matrix;
-            if (c.filterUndetermined())
-                member = q.quantifier() == Condition.Quantifier.ALLE ? Boolean.TRUE.equals(matrix) ? Boolean.TRUE : null
-                        : Boolean.FALSE.equals(matrix) ? Boolean.FALSE : null;
-            if (member == null) u++;
-            else if (member) t++;
-            else f++;
-        }
-        int m = q.threshold();
-        return switch (q.quantifier()) {
-            case ALLE -> f > 0 ? Boolean.FALSE : u > 0 ? null : Boolean.TRUE;
-            case GEEN -> t > 0 ? Boolean.FALSE : u > 0 ? null : Boolean.TRUE;
-            case TEN_MINSTE -> t >= m ? Boolean.TRUE : t + u < m ? Boolean.FALSE : null;
-            case TEN_HOOGSTE -> t > m ? Boolean.FALSE : t + u <= m ? Boolean.TRUE : null;
-            case PRECIES -> t > m || t + u < m ? Boolean.FALSE : u == 0 ? Boolean.TRUE : null;
-            case DE -> throw new IllegalStateException("de kwantorvouw \"" + summary(q) + "\" van " + read.form()
-                    + " heeft de kwantor 'de', die een kwantorvouw niet draagt (WF-108 (a))");
-        };
     }
 
     /** De leden van kwantorvouw {@code q}, waarvan het oordeel niet vaststaat: waarvoor haar matrix geldt, waarvoor zij niet
@@ -3621,35 +3588,26 @@ public final class Verbaliser {
     private void openMembers(Sentence.Builder b, Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
         Split s = split(q, n, read);
         b.open(Part.Kind.MEMBERS, s.meta());
-        String separator = ": ";
-        Map<String, List<Object>> pieces = new LinkedHashMap<>();
-        pieces.put("wel voor ", s.holding());
-        pieces.put("niet voor ", s.failing());
-        pieces.put("niet vast voor ", s.open());
-        for (Map.Entry<String, List<Object>> e : pieces.entrySet()) {
-            if (e.getValue().isEmpty()) continue;
-            b.text(separator + e.getKey());
-            names(b, e.getValue(), q, read);
-            separator = ", ";
-        }
-        if (!s.filterOpen().isEmpty()) {
-            b.text(separator);
-            filterOpen(b, s.filterOpen(), q, read);
-        }
+        Map<String, List<Object>> groups = new LinkedHashMap<>();
+        groups.put("wel voor ", s.holding());
+        groups.put("niet voor ", s.failing());
+        groups.put("niet vast voor ", s.open());
+        groups(b, groups, s.filterOpen(), q, read);
         unjudged(b, s.unjudged());
         b.close(Part.Kind.MEMBERS);
     }
 
-    /** De leden die de uitkomst van kwantorvouw {@code q} dragen, waar het oordeel van de vouw vaststaat en op een lid de
+    /** De leden die de uitkomst {@code holds} van kwantorvouw {@code q} dragen, waar die uitkomst vaststaat en op een lid de
      *  matrix of het filter onbepaald is: van de leden met een vaststaand filter die waarvoor haar matrix geldt of die
      *  waarvoor zij niet geldt, naar wat de uitkomst draagt. Staat van elk lid vast of het meetelt, dan met hun aantal van
      *  alle leden, en waar te weinig leden zijn voor de drempel hun aantal. Staat dat van een lid niet vast, dan staat het
-     *  er apart en noemt de zin geen aantal; draagt geen lid met een vaststaand filter de uitkomst, dan noemt zij de leden
-     *  waarvoor de matrix geldt, waar die er zijn. Een lid na de stop waarvan de matrix een fout gaf, staat er zoals in
-     *  {@link #members}. */
-    private void carriers(Sentence.Builder b, Condition.QuantifierFold q, ConditionReading.NodeReading n, Read read) {
+     *  er apart en noemt de zin geen aantal: bij "alle" en "geen van de" de leden die de uitkomst dragen, bij een telling
+     *  elke groep die er is, waarvoor de matrix geldt, niet geldt en onbepaald is ("wel voor V1, niet voor V2", alleen de
+     *  eerste: "voor V1"), zodat geen lid met een vaststaand filter wegvalt. Een lid na de stop waarvan de matrix een fout
+     *  gaf, staat er zoals in {@link #members}. */
+    private void carriers(Sentence.Builder b, Condition.QuantifierFold q, ConditionReading.NodeReading n, boolean holds,
+                          Read read) {
         Split s = split(q, n, read);
-        boolean holds = (Boolean) n.value();
         int k = s.holding().size();
         boolean byHolding = switch (q.quantifier()) {
             case ALLE -> holds;
@@ -3661,37 +3619,77 @@ public final class Verbaliser {
                     + " heeft de kwantor 'de', die een kwantorvouw niet draagt (WF-108 (a))");
         };
         List<Object> carrying = byHolding ? s.holding() : s.failing();
-        String holdingWord = q.quantifier() == Condition.Quantifier.GEEN ? ": wel voor " : ": voor ";
+        String holdingWord = q.quantifier() == Condition.Quantifier.GEEN ? "wel voor " : "voor ";
         b.open(Part.Kind.MEMBERS, s.meta());
         if (s.filterOpen().isEmpty()) {
             int total = k + s.failing().size() + s.open().size();
             if (carrying.isEmpty()) {
                 b.text(total == 1 ? ": er is 1 lid" : ": er zijn " + total + " leden");
             } else {
-                b.text(byHolding ? holdingWord : ": niet voor ");
+                b.text(": " + (byHolding ? holdingWord : "niet voor "));
                 names(b, carrying, q, read);
                 b.text(" (" + carrying.size() + " van de " + total + ")");
             }
         } else {
-            List<Object> named = carrying.isEmpty() ? s.holding() : carrying;
-            if (named.isEmpty()) {
-                b.text(": ");
+            Map<String, List<Object>> groups = new LinkedHashMap<>();
+            if (q.quantifier() == Condition.Quantifier.ALLE || q.quantifier() == Condition.Quantifier.GEEN) {
+                groups.put(byHolding ? holdingWord : "niet voor ", carrying);
             } else {
-                b.text(carrying.isEmpty() || byHolding ? holdingWord : ": niet voor ");
-                names(b, named, q, read);
-                b.text(", ");
+                groups.put(s.failing().isEmpty() && s.open().isEmpty() ? "voor " : "wel voor ", s.holding());
+                groups.put("niet voor ", s.failing());
+                groups.put("niet vast voor ", s.open());
             }
-            filterOpen(b, s.filterOpen(), q, read);
+            groups(b, groups, s.filterOpen(), q, read);
         }
         unjudged(b, s.unjudged());
         b.close(Part.Kind.MEMBERS);
     }
 
-    /** "niet vast of V2 meetelt": de leden {@code members} van kwantorvouw {@code q}, waarvan het filter onbepaald is. */
-    private void filterOpen(Sentence.Builder b, List<Object> members, Condition.QuantifierFold q, Read read) {
+    /** Na een dubbele punt elk van de {@code groups} van kwantorvouw {@code q} die leden heeft, met de woorden ervoor ("wel
+     *  voor V1, niet voor V2"), en daarna de leden {@code filterOpen}, waarvan het filter onbepaald is
+     *  ({@link #filterOpen}). */
+    private void groups(Sentence.Builder b, Map<String, List<Object>> groups, List<ConditionReading.Contributor> filterOpen,
+                        Condition.QuantifierFold q, Read read) {
+        String separator = ": ";
+        for (Map.Entry<String, List<Object>> e : groups.entrySet()) {
+            if (e.getValue().isEmpty()) continue;
+            b.text(separator + e.getKey());
+            names(b, e.getValue(), q, read);
+            separator = ", ";
+        }
+        if (!filterOpen.isEmpty()) {
+            b.text(separator);
+            filterOpen(b, filterOpen, q, read);
+        }
+    }
+
+    /** "niet vast of V2 en V3 meetellen (wel voor V2, niet voor V3)": de leden van kwantorvouw {@code q} waarvan het filter
+     *  onbepaald is, en tussen haakjes het oordeel van haar matrix op hen zoals de lezing het geeft (besluit van de eigenaar
+     *  2026-11-24): "wel voor" de leden waarvoor zij geldt, "niet voor" die waarvoor zij niet geldt. Een lid waarop de matrix
+     *  onbepaald is of een fout gaf, of waarvan de evaluatie de matrix niet bereikte, staat er niet tussen; staat er geen lid
+     *  tussen, dan vallen de haakjes weg. */
+    private void filterOpen(Sentence.Builder b, List<ConditionReading.Contributor> contributors, Condition.QuantifierFold q,
+                            Read read) {
+        List<Object> members = new ArrayList<>(), holding = new ArrayList<>(), failing = new ArrayList<>();
+        for (ConditionReading.Contributor c : contributors) {
+            members.add(c.member());
+            if (Boolean.TRUE.equals(c.reached()) && c.fault() == null && !c.undetermined())
+                ((Boolean) c.value() ? holding : failing).add(c.member());
+        }
         b.text("niet vast of ");
         names(b, members, q, read);
         b.text(members.size() == 1 ? " meetelt" : " meetellen");
+        if (holding.isEmpty() && failing.isEmpty()) return;
+        b.text(" (");
+        if (!holding.isEmpty()) {
+            b.text("wel voor ");
+            names(b, holding, q, read);
+        }
+        if (!failing.isEmpty()) {
+            b.text(holding.isEmpty() ? "niet voor " : ", niet voor ");
+            names(b, failing, q, read);
+        }
+        b.text(")");
     }
 
     /** De leden {@code members} bij hun naam ({@link #labels}), in de code-unit-volgorde daarvan, met "en" voor het

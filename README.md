@@ -383,8 +383,12 @@ writes one does not start:
 - **A quantifier fold with an undetermined filter** (card `quantifier-filter-in-explanation`, on uchar's
   `contributor-filter-verdict`): in a strict rule set the explanation of a quantifier fold names its members also where
   its filter is undetermined on a member, from uchar's reading of each member. Such a member, of which it does not stand
-  whether it counts, is named apart, and the sentence then counts no member: `"… is niet voldaan: niet voor V1, niet
-  vast of V2 meetelt"`, `"… is voldaan: wel voor V1, niet vast of V2 en V3 meetellen"` of a fold that does not stand. A
+  whether it counts, is named apart, and the sentence then counts no member. After it stands the verdict of the matrix on
+  it where the evaluation reached it and that verdict stands, by uchar's reading (decision of the owner, 2026-11-24):
+  `"… is voldaan: voor V1, niet vast of V2 meetelt (wel voor V2)"`, `"… is niet voldaan: niet voor V1, niet vast of V2
+  meetelt"` where V1 stopped the fold before V2, and of a fold that does not stand `"… staat niet vast: … is voldaan: wel
+  voor V1, niet vast of V2 en V3 meetellen (wel voor V2, niet voor V3)"`. A count that stands names the members whose
+  filter holds by the verdict of the matrix, `"… is niet voldaan: wel voor V1, niet voor V2, niet vast of V3 meetelt"`. A
   filter "A of B" that holds by A while B is open stands, and its fold is explained as any other (`"niet voor V2 (1 van
   de 2)"`). `MEMBERS` has `filterUnsettled`, the members whose filter is undetermined, beside `unsettled`; the other
   counts leave those members out. Where the explanation gave the verdict of the fold alone, without `MEMBERS`, it now
