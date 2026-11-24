@@ -1036,7 +1036,10 @@ public final class OpenApiEmitter {
                 + " de objectcreatie toegekende waarde) en unit.");
         values.put("additionalProperties", true);
         ObjectNode characteristics = list(objectProps, "characteristics", "elk kenmerk dat geldt: characteristic, origin (input of"
-                + " derived), en input: true als ook de invoer het zette; een tijdsafhankelijk kenmerk met periods, de"
+                + " derived), en input: true als ook de invoer het zette"
+                + (strict ? ", of {\"state\": \"holdsNot\"} als de invoer zei dat het niet geldt en een regel het toch"
+                        + " toekent" : "")
+                + "; een tijdsafhankelijk kenmerk met periods, de"
                 + " perioden waarin het geldt (from, to, zoals het verzoek ze geeft): die een regel schreef, of anders"
                 + " die van de invoer.");
         characteristics.put("additionalProperties", true);

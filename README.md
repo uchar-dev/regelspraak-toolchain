@@ -393,6 +393,12 @@ writes one does not start:
   de 2)"`). `MEMBERS` has `filterUnsettled`, the members whose filter is undetermined, beside `unsettled`; the other
   counts leave those members out. Where the explanation gave the verdict of the fold alone, without `MEMBERS`, it now
   names the members.
+- **A characteristic given as not holding beside its rule** (card `fixpoint-replaced-holdsnot`): in a strict rule set a
+  characteristic the request gives as `{"state": "holdsNot"}` and a rule assigns all the same is a row of
+  `fixpoint.objects[].characteristics[]` with `"origin": "derived"` and the input it replaced, `"input": {"state":
+  "holdsNot"}`, the form `objects[].open` gives that input; it was the row `derived` alone. `input` of such a row is
+  therefore `true` or `{"state": "holdsNot"}`. A rule set that is not strict is unchanged: there `false` is a
+  characteristic not given. The playground writes the new row with "(invoer geldt niet)".
 
 ## The pin
 

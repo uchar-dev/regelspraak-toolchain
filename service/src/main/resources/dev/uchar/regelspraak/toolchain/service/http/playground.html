@@ -458,7 +458,9 @@ function fixpointHtml(r) {
       if (visible(k.origin) && (whole || matches(k.characteristic, k.characteristicCanonical)))
         rows.push("<tr><td>" + nameOf(k, "characteristic") + "</td><td>"
           + (k.periods ? k.periods.map(interval).join("<br>") : "waar")
-          + (k.input ? ' <span class="small">(ook invoer)</span>' : "")
+          // in a strict rule set the input may have said that it does not hold, and a rule assigns it all the same
+          + (k.input && k.input.state === "holdsNot" ? ' <span class="small">(invoer geldt niet)</span>'
+             : k.input ? ' <span class="small">(ook invoer)</span>' : "")
           + '</td><td><span class="origin ' + esc(k.origin) + '">' + esc(k.origin) + "</span></td></tr>");
     // a strict rule set: the members that are open, with the input that does not stand beside a writer that is open
     for (const v of o.open || []) {

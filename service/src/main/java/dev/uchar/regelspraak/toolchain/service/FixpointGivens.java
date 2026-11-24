@@ -92,7 +92,7 @@ public final class FixpointGivens {
      * their bean fields hold without the write-back ({@link EndState.Member#given}): the attributes that hold a value
      * and the characteristics that hold. Of a dimensioned member the filled cells are, in the order of {@code model}'s
      * labels. {@code absent} holds per label the characteristics the request states not to hold, which no bean field
-     * holds.
+     * holds; the input object keys them case-insensitively, as its characteristics.
      */
     public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
                                             RegelSpraakModel model, Naming ng) {
@@ -111,8 +111,10 @@ public final class FixpointGivens {
                 // a time-dependent characteristic holds its true periods on the bean, as uchar's segments
                 else if (m.given() instanceof List<?> segments) periods.put(m.name(), periodNodes(segments));
             }
+            Set<String> notHolding = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            notHolding.addAll(absent.getOrDefault(label, Set.of()));
             sink.add(new InputObject(label, attributes(typeOf(o, model), given(o), model, ng), characteristics,
-                    periods, absent.getOrDefault(label, Set.of())));
+                    periods, notHolding));
         }
         return sink;
     }
@@ -250,6 +252,7 @@ public final class FixpointGivens {
             }
 
         // the members of every object first: a made object is ordered by its values too
+        boolean strict = OpenValues.in(model);
         Map<Object, ArrayNode[]> members = new IdentityHashMap<>();
         for (Object o : type.keySet()) {
             InputObject in = entered.get(o);
@@ -258,8 +261,10 @@ public final class FixpointGivens {
             members.put(o, new ArrayNode[]{
                     valuesOf(type.get(o), given, values.getOrDefault(o, Map.of()), made.containsKey(o), model, ng),
                     characteristicsOf(type.get(o), in == null ? Set.of() : in.characteristics(),
-                            in == null ? Map.of() : in.periods(), characteristics.getOrDefault(o, Set.of()),
-                            periods.getOrDefault(o, Map.of()), ng)});
+                            in == null ? Map.of() : in.periods(),
+                            // in a rule set that is not strict a characteristic given as not holding is one not given
+                            strict && in != null ? in.absent() : Set.of(),
+                            characteristics.getOrDefault(o, Set.of()), periods.getOrDefault(o, Map.of()), ng)});
         }
         List<Object> madeObjects = new ArrayList<>(made.keySet());
         Map<Object, String> key = new IdentityHashMap<>();
@@ -277,7 +282,7 @@ public final class FixpointGivens {
             name(on, "objectType", ng.objectType(type.get(o).name), type.get(o).name);
             on.set("values", members.get(o)[0]);
             on.set("characteristics", members.get(o)[1]);
-            if (OpenValues.in(model))
+            if (strict)
                 on.set("open", openOf(type.get(o), held.get(o).open(), entered.get(o).absent(), ng));
         }
         ArrayNode madeNode = n.putArray("madeObjects");
@@ -486,12 +491,15 @@ public final class FixpointGivens {
     }
 
     /** The characteristics of an object of type {@code ot} that hold at the fixpoint, in declaration order: derived
-     *  ({@code derived}, with {@code input: true} when the input set it too) or set by the input ({@code input}). A
-     *  time-dependent characteristic holds in {@code periods}: those a rule wrote ({@code derivedPeriods}), or else
+     *  ({@code derived}, with {@code input: true} when the input set it too, and in a strict rule set
+     *  {@code input: {"state": "holdsNot"}} when the input stated that it does not hold, among {@code absent}) or set by
+     *  the input ({@code input}). A characteristic among {@code absent} that no rule derived does not hold and is no row.
+     *  A time-dependent characteristic holds in {@code periods}: those a rule wrote ({@code derivedPeriods}), or else
      *  those of the input ({@code enteredPeriods}); without a period it is no row. uchar gives no input periods on a
      *  characteristic a rule writes (its fault EF-041), so a row never has both. */
     private static ArrayNode characteristicsOf(ObjectType ot, Set<String> entered, Map<String, ArrayNode> enteredPeriods,
-                                               Set<String> derived, Map<String, ArrayNode> derivedPeriods, Naming ng) {
+                                               Set<String> absent, Set<String> derived,
+                                               Map<String, ArrayNode> derivedPeriods, Naming ng) {
         List<String> declared = new ArrayList<>();
         for (ObjectType t : ot.chain()) declared.addAll(t.characteristics);
         for (String k : derived)
@@ -513,12 +521,16 @@ public final class FixpointGivens {
                 kn.set("periods", written ? dp : ip);
                 continue;
             }
-            boolean a = derived.contains(k), i = entered.contains(k);
+            boolean a = derived.contains(k), i = entered.contains(k), not = absent.contains(k);
+            if (i && not)
+                throw new IllegalStateException("de invoer geeft het kenmerk '" + k + "' van " + ot.name + " als geldend"
+                        + " en als niet geldend");
             if (!a && !i) continue;
             ObjectNode kn = sink.addObject();
             name(kn, "characteristic", ng.characteristic(ot, k), k);
             kn.put("origin", a ? "derived" : "input");
             if (a && i) kn.put("input", true);
+            else if (a && not) kn.set("input", OpenValues.state(OpenValues.HOLDS_NOT));
         }
         return sink;
     }

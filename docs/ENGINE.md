@@ -301,6 +301,9 @@ refuse the start as well.
   the creation gives the seizoenswaarde 7 and a rule writes 20 from March to August, `{"attribute": "seizoenswaarde",
   "timeline": [{"to": "2025-03-01", "value": "7"}, {"from": "2025-03-01", "to": "2025-09-01", "value": "20"}, {"from":
   "2025-09-01", "value": "7"}], "origin": "derived", "input": [{"value": "7"}], "inputOrigin": "creation"}`.
+  A characteristic that holds has a row with the origin `derived` or `input`; one a rule derived that the request gave
+  as holding as well has `"input": true` beside it (`{"characteristic": "kostbaar", "origin": "derived", "input":
+  true}`), and in a strict rule set, where the request gave it as not holding, the state it gave (below).
   A time-dependent characteristic has a row with the periods in which it holds, as the request gives them: those a
   rule wrote within a window, which uchar's `EndState` gives as its true periods, with the origin
   `derived` (`{"characteristic": "rentedragend", "origin": "derived", "periods": [{"from": "2025-11-16", "to":
@@ -433,7 +436,9 @@ refuse the start as well.
   through `DroolsBackend.standingOf` in the session uchar's replay hands over before its write-back
   (`CaseRunner.Handoff`), the made objects, the links, the
   evaluation faults as data and the inconsistencies, each list sorted, or `fixpointError` with the reason there is
-  none. The page writes the `input` of a made object as `(creatie …)`, that of an instance as `(invoer …)`.
+  none. The page writes the `input` of a made object as `(creatie …)`, that of an instance as `(invoer …)`, and beside a
+  derived characteristic `(ook invoer)` where the input gave it as holding and `(invoer geldt niet)` where it gave it as not
+  holding.
   `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
   coverage, the explanation, the situation and the fixpoint in a vocabulary of the source, the canonical name beside a name
   that differs (the Mermaid graph, the IR and the verdict stay uchar's); an unknown one is a 400.
@@ -650,7 +655,11 @@ member what it means that a request does not give it.
 attributes and then its open characteristics, in declaration order, each with the `unit` of an attribute that has one and
 with `input` where the request gave the member a value, which does not stand beside a writer that is open
 (`{"attribute": "bergloon", "input": "7"}`, `{"characteristic": "kostbaar", "input": {"state": "holdsNot"}}`). An open
-member is in no other row; a member in no row is settled leeg, or stands not to hold.
+member is in no other row; a member in no row is settled leeg, or stands not to hold. A characteristic the request gave
+as not holding that a rule assigns all the same, since the rule decides above the input (uchar's RUNTIME-SEMANTICS
+ch. 1.5), is a row of `characteristics` with the origin `derived` and the input it replaced in the form `open` gives it:
+`{"characteristic": "kostbaar", "origin": "derived", "input": {"state": "holdsNot"}}`. The `input` of a characteristic is
+there `true` or `{"state": "holdsNot"}`; one given as not holding that no rule assigns does not hold and is no row.
 
 **The explanation** says of an open outcome that it does not stand, and what keeps it open. `OpenReads` (toolchain) is the
 one place that says what. It evaluates no condition and no value: it takes the open reads from uchar's readings

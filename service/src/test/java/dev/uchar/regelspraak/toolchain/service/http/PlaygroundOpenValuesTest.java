@@ -241,6 +241,43 @@ class PlaygroundOpenValuesTest {
         for (JsonNode s : results) assertFalse(s.has("openInputs"), s.toString());
     }
 
+    private static final String ASSIGNED = """
+
+        Scenario kostbaar ondanks de invoer
+        toetst de regel kostbaarheid
+        Gegeven is de volgende situatie:
+        een Vondst V1
+        - de taxatie is 1500
+        - is niet kostbaar
+        Met als verwacht resultaat:
+        - V1 is kostbaar
+        """;
+
+    /** The situation gives kostbaar as not holding, and its rule assigns it: on both routes the row of the fixpoint is derived,
+     *  with the input it replaced beside it, which the page shows as "(invoer geldt niet)". */
+    @Test
+    void the_fixpoint_gives_beside_a_derived_characteristic_that_the_situation_gave_as_not_holding() {
+        DecisionCore core = OpenValuesSource.core(CoreConfig.strict().withDetail());
+        String source = OpenValuesSource.SOURCE + ASSIGNED;
+        for (JsonNode s : new JsonNode[]{Playground.analyze(source).at("/scenario/results/0"),
+                Playground.analyze(source, null, core, null, false).at("/scenario/results/0")}) {
+            assertEquals("PASS", s.at("/status").asText(), s.toString());
+            assertEquals("[{\"characteristic\":\"kostbaar\",\"origin\":\"derived\",\"input\":{\"state\":\"holdsNot\"}}]",
+                    s.at("/fixpoint/objects/0/characteristics").toString(), s.toString());
+        }
+    }
+
+    /** In a rule set that is not strict "- is niet kostbaar" changes nothing, also in the fixpoint: beside the derived kostbaar
+     *  stands no input. */
+    @Test
+    void in_an_ordinary_rule_set_the_fixpoint_gives_no_input_beside_a_derived_characteristic_given_as_not_holding() {
+        JsonNode s = Playground.analyze(OpenValuesSource.SOURCE.replace("Afleiden uit leeg: nee", "")
+                .replace(" (volledig gegeven)", "") + ASSIGNED).at("/scenario/results/0");
+        assertEquals("PASS", s.at("/status").asText(), s.toString());
+        assertEquals("[{\"characteristic\":\"kostbaar\",\"origin\":\"derived\"}]",
+                s.at("/fixpoint/objects/0/characteristics").toString(), s.toString());
+    }
+
     /** The bergloon of 7 is input beside a writer that is open, so it is no row of the values. */
     @Test
     void the_fixpoint_lists_the_open_members() {

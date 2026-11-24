@@ -272,6 +272,40 @@ class OpenValuesHttpTest {
         assertEquals(json("[{\"characteristic\": \"betwist\", \"origin\": \"input\"}]"), o.get("characteristics"));
     }
 
+    /** kostbaar, which its rule assigns where the taxatie is above 1000, whatever the request says: stated not to hold, the
+     *  row of the fixpoint is derived with the input it replaced beside it, in the form {@code open} gives it; stated to hold,
+     *  with {@code input: true}; stated not to hold where the rule does not assign it, kostbaar does not hold and is no row. */
+    @Test
+    void the_fixpoint_gives_beside_a_derived_characteristic_the_state_the_request_gave() throws Exception {
+        String given = "\"attributes\": {\"taxatie\": %d}, \"characteristics\": {\"kostbaar\": {\"state\": \"%s\"}}";
+        assertEquals(json("""
+            [{"characteristic": "kostbaar", "origin": "derived", "input": {"state": "holdsNot"}}]"""),
+                characteristics(detail, given.formatted(1500, "holdsNot")));
+        assertEquals(json("[{\"characteristic\": \"kostbaar\", \"origin\": \"derived\", \"input\": true}]"),
+                characteristics(detail, given.formatted(1500, "holds")));
+        assertEquals(json("[]"), characteristics(detail, given.formatted(50, "holdsNot")));
+    }
+
+    /** In a rule set that is not strict a characteristic given as {@code false} is one not given: beside the derived kostbaar
+     *  stands no input. */
+    @Test
+    void in_an_ordinary_rule_set_false_beside_a_derived_characteristic_is_no_input() throws Exception {
+        ServiceHttp ordinary = ServiceHttp.bind(DecisionCore.assemble(OpenValuesSource.DESCRIPTOR, Map.of("open-waarden.rgs",
+                OpenValuesSource.SOURCE.replace("Afleiden uit leeg: nee", "").replace(" (volledig gegeven)", "")),
+                CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
+        try {
+            assertEquals(json("[{\"characteristic\": \"kostbaar\", \"origin\": \"derived\"}]"), characteristics(ordinary,
+                    "\"attributes\": {\"taxatie\": 1500}, \"characteristics\": {\"kostbaar\": false}"));
+        } finally {
+            ordinary.stop(0);
+        }
+    }
+
+    /** The characteristics of V1 at the fixpoint of {@code s} with {@code given}. */
+    private static JsonNode characteristics(ServiceHttp s, String given) throws Exception {
+        return ok(post(s, "vondst?fixpoint=true", request(given, ""))).at("/fixpoint/objects/0/characteristics");
+    }
+
     /** vrachtprijs reads the taxatie and then the TARIEF, which nothing binds: with a taxatie EF-014, without one the
      *  evaluation stops at the open taxatie and the vrachtprijs is open. The fixpoint of the 422 shows what is open. */
     @Test
@@ -354,6 +388,10 @@ class OpenValuesHttpTest {
         assertTrue(schemas.at("/Vondst/properties/taxatie/description").asText().contains("niet gegeven"));
         assertTrue(schemas.at("/Info/properties").has("completeInput"));
         assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties").has("open"));
+        // beside a derived characteristic the input it replaced, which only a strict rule set gives as a state
+        assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties/characteristics/description").asText()
+                .contains("input: true als ook de invoer het zette, of {\"state\": \"holdsNot\"} als de invoer zei dat het niet"
+                        + " geldt en een regel het toch toekent"), schemas.at("/Fixpoint").toString());
     }
 
     // ---------------- the start ----------------
