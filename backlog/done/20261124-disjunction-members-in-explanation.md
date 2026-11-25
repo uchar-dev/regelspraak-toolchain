@@ -54,3 +54,27 @@ In `toolchain/src/main/java/dev/uchar/regelspraak/toolchain/engine/Verbaliser.ja
 - **Niet-geldende `TEN_MINSTE` met drempel 1 (`read.holds(s) == false`):** `firstFailing` (r. 3791–3795) schrijft `"niet geldt: "` en roept `verbaliseCondition` aan; dan is `read.holds(s)` onwaar, dus `carries` behoudt alle bereikte bepaalde leden (in een strikt document zijn per Kleene bij `atLeast 1` die vaststaand onwaar is alle `n` leden bepaald onwaar, `f >= n`). `"want niet geldt: A of B"` blijft exact zoals het was (inclusief `ExplanationReadingsTest` r. 168 en `ExplanationPartsServiceTest` r. 150).
 - **Geneste `TEN_MINSTE(1)` binnen `GEEN` of `countingCompound`:** wanneer de geneste disjunctie zelf `holds: true` heeft (bv. een geldend lid van `"ten minste 2 van de 3"`, of het lid waardoor `"geen van de volgende"` faalt), toont zij alleen haar eigen geldende lid; wanneer zij `holds: false` heeft, toont zij onder `"niet "` al haar niet-geldende leden met `"of"` (ongewijzigd).
 - **Replay-vloeren (`scripts/check-service-replay.sh`):** doordat niet-geldende eerdere leden van een geldende disjunctie wegvallen, kan het totale aantal gelezen waarden met schrijver (`read_links`) over de 387 goldens licht dalen; de gepinde vloer (`EXPECTED_MIN_READ_LINKS`, 4248 t.o.v. 6546 op `fadd713a5`) heeft ruime marge, en `EXPECTED_REPLAY_PLAYED`/`EXPECTED_REPLAY_CASES`/`EXPECTED_RED_FAULTS` veranderen niet.
+
+## Result (2026-11-25)
+
+- **Uitleg zonder eigen semantiek (`Verbaliser`):**
+  - `Verbaliser.carries` neemt bij een geldende `Condition.Compound` met `Quantifier.TEN_MINSTE` en `threshold == 1` (`read.holds(s) == true`) uitsluitend bereikte leden op waarvoor `read.holds(d)` geldt (naast het bestaande uitsluiten van onbereikte en onbepaalde leden), uitsluitend uit uchars `ConditionReading`.
+  - Fail-fast-wacht in `verbaliseCondition`: werpt een `IllegalStateException` wanneer een geldende `TEN_MINSTE(1)` geen enkel bereikt geldend lid zou hebben geschreven (`first` blijft `true`), zodat er nooit een lege `CONDITION`-groep achter `", omdat "` kan ontstaan.
+  - Een niet-geldende `TEN_MINSTE(1)` (`"want niet geldt: A of B"`), alle overige tellingen (`TEN_MINSTE` met drempel > 1, `TEN_HOOGSTE`, `PRECIES`), `ALLE`, `GEEN` en de buitenste groep `CONDITION{holds=true, quantifier=atLeast, threshold=1}` rond het geldende lid blijven ongewijzigd.
+- **Tests (Jutterswet) en documentatie:**
+  - `VerbaliserTest`: scenario- en unittests voor geldende `"ten minste één van"` met eerste lid waar, later lid waar na alle soorten niet-geldende leden (kwantorvouw met 0 leden én met 1 niet-betwiste vinder, kenmerktoets, vergelijking, `gevuld`- en `leeg`-predicaten, geneste niet-geldende `"alle"`), strikte disjunctie met open én niet-geldend lid vóór het beslissende lid, geneste disjunctie in `"alle"` en in `"ten minste twee van de volgende"`, niet-geldende `"ten minste één van"`, de buitenste `CONDITION`-groep en de fail-fast-wacht.
+  - `ExplanationPartsServiceTest`: pin van zin 0 en `PARTS.get(0)` voor `J1` bijgewerkt (`"J1 is ervaren, omdat zijn leeftijd (30) is groter dan de minimumleeftijd (17) en het onderwerp ingezetene is"`), zin 10 (`CONNECTIVE«of»`, `holds=false`) ongewijzigd, alle `Part.Kind`-soorten gedekt en `withoutOmissibleParts` gecontroleerd.
+  - `OpenExplanationFormsHttpTest` en `OpenExplanationHttpTest`: HTTP-tests met `?explanation=true&explanationParts=true` voor alle zes acceptatiegevallen inclusief gepinde `ExplanationPartsCheck.render`-bomen en `withoutOmissibleParts`.
+  - `README.md` (`Contract change`) en `docs/ENGINE.md` (`The parts of an explanation`) bijgewerkt.
+- **Buiten scope gelaten:** `uchar/` (pin ongewijzigd op `4d6bbe6be`), `Part.java`, `OpenApiEmitter.java`, niet-geldende `QuantifierFold` onder `GEEN`/`countingCompound` en de werkbank.
+- **Verschuiving over de 387 replay-goldens (1102 cases):**
+  - **15 van de 6286 zinnen gewijzigd**, verspreid over 8 goldens (`jutterswet-keurcriteria`, `jutterswet-paasvondst`, `jutterswet-premiestaffel`, `jutterswet-premietabel-twee-ofcellen`, `jutterswet-rubriektabel`, `jutterswet-rubriektabel-rgs`, `jutterswet-vrijstelling-drie-niveaus`, `jutterswet-wachtdeling`);
+  - **0 gewijzigde koppelingen** (`read_links` blijft 6546, ruim boven vloer 4248; in alle 15 gewijzigde zinnen lazen de weggevallen eerdere leden alleen invoerattributen of vouwen zonder attribuutschrijver).
+- **Poorten (`make gates`, 7/7 GROEN in 7m14s):**
+  - 1 `pin`: GROEN (`4d6bbe6be` op `origin/main`, versies gelijk)
+  - 2 `reactor`: GROEN (`215/654/68`, 0 skips)
+  - 3 `twins`: GROEN (3 tweelingen 18 cases, vocabulairetweeling 2 cases / 34 verzoeken, 4 getuigenissen)
+  - 4 `replay`: GROEN (387/387 goldens, 1102/1102 cases, 6286 zinnen, 4334 voorwaarden, 3478 berekeningen, 6546 koppelingen, 0 onbepaalde goldens; rode leg 68/68 fouten)
+  - 5 `manifest`: GROEN (32 regels, 29 ok, 3 uitgesloten, 0 mismatch)
+  - 6 `image`: GROEN (`decision-service:dev`)
+  - 7 `kind-smoke`: GROEN (H2 PASS, H3 PASS, H4 PASS)
