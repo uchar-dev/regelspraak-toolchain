@@ -4,7 +4,10 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
+import dev.uchar.regelspraak.model.RegelSpraakModel.OriginForm;
+import dev.uchar.regelspraak.toolchain.engine.Naming;
 
 import org.junit.jupiter.api.Test;
 
@@ -26,17 +29,23 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
  * What every answer of a strict rule set holds, over the cases of uchar's strict goldens and of {@link OpenValuesSource}, as
- * given and with each given input member left out: a member that is open in the answer has a sentence when a form writes it,
- * stands in {@code openInputs} under at least one input member, and giving any of those changes the outcome or the members
- * that keep it open; a member that is not open stands under none.
+ * given and with each given input member left out: every open member in the answer has a sentence when a form writes it, and
+ * the open outcomes are the disjoint union of (a) the outcomes in {@code openInputs} (each under at least one input member,
+ * and giving any of those changes the outcome or the members that keep it open) and (b) the suppressed opgave check members
+ * ({@code berekende X}, {@code afwijkende opgave X}) whose marked attribute {@code X} on the same instance is not open; a
+ * member that is not open stands under none.
  */
 class OpenInputsPropertyTest {
 
-    private static final RequestOptions ASKED = new RequestOptions(true, null, null, false, false, false, false, true);
+    private static final RequestOptions ASKED = new RequestOptions(true, null, null, false, false, true, false, true);
+
+    private record Counts(int open, int suppressed) {
+        Counts plus(Counts other) { return new Counts(open + other.open, suppressed + other.suppressed); }
+    }
 
     @Test
     void the_strict_goldens() throws Exception {
-        int checked = 0;
+        Counts total = new Counts(0, 0);
         List<String> goldens = List.of(
                 "jutterswet-afleiden-uit-leeg",
                 "jutterswet-volledig-gegeven",
@@ -57,22 +66,24 @@ class OpenInputsPropertyTest {
             assertFalse(cases.isEmpty(), golden);
             boolean faultOnInput = golden.equals("jutterswet-zelfde-conclusie-fout");
             for (Path c : cases)
-                checked += leavingOneOut(core, "replay", request(DescriptorLoader.MAPPER.readTree(c.toFile())), faultOnInput);
+                total = total.plus(leavingOneOut(core, "replay", request(DescriptorLoader.MAPPER.readTree(c.toFile())),
+                        faultOnInput));
         }
-        assertTrue(checked >= 100, "open uitkomsten gezien: " + checked);
+        assertTrue(total.open() >= 100, "open uitkomsten gezien: " + total.open());
+        assertTrue(total.suppressed() > 0, "onderdrukte opgave-controleleden gezien: " + total.suppressed());
     }
 
     @Test
     void the_rule_sets_of_the_tests() throws Exception {
-        DecisionCore core = OpenValuesSource.core(CoreConfig.strict());
-        int checked = leavingOneOut(core, "vondst", """
+        DecisionCore core = OpenValuesSource.core(CoreConfig.strict().withDetail());
+        Counts total = leavingOneOut(core, "vondst", """
             {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
               {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50, "toeslag": 3, "herkomst": 4},
                "characteristics": {"betwist": {"state": "holdsNot"}, "onleesbaar": {"state": "holds"}}},
               {"type": "Vondst", "id": "V2", "attributes": {"taxatie": 1500},
                "characteristics": {"betwist": {"state": "holds"}}}]}""");
-        core = OpenValuesSource.wrak(CoreConfig.strict());
-        checked += leavingOneOut(core, "wrak", """
+        core = OpenValuesSource.wrak(CoreConfig.strict().withDetail());
+        total = total.plus(leavingOneOut(core, "wrak", """
             {"instances": [{"type": "Jutter", "id": "J1", "attributes": {"bonus": 4},
                             "roles": {"gevonden wrakken": ["W1", "W2", "W3"]}},
               {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
@@ -83,23 +94,40 @@ class OpenInputsPropertyTest {
                                    "beschadigd": {"state": "holds"}, "gemerkt": {"state": "holds"}}},
               {"type": "Wrak", "id": "W3", "attributes": {"diepte": 12, "lading": 8, "lengte": 0, "voorschot": 7},
                "characteristics": {"gemeld": {"state": "holdsNot"}, "betwist": {"state": "holdsNot"},
-                                   "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}""");
+                                   "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}"""));
         // nothing given at all, and one wreck that is
-        checked += holds(core, "wrak", read("""
+        total = total.plus(holds(core, "wrak", read("""
             {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2"]}},
-              {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5}}, {"type": "Wrak", "id": "W2"}]}"""));
-        checked += holds(core, "wrak", read("{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\"}]}"));
-        assertTrue(checked >= 100, "open uitkomsten gezien: " + checked);
+              {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5}}, {"type": "Wrak", "id": "W2"}]}""")));
+        total = total.plus(holds(core, "wrak", read("{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\"}]}")));
+
+        // WRAK_SOURCE with berekende kadegeld and afwijkende opgave kadegeld in output, both with and without Wrak.kadegeld
+        for (String replacement : List.of(
+                "\"Wrak.kadegeld\", \"Wrak.berekende kadegeld\", \"Wrak:afwijkende opgave kadegeld\"",
+                "\"Wrak.berekende kadegeld\", \"Wrak:afwijkende opgave kadegeld\"")) {
+            String descriptor = OpenValuesSource.WRAK_DESCRIPTOR.replace("\"Wrak.kadegeld\"", replacement);
+            DecisionCore wrakOpgave = DecisionCore.assemble(descriptor, Map.of("wrakken.rgs", OpenValuesSource.WRAK_SOURCE),
+                    CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
+            total = total.plus(leavingOneOut(wrakOpgave, "wrak", """
+                {"instances": [{"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 10,
+                                "opgegeven kadegeld": 100},
+                   "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holdsNot"},
+                                       "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}"""));
+            total = total.plus(holds(wrakOpgave, "wrak", read("{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\"}]}")));
+        }
+
+        assertTrue(total.open() >= 100, "open uitkomsten gezien: " + total.open());
+        assertTrue(total.suppressed() > 0, "onderdrukte opgave-controleleden gezien: " + total.suppressed());
     }
 
     /** The property on {@code request} and on it without each member it gives. */
-    private static int leavingOneOut(DecisionCore core, String path, String request) throws Exception {
+    private static Counts leavingOneOut(DecisionCore core, String path, String request) throws Exception {
         return leavingOneOut(core, path, request, false);
     }
 
-    private static int leavingOneOut(DecisionCore core, String path, String request, boolean faultOnInput) throws Exception {
+    private static Counts leavingOneOut(DecisionCore core, String path, String request, boolean faultOnInput) throws Exception {
         JsonNode full = read(request);
-        int checked = holds(core, path, full, faultOnInput);
+        Counts checked = holds(core, path, full, faultOnInput);
         for (int i = 0; i < full.get("instances").size(); i++)
             for (String list : List.of("attributes", "characteristics")) {
                 JsonNode members = full.get("instances").get(i).get(list);
@@ -107,26 +135,42 @@ class OpenInputsPropertyTest {
                 for (String name : (Iterable<String>) members::fieldNames) {
                     JsonNode less = full.deepCopy();
                     ((ObjectNode) less.get("instances").get(i).get(list)).remove(name);
-                    checked += holds(core, path, less, faultOnInput);
+                    checked = checked.plus(holds(core, path, less, faultOnInput));
                 }
             }
         return checked;
     }
 
-    /** The property on one request; returns the number of open outcomes of its answer. */
-    private static int holds(DecisionCore core, String path, JsonNode request) throws Exception {
+    /** The property on one request; returns the number of open and suppressed outcomes of its answer. */
+    private static Counts holds(DecisionCore core, String path, JsonNode request) throws Exception {
         return holds(core, path, request, false);
     }
 
-    private static int holds(DecisionCore core, String path, JsonNode request, boolean faultOnInput) throws Exception {
+    private static Counts holds(DecisionCore core, String path, JsonNode request, boolean faultOnInput) throws Exception {
         ObjectNode answer = core.process(path, request, ASKED);
         Map<String, Set<String>> inputs = inputsPerOutcome(answer);
-        Set<String> open = new TreeSet<>(), states = new TreeSet<>();
-        outcomes(answer).forEach((outcome, state) -> {
-            states.add(outcome);
-            if (state.equals("open")) open.add(outcome);
+        Map<String, String> allStates = outcomes(answer);
+        Set<String> open = new TreeSet<>(), suppressed = new TreeSet<>();
+        allStates.forEach((outcome, state) -> {
+            if (!state.equals("open")) return;
+            open.add(outcome);
+            String[] member = outcome.split("\\|");
+            ObjectType type = core.model().objectTypeByName(type(request, member[0]));
+            Designatable decl = member[1].equals("characteristic")
+                    ? Naming.characteristicOf(type, member[2])
+                    : Naming.attributeOf(type, member[2]);
+            core.model().generatedFrom(decl)
+                    .filter(g -> g.form() == OriginForm.OPGAVE_BOVEN_BEREKENING
+                            && g.source().kind() == Designatable.Kind.ATTRIBUUT
+                            && hasAttributeOnChain(type, g.source())
+                            && !attributeOpenInFixpoint(answer, member[0], g.source().name()))
+                    .ifPresent(g -> suppressed.add(outcome));
         });
-        assertEquals(open, inputs.keySet(), request.toString());
+        for (String s : suppressed)
+            assertFalse(inputs.containsKey(s), () -> s + " is onderdrukt maar staat in openInputs: " + request);
+        Set<String> expectedOpen = new TreeSet<>(inputs.keySet());
+        expectedOpen.addAll(suppressed);
+        assertEquals(open, expectedOpen, request.toString());
         for (String outcome : open) {
             String[] member = outcome.split("\\|");
             String instance = member[0], kind = member[1], name = member[2];
@@ -142,6 +186,7 @@ class OpenInputsPropertyTest {
                 for (JsonNode z : answer.get("explanation")) spoken |= z.asText().matches(head);
                 assertTrue(spoken, head + "\nniet in " + answer.get("explanation"));
             }
+            if (suppressed.contains(outcome)) continue;
             for (String input : inputs.get(outcome)) {
                 ObjectNode after;
                 try {
@@ -157,7 +202,7 @@ class OpenInputsPropertyTest {
                             () -> input + " gegeven verandert niets aan " + outcome + " van " + request);
             }
         }
-        return open.size();
+        return new Counts(open.size(), suppressed.size());
     }
 
     /** {@code instance|kind|name} of every outcome of {@code answer}, with its state. */
@@ -222,13 +267,29 @@ class OpenInputsPropertyTest {
         return request.toString();
     }
 
+    private static boolean hasAttributeOnChain(ObjectType type, Designatable attribute) {
+        if (type == null || attribute.owner() == null || attribute.name() == null) return false;
+        Designatable found = DescriptorLoader.attribute(type, attribute.name());
+        return found != null && DescriptorLoader.sameName(found.owner(), attribute.owner());
+    }
+
+    private static boolean attributeOpenInFixpoint(JsonNode answer, String instance, String attribute) {
+        for (JsonNode o : answer.at("/fixpoint/objects"))
+            if (o.get("object").asText().equals(instance)) {
+                for (JsonNode m : o.get("open"))
+                    if (m.has("attribute") && DescriptorLoader.sameName(m.get("attribute").asText(), attribute)) return true;
+                return false;
+            }
+        throw new AssertionError(instance);
+    }
+
     /** A service of a golden directory ({@code source.rgs}, or {@code ir.json} where the golden has no source). */
     private static DecisionCore core(Path dir) throws Exception {
         Path source = dir.resolve("source.rgs");
         if (Files.exists(source)) return core(Files.readString(source));
         String documentJson = Files.readString(dir.resolve("ir.json"));
         JsonNode document = DescriptorLoader.MAPPER.readTree(documentJson);
-        return DecisionCore.buildFromDocument(descriptor(document), documentJson, CoreConfig.strict(),
+        return DecisionCore.buildFromDocument(descriptor(document), documentJson, CoreConfig.strict().withDetail(),
                 Thread.currentThread().getContextClassLoader(), null);
     }
 
@@ -236,7 +297,7 @@ class OpenInputsPropertyTest {
     private static DecisionCore core(String source) throws Exception {
         JsonNode document = DescriptorLoader.MAPPER.readTree(dev.uchar.regelspraak.toolchain.engine.UcharBuild.document(
                 dev.uchar.regelspraak.resolver.Resolver.resolve(source)));
-        return DecisionCore.assemble(descriptor(document), Map.of("b.rgs", source), CoreConfig.strict(),
+        return DecisionCore.assemble(descriptor(document), Map.of("b.rgs", source), CoreConfig.strict().withDetail(),
                 Thread.currentThread().getContextClassLoader());
     }
 

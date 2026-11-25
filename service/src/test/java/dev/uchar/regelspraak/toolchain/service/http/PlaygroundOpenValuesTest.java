@@ -292,4 +292,73 @@ class PlaygroundOpenValuesTest {
         assertTrue(standing.get("values").toString().contains("\"attribute\":\"bergloon\",\"value\":\"7\""),
                 standing.toString());
     }
+
+    private static final String OPGAVE_RULES = """
+        Afleiden uit leeg: nee
+
+        Objecttype het Wrak (mv: Wrakken)
+            de lengte Numeriek (geheel getal);
+            het kadegeld Numeriek (geheel getal) (mag opgegeven worden);
+
+        Regel kadegeld
+            geldig altijd
+                Het kadegeld van een Wrak moet berekend worden als zijn lengte maal 3.
+        """;
+
+    private static final String OPGAVE_SCENARIOS = """
+
+        Scenario opgave gegeven zonder lengte
+        Gegeven is de volgende situatie:
+        een Wrak W1
+        - het opgegeven kadegeld is 100
+        Met als verwacht resultaat:
+        - het kadegeld van W1 is 100
+        - het berekende kadegeld van W1 staat niet vast
+        - of W1 afwijkende opgave kadegeld heeft, staat niet vast
+
+        Scenario opgave niet gegeven zonder lengte
+        Gegeven is de volgende situatie:
+        een Wrak W1
+        Met als verwacht resultaat:
+        - het kadegeld van W1 staat niet vast
+        - het berekende kadegeld van W1 staat niet vast
+        """;
+
+    private static final String OPGAVE_DESCRIPTOR = """
+        { "service": {"name":"opgave","version":"1"},
+          "entrypoints": [
+            { "name":"kadegeld","path":"kadegeld",
+              "scope": {"ruleNames": ["kadegeld", "opgave boven berekening kadegeld",
+                                      "afwijking opgave kadegeld", "controle opgave kadegeld"]},
+              "input": ["Wrak"],
+              "output": ["Wrak.kadegeld", "Wrak.berekende kadegeld", "Wrak:afwijkende opgave kadegeld"] } ],
+          "parameters": {} }""";
+
+    /** On both routes of the playground, giving {@code opgegeven kadegeld} settles {@code kadegeld}: {@code openInputs} omits
+     *  {@code lengte}, which only keeps the opgave check members open, while {@code explanation} still names both open check
+     *  members. Without {@code opgegeven kadegeld}, {@code openInputs} reports {@code lengte} on both routes. */
+    @Test
+    void an_opgave_check_whose_marked_attribute_stands_is_omitted_from_open_inputs() throws Exception {
+        DecisionCore core = DecisionCore.assemble(OPGAVE_DESCRIPTOR, java.util.Map.of("opgave.rgs", OPGAVE_RULES),
+                CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
+        String source = OPGAVE_RULES + OPGAVE_SCENARIOS;
+        JsonNode expectedOpen = ServiceHttp.MAPPER.readTree("""
+            [{"kind": "attribute", "instance": "W1", "name": "lengte", "forOutputs": [
+                {"instance": "W1", "name": "kadegeld", "kind": "attribute"},
+                {"instance": "W1", "name": "berekende kadegeld", "kind": "attribute"}]}]""");
+        for (JsonNode results : new JsonNode[]{
+                Playground.analyze(source).at("/scenario/results"),
+                Playground.analyze(source, null, core, null, false).at("/scenario/results")}) {
+            assertEquals("PASS", results.at("/0/status").asText(), results.toString());
+            assertEquals(0, results.at("/0/openInputs").size(), results.at("/0").toString());
+            String explanation = results.at("/0/explanation").toString();
+            assertTrue(explanation.contains("W1: zijn berekende kadegeld staat niet vast, want zijn lengte is niet gegeven"),
+                    explanation);
+            assertTrue(explanation.contains("W1: of hij afwijkende opgave kadegeld heeft, staat niet vast, want zijn berekende"
+                    + " kadegeld staat niet vast"), explanation);
+
+            assertEquals("PASS", results.at("/1/status").asText(), results.toString());
+            assertEquals(expectedOpen, results.at("/1/openInputs"), results.at("/1").toString());
+        }
+    }
 }

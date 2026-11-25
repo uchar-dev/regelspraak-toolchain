@@ -729,7 +729,12 @@ each keeps open, in the vocabulary of the answer:
 An open outcome is followed over the forms that leave it open to the input members that are open by their own input,
 those that nothing but an initialisation writes and that no form left open; a complete one that its initialisation
 leaves open is followed on to what the initialisation reads. An input member in `output` that is open by its own input
-is under its own name, and an outcome that stands is under none. An open outcome without such a member is a fault of the
+is under its own name, and an outcome that stands is under none. A check member that the opgave marker generated
+(`berekende X` or `afwijkende opgave X`, `RegelSpraakModel.generatedFrom` with `OPGAVE_BOVEN_BEREKENING`) is skipped as
+an outcome where the marked attribute `X` itself already stands on that instance (for example because `opgegeven X` is
+given), also when `X` is not in `output`; where another open outcome reads `berekende X` or `afwijkende opgave X`, the
+walk still follows through it to the missing input, while `instances` (`"state": "open"`), `inconsistencies` and
+`explanation` stay as they are. An open outcome without such a member is a fault of the
 engine, and a 500. The list is what can be asked now, not the whole questionnaire: an evaluation "that reaches an open
 value is broken off" (ch. 1.5), so a value names the first open member it read and a fold the first of its members that
 is open, and once that is given another read can turn out open; a composite is read past its first undetermined member,

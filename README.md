@@ -419,6 +419,13 @@ writes one does not start:
   quantifier: "atLeast", threshold: 1`) stays around that member; a `"ten minste één van"` that does not hold (`"want
   niet geldt: A of B"`) and other counts (`ten minste` above 1, `ten hoogste`, `precies`) are unchanged
   (`docs/ENGINE.md`). Over uchar's goldens 15 of 6286 sentences change; the answer is unchanged.
+- **`openInputs` skips opgave check members once the marked attribute stands** (card
+  `open-inputs-skip-settled-opgave-checks`): in a strict rule set `openInputs` (`?openInputs=true` and both routes of the
+  playground) skips the generated check members of `(mag opgegeven worden)` (`berekende X` and `afwijkende opgave X`,
+  identified through `RegelSpraakModel.generatedFrom`) as outcomes when the marked attribute `X` itself already stands on
+  the same instance, for example because `opgegeven X` is given. Where `X` is open, or where another open outcome reads
+  `berekende X` or `afwijkende opgave X`, the missing input is still reported (`docs/ENGINE.md`). `instances`,
+  `inconsistencies` and `explanation` are unchanged.
 
 ## The pin
 
