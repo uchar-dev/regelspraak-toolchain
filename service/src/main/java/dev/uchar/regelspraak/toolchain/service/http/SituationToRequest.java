@@ -39,8 +39,9 @@ import java.util.List;
  * segment with its bounds and its value in that form, and a time-dependent kenmerk as the {@code periods} in which it
  * holds. A kenmerk the situation asserts goes as {@code true}, one it gives as not holding ("- is niet drijfhout",
  * {@link CharacteristicValue#holds} false) as {@code false}; in a strict rule set ({@link OpenValues}) each as its
- * state, {@code holds} or {@code holdsNot}. A fraction that has no exact decimal form has no request form, and fails here
- * by name ({@link NonPortable}).
+ * state, {@code holds} or {@code holdsNot}, and an attribute the situation states to be leeg ("- de X is leeg",
+ * {@link AttributeValue#isEmpty}) as {@code {"state": "empty"}} (left out in an ordinary rule set). A fraction that has
+ * no exact decimal form has no request form, and fails here by name ({@link NonPortable}).
  *
  * <p>The request it builds has the shape of {@link dev.uchar.regelspraak.toolchain.service.Request}:
  * {@code instances[]{type,id,attributes,characteristics,roles}}, {@code parameters}, {@code rekendatum}.
@@ -81,10 +82,16 @@ final class SituationToRequest {
             inst.put("id", i.label());
 
             if (!i.attributes().isEmpty()) {
-                ObjectNode attributes = inst.putObject("attributes");
-                for (AttributeValue a : i.attributes())
+                ObjectNode attributes = NF.objectNode();
+                for (AttributeValue a : i.attributes()) {
+                    if (a.isEmpty()) {
+                        if (OpenValues.in(model)) attributes.set(a.attribute(), OpenValues.state(OpenValues.EMPTY));
+                        continue;
+                    }
                     attributes.set(a.attribute(), a.timeline() != null ? timelineToJson(a.timeline())
                             : a.cells() != null ? cellsToJson(a.cells()) : valueToJson(a.value()));
+                }
+                if (!attributes.isEmpty()) inst.set("attributes", attributes);
             }
             if (!i.characteristics().isEmpty()) {
                 ObjectNode characteristics = inst.putObject("characteristics");

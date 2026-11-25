@@ -19,7 +19,8 @@ Uitvoer: regels "<sleutel>\\t<STATUS>\\t<detail>" in de volgorde van de invoer, 
            (detail: wat).
 Een golden waarvan geen case speelt, heeft alleen haar EXCLUDE-regels. In een document dat uit leeg niets afleidt
 (inferFromEmpty false) gaat een kenmerk als stand in het verzoek, {"state": "holds"} en waar het vaststaand niet geldt
-(characteristicsAbsent) {"state": "holdsNot"}, en leest een verwachting de stand van haar lid.
+(characteristicsAbsent) {"state": "holdsNot"}, een attribuut uit attributesEmpty als {"state": "empty"}, en leest een
+verwachting de stand van haar lid.
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
 haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vijf velden erbij: het
@@ -151,6 +152,16 @@ def request_body(case, document):
         attr = {a: cells_of(w, i["label"] + "." + a) if w is not None and "cells" in w
                 else timeline_of(w, i["label"] + "." + a) if w is not None and "timeline" in w
                 else value_of(w, i["label"] + "." + a) for a, w in (i.get("attributes") or {}).items()}
+        filled = {norm(x) for x in attr}
+        seen_empty = set()
+        for a in i.get("attributesEmpty") or []:
+            na = norm(a)
+            if na in filled:
+                raise NotExpressible(f"attribuut {a!r} staat in beide lijsten van de case, en het verzoek geeft een attribuut"
+                                     f" één keer ({i['label']})")
+            if strict(document) and na not in seen_empty:
+                seen_empty.add(na)
+                attr[a] = {"state": "empty"}
         if attr:
             inst["attributes"] = attr
         # een kenmerk: in een document dat uit leeg niets afleidt een stand, anders een boolean

@@ -60,7 +60,8 @@ final class ScenarioData {
      *  {@code rekendatum}; null without one), {@code objects} with their label, type, attribute values,
      *  characteristics and roles, each role with the fact type uchar's scenario resolver found it in, and
      *  {@code parameters}: the values of the chosen parameter set on the peildatum first, then those of the
-     *  situation. A characteristic the situation gives as not holding ("- is niet drijfhout", the case's
+     *  situation. An attribute the situation states to be leeg ("- de X is leeg", the case's {@code attributesEmpty})
+     *  carries {@code value: null}; a characteristic it gives as not holding ("- is niet drijfhout", the case's
      *  {@code characteristicsAbsent}) carries {@code holds: false}. Every assignment carries its source line
      *  ({@code line}). */
     static ObjectNode situation(ResolvedScenario s, RegelSpraakModel model, Naming ng) {
@@ -77,7 +78,8 @@ final class ScenarioData {
                 ObjectNode an = attributes.addObject();
                 name(an, "attribute", ng.attribute(ot, a.attribute()), a.attribute());
                 Datatype dt = ot.attribute(a.attribute());
-                if (a.timeline() != null) an.set("timeline", timeline(a.timeline(), dt, false, ng));
+                if (a.isEmpty()) an.putNull("value");
+                else if (a.timeline() != null) an.set("timeline", timeline(a.timeline(), dt, false, ng));
                 else if (a.cells() != null) an.set("cells", cells(a, ot, model, false, ng));
                 else value(an, a.value(), dt, false, ng);
                 unit(an, dt);
@@ -152,7 +154,12 @@ final class ScenarioData {
         for (Instance i : s.situation().instances()) {
             ObjectType ot = i.objectType();
             Map<String, ObjectNode> attributes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+            Set<String> emptyAttributes = new java.util.TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             for (AttributeValue a : i.attributes()) {
+                if (a.isEmpty()) {
+                    emptyAttributes.add(a.attribute());
+                    continue;
+                }
                 Datatype dt = ot.attribute(a.attribute());
                 ObjectNode an = NF.objectNode();
                 if (a.timeline() != null) an.set("timeline", timeline(a.timeline(), dt, true, ng));
@@ -176,7 +183,8 @@ final class ScenarioData {
                 for (TimeWindow w : k.periods()) p.addObject().put("from", w.van().toString()).put("to", w.until().toString());
                 periods.put(k.characteristic(), p);
             }
-            input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods, absent));
+            input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods, absent,
+                    emptyAttributes));
         }
         return FixpointGivens.fixpoint(session.standing(), input, model, ng);
     }

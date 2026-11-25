@@ -70,6 +70,13 @@ class OpenInputsHttpTest {
         assertEquals(json("[\"betwist\"]"), names(left));
         assertEquals(json("[]"), open("vondst", "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\", \"attributes\":"
                 + " {\"taxatie\": 50}, \"characteristics\": {\"betwist\": {\"state\": \"holdsNot\"}}}]}"));
+        // Settled leeg on taxatie also leaves openInputs, and settles gepeild/ongepeild on a wreck
+        assertEquals(json("[\"betwist\"]"), names(open("vondst", "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\","
+                + " \"attributes\": {\"taxatie\": {\"state\": \"empty\"}}}]}")));
+        JsonNode emptyDepth = wrak("\"attributes\": {\"diepte\": {\"state\": \"empty\"}}");
+        assertEquals(json("[]"), namesFor(emptyDepth, "W1", "gepeild"));
+        assertEquals(json("[]"), namesFor(emptyDepth, "W1", "ongepeild"));
+        assertFalse(names(emptyDepth).toString().contains("\"diepte\""), emptyDepth.toString());
     }
 
     /** wrakloon reads the ladingwaarde and then the lengte: without a lading it stops at the ladingwaarde, which the lading

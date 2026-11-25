@@ -428,7 +428,9 @@ refuse the start as well.
   `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`line`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
   role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in; a dimensioned
-  attribute in `objects[].attributes[]` as `cells`, `[{labels, value}]`, as a request gives it; a characteristic the
+  attribute in `objects[].attributes[]` as `cells`, `[{labels, value}]`, as a request gives it; an attribute the
+  situation states to be leeg, "- de taxatie is leeg" (the case's `attributesEmpty`), with `value: null`, which the page
+  shows as `leeg`; a characteristic the
   situation gives as not holding, "- is niet drijfhout" or "- heeft geen strandrecht" (the case's
   `characteristicsAbsent`), with `holds: false`, which the page shows as `onwaar`), and the `fixpoint`
   of the case's own session as uchar reads it: per object every value and characteristic with
@@ -436,7 +438,8 @@ refuse the start as well.
   through `DroolsBackend.standingOf` in the session uchar's replay hands over before its write-back
   (`CaseRunner.Handoff`), the made objects, the links, the
   evaluation faults as data and the inconsistencies, each list sorted, or `fixpointError` with the reason there is
-  none. The page writes the `input` of a made object as `(creatie …)`, that of an instance as `(invoer …)`, and beside a
+  none. The page writes the `input` of a made object as `(creatie …)`, that of an instance as `(invoer …)` (with `(invoer
+  leeg)` where the input stated the attribute to be leeg), and beside a
   derived characteristic `(ook invoer)` where the input gave it as holding and `(invoer geldt niet)` where it gave it as not
   holding.
   `?vocabulary=<name>` names `graphJson`, the trace, the per-scenario
@@ -572,7 +575,8 @@ refuse the start as well.
     it as `path`, after `rule`. Without one the result is a MARKER whose `diagnosis` says what each entry point lacks,
     with `path` null; there is no fallback to the ordinary route;
   - the situation becomes a request (`SituationToRequest`, each instance with its label as its id, the names
-    canonical, read with `inputVocabulary=canonical`, a dimensioned attribute as its `cells`, a characteristic the
+    canonical, read with `inputVocabulary=canonical`, a dimensioned attribute as its `cells`, an attribute the situation
+    states to be leeg as `{"state": "empty"}` in a strict rule set and left out otherwise, a characteristic the
     situation gives as not holding as `false`, in a strict rule set as `{"state": "holdsNot"}`; a value without a
     variant, which uchar's RegelSpraak frontend does not write, is a 500 `interne fout` with the sentence that names it
     on stderr, as on the ordinary route), and the core answers it
@@ -608,7 +612,7 @@ computes as in any rule set, and a condition over an open value is undetermined,
 `(volledig gegeven)`: then it is settled leeg, or stands not to hold. An initialisation is the lowest writer of its
 target and makes no member derived: a member that only an initialisation writes (a rule, or the initialisation default
 of a defaults group without an exception group) is an input member with a default value, open where the request does
-not give it, and with `(volledig gegeven)` settled leeg above the initialisation, which then is at its turn: it gives its
+not give it, and with `(volledig gegeven)` or `{"state": "empty"}` settled leeg above the initialisation, which then is at its turn: it gives its
 value, or leaves the member open where it reads an open value. A derived
 member follows its writers, so an outcome can be open now and stand once the input it lacks is given. `OpenValues.in`
 is the one place where
@@ -620,11 +624,15 @@ not to hold, which the mapper writes as the `characteristicsAbsent` of the case.
 or `null`. A bare boolean, `true` or `false`, is a 400 `WRONG_TYPE` whose sentence names the two forms and leaving it
 out: a form or a DTO fills a boolean nobody answered with `false`, and the rules would infer from it without saying so;
 and a client that writes a characteristic as a boolean would meet that only at its first `false`, so `true` is refused
-as well. Another state is a `WRONG_TYPE` too, and an object without `state` or with another key a `MALFORMED`. An
-attribute that is left out or `null` is not given. A request cannot state that an attribute is leeg: that stands only
-of an attribute that is `(volledig gegeven)`. A value or `holdsNot` on a member that a rule writes stands where every
-writer of the member fills nothing; while a writer is open, the member is open. A characteristic the request gives
-holds whatever its rules do.
+as well. Another state is a `WRONG_TYPE` too, and an object without `state` or with another key a `MALFORMED`. A scalar
+(non-dimensioned, non-time-dependent) attribute is a plain value of its datatype where it is filled, `{"state":
+"empty"}` where it stands to be leeg, which the mapper writes under the `attributesEmpty` of the case, and left out or
+`null` where it is not given (open). Another state on an attribute (`open`, `holds`, `holdsNot`, `{"state": "filled",
+"value": ...}` or an unknown state) is a 400 `WRONG_TYPE` naming a plain value, `{"state": "empty"}` and leaving it out
+or `null`, `{"state": "empty"}` on a dimensioned or time-dependent attribute is a 400 `WRONG_TYPE`, and a non-textual
+`state` or extra keys beside `state` is a 400 `MALFORMED`. A value, `{"state": "empty"}` or `holdsNot` on a member that
+a rule writes stands where every writer of the member fills nothing; while a writer is open, the member is open. A
+characteristic the request gives holds whatever its rules do.
 
 **The answer** gives every member of `output` with its state, never as a bare value, `null` or boolean:
 
@@ -647,15 +655,19 @@ a member among the `members` of its object, among its `open`, or in neither, whi
 **`/info`** has `"inferFromEmpty": false` and `completeInput`, the input members whose declaration says `(volledig
 gegeven)` (the `opgegeven X` of the opgave marker and a member that only an initialisation writes among them), `[{"kind": "attribute", "objectType": "Vondst", "name":
 "toeslag"}, {"kind": "characteristic", …}]`, per object type as declared. **The OpenAPI document** has the states as enumerations:
-the components `AttributeState` and `CharacteristicState`, to which `Answer` refers, and `CharacteristicInput` (`holds` and
-`holdsNot`), to which the characteristics of `Request` and of every object type refer; and in the description of every
+the components `AttributeState` and `CharacteristicState`, to which `Answer` refers, `CharacteristicInput` (`holds` and
+`holdsNot`), to which the characteristics of `Request` and of every object type refer, and `EmptyAttributeInput` (`empty`),
+which every scalar attribute of an object type offers in `oneOf` beside its plain datatype; and in the description of every
 member what it means that a request does not give it.
 
 **`fixpoint`** (of an answer and of a 422) gives every object the list `open` after `characteristics`: its open
 attributes and then its open characteristics, in declaration order, each with the `unit` of an attribute that has one and
-with `input` where the request gave the member a value, which does not stand beside a writer that is open
-(`{"attribute": "bergloon", "input": "7"}`, `{"characteristic": "kostbaar", "input": {"state": "holdsNot"}}`). An open
-member is in no other row; a member in no row is settled leeg, or stands not to hold. A characteristic the request gave
+with `input` where the request gave the member a value or stated it to be leeg or not holding, which does not stand beside a
+writer that is open (`{"attribute": "bergloon", "input": "7"}`, `{"attribute": "bergloon", "input": {"state": "empty"}}`,
+`{"characteristic": "kostbaar", "input": {"state": "holdsNot"}}`). An open member is in no other row; a member in no row is
+settled leeg, or stands not to hold. An attribute the request gave as `{"state": "empty"}` that a rule or an initialisation
+fills is a row of `values` with the origin `derived` and `"input": {"state": "empty"}` (shown in the playground as `(invoer
+leeg)`); one that stays settled leeg is no row. A characteristic the request gave
 as not holding that a rule assigns all the same, since the rule decides above the input (uchar's RUNTIME-SEMANTICS
 ch. 1.5), is a row of `characteristics` with the origin `derived` and the input it replaced in the form `open` gives it:
 `{"characteristic": "kostbaar", "origin": "derived", "input": {"state": "holdsNot"}}`. The `input` of a characteristic is
@@ -748,14 +760,17 @@ such a refusal makes the entry point a marker. The playground shows per scenario
 situation that a form leaves open (a derived member, or a complete member that its initialisation leaves open), and with
 `?via=service` those of the `output` of the entry point.
 
-**The scenarios.** A test document of a strict rule set gives a characteristic as not holding in a situation ("- is niet
+**The scenarios.** A test document of a strict rule set gives an attribute as settled leeg ("- de taxatie is leeg": the
+case's `attributesEmpty`) and a characteristic as not holding in a situation ("- is niet
 drijfhout", "- heeft geen strandrecht": the case's `characteristicsAbsent`), and expects that an outcome stays open ("- de
 afhaaldatum van V1 staat niet vast", "- of V1 afhaalbaar is, staat niet vast": `attributeOpen` and `characteristicOpen`,
 uchar's scenario layer). uchar's replay judges them as any expectation, on the ordinary route and with `?via=service`,
-whose request gives a characteristic of the situation as `{"state": "holds"}` or `{"state": "holdsNot"}`. In a rule set
-that is not strict a characteristic the situation gives as not holding changes no outcome, and uchar's scenario layer
-warns (RGS-469) beside the model: `bin/regelspraak scenario` prints the warning on stderr, and the playground shows it
-among the warnings of the resolver.
+whose request gives a settled-empty attribute of the situation as `{"state": "empty"}` (left out in an ordinary rule set)
+and a characteristic as `{"state": "holds"}` or `{"state": "holdsNot"}`; in the playground `situation.objects[].attributes[]`
+carries `value: null`. In a rule set that is not strict a characteristic the situation gives as not holding or an attribute
+it gives as leeg without replacing an inherited value changes no outcome, and uchar's scenario layer warns (RGS-469,
+RGS-473) beside the model: `bin/regelspraak scenario` prints the warning on stderr, and the playground shows it among the
+warnings of the resolver.
 
 **The start.** A dimensioned attribute in `output` refuses the start (`UNSUPPORTED`): uchar does not say whether a cell is
 open. So does an attribute without a bean field of its own. A form whose reading of ch. 1.5 uchar's Drools branch does

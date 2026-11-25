@@ -264,7 +264,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar 4d6bbe6be (kaart same-conclusion-open-variant, toolchainkaart same-conclusion-explanation): 387 — de set
 # van gate 12 groeit van 389 naar 396 met de zeven jutterswet-zelfde-conclusie-* goldens, en alle zeven spelen door de
 # dienst.
-EXPECTED_REPLAY_PLAYED=387
+# Pin uchar 8d7a98c9b (kaart settled-empty-input, toolchainkaart settled-empty-input-in-service): 389 — de set van gate
+# 12 groeit van 396 naar 398 met jutterswet-invoer-leeg en jutterswet-invoer-leeg-strikt (attributesEmpty en de
+# scenariovorm is leeg; in een strikt verzoek {"state": "empty"} op het attribuut), en beide spelen door de dienst.
+EXPECTED_REPLAY_PLAYED=389
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -287,7 +290,8 @@ EXPECTED_REPLAY_PLAYED=387
 # 1062 (pin uchar 332970c4e): de drie cases van jutterswet-keurder-strikt.
 # 1102 (pin uchar 4d6bbe6be): de 40 cases van de zeven jutterswet-zelfde-conclusie-* goldens (8 waarde, 9 kenmerk, 6
 # ongeordend, 5 genest, 3 deponering, 2 fout, 7 initialisatie).
-EXPECTED_REPLAY_CASES=1102
+# 1110 (pin uchar 8d7a98c9b): de drie cases van jutterswet-invoer-leeg en de vijf van jutterswet-invoer-leeg-strikt.
+EXPECTED_REPLAY_CASES=1110
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
@@ -352,6 +356,7 @@ RED_REFUSED=(
   "duplicate-instance-label/case1.json|een id dat twee instanties dragen (EF-039): 400 MALFORMED op het id"
   "ever-unique-temporal-key-bucket-scalar/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
   "input-date-calendar/case1.json|een datum die geen kalenderdag is (EF-003): 400 WRONG_TYPE op het attribuut"
+  "jutterswet-attribuut-gevuld-en-leeg/case1.json|een attribuut met een waarde dat ook als leeg staat opgegeven (EF-048): het verzoek geeft een attribuut één keer"
   "jutterswet-emmerscalair-gehele-jaar/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
   "jutterswet-emmerscalair-gevolg/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
   "jutterswet-emmerscalair-knip/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"

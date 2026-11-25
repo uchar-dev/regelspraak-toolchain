@@ -71,8 +71,9 @@ import java.util.Map;
  *
  * <p>In a strict rule set ({@link OpenValues}) a characteristic is {@code {"state": "holds"}} where it holds,
  * {@code {"state": "holdsNot"}} where it stands not to hold, written under the {@code characteristicsAbsent} of the case,
- * and left out or null where it is not given; a bare boolean is a violation of the type. An attribute that is left out or
- * null is not given, in the case as in the request.
+ * and left out or null where it is not given; a bare boolean is a violation of the type. A scalar attribute is a value of
+ * its datatype where it is filled, {@code {"state": "empty"}} where it stands to be leeg, written under the
+ * {@code attributesEmpty} of the case, and left out or null where it is not given.
  *
  * <p>An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid mismatch, an unknown
  * enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without dimensions are all
@@ -160,10 +161,12 @@ public final class RequestMapper {
 
     /** The mapped world, the id→objecttype map (for the response builder), the violations produced while
      *  mapping (empty on success), the values uchar's input refused before any session (EF-004, EF-034, EF-035;
-     *  empty on success), and per id the characteristics the request of a strict rule set ({@link OpenValues}) states not
-     *  to hold, by their declared names, no entry for an id without. The world is null when uchar refused the input. */
+     *  empty on success), and per id the characteristics and attributes the request of a strict rule set
+     *  ({@link OpenValues}) states not to hold or to be leeg, by their declared names, no entry for an id without.
+     *  The world is null when uchar refused the input. */
     public record Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations,
-                         List<RuntimeException> inputFaults, Map<String, java.util.Set<String>> absent) {}
+                         List<RuntimeException> inputFaults, Map<String, java.util.Set<String>> absent,
+                         Map<String, java.util.Set<String>> emptyAttributes) {}
 
     /** A role link the mapper writes into the case: under the {@code roles} of instance {@code id}, the key
      *  {@code role}, naming {@code doel}; uchar's {@link CaseInput.RoleError} names a refused link the same way. */
@@ -338,9 +341,15 @@ public final class RequestMapper {
             s.add(Violation.of(Violation.Kind.WRONG_TYPE, refusals.get(0).field(), f.getMessage()));
         }
         Map<String, java.util.Set<String>> absent = new LinkedHashMap<>();
-        instances.forEach((id, instance) -> instance.path("characteristicsAbsent").forEach(k ->
-                absent.computeIfAbsent(id, x -> new java.util.LinkedHashSet<>()).add(k.asText())));
-        return new Result(input == null ? null : new World(input, date), typePerLabel, s, inputFaults, absent);
+        Map<String, java.util.Set<String>> emptyAttributes = new LinkedHashMap<>();
+        instances.forEach((id, instance) -> {
+            instance.path("characteristicsAbsent").forEach(k ->
+                    absent.computeIfAbsent(id, x -> new java.util.LinkedHashSet<>()).add(k.asText()));
+            instance.path("attributesEmpty").forEach(a ->
+                    emptyAttributes.computeIfAbsent(id, x -> new java.util.LinkedHashSet<>()).add(a.asText()));
+        });
+        return new Result(input == null ? null : new World(input, date), typePerLabel, s, inputFaults, absent,
+                emptyAttributes);
     }
 
     /** The field of the request that wrote the link uchar refused. A link the mapper did not write is a broken promise
@@ -467,6 +476,14 @@ public final class RequestMapper {
                         + " tijdsafhankelijk: zijn waarde is één waarde, geen tijdlijn"));
                 return;
             }
+            if (OpenValues.in(model)) {
+                OpenValues.AttributeInput state = OpenValues.attributeState(e.getValue(), name, field, s);
+                if (state == OpenValues.AttributeInput.EMPTY) {
+                    listIn(instance, "attributesEmpty").add(canonical);
+                    return;
+                }
+                if (state == OpenValues.AttributeInput.INVALID) return;
+            }
             JsonNode caseValue = attributeValue(e.getValue(), dt, field, refusals, s);
             // a case names the attributes it gives a value; null gives none
             if (caseValue != null && !caseValue.isNull()) objectIn(instance, "attributes").set(canonical, caseValue);
@@ -541,6 +558,11 @@ public final class RequestMapper {
         if (value == null || value.isNull()) return NF.nullNode();
         RegelSpraakModel.Granularity g = ot.granularityOf(attribute);
         String grid = g == null ? "" : " (" + TimelineInput.perGrid(g) + ")";
+        if (OpenValues.in(model) && value.isObject() && value.has(OpenValues.STATE)) {
+            s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "attribuut '" + name + "' is tijdsafhankelijk" + grid
+                    + ": zijn invoer is een tijdlijn, " + TimelineInput.TIMELINE_FORM + ", geen stand"));
+            return null;
+        }
         if (!TimelineInput.isTimeline(value)) {
             s.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "attribuut '" + name + "' is tijdsafhankelijk" + grid
                     + ": zijn invoer is een tijdlijn, " + TimelineInput.TIMELINE_FORM + "; een scalaire waarde, die"

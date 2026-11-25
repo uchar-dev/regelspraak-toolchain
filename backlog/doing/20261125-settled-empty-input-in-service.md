@@ -27,7 +27,7 @@ Acceptance:
      - strikt attribuut als `{"state": "empty"}` dat vaststaand leeg blijft → geen rij in `values` of `open`;
      - gewone regelset met `- de X is leeg` in een scenario op de gewone playground-route → geen `"input"` op de afgeleide rij.
   6. **Playground (`PlaygroundOpenValuesTest`, beide routes: gewoon en `?via=service`):**
-     - scenario met `- de X is leeg` op een strikte regelset geeft PASS op beide routes, `openInputs` meldt `X` niet, en `SituationToRequest` schrijft `{"state": "empty"}` (strikt) resp. laat weg (gewoon); in een gewone regelset toont de playground uchars waarschuwing (`RGS-473`) bij vervanging van een geërfde waarde;
+     - scenario met `- de X is leeg` op een strikte regelset geeft PASS op beide routes, `openInputs` meldt `X` niet, en `SituationToRequest` schrijft `{"state": "empty"}` (strikt) resp. laat weg (gewoon); in een gewone regelset toont de playground uchars waarschuwing (`RGS-473`) wanneer geen geërfde waarde wordt vervangen;
      - `playground.html` toont `(invoer leeg)` bij `input.state === "empty"`, geslaagd met `node --check`.
   7. **OpenInputs (`OpenInputsHttpTest`, `OpenInputsPropertyTest`):**
      - een attribuut met `{"state": "empty"}` verschijnt niet in `openInputs`;

@@ -58,6 +58,31 @@ class OpenValuesParityTest {
         assertEquals("{\"state\":\"filled\",\"value\":0}", given.at("/instances/0/attributes/herkomst").toString());
         assertEquals("{\"state\":\"holdsNot\"}", given.at("/instances/0/characteristics/betwist").toString());
         assertEquals("{\"state\":\"holds\"}", given.at("/instances/0/characteristics/onleesbaar").toString());
+        JsonNode empty = compare(core, service, "vondst", ", \"attributes\": {\"taxatie\": {\"state\": \"empty\"},"
+                + " \"herkomst\": {\"state\": \"empty\"}}, \"characteristics\": {\"onleesbaar\": {\"state\": \"holds\"},"
+                + " \"betwist\": {\"state\": \"holdsNot\"}}", "true", "true", "true", 200);
+        assertEquals("{\"state\":\"empty\"}", empty.at("/instances/0/attributes/taxatie").toString());
+        assertEquals("{\"state\":\"filled\",\"value\":10}", empty.at("/instances/0/attributes/vindloon").toString());
+        assertEquals("{\"state\":\"empty\"}", empty.at("/instances/0/attributes/bergloon").toString());
+        assertEquals("{\"state\":\"filled\",\"value\":0}", empty.at("/instances/0/attributes/herkomst").toString());
+        assertEquals("[]", empty.get("openInputs").toString());
+        assertTrue(empty.at("/fixpoint/objects/0/values").toString()
+                .contains("{\"attribute\":\"herkomst\",\"value\":\"0\",\"origin\":\"derived\",\"input\":{\"state\":\"empty\"}}"),
+                empty.toString());
+    }
+
+    @Test
+    void invalid_attribute_states_are_the_same_400() throws Exception {
+        for (String[] bad : new String[][]{
+                {"{\"state\": \"open\"}", "WRONG_TYPE"},
+                {"{\"state\": \"filled\", \"value\": 50}", "WRONG_TYPE"},
+                {"{\"state\": \"empty\", \"extra\": 1}", "MALFORMED"},
+                {"{\"state\": 123}", "MALFORMED"}}) {
+            JsonNode body = compare("vondst", ", \"attributes\": {\"taxatie\": " + bad[0] + "}", 400);
+            assertEquals(1, body.get("violations").size(), body.toString());
+            assertEquals(bad[1], body.at("/violations/0/kind").asText(), body.toString());
+            assertEquals("instances[0].attributes.taxatie", body.at("/violations/0/field").asText(), body.toString());
+        }
     }
 
     @Test
@@ -129,12 +154,18 @@ class OpenValuesParityTest {
     /** {@code parts} and {@code openInputs}: the values of their query parameters, null where the request has none. */
     private static JsonNode compare(DecisionCore core, ServiceHttp service, String path, String given, String parts,
                                     String openInputs, int expected) throws Exception {
+        return compare(core, service, path, given, parts, openInputs, null, expected);
+    }
+
+    private static JsonNode compare(DecisionCore core, ServiceHttp service, String path, String given, String parts,
+                                    String openInputs, String fixpoint, int expected) throws Exception {
         String request = "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\"" + given + "}]}";
         DecideResource resource = new DecideResource();
         resource.core = core;
-        Response quarkus = resource.process(path, null, null, null, null, null, null, parts, openInputs, request);
+        Response quarkus = resource.process(path, null, null, null, null, null, fixpoint, parts, openInputs, request);
         String query = (parts == null ? "" : "&explanationParts=" + parts)
-                + (openInputs == null ? "" : "&openInputs=" + openInputs);
+                + (openInputs == null ? "" : "&openInputs=" + openInputs)
+                + (fixpoint == null ? "" : "&fixpoint=" + fixpoint);
         HttpResponse<String> jdk = CLIENT.send(HttpRequest.newBuilder(
                         URI.create("http://127.0.0.1:" + service.port() + "/" + path + (query.isEmpty() ? "" : "?"
                                 + query.substring(1))))

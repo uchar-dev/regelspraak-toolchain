@@ -296,7 +296,7 @@ function valueHtml(o) {
   else if (o.cells) h = o.cells.map((c) => "[" + c.labels.map(esc).join(", ") + "] "
     + (c.valueCanonical != null ? nameOf(c, "value") : scalar(c.value))).join("<br>");
   else h = o.valueCanonical != null ? nameOf(o, "value") : scalar(o.value);
-  return h + (o.unit ? ' <span class="muted">' + esc(o.unit) + "</span>" : "");
+  return h + (o.unit && (o.timeline || o.cells || o.value != null) ? ' <span class="muted">' + esc(o.unit) + "</span>" : "");
 }
 // A name matches the filter in part; a label matches it whole, so that P1 does not show P10 as well.
 function matches(...names) {
@@ -452,7 +452,8 @@ function fixpointHtml(r) {
         rows.push("<tr><td>" + nameOf(w, "attribute") + (w.labels ? " [" + w.labels.map(esc).join(", ") + "]" : "")
           + "</td><td>" + valueHtml(w)
           + ("input" in w ? ' <span class="small">(' + (w.inputOrigin === "creation" ? "creatie " : "invoer ")
-             + (Array.isArray(w.input) ? timelineHtml(w.input) : scalar(w.input)) + ")</span>" : "")
+             + (w.input && w.input.state === "empty" ? "leeg"
+                : Array.isArray(w.input) ? timelineHtml(w.input) : scalar(w.input)) + ")</span>" : "")
           + '</td><td><span class="origin ' + esc(w.origin) + '">' + esc(w.origin) + "</span></td></tr>");
     for (const k of o.characteristics)
       if (visible(k.origin) && (whole || matches(k.characteristic, k.characteristicCanonical)))
@@ -467,7 +468,8 @@ function fixpointHtml(r) {
       const member = "attribute" in v ? "attribute" : "characteristic";
       if (whole || matches(v[member], v[member + "Canonical"]))
         rows.push("<tr><td>" + nameOf(v, member) + "</td><td>staat niet vast"
-          + ("input" in v ? ' <span class="small">(invoer ' + (member === "attribute" ? scalar(v.input) : "geldt niet")
+          + ("input" in v ? ' <span class="small">(invoer '
+             + (member !== "attribute" ? "geldt niet" : v.input && v.input.state === "empty" ? "leeg" : scalar(v.input))
              + ")</span>" : "") + "</td><td></td></tr>");
     }
     if (!rows.length) continue;

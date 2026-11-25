@@ -49,6 +49,7 @@ class OpenInputsPropertyTest {
         List<String> goldens = List.of(
                 "jutterswet-afleiden-uit-leeg",
                 "jutterswet-volledig-gegeven",
+                "jutterswet-invoer-leeg-strikt",
                 "jutterswet-zelfde-conclusie-waarde",
                 "jutterswet-zelfde-conclusie-kenmerk",
                 "jutterswet-zelfde-conclusie-ongeordend",
@@ -259,9 +260,10 @@ class OpenInputsPropertyTest {
         for (JsonNode i : c.at("/input/instances")) {
             ObjectNode n = instances.addObject().put("type", i.get("objectType").asText()).put("id", i.get("label").asText());
             ObjectNode attributes = n.putObject("attributes"), characteristics = n.putObject("characteristics");
-            i.get("attributes").fields().forEachRemaining(e -> attributes.put(e.getKey(),
+            i.path("attributes").fields().forEachRemaining(e -> attributes.put(e.getKey(),
                     new java.math.BigDecimal(e.getValue().get("number").asText())));
-            for (JsonNode k : i.get("characteristics")) characteristics.putObject(k.asText()).put("state", "holds");
+            for (JsonNode a : i.path("attributesEmpty")) attributes.putObject(a.asText()).put("state", "empty");
+            for (JsonNode k : i.path("characteristics")) characteristics.putObject(k.asText()).put("state", "holds");
             for (JsonNode k : i.path("characteristicsAbsent")) characteristics.putObject(k.asText()).put("state", "holdsNot");
         }
         return request.toString();

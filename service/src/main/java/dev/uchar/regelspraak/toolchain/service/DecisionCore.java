@@ -902,8 +902,8 @@ public final class DecisionCore {
         } else if (options.fixpoint()) {
             try {
                 n.set("fixpoint", FixpointGivens.fixpoint(standing,
-                        FixpointGivens.inputOf(standing, List.copyOf(mr.world().beans().keySet()), mr.absent(), model,
-                                naming), model, naming));
+                        FixpointGivens.inputOf(standing, List.copyOf(mr.world().beans().keySet()), mr.absent(),
+                                mr.emptyAttributes(), model, naming), model, naming));
             } catch (FixpointGivens.UnrenderableValue o) {
                 n.put("fixpointError", o.getMessage());
             }

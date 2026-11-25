@@ -19,8 +19,9 @@ import java.util.List;
  * nee}, the document's {@code inferFromEmpty: false}; uchar's RUNTIME-SEMANTICS ch. 1.5). A member of an object is filled
  * there, settled leeg, or open: neither a value nor leeg stands. So the answer gives every member with its state
  * ({@link #state(String)} and its sisters) and no null or boolean, and a request gives a characteristic as its state, that
- * it holds or stands not to hold ({@link #characteristic}). {@link #in} is the one place where the service asks whether a
- * rule set is strict; every other rule set is read and answered without this class.
+ * it holds or stands not to hold ({@link #characteristic}), and a scalar attribute either as its value or as
+ * {@code {"state": "empty"}} where it is settled leeg ({@link #attributeState}). {@link #in} is the one place where the
+ * service asks whether a rule set is strict; every other rule set is read and answered without this class.
  */
 public final class OpenValues {
 
@@ -29,10 +30,16 @@ public final class OpenValues {
     /** The key of the state of a member, in a request and in an answer. */
     static final String STATE = "state";
 
-    static final String FILLED = "filled", EMPTY = "empty", OPEN = "open";
+    static final String FILLED = "filled", OPEN = "open";
+
+    /** The state of a scalar attribute that stands to have no value. */
+    public static final String EMPTY = "empty";
 
     /** The states of a characteristic that holds, and of one that stands not to hold. */
     public static final String HOLDS = "holds", HOLDS_NOT = "holdsNot";
+
+    /** What {@link #attributeState} read of a scalar attribute in a request of a strict rule set. */
+    enum AttributeInput { VALUE, EMPTY, INVALID }
 
     private OpenValues() {}
 
@@ -102,6 +109,46 @@ public final class OpenValues {
                 + " die uit leeg niets afleidt, vraagt een stand: " + FORMS + "; waar het niet gegeven is, ontbreekt het of"
                 + " is het null"));
         return null;
+    }
+
+    /**
+     * What a request of a strict rule set says of a scalar attribute ({@code name} as it writes it) on {@code field} when
+     * {@code value} carries a {@code state}: {@link AttributeInput#EMPTY} for {@code {"state": "empty"}} (settled leeg,
+     * written under the case's {@code attributesEmpty}), {@link AttributeInput#INVALID} after adding a violation for any
+     * other state object ({@code WRONG_TYPE} for {@code open}, {@code holds}, {@code holdsNot}, {@code {"state": "filled",
+     * "value": ...}} or an unknown state; {@code MALFORMED} where {@code state} is not text or extra keys stand beside it),
+     * and {@link AttributeInput#VALUE} when {@code value} is no {@code state} object (a plain value, null, or a unit object).
+     */
+    static AttributeInput attributeState(JsonNode value, String name, String field, List<Violation> sink) {
+        if (value == null || !value.isObject() || !value.has(STATE)) return AttributeInput.VALUE;
+        List<String> other = new ArrayList<>();
+        value.fieldNames().forEachRemaining(f -> { if (!f.equals(STATE)) other.add(f); });
+        JsonNode stateNode = value.get(STATE);
+        if (!stateNode.isTextual()) {
+            sink.add(Violation.of(Violation.Kind.MALFORMED, field, "de stand van attribuut '" + name
+                    + "' in een verzoek is {\"state\": \"empty\"}"
+                    + (other.isEmpty() ? "" : ", zonder " + String.join(", ", other))));
+            return AttributeInput.INVALID;
+        }
+        String state = stateNode.asText();
+        if (state.equals(EMPTY)) {
+            if (!other.isEmpty()) {
+                sink.add(Violation.of(Violation.Kind.MALFORMED, field, "de stand van attribuut '" + name
+                        + "' in een verzoek is {\"state\": \"empty\"}, zonder " + String.join(", ", other)));
+                return AttributeInput.INVALID;
+            }
+            return AttributeInput.EMPTY;
+        }
+        if (!other.isEmpty() && !(state.equals(FILLED) && other.equals(List.of("value")))) {
+            sink.add(Violation.of(Violation.Kind.MALFORMED, field, "de stand van attribuut '" + name
+                    + "' in een verzoek is {\"state\": \"empty\"}, zonder " + String.join(", ", other)));
+            return AttributeInput.INVALID;
+        }
+        sink.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "attribuut '" + name + "' is " + value
+                + ", en in een regelset die uit leeg niets afleidt krijgt een scalair attribuut een gewone waarde,"
+                + " of {\"state\": \"empty\"} waar vaststaat dat het leeg is; waar het niet gegeven is, ontbreekt het"
+                + " of is het null"));
+        return AttributeInput.INVALID;
     }
 
     /** The two states a request gives of a characteristic, as a sentence names them. */

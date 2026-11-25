@@ -81,22 +81,34 @@ public final class FixpointGivens {
      * (as uchar keys a cell) and {@code value}, keyed case-insensitively; {@code characteristics} the characteristics
      * the input set, case-insensitively, and {@code periods} per time-dependent characteristic the input gave periods
      * those periods, as {@code from}, {@code to} nodes ({@link #periodNodes}), keyed case-insensitively; {@code absent}
-     * the characteristics the input states not to hold ({@link OpenValues}), by their declared names,
-     * case-insensitively. Its object in the session is the one uchar's reading labels so
-     * ({@link EndState.EndObject#label}).
+     * the characteristics the input states not to hold and {@code emptyAttributes} the scalar attributes the input states
+     * to be leeg ({@link OpenValues}), by their declared names, case-insensitively. Its object in the session is the one
+     * uchar's reading labels so ({@link EndState.EndObject#label}).
      */
     public record InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
-                               Map<String, ArrayNode> periods, Set<String> absent) {}
+                               Map<String, ArrayNode> periods, Set<String> absent, Set<String> emptyAttributes) {
+        public InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
+                           Map<String, ArrayNode> periods, Set<String> absent) {
+            this(label, attributes, characteristics, periods, absent, Set.of());
+        }
+    }
 
     /**
      * The input objects of a request, in the order of {@code labels}, as uchar's reading {@code standing} gives what
      * their bean fields hold without the write-back ({@link EndState.Member#given}): the attributes that hold a value
      * and the characteristics that hold. Of a dimensioned member the filled cells are, in the order of {@code model}'s
-     * labels. {@code absent} holds per label the characteristics the request states not to hold, which no bean field
-     * holds; the input object keys them case-insensitively, as its characteristics.
+     * labels. {@code absent} holds per label the characteristics the request states not to hold, and
+     * {@code emptyAttributes} the attributes it states to be leeg, which no bean field holds; the input object keys them
+     * case-insensitively, as its characteristics and attributes.
      */
     public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
                                             RegelSpraakModel model, Naming ng) {
+        return inputOf(standing, labels, absent, Map.of(), model, ng);
+    }
+
+    /** As {@link #inputOf(EndState, List, Map, RegelSpraakModel, Naming)}, with {@code emptyAttributes} per label. */
+    public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
+                                            Map<String, Set<String>> emptyAttributes, RegelSpraakModel model, Naming ng) {
         Map<String, EndState.EndObject> labelled = new HashMap<>();
         for (EndState.EndObject o : standing.objects()) if (o.label() != null) labelled.put(o.label(), o);
         List<InputObject> sink = new ArrayList<>();
@@ -114,8 +126,10 @@ public final class FixpointGivens {
             }
             Set<String> notHolding = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             notHolding.addAll(absent.getOrDefault(label, Set.of()));
+            Set<String> empty = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+            empty.addAll(emptyAttributes.getOrDefault(label, Set.of()));
             sink.add(new InputObject(label, attributes(typeOf(o, model), given(o), model, ng), characteristics,
-                    periods, notHolding));
+                    periods, notHolding, empty));
         }
         return sink;
     }
@@ -257,10 +271,18 @@ public final class FixpointGivens {
         Map<Object, ArrayNode[]> members = new IdentityHashMap<>();
         for (Object o : type.keySet()) {
             InputObject in = entered.get(o);
+            if (in != null)
+                for (String a : in.emptyAttributes())
+                    if (in.attributes().containsKey(a))
+                        throw new IllegalStateException("de invoer geeft het attribuut '" + a + "' van "
+                                + type.get(o).name + " een waarde en als leeg");
             Map<String, ObjectNode> given = in != null ? standing(in.attributes(), held.get(o).open())
                     : attributes(type.get(o), given(held.get(o)), model, ng);
+            // in a rule set that is not strict an attribute given as leeg in a scenario is one not given
+            Set<String> emptyAttributes = strict && in != null ? in.emptyAttributes() : Set.of();
             members.put(o, new ArrayNode[]{
-                    valuesOf(type.get(o), given, values.getOrDefault(o, Map.of()), made.containsKey(o), model, ng),
+                    valuesOf(type.get(o), given, emptyAttributes, values.getOrDefault(o, Map.of()), made.containsKey(o),
+                            model, ng),
                     characteristicsOf(type.get(o), in == null ? Set.of() : in.characteristics(),
                             in == null ? Map.of() : in.periods(),
                             // in a rule set that is not strict a characteristic given as not holding is one not given
@@ -284,7 +306,8 @@ public final class FixpointGivens {
             on.set("values", members.get(o)[0]);
             on.set("characteristics", members.get(o)[1]);
             if (strict)
-                on.set("open", openOf(type.get(o), held.get(o).open(), entered.get(o).absent(), ng));
+                on.set("open", openOf(type.get(o), held.get(o).open(), entered.get(o).absent(),
+                        entered.get(o).emptyAttributes(), ng));
         }
         ArrayNode madeNode = n.putArray("madeObjects");
         for (Object o : madeObjects) {
@@ -347,9 +370,11 @@ public final class FixpointGivens {
 
     /** The members of an object of type {@code ot} that are {@code open}, in a strict rule set ({@link OpenValues}): its
      *  attributes and then its characteristics, each in declaration order, the nearest type of its chain first. Where the
-     *  input gave the member a value, which does not stand beside a writer that is open, it is {@code input}: of an
-     *  attribute its value, of a characteristic its state, {@code holdsNot} where it is among {@code absent}. */
-    private static ArrayNode openOf(ObjectType ot, List<EndState.Open> open, Set<String> absent, Naming ng) {
+     *  input gave the member a value or stated it to be leeg / not holding, which does not stand beside a writer that is
+     *  open, it is {@code input}: of an attribute its value or {@code {"state": "empty"}} where it is among
+     *  {@code emptyAttributes}, of a characteristic {@code {"state": "holdsNot"}} where it is among {@code absent}. */
+    private static ArrayNode openOf(ObjectType ot, List<EndState.Open> open, Set<String> absent,
+                                    Set<String> emptyAttributes, Naming ng) {
         Map<String, EndState.Open> attributes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Map<String, EndState.Open> characteristics = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         for (EndState.Open v : open) (v.characteristic() ? characteristics : attributes).put(v.name(), v);
@@ -360,10 +385,16 @@ public final class FixpointGivens {
                 if (v == null) continue;
                 ObjectNode rn = sink.addObject();
                 name(rn, "attribute", ng.attribute(ot, a), a);
+                boolean empty = emptyAttributes.contains(a);
+                if (v.given() != null && empty)
+                    throw new IllegalStateException("de invoer geeft het attribuut '" + a + "' van " + ot.name
+                            + " een waarde en als leeg");
                 if (v.given() != null) {
                     ObjectNode given = NF.objectNode();
                     java(given, v.given(), ot.attribute(a), a, ng);
                     rn.set("input", given.get("value"));
+                } else if (empty) {
+                    rn.set("input", OpenValues.state(OpenValues.EMPTY));
                 }
                 unit(rn, ot.attribute(a));
             }
@@ -385,12 +416,13 @@ public final class FixpointGivens {
     }
 
     /** The attribute values of an object of type {@code ot} at the fixpoint, in declaration order: a derived value
-     *  ({@code derived}), with what {@code entered} gives the member beside it as {@code input}, else what
+     *  ({@code derived}), with what {@code entered} gives the member (or {@code {"state": "empty"}} where it is among
+     *  {@code emptyAttributes} in a strict rule set) beside it as {@code input}, else what
      *  {@code entered} gives it: the input of an object of the input, the value the creation assigned to a made object
      *  ({@code made}), which has {@code creation} as its origin and as the {@code inputOrigin} beside a derived value.
-     *  A member with none of these is no row. A dimensioned attribute has a row per cell, by the same rule, in the order
-     *  of {@code model}'s labels ({@link #cellRows}). */
-    private static ArrayNode valuesOf(ObjectType ot, Map<String, ObjectNode> entered,
+     *  A member with none of these (including one among {@code emptyAttributes} that stays leeg) is no row. A dimensioned
+     *  attribute has a row per cell, by the same rule, in the order of {@code model}'s labels ({@link #cellRows}). */
+    private static ArrayNode valuesOf(ObjectType ot, Map<String, ObjectNode> entered, Set<String> emptyAttributes,
                                         Map<String, Map<List<String>, Object>> derived, boolean made,
                                         RegelSpraakModel model, Naming ng) {
         List<String> declared = new ArrayList<>();
@@ -412,6 +444,10 @@ public final class FixpointGivens {
                         + " dimensies heeft");
             boolean isDerived = cells.containsKey(List.of());
             ObjectNode in = entered.get(a);
+            boolean empty = emptyAttributes.contains(a);
+            if (in != null && empty)
+                throw new IllegalStateException("de invoer geeft het attribuut '" + a + "' van " + ot.name
+                        + " een waarde en als leeg");
             if (!isDerived && in == null) continue;
             ObjectNode rn = sink.addObject();
             name(rn, "attribute", ng.attribute(ot, a), a);
@@ -419,6 +455,7 @@ public final class FixpointGivens {
                 java(rn, cells.get(List.of()), dt, a, ng);
                 rn.put("origin", "derived");
                 if (in != null) beside(rn, in.has("timeline") ? in.get("timeline") : in.get("value"), made);
+                else if (empty) rn.set("input", OpenValues.state(OpenValues.EMPTY));
             } else {
                 rn.setAll(in);
                 rn.put("origin", made ? "creation" : "input");

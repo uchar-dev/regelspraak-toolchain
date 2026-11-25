@@ -361,4 +361,97 @@ class PlaygroundOpenValuesTest {
             assertEquals(expectedOpen, results.at("/1/openInputs"), results.at("/1").toString());
         }
     }
+
+    private static final String EMPTY_ATTRIBUTE_SCENARIOS = """
+
+        Scenario herkomst leeg bij onleesbaarheid
+        toetst de regels kostbaarheid, vindloon, bergloon en herkomst onleesbaar
+        Gegeven is de volgende situatie:
+        een Vondst V1
+        - de taxatie is leeg
+        - de herkomst is leeg
+        - is onleesbaar
+        Met als verwacht resultaat:
+        - de taxatie van V1 is leeg
+        - het vindloon van V1 is 10
+        - het bergloon van V1 is leeg
+        - de herkomst van V1 is 0
+        - V1 is niet kostbaar
+
+        Scenario bergloon leeg naast open schrijver
+        toetst de regels kostbaarheid, vindloon, bergloon en herkomst onleesbaar
+        Gegeven is de volgende situatie:
+        een Vondst V1
+        - het bergloon is leeg
+        Met als verwacht resultaat:
+        - het bergloon van V1 staat niet vast
+        """;
+
+    /** A situation with {@code - de X is leeg} passes on both routes, omits {@code X} from {@code openInputs}, writes
+     *  {@code {"state": "empty"}} in {@code SituationToRequest} of a strict rule set and leaves it out in an ordinary one,
+     *  records {@code "input": {"state": "empty"}} in {@code fixpoint} on derived and open rows of a strict rule set (and no
+     *  {@code input} in an ordinary rule set, where uchar's RGS-473 warning appears), and {@code playground.html} renders
+     *  {@code (invoer leeg)} with valid inline JavaScript. */
+    @Test
+    void an_attribute_the_situation_states_to_be_leeg() throws Exception {
+        DecisionCore core = OpenValuesSource.core(CoreConfig.strict().withDetail());
+        String source = OpenValuesSource.SOURCE + EMPTY_ATTRIBUTE_SCENARIOS;
+        for (JsonNode analysis : new JsonNode[]{
+                Playground.analyze(source),
+                Playground.analyze(source, null, core, null, false)}) {
+            JsonNode results = analysis.at("/scenario/results");
+            assertEquals(2, results.size(), analysis::toString);
+            JsonNode first = results.get(0);
+            assertEquals("PASS", first.get("status").asText(), first.toString());
+            assertTrue(first.at("/situation/objects/0/attributes/0/value").isNull(), first.toString());
+            assertEquals("{\"attribute\":\"herkomst\",\"value\":\"0\",\"origin\":\"derived\",\"input\":{\"state\":\"empty\"}}",
+                    first.at("/fixpoint/objects/0/values/0").toString(), first.toString());
+            for (JsonNode in : first.get("openInputs"))
+                assertFalse(in.get("name").asText().equals("taxatie"), first.get("openInputs").toString());
+
+            JsonNode second = results.get(1);
+            assertEquals("PASS", second.get("status").asText(), second.toString());
+            assertTrue(second.at("/fixpoint/objects/0/open").toString()
+                    .contains("{\"attribute\":\"bergloon\",\"input\":{\"state\":\"empty\"}}"), second.toString());
+        }
+
+        // SituationToRequest: {"state": "empty"} in strict mode, left out in ordinary mode
+        ScenarioBundle strictBundle = ScenarioResolver.resolve(source);
+        assertTrue(strictBundle.isOk());
+        assertEquals("{\"taxatie\":{\"state\":\"empty\"},\"herkomst\":{\"state\":\"empty\"}}",
+                SituationToRequest.assemble(strictBundle.scenarios().get(0), strictBundle.model())
+                        .at("/instances/0/attributes").toString());
+
+        String ordinarySource = (OpenValuesSource.SOURCE + """
+
+            Scenario herkomst leeg in gewone regelset
+            toetst de regel herkomst onleesbaar
+            Gegeven is de volgende situatie:
+            een Vondst V1
+            - de herkomst is leeg
+            - is onleesbaar
+            Met als verwacht resultaat:
+            - de herkomst van V1 is 0
+            """).replace("Afleiden uit leeg: nee", "").replace(" (volledig gegeven)", "");
+        ScenarioBundle ordinaryBundle = ScenarioResolver.resolve(ordinarySource);
+        assertTrue(ordinaryBundle.isOk());
+        assertTrue(SituationToRequest.assemble(ordinaryBundle.scenarios().get(0), ordinaryBundle.model())
+                .at("/instances/0/attributes").isMissingNode());
+        JsonNode ordinaryAnalysis = Playground.analyze(ordinarySource);
+        assertEquals("PASS", ordinaryAnalysis.at("/scenario/results/0/status").asText(), ordinaryAnalysis.toString());
+        assertEquals("[{\"attribute\":\"herkomst\",\"value\":\"0\",\"origin\":\"derived\"}]",
+                ordinaryAnalysis.at("/scenario/results/0/fixpoint/objects/0/values").toString(), ordinaryAnalysis.toString());
+        assertEquals(1, ordinaryAnalysis.at("/resolver/warnings").size(), ordinaryAnalysis.toString());
+        assertTrue(ordinaryAnalysis.at("/resolver/warnings/0/message").asText().contains("herkomst"),
+                ordinaryAnalysis.at("/resolver/warnings").toString());
+
+        // playground.html renders "(invoer leeg)" for input.state === "empty" on values and open, and omits unit on null
+        String html;
+        try (var in = Playground.class.getResourceAsStream("playground.html")) {
+            html = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        assertTrue(html.contains("w.input && w.input.state === \"empty\" ? \"leeg\""), "values row mist (invoer leeg)");
+        assertTrue(html.contains("v.input && v.input.state === \"empty\" ? \"leeg\""), "open row mist (invoer leeg)");
+        assertTrue(html.contains("o.unit && (o.timeline || o.cells || o.value != null)"), "valueHtml plakt unit achter leeg");
+    }
 }

@@ -426,6 +426,17 @@ writes one does not start:
   the same instance, for example because `opgegeven X` is given. Where `X` is open, or where another open outcome reads
   `berekende X` or `afwijkende opgave X`, the missing input is still reported (`docs/ENGINE.md`). `instances`,
   `inconsistencies` and `explanation` are unchanged.
+- **Settled-empty attribute input in a strict rule set** (card `settled-empty-input-in-service`, on uchar's
+  `settled-empty-input`): in a strict rule set (`Afleiden uit leeg: nee`) a request may give a scalar (non-dimensioned,
+  non-time-dependent) attribute as `{"state": "empty"}` to state that it is settled leeg (uchar's `attributesEmpty`),
+  beside a plain value of its datatype (filled) and leaving it out or `null` (open); `{"state": "filled", "value": ...}`,
+  another state name and `{"state": "empty"}` on a dimensioned or time-dependent attribute are a 400 `WRONG_TYPE`, and an
+  ill-formed `state` object is a 400 `MALFORMED`. In `fixpoint`, a settled-empty attribute input that a rule overwrites or
+  that waits beside an open writer stands as `"input": {"state": "empty"}` (rendered in the playground as `(invoer leeg)`),
+  and one that stays leeg has no row. In a scenario (`- de/het X is leeg`) `?via=service` sends `{"state": "empty"}` in a
+  strict rule set and leaves it out in an ordinary one (where the playground shows uchar's warning RGS-473 when it replaces
+  no inherited value). The strict OpenAPI document adds `EmptyAttributeInput` (`oneOf` on scalar request attributes); all
+  ordinary rule sets keep their requests, answers, `/info` and OpenAPI documents byte for byte.
 
 ## The pin
 
@@ -612,10 +623,11 @@ is still asking needs that difference, so the answer of such a rule set gives ev
 | characteristic | `{"state": "holds"}`, `{"state": "holdsNot"}` | it holds; it stands not to hold |
 
 A request gives a characteristic as `{"state": "holds"}`, as `{"state": "holdsNot"}` where it stands not to hold, and
-leaves it out (or `null`) where it is not given; a bare boolean, `true` or `false`, is a 400. An attribute that is left
-out or `null` is not given. What is not given is open, unless its declaration says `(volledig gegeven)`; `/info` lists those
-members (`completeInput`) beside `"inferFromEmpty": false`. A member that only an initialisation writes is input, with
-the initialisation as its default value where it is `(volledig gegeven)`. `inconsistencies` names what stands, so an empty list does not
+leaves it out (or `null`) where it is not given; a bare boolean, `true` or `false`, is a 400. A scalar attribute gets a
+plain value of its datatype, `{"state": "empty"}` where it stands to be leeg, or is left out (or `null`) where it is not
+given. What is not given is open, unless its declaration says `(volledig gegeven)`; `/info` lists those members
+(`completeInput`) beside `"inferFromEmpty": false`. A member that only an initialisation writes is input, with the
+initialisation as its default value where it is `(volledig gegeven)` or given as `{"state": "empty"}`. `inconsistencies` names what stands, so an empty list does not
 say that every consistency holds. The explanation says of an open outcome that it does not stand and which member keeps it open.
 `?openInputs=true` (a 400 on any other rule set) adds `openInputs`: the input members that keep an open outcome of `output` open now, with the
 outcomes each keeps open, `{"kind", "instance", "name", "forOutputs": [{"instance", "name", "kind"}]}`. It is what can be

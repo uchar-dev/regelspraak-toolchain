@@ -193,6 +193,189 @@ class OpenValuesHttpTest {
                 + " \"characteristics\": {\"betwist\": null, \"onleesbaar\": null}"));
     }
 
+    /** A scalar attribute given as {@code {"state": "empty"}} is settled leeg: in {@code output} its state is {@code empty},
+     *  {@code openInputs} omits it, a higher deviation testing {@code is gevuld} fails so the base rule decides, a condition
+     *  {@code is leeg} holds, and {@code explanation} and {@code explanationParts} verbalise the settled decisions without an
+     *  open read; leaving the attribute out or giving {@code null} keeps all three outcomes open. */
+    @Test
+    void a_settled_empty_attribute_settles_gevuld_and_leeg_while_null_stays_open() throws Exception {
+        String source = """
+            Afleiden uit leeg: nee
+
+            Objecttype de Vondst (mv: Vondsten)
+                de gewenste afhaaldag Numeriek (geheel getal);
+                de opslagtermijn Numeriek (geheel getal);
+                het gewicht Numeriek (geheel getal) met eenheid kg;
+                is direct vrijgegeven kenmerk (bijvoeglijk);
+
+            Regel opslagtermijn
+                geldig altijd
+                    De opslagtermijn van een Vondst moet gesteld worden op 30.
+
+            Afwijking van opslagtermijn: gewenste afhaaldag opgegeven
+                geldig altijd
+                    De opslagtermijn van een Vondst moet gesteld worden op zijn gewenste afhaaldag
+                    indien zijn gewenste afhaaldag gevuld is.
+
+            Regel directe vrijgave
+                geldig altijd
+                    Een Vondst is direct vrijgegeven indien zijn gewenste afhaaldag leeg is.
+            """;
+        String descriptor = """
+            { "service": {"name":"afhaaldag","version":"1"},
+              "entrypoints": [ { "name":"afhaal","path":"afhaal",
+                "scope": {"ruleNames": ["opslagtermijn", "directe vrijgave"]},
+                "input": ["Vondst"],
+                "output": ["Vondst.gewenste afhaaldag", "Vondst.opslagtermijn", "Vondst.gewicht",
+                           "Vondst:direct vrijgegeven"] } ],
+              "parameters": {} }""";
+        ServiceHttp s = ServiceHttp.bind(DecisionCore.assemble(descriptor, Map.of("afhaal.rgs", source),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
+        try {
+            JsonNode settled = ok(post(s, "afhaal?openInputs=true&explanationParts=true", """
+                {"instances": [{"type": "Vondst", "id": "V1",
+                  "attributes": {"gewenste afhaaldag": {"state": "empty"},
+                                 "gewicht": {"value": 15, "unit": "kg"}}}]}"""));
+            assertEquals(json("""
+                {"gewenste afhaaldag": {"state": "empty"},
+                 "opslagtermijn": {"state": "filled", "value": 30},
+                 "gewicht": {"state": "filled", "value": 15}}"""),
+                    settled.at("/instances/0/attributes"));
+            assertEquals(json("{\"direct vrijgegeven\": {\"state\": \"holds\"}}"),
+                    settled.at("/instances/0/characteristics"));
+            assertEquals(json("[]"), settled.get("openInputs"));
+            String explanation = settled.get("explanation").toString();
+            assertFalse(explanation.contains("staat niet vast") || explanation.contains("niet gegeven"), explanation);
+            assertTrue(explanation.contains("V1 is direct vrijgegeven, omdat zijn gewenste afhaaldag (leeg) leeg is"),
+                    explanation);
+            assertTrue(explanation.contains("V1 heeft als opslagtermijn 30 volgens de regel 'opslagtermijn'"
+                    + " (onvoorwaardelijk): 30; 'gewenste afhaaldag opgegeven' gold niet, want niet geldt:"
+                    + " zijn gewenste afhaaldag (leeg) gevuld is"), explanation);
+            assertEquals(settled.get("explanation").size(), settled.get("explanationParts").size());
+            assertFalse(settled.get("explanationParts").toString().contains("\"open\""),
+                    settled.get("explanationParts").toString());
+
+            JsonNode afhaalSchemas = json(get(s, "openapi")).at("/components/schemas");
+            assertEquals("kg", afhaalSchemas.at("/Vondst/properties/gewicht/x-unit").asText());
+            assertFalse(afhaalSchemas.at("/Vondst/properties/gewicht/oneOf/0").has("x-unit"));
+
+            // Omitted or null: stays open, and openInputs names gewenste afhaaldag (and gewicht, which is in output)
+            for (String ungiven : List.of("{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\"}]}",
+                    "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\", \"attributes\": {\"gewenste afhaaldag\": null}}]}")) {
+                JsonNode open = ok(post(s, "afhaal?openInputs=true", ungiven));
+                assertEquals("open", open.at("/instances/0/attributes/gewenste afhaaldag/state").asText());
+                assertEquals("open", open.at("/instances/0/attributes/opslagtermijn/state").asText());
+                assertEquals("open", open.at("/instances/0/characteristics/direct vrijgegeven/state").asText());
+                assertEquals("gewenste afhaaldag", open.at("/openInputs/0/name").asText());
+                assertEquals(3, open.at("/openInputs/0/forOutputs").size());
+            }
+        } finally {
+            s.stop(0);
+        }
+    }
+
+    /** Invalid state shapes on a strict attribute: {@code open}, {@code holds}, {@code holdsNot}, {@code {"state": "filled",
+     *  "value": ...}} or an unknown state is {@code WRONG_TYPE} naming {@code {"state": "empty"}}, a plain value and leaving
+     *  out/null; extra keys or a non-textual state is {@code MALFORMED}; {@code {"state": "empty"}} on a dimensioned or
+     *  time-dependent attribute is {@code WRONG_TYPE}; and in an ordinary rule set {@code {"state": "empty"}} is
+     *  {@code WRONG_TYPE} while ordinary answers, {@code /info} and {@code /openapi} stay unchanged. */
+    @Test
+    void invalid_attribute_states_and_ordinary_rule_sets_are_refused() throws Exception {
+        for (String wrong : List.of(
+                "{\"state\": \"open\"}",
+                "{\"state\": \"holds\"}",
+                "{\"state\": \"holdsNot\"}",
+                "{\"state\": \"filled\", \"value\": 50}",
+                "{\"state\": \"filled\"}",
+                "{\"state\": \"anders\"}")) {
+            JsonNode v = refused("\"attributes\": {\"taxatie\": " + wrong + "}");
+            assertEquals("WRONG_TYPE", v.get("kind").asText(), v.toString());
+            assertEquals("instances[0].attributes.taxatie", v.get("field").asText(), v.toString());
+            assertTrue(v.get("error").asText().contains("{\"state\": \"empty\"}"), v.toString());
+            assertTrue(v.get("error").asText().contains("null"), v.toString());
+        }
+        for (String malformed : List.of(
+                "{\"state\": \"empty\", \"extra\": 1}",
+                "{\"state\": 123}",
+                "{\"state\": null}")) {
+            JsonNode v = refused("\"attributes\": {\"taxatie\": " + malformed + "}");
+            assertEquals("MALFORMED", v.get("kind").asText(), v.toString());
+            assertEquals("instances[0].attributes.taxatie", v.get("field").asText(), v.toString());
+        }
+
+        // Dimensioned attribute in a strict rule set refuses {"state": "empty"} over HTTP with WRONG_TYPE
+        String dimensionedSource = """
+            Afleiden uit leeg: nee
+
+            Dimensie het seizoen, bestaande uit de seizoenen (na het attribuut met voorzetsel in):
+                1. voorjaar
+                2. najaar
+
+            Objecttype de Vondst (mv: Vondsten)
+                het gewicht Numeriek (geheel getal) gedimensioneerd met het seizoen;
+                de taxatie Numeriek (geheel getal);
+                het vindloon Numeriek (geheel getal);
+
+            Regel vindloon
+                geldig altijd
+                    Het vindloon van een Vondst moet berekend worden als zijn taxatie plus 10.
+            """;
+        String nonScalarDescriptor = """
+            { "service": {"name":"niet-scalair","version":"1"},
+              "entrypoints": [ { "name":"v","path":"v", "scope": {"ruleNames": ["vindloon"]}, "input": ["Vondst"],
+                                 "output": ["Vondst.vindloon"] } ],
+              "parameters": {} }""";
+        DecisionCore dimensionedCore = DecisionCore.assemble(nonScalarDescriptor,
+                Map.of("b.rgs", dimensionedSource), CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        ServiceHttp nonScalar = ServiceHttp.bind(dimensionedCore, "127.0.0.1", 0).start();
+        try {
+            HttpResponse<String> r = post(nonScalar, "v",
+                    "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\", \"attributes\": {\"gewicht\": {\"state\": \"empty\"}}}]}");
+            assertEquals(400, r.statusCode(), r.body());
+            JsonNode v = json(r.body()).at("/violations/0");
+            assertEquals("WRONG_TYPE", v.get("kind").asText(), r.body());
+            assertEquals("instances[0].attributes.gewicht", v.get("field").asText(), r.body());
+        } finally {
+            nonScalar.stop(0);
+        }
+
+        // Time-dependent attribute in a strict rule set refuses {"state": "empty"} in RequestMapper with WRONG_TYPE
+        // (uchar's Drools branch refuses timeline-member at build time under DROOLS-370, so we test RequestMapper directly)
+        var temporalModel = Resolver.resolve("""
+            Afleiden uit leeg: nee
+
+            Objecttype de Vondst (mv: Vondsten)
+                het strandtarief Numeriek (geheel getal) voor elke maand;
+                de taxatie Numeriek (geheel getal);
+            """);
+        assertTrue(temporalModel.errors().isEmpty(), temporalModel.errors().toString());
+        var temporalResult = new dev.uchar.regelspraak.toolchain.service.RequestMapper(
+                temporalModel, dimensionedCore.entrypoint("v").build()).map(
+                new dev.uchar.regelspraak.toolchain.service.Request(json("""
+                    {"instances": [{"type": "Vondst", "id": "V1",
+                      "attributes": {"strandtarief": {"state": "empty"}}}]}""")));
+        assertEquals(1, temporalResult.violations().size(), temporalResult.violations().toString());
+        assertEquals(Violation.Kind.WRONG_TYPE, temporalResult.violations().get(0).kind());
+        assertEquals("instances[0].attributes.strandtarief", temporalResult.violations().get(0).field());
+
+        // Ordinary rule set: {"state": "empty"} on an attribute is 400 WRONG_TYPE, and /openapi mentions no EmptyAttributeInput
+        ServiceHttp ordinary = ServiceHttp.bind(DecisionCore.assemble(OpenValuesSource.DESCRIPTOR, Map.of("open-waarden.rgs",
+                OpenValuesSource.SOURCE.replace("Afleiden uit leeg: nee", "").replace(" (volledig gegeven)", "")),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader()), "127.0.0.1", 0).start();
+        try {
+            HttpResponse<String> r = post(ordinary, "vondst",
+                    "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\", \"attributes\": {\"taxatie\": {\"state\": \"empty\"}}}]}");
+            assertEquals(400, r.statusCode(), r.body());
+            assertEquals("WRONG_TYPE", json(r.body()).at("/violations/0/kind").asText(), r.body());
+            String openapi = get(ordinary, "openapi");
+            assertFalse(openapi.contains("EmptyAttributeInput") || openapi.contains("AttributeState")
+                    || openapi.contains("{\"state\": \"empty\"}"), openapi);
+            assertFalse(get(ordinary, "info").contains("inferFromEmpty"));
+        } finally {
+            ordinary.stop(0);
+        }
+    }
+
     @Test
     void a_bare_boolean_is_refused_and_the_refusal_names_the_two_forms() throws Exception {
         for (String bare : List.of("true", "false")) {
@@ -284,6 +467,32 @@ class OpenValuesHttpTest {
         assertEquals(json("[{\"characteristic\": \"kostbaar\", \"origin\": \"derived\", \"input\": true}]"),
                 characteristics(detail, given.formatted(1500, "holds")));
         assertEquals(json("[]"), characteristics(detail, given.formatted(50, "holdsNot")));
+    }
+
+    /** In {@code fixpoint} of a strict rule set, an attribute given as {@code {"state": "empty"}} stands as
+     *  {@code "input": {"state": "empty"}} beside a derived value that replaced it and beside an open writer, and produces
+     *  no row in {@code values} or {@code open} where it stays settled leeg. */
+    @Test
+    void the_fixpoint_gives_settled_empty_attribute_input_beside_derived_and_open_and_omits_when_still_empty() throws Exception {
+        // 1. Overwritten by a firing rule (herkomst onleesbaar writes 0) AND settled leeg (taxatie empty -> bergloon empty)
+        JsonNode derived = ok(post(detail, "vondst?fixpoint=true", request(
+                "\"attributes\": {\"taxatie\": {\"state\": \"empty\"}, \"herkomst\": {\"state\": \"empty\"}},"
+                        + " \"characteristics\": {\"onleesbaar\": {\"state\": \"holds\"}, \"betwist\": {\"state\": \"holdsNot\"}}",
+                ""))).at("/fixpoint/objects/0");
+        assertEquals(json("""
+            [{"attribute": "herkomst", "value": "0", "origin": "derived", "input": {"state": "empty"}},
+             {"attribute": "vindloon", "value": "10", "origin": "derived"},
+             {"attribute": "uitbetaling", "value": "0", "origin": "derived"},
+             {"attribute": "bewakingstoeslag", "value": "5", "origin": "derived"},
+             {"attribute": "premie", "value": "10", "origin": "derived"}]"""), derived.get("values"), derived.toString());
+        assertEquals(json("[{\"attribute\": \"vrachtprijs\"}]"), derived.get("open"), derived.toString());
+
+        // 2. Waiting beside an open writer (bergloon empty while taxatie is not given)
+        JsonNode waiting = ok(post(detail, "vondst?fixpoint=true", request(
+                "\"attributes\": {\"bergloon\": {\"state\": \"empty\"}}", ""))).at("/fixpoint/objects/0");
+        assertTrue(waiting.get("open").toString().contains("{\"attribute\":\"bergloon\",\"input\":{\"state\":\"empty\"}}"),
+                waiting.toString());
+        assertEquals(json("[]"), waiting.get("values"), waiting.toString());
     }
 
     /** In a rule set that is not strict a characteristic given as {@code false} is one not given: beside the derived kostbaar
@@ -378,6 +587,17 @@ class OpenValuesHttpTest {
                 schemas.at("/Vondst/properties/betwist/allOf"));
         assertEquals(json("{\"$ref\": \"#/components/schemas/CharacteristicInput\"}"),
                 schemas.at("/Request/properties/instances/items/properties/characteristics/additionalProperties"));
+        // a scalar attribute of a request is either a plain value of its datatype or EmptyAttributeInput, nullable
+        JsonNode emptyInput = schemas.get("EmptyAttributeInput");
+        assertEquals(json("""
+            {"type": "object", "required": ["state"], "additionalProperties": false, "properties":
+              {"state": {"type": "string", "enum": ["empty"]}}}"""),
+                ((com.fasterxml.jackson.databind.node.ObjectNode) emptyInput.deepCopy()).without("description"));
+        assertEquals(json("[{\"type\": \"integer\"}, {\"$ref\": \"#/components/schemas/EmptyAttributeInput\"}]"),
+                schemas.at("/Vondst/properties/taxatie/oneOf"));
+        assertTrue(schemas.at("/Vondst/properties/taxatie/nullable").asBoolean());
+        assertTrue(schemas.at("/Request/properties/instances/items/properties/attributes/description").asText()
+                .contains("{\"state\": \"empty\"}"));
         assertFalse(schemas.get("Vondst").toString().contains("boolean"), schemas.get("Vondst").toString());
         assertTrue(schemas.at("/Vondst/properties/toeslag/description").asText().contains("Volledig gegeven"));
         // a complete attribute that only an initialisation writes is no leeg of its own: the initialisation is at its turn
@@ -388,6 +608,10 @@ class OpenValuesHttpTest {
         assertTrue(schemas.at("/Vondst/properties/taxatie/description").asText().contains("niet gegeven"));
         assertTrue(schemas.at("/Info/properties").has("completeInput"));
         assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties").has("open"));
+        assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties/values/description").asText()
+                .contains("{\"state\": \"empty\"}"), schemas.at("/Fixpoint").toString());
+        assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties/open/description").asText()
+                .contains("{\"state\": \"empty\"}"), schemas.at("/Fixpoint").toString());
         // beside a derived characteristic the input it replaced, which only a strict rule set gives as a state
         assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties/characteristics/description").asText()
                 .contains("input: true als ook de invoer het zette, of {\"state\": \"holdsNot\"} als de invoer zei dat het niet"

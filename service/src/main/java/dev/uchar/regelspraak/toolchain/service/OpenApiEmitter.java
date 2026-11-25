@@ -62,8 +62,9 @@ import java.util.List;
  * the one it always was.
  *
  * <p><b>A strict rule set</b> ({@link OpenValues}) has the states of a member as enumerations: the components
- * {@code AttributeState} and {@code CharacteristicState} for the answer, and {@code CharacteristicInput} for a
- * characteristic of a request; every member says what it means that a request does not give it; the operations have the
+ * {@code AttributeState} and {@code CharacteristicState} for the answer, {@code CharacteristicInput} for a
+ * characteristic of a request, and {@code EmptyAttributeInput} as an option in {@code oneOf} on every scalar attribute of a
+ * request; every member says what it means that a request does not give it; the operations have the
  * flag {@code openInputs} and {@code Answer} its field. The document of any other rule set has none of this.
  *
  * <p><b>The comment of a declaration.</b> The description of an object type, of an attribute and of a characteristic
@@ -129,6 +130,7 @@ public final class OpenApiEmitter {
             schemas.set("AttributeState", attributeStateSchema());
             schemas.set("CharacteristicState", characteristicStateSchema());
             schemas.set(CHARACTERISTIC_INPUT, characteristicInputSchema());
+            schemas.set(EMPTY_ATTRIBUTE_INPUT, emptyAttributeInputSchema());
         }
         schemas.set("Error", errorSchema());
         schemas.set("EvaluationFault", evaluationFaultSchema());
@@ -388,13 +390,15 @@ public final class OpenApiEmitter {
         ObjectNode props = NF.objectNode();
 
         // attributen (own first, then inherited — declared order within each)
+        boolean strict = OpenValues.in(model);
         for (var e : ot.attributeMembers().entrySet()) {
             String name = sp.in.attribute(ot, e.getKey());
             ObjectNode attribute = temporalAttribute(ot, e.getKey())
                     ? timelineSchema(e.getValue(), ot.granularityOf(e.getKey()), sp)
-                    : ot.dimensionsOf(e.getKey()).isEmpty() ? attributeSchema(e.getValue(), sp)
+                    : ot.dimensionsOf(e.getKey()).isEmpty()
+                    ? (strict ? strictAttributeSchema(e.getValue(), sp) : attributeSchema(e.getValue(), sp))
                     : cellsSchema(e.getValue(), ot.dimensionsOf(e.getKey()), model, sp);
-            if (OpenValues.in(model)) notGiven(attribute, complete(ot, e.getKey(), false), false);
+            if (strict) notGiven(attribute, complete(ot, e.getKey(), false), false);
             comment(attribute, model, Naming.attributeOf(ot, e.getKey()));
             if (sp.enabled()) spellings(attribute, sp.of(Naming.attributeOf(ot, e.getKey())));
             props.set(name, attribute);
@@ -470,12 +474,39 @@ public final class OpenApiEmitter {
     /** The component of a characteristic in a request of a strict rule set. */
     private static final String CHARACTERISTIC_INPUT = "CharacteristicInput";
 
+    /** The component of a settled-empty scalar attribute in a request of a strict rule set. */
+    private static final String EMPTY_ATTRIBUTE_INPUT = "EmptyAttributeInput";
+
     /** A characteristic as a request of a strict rule set ({@link OpenValues}) gives it: its state. */
     private static ObjectNode characteristicInputSchema() {
         ObjectNode s = stateSchema(OpenValues.HOLDS, OpenValues.HOLDS_NOT);
         s.put("nullable", true);
         s.put("description", "De stand van een kenmerk in een verzoek: " + OpenValues.FORMS + ". Waar het niet gegeven is,"
                 + " ontbreekt het of is het null. Een kale boolean is een 400 (WRONG_TYPE).");
+        return s;
+    }
+
+    /** The settled-empty state of a scalar attribute in a request of a strict rule set ({@link OpenValues}). */
+    private static ObjectNode emptyAttributeInputSchema() {
+        ObjectNode s = stateSchema(OpenValues.EMPTY);
+        s.put("description", "De lege stand van een scalair attribuut in een verzoek: {\"state\": \"empty\"} waar vaststaat"
+                + " dat het leeg is. Een gevulde waarde staat als gewone waarde van het datatype, niet als {\"state\":"
+                + " \"filled\", ...} (400 WRONG_TYPE); waar het niet gegeven is, ontbreekt het of is het null.");
+        return s;
+    }
+
+    /** A scalar attribute in a request of a strict rule set ({@link OpenValues}): either a value of its datatype or
+     *  {@link #EMPTY_ATTRIBUTE_INPUT}, or null where it is not given. */
+    private static ObjectNode strictAttributeSchema(Datatype dt, Spellings sp) {
+        ObjectNode scalar = attributeSchema(dt, sp);
+        ObjectNode s = NF.objectNode();
+        s.put("nullable", true);
+        if (scalar.has("x-unit")) s.set("x-unit", scalar.remove("x-unit"));
+        String unitDesc = scalar.has("description") ? scalar.remove("description").asText() : "";
+        s.put("description", joined(unitDesc, "Met {\"state\": \"empty\"} staat vast dat het attribuut leeg is."));
+        ArrayNode oneOf = s.putArray("oneOf");
+        oneOf.add(scalar);
+        oneOf.addObject().put("$ref", "#/components/schemas/" + EMPTY_ATTRIBUTE_INPUT);
         return s;
     }
 
@@ -758,7 +789,10 @@ public final class OpenApiEmitter {
         instProps.putObject("type").put("type", "string");
         instProps.putObject("id").put("type", "string");
         freeObject(instProps.putObject("attributes"),
-                "attribuutnaam -> waarde (per het objecttype-schema); een tijdsafhankelijk attribuut neemt zijn tijdlijn: "
+                "attribuutnaam -> waarde (per het objecttype-schema)"
+                        + (OpenValues.in(model) ? ", of {\"state\": \"empty\"} op een scalair attribuut waar vaststaat"
+                                + " dat het leeg is" : "")
+                        + "; een tijdsafhankelijk attribuut neemt zijn tijdlijn: "
                         + TimelineInput.TIMELINE_FORM + ".");
         if (OpenValues.in(model))
             members(instProps.putObject("characteristics"), "kenmerknaam -> stand.", CHARACTERISTIC_INPUT);
@@ -1034,8 +1068,9 @@ public final class OpenApiEmitter {
         objectProps.putObject("objectType").put("type", "string");
         ObjectNode values = list(objectProps, "values", "attribute, labels (bij een cel, één label per dimensie),"
                 + " value (of timeline), origin (input, derived of creation: op een gemaakt object de bij de"
-                + " objectcreatie toegekende waarde), input (bij een afgeleide waarde de invoerwaarde die zij verving,"
-                + " op een gemaakt object de bij de objectcreatie toegekende waarde), inputOrigin (creation naast de bij"
+                + " objectcreatie toegekende waarde), input (bij een afgeleide waarde de invoerwaarde die zij verving"
+                + (strict ? ", of {\"state\": \"empty\"} als de invoer zei dat het attribuut leeg is" : "")
+                + ", op een gemaakt object de bij de objectcreatie toegekende waarde), inputOrigin (creation naast de bij"
                 + " de objectcreatie toegekende waarde) en unit.");
         values.put("additionalProperties", true);
         ObjectNode characteristics = list(objectProps, "characteristics", "elk kenmerk dat geldt: characteristic, origin (input of"
@@ -1048,8 +1083,9 @@ public final class OpenApiEmitter {
         characteristics.put("additionalProperties", true);
         if (strict)
             list(objectProps, "open", "elk lid dat openstaat: attribute of characteristic, met unit bij een attribuut met"
-                    + " een eenheid, en met input waar het verzoek het een waarde gaf, die niet staat naast een regel die"
-                    + " openstaat (bij een kenmerk {\"state\": \"holdsNot\"}). Een lid dat hier niet staat en onder values of"
+                    + " een eenheid, en met input waar het verzoek het een waarde of lege stand gaf, die niet staat naast"
+                    + " een regel die openstaat (bij een attribuut zijn waarde of {\"state\": \"empty\"}, bij een kenmerk"
+                    + " {\"state\": \"holdsNot\"}). Een lid dat hier niet staat en onder values of"
                     + " characteristics evenmin, is vaststaand leeg of geldt vaststaand niet.")
                     .put("additionalProperties", true);
         ObjectNode made = list(props, "madeObjects", "de objecten die een objectcreatie maakte.");
