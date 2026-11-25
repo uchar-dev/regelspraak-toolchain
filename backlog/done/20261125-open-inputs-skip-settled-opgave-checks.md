@@ -68,3 +68,24 @@ Beide routes van `openInputs` lopen door één enkele methode:
   - `OpenValuesSource.WRAK_DESCRIPTOR` (`OpenValuesSource.java:304-309`) heeft nu alleen `"Wrak.kadegeld"` in `output`, niet `berekende kadegeld` of `afwijkende opgave kadegeld`; geen bestaande test in `OpenInputsHttpTest` breekt.
   - `OpenInputsPropertyTest.holds` (`OpenInputsPropertyTest.java:129`) controleert `assertEquals(open, inputs.keySet())`. Als een opgave-regelset (zoals een golden of `WRAK_SOURCE` met `berekende kadegeld` / `afwijkende opgave kadegeld` in `output`) meeloopt, moeten onderdrukte opgave-controleleden daar expliciet buiten `inputs.keySet()` vallen en juist op afwezigheid in `inputs.keySet()` getoetst worden.
   - Replay-goldens (`scripts/check-service-replay.sh`): raken `openInputs` niet (of alleen ten goede als een golden `(mag opgegeven worden)` gebruikt); `make gates` toetst alle 7 poorten.
+
+## Result (2026-11-25)
+
+- **`openInputs` zonder eigen semantiek of naammatching (`OpenReads`):**
+  - `OpenReads.openInputs` slaat een open uitkomst over (`settledOpgaveCheck`) wanneer `model.generatedFrom(decl)` een herkomst `OriginForm.OPGAVE_BOVEN_BEREKENING` met bron `Designatable.Kind.ATTRIBUUT` geeft, dat bronattribuut `X` daadwerkelijk op de overervingsketen van het object ligt (`hasAttribute` onder `Namen.norm`), én `X` zelf op dat object al vaststaat (`open(object, X, false) == null` op `EndState`).
+  - Beide routes van `openInputs` — de beslisdienst (`?openInputs=true` en `?via=service` via `OpenInputs.of`) en de gewone playground/scenarioloper (`ScenarioRunner` via `reads.derived`) — lopen door deze ene plek.
+  - `follow(...)` filtert niet: leest een andere open uitkomst `Y` zelf `berekende X` of `afwijkende opgave X`, dan volgt `openInputs` nog altijd door het controlelid heen naar het ontbrekende invoerlid voor `Y` (zonder `berekende X`/`afwijkende opgave X` in `forOutputs`). `instances`, `inconsistencies` en `explanation` blijven ongewijzigd.
+- **Tests (Jutterswet) en documentatie:**
+  - `OpenInputsHttpTest`: alle zes HTTP-gevallen (opgave gegeven met open berekening en behoud van uitleg op zowel `.rgs` als `uchar-ir-v1`; opgave niet gegeven; afwijkende berekening met `controle opgave kadegeld`; geërfd gemarkeerd attribuut op subtype `Wrak`; echte uitkomsten die `berekende kadegeld` of `afwijkende opgave kadegeld` lezen, inclusief een door de auteur gedeclareerde `berekende kadeboete` zonder `generatedFrom` en een vocabulaire `?vocabulary=havenboek`; een entrypoint zonder `X` in `output`), plus een `uchar-ir-v1`-getuige waarin `origin.from` naar een attribuut buiten de overervingsketen wijst (afwezig én overschaduwd door een gelijknamig eigen attribuut).
+  - `PlaygroundOpenValuesTest`: beide routes van de playground (gewoon en `?via=service`) op scenario's met `(mag opgegeven worden)` met en zonder gegeven opgave.
+  - `OpenInputsPropertyTest`: de invariant toetst via `fixpoint` dat open uitkomsten precies de disjuncte vereniging zijn van (a) `inputs.keySet()` en (b) de onderdrukte opgave-controleleden waarvan het doelattribuut op de keten van de instantie ligt en niet open is, dat geen lid van (b) in `openInputs` staat, en dat elk geschreven open lid (ook uit (b)) een open uitlegzin houdt — inclusief `WRAK_SOURCE` met `berekende kadegeld` en `afwijkende opgave kadegeld` in `output` (met én zonder `Wrak.kadegeld`), en `total.suppressed() > 0` op zowel de strikte goldens (`jutterswet-volledig-gegeven`) als de testregelsets.
+  - `README.md` (`Contract change`) en `docs/ENGINE.md` (`?openInputs=true`) bijgewerkt.
+- **Buiten scope gelaten:** `uchar/` (pin ongewijzigd op `4d6bbe6be`), `AnswerBuilder.java`, `Verbaliser.java`, `OpenApiEmitter.java`, de werkbank en `regelspraak-rules`.
+- **Poorten (`make gates`, 7/7 GROEN in 7m56s):**
+  - 1 `pin`: GROEN (`4d6bbe6be` op `origin/main`, versies gelijk)
+  - 2 `reactor`: GROEN (`215/658/68`, 0 skips)
+  - 3 `twins`: GROEN (3 tweelingen 18 cases, vocabulairetweeling 2 cases / 34 verzoeken, 4 getuigenissen)
+  - 4 `replay`: GROEN (387/387 goldens, 1102/1102 cases, 6286 zinnen, 4334 voorwaarden, 3478 berekeningen, 6546 koppelingen, 0 onbepaalde goldens; rode leg 68/68 fouten)
+  - 5 `manifest`: GROEN (32 regels, 29 ok, 3 uitgesloten, 0 mismatch)
+  - 6 `image`: GROEN (`decision-service:dev`)
+  - 7 `kind-smoke`: GROEN (H2 PASS, H3 PASS, H4 PASS)
