@@ -410,6 +410,15 @@ writes one does not start:
   input member that only kept such a harmless or root-closed open variant open; where a lower default below an open
   constant now reads at its turn (`HOLDS` or `OPEN`), the explanation and `openInputs` show that reading where they
   previously stopped at `niet aan de beurt`.
+- **A holding `"ten minste één van"` names only the member that holds** (card `disjunction-members-in-explanation`):
+  when a composite `"ten minste één van de volgende voorwaarden"` (`quantifier: "atLeast"`, `threshold: 1`) holds, the
+  explanation names only the reached member that holds in uchar's reading, where it joined every reached determined
+  member with `of` and printed earlier non-holding members affirmatively before the deciding one (`"J1 is ervaren, omdat
+  zijn leeftijd (30) is groter dan de minimumleeftijd (17) en het onderwerp ingezetene is"`, where it was `"… en zijn
+  aantal meldingen (3) is groter dan 10 of het onderwerp ingezetene is"`). The outer `CONDITION` group (`holds: true,
+  quantifier: "atLeast", threshold: 1`) stays around that member; a `"ten minste één van"` that does not hold (`"want
+  niet geldt: A of B"`) and other counts (`ten minste` above 1, `ten hoogste`, `precies`) are unchanged
+  (`docs/ENGINE.md`). Over uchar's goldens 15 of 6286 sentences change; the answer is unchanged.
 
 ## The pin
 

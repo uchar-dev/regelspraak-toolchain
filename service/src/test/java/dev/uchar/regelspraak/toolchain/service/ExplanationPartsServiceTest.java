@@ -131,8 +131,8 @@ public class ExplanationPartsServiceTest {
     private static final String FOLD = "aan de voorwaarde \"alle vondsten van de Jutter waardevol zijn\"";
 
     static final List<String> EXPECTED = List.of(
-            "J1 is ervaren, omdat zijn leeftijd (30) is groter dan de minimumleeftijd (17) en zijn aantal meldingen (3)"
-                    + " is groter dan 10 of het onderwerp ingezetene is" + GROUND,
+            "J1 is ervaren, omdat zijn leeftijd (30) is groter dan de minimumleeftijd (17) en het onderwerp ingezetene"
+                    + " is" + GROUND,
             "J1 is niet gelukkig, want " + FOLD + " is niet voldaan: niet voor V2 (1 van de 2)",
             "J1 heeft recht op strandgoed, omdat het onderwerp ervaren is",
             "J1 heeft als premie 100,00 volgens de regel 'premie': 100,00, omdat het onderwerp ervaren is;"
@@ -195,10 +195,7 @@ public class ExplanationPartsServiceTest {
                     + MINIMUMLEEFTIJD + " READING[« (» VALUE«17» «)»]]"
                     + " « » CONNECTIVE«en» « »"
                     + " CONDITION{holds=true, quantifier=atLeast, threshold=1}["
-                    + "CONDITION{holds=false}[QUOTE{declaration=ATTRIBUUT, owner=Jutter, canonical=aantal meldingen,"
-                    + " object=J1}«zijn aantal meldingen» READING[« (» VALUE«3» «)»] « is groter dan » VALUE«10»]"
-                    + " « » CONNECTIVE«of» « »"
-                    + " CONDITION{holds=true}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
+                    + "CONDITION{holds=true}[«het onderwerp » NAME{declaration=KENMERK, owner=Jutter,"
                     + " canonical=ingezetene, object=J1}«ingezetene» « is»]]] " + GROUND_PARTS,
             1, "SUBJECT«J1» « is niet » NAME{declaration=KENMERK, owner=Jutter, canonical=gelukkig,"
                     + " object=J1}«gelukkig» «, » CONNECTIVE«want» « » CONDITION{holds=false, quantifier=all}[«aan de"
@@ -271,6 +268,12 @@ public class ExplanationPartsServiceTest {
         for (Map.Entry<Integer, String> e : new java.util.TreeMap<>(PARTS).entrySet())
             assertEquals(e.getValue(), ExplanationPartsCheck.render(answer.get("explanationParts").get(e.getKey())),
                     "zin " + e.getKey() + ": " + EXPECTED.get(e.getKey()));
+        assertEquals("J1 is ervaren, omdat zijn leeftijd is groter dan de minimumleeftijd en het onderwerp ingezetene is"
+                + GROUND, ExplanationPartsCheck.withoutOmissibleParts(answer.get("explanationParts").get(0)));
+        for (JsonNode p : answer.get("explanationParts")) {
+            String stripped = ExplanationPartsCheck.withoutOmissibleParts(p);
+            assertFalse(stripped.endsWith(": ") || stripped.endsWith("; ") || stripped.contains("()"), stripped);
+        }
     }
 
     @Test

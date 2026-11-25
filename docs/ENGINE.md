@@ -777,7 +777,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `RULE` | leaf | the name of a rule or of a variant, without its quotes | — |
 | `CONNECTIVE` | leaf | omdat, want, maar, en, of, en niet, niet geldt, gold niet, staat niet vast, gold op geen dag, gold alleen op dagen die al een waarde hadden | — |
 | `TEXT` | leaf | glue: every character that belongs to no other kind | — |
-| `CONDITION` | group | a condition: an atom, a compound (its members with `CONNECTIVE`s between them), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count; in a strict rule set `undetermined: true` and no `holds` where it has no verdict |
+| `CONDITION` | group | a condition: an atom, a compound (its carrying members with `CONNECTIVE`s between them; of a `"ten minste één van"` that holds, only the reached member that holds), a fold | `holds`, the engine's verdict on its node (absent where the engine reached it without one); on a compound or a fold `quantifier` (`all`, `none`, `atLeast`, `atMost`, `exactly`, `the`: the wire spelling) and `threshold` on a count; in a strict rule set `undetermined: true` and no `holds` where it has no verdict |
 | `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone; of a quantifier fold in a strict rule set, where the fold or one of its members does not stand, also `unsettled`, the members on which its matrix is undetermined, and `filterUnsettled`, those on which its filter is undetermined, which count there alone: the other four count the members whose filter holds |
 | `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, how an allocation divided, or the waardetoekenningen of an object creation, after its name, with its colon (below) | — |
 | `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn; on a displaced variant of a defaults group `holds` (absent without a condition), `decision` for a characteristic, `unreadable: true` where its reading carried a fault (also on a provisionally read open default whose evaluation faulted; below); in a strict rule set `undetermined: true` on a displaced variant whose reading does not stand, which is its name alone, and an open constant default beside a same-conclusion decider or root-closing characteristic stack says `staat niet vast, maar kan alleen hetzelfde beslissen` |
@@ -790,6 +790,15 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 
 Without its last part (`GROUND`) a sentence is the sentence a rule without annotations gets. There is no kind for a CGM
 concept: no rule annotation carries one.
+
+**A holding `"ten minste één van"`** (card `disjunction-members-in-explanation`). When a composite with `"ten minste één
+van de volgende voorwaarden"` (`quantifier: "atLeast"`, `threshold: 1`) holds, its `CONDITION` group keeps only the
+reached member that holds in uchar's reading (`ConditionReading`), omitting earlier reached members that did not hold as
+well as earlier undetermined members in a strict rule set. The plain sentence therefore names only the member that
+carries the disjunction, without printing non-holding earlier members affirmatively and without `"A en B of C"` when
+nested inside `"alle"` or a count (`"J1 is ervaren, omdat zijn leeftijd (30) is groter dan de minimumleeftijd (17) en het
+onderwerp ingezetene is"`). When `"ten minste één van"` does not hold (`"want niet geldt: A of B"`), its `CONDITION`
+group keeps every reached determined member with `CONNECTIVE` `"of"` between them.
 
 **The object of a value** (card `explanation-read-objects-and-displaced`). A `NAME` or `QUOTE` with the keys of an
 attribute or a characteristic carries `object` where the sentence names the value of that member on one object: the

@@ -1,11 +1,22 @@
 package dev.uchar.regelspraak.toolchain.engine;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.uchar.regelspraak.cases.DroolsBackend;
+import dev.uchar.regelspraak.cases.EndState;
+import dev.uchar.regelspraak.engine.ScenarioResult;
+import dev.uchar.regelspraak.loader.IrLoader;
 import dev.uchar.regelspraak.model.Datatype;
+import dev.uchar.regelspraak.resolver.Resolver;
+import dev.uchar.regelspraak.resolver.ScenarioResolver;
 import dev.uchar.regelspraak.runtime.RegelSpraakRuntime;
 import dev.uchar.regelspraak.transpiler.core.Namen;
+import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
@@ -269,5 +280,210 @@ class VerbaliserTest {
                 "V1 is niet ruim, want niet geldt: zijn waarde gedeeld door 2 (0,505) is groter dan 0,505",
                 "V2 is ruim, omdat zijn waarde gedeeld door 2 (0,60) is groter dan 0,505"),
                 engine.explain(Naming.CANONICAL, "Vondst", beans));
+    }
+
+    static final String DISJUNCTIONS = """
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                is betwist kenmerk (bijvoeglijk);
+
+            Objecttype de Vondst (mv: Vondsten)
+                het gewicht Numeriek (geheel getal);
+                de taxatie Numeriek (geheel getal);
+                de code Tekst;
+                is drijfhout kenmerk (bijvoeglijk);
+                is gemeld kenmerk (bijvoeglijk);
+                is bijzonder kenmerk (bijvoeglijk);
+                is meldwaardig kenmerk (bijvoeglijk);
+                is keurwaardig kenmerk (bijvoeglijk);
+
+            Feittype vondst van een vinder
+                de vinder (mv: vinders) Jutter
+                de vondst Vondst
+            Eén vondst heeft meerdere vinders
+
+            Regel bijzonder
+                geldig altijd
+                    Een Vondst is bijzonder
+                    indien hij aan ten minste één van de volgende voorwaarden voldoet:
+                    - ten minste één van de vinders van de Vondst betwist is
+                    - hij is drijfhout
+                    - zijn gewicht is groter dan 1000
+                    - zijn code is gevuld
+                    - zijn taxatie is leeg
+                    - hij voldoet aan alle volgende voorwaarden:
+                      .. hij is gemeld
+                      .. zijn gewicht is groter dan 500
+                    - zijn gewicht is groter dan 100.
+
+            Regel meldwaardig
+                geldig altijd
+                    Een Vondst is meldwaardig
+                    indien hij aan alle volgende voorwaarden voldoet:
+                    - hij is gemeld
+                    - hij voldoet aan ten minste één van de volgende voorwaarden:
+                      .. hij is drijfhout
+                      .. zijn gewicht is groter dan 100.
+
+            Regel keurwaardig
+                geldig altijd
+                    Een Vondst is keurwaardig
+                    indien hij aan ten minste twee van de volgende voorwaarden voldoet:
+                    - zijn taxatie is groter dan 10
+                    - hij voldoet aan ten minste één van de volgende voorwaarden:
+                      .. hij is drijfhout
+                      .. zijn gewicht is groter dan 100
+                    - zijn code is gevuld.
+            """;
+
+    /** Card disjunction-members-in-explanation: a holding "ten minste één van de volgende voorwaarden" names only the
+     *  member that holds in uchar's reading, whether the first member holds (V1) or a later member holds after failing
+     *  members of every kind — a quantifier fold with 0 members (V2) and with 1 non-betwist vinder (V3), a
+     *  characteristic check, a comparison, gevuld and leeg predicates, and a nested "alle" compound — and when nested
+     *  inside "alle" or a count ("ten minste twee van de volgende"); when it does not hold (V4), all failing members
+     *  stay joined with "of". */
+    @Test void holding_disjunction_names_only_the_member_that_holds() {
+        List<ScenarioRunner.Explained> explained = ScenarioRunner.runWithExplanation(
+                ScenarioResolver.resolve(DISJUNCTIONS + """
+
+                        Scenario disjuncties
+                        Gegeven is de volgende situatie:
+                        een Jutter J1
+                        - is betwist
+                        - de vondst is V1
+                        een Jutter J2
+                        - de vondst is V3
+                        een Vondst V1
+                        een Vondst V2
+                        - het gewicht is 200
+                        - de taxatie is 50
+                        - is gemeld
+                        een Vondst V3
+                        - het gewicht is 200
+                        - de taxatie is 50
+                        - is gemeld
+                        een Vondst V4
+                        - het gewicht is 50
+                        - de taxatie is 50
+                        Met als verwacht resultaat:
+                        - V1 is bijzonder
+                        - V2 is bijzonder
+                        - V2 is meldwaardig
+                        - V2 is keurwaardig
+                        - V3 is bijzonder
+                        - V4 is niet bijzonder
+                        """));
+        assertEquals(1, explained.size());
+        ScenarioRunner.Explained run = explained.get(0);
+        assertEquals(ScenarioResult.Status.PASS, run.result().status(),
+                () -> run.result().diagnostic());
+        String fold = "aan de voorwaarde \"ten minste één van de vinders van de Vondst betwist is\"";
+        assertEquals(List.of(
+                "V1 is bijzonder, omdat " + fold + " is voldaan: voor J1, het enige lid",
+                "V1 is niet meldwaardig, want niet geldt: het onderwerp gemeld is",
+                "V1 is niet keurwaardig, want niet geldt: ten minste 2 van de 3 voorwaarden gelden: niet zijn taxatie"
+                        + " (leeg) is groter dan 10 en niet het onderwerp drijfhout is of zijn gewicht (leeg) is groter"
+                        + " dan 100",
+                "V2 is bijzonder, omdat zijn gewicht (200) is groter dan 100",
+                "V2 is meldwaardig, omdat het onderwerp gemeld is en zijn gewicht (200) is groter dan 100",
+                "V2 is keurwaardig, omdat ten minste 2 van de 3 voorwaarden gelden: zijn taxatie (50) is groter dan 10"
+                        + " en zijn gewicht (200) is groter dan 100",
+                "V3 is bijzonder, omdat zijn gewicht (200) is groter dan 100",
+                "V3 is meldwaardig, omdat het onderwerp gemeld is en zijn gewicht (200) is groter dan 100",
+                "V3 is keurwaardig, omdat ten minste 2 van de 3 voorwaarden gelden: zijn taxatie (50) is groter dan 10"
+                        + " en zijn gewicht (200) is groter dan 100",
+                "V4 is niet bijzonder, want niet geldt: " + fold + " is voldaan: er is geen enkel lid of het onderwerp"
+                        + " drijfhout is of zijn gewicht (50) is groter dan 1.000 of zijn code (leeg) gevuld is of zijn"
+                        + " taxatie (50) leeg is of het onderwerp gemeld is of zijn gewicht (50) is groter dan 100",
+                "V4 is niet meldwaardig, want niet geldt: het onderwerp gemeld is",
+                "V4 is niet keurwaardig, want niet geldt: ten minste 2 van de 3 voorwaarden gelden: zijn taxatie (50)"
+                        + " is groter dan 10 en niet het onderwerp drijfhout is of zijn gewicht (50) is groter dan 100"
+                        + " en niet zijn code (leeg) gevuld is"),
+                run.explanation());
+        for (String s : List.of(run.explanation().get(3), run.explanation().get(6))) {
+            assertFalse(s.contains("er is geen enkel lid") || s.contains("is voldaan: niet voor")
+                    || s.contains("drijfhout"), s);
+        }
+        // The outer CONDITION{holds=true, quantifier=atLeast, threshold=1} stays around the single holding member.
+        Sentence v2Sentence = run.sentences().get(3);
+        Part outer = v2Sentence.parts().get(v2Sentence.parts().size() - 1);
+        assertEquals(Part.Kind.CONDITION, outer.kind());
+        assertEquals(Map.of("holds", true, "quantifier", "atLeast", "threshold", 1), outer.meta());
+        assertEquals(1, outer.parts().size());
+        assertEquals(Part.Kind.CONDITION, outer.parts().get(0).kind());
+        assertEquals(Map.of("holds", true), outer.parts().get(0).meta());
+    }
+
+    /** In a strict rule set ("Afleiden uit leeg: nee"), a holding "ten minste één van" skips both an open member and a
+     *  failing member before the deciding member. */
+    @Test void strict_disjunction_skips_both_open_and_failing_members_before_deciding_one() {
+        List<ScenarioRunner.Explained> explained = ScenarioRunner.runWithExplanation(
+                ScenarioResolver.resolve("""
+                        Afleiden uit leeg: nee
+
+                        Objecttype de Vondst (mv: Vondsten)
+                            het gewicht Numeriek (geheel getal);
+                            de taxatie Numeriek (geheel getal);
+                            is drijfhout kenmerk (bijvoeglijk);
+                            is verkoopbaar kenmerk (bijvoeglijk);
+
+                        Regel verkoop
+                            geldig altijd
+                                Een Vondst is verkoopbaar
+                                indien hij aan ten minste één van de volgende voorwaarden voldoet:
+                                - zijn taxatie is groter dan 100
+                                - hij is drijfhout
+                                - zijn gewicht is groter dan 20.
+
+                        Scenario open en onwaar voor het beslissende lid
+                        Gegeven is de volgende situatie:
+                        een Vondst V1
+                        - het gewicht is 30
+                        - is niet drijfhout
+                        Met als verwacht resultaat:
+                        - V1 is verkoopbaar
+                        """));
+        assertEquals(1, explained.size());
+        assertEquals(ScenarioResult.Status.PASS, explained.get(0).result().status(),
+                () -> explained.get(0).result().diagnostic());
+        assertEquals(List.of("V1 is verkoopbaar, omdat zijn gewicht (30) is groter dan 20"),
+                explained.get(0).explanation());
+    }
+
+    /** Fail-fast guard: if a reading claims "ten minste één van" holds without any reached holding member, the
+     *  verbaliser refuses instead of emitting an empty CONDITION after "omdat ". */
+    @Test void holding_disjunction_without_holding_member_throws() throws Exception {
+        String source = """
+                Objecttype de Vondst (mv: Vondsten)
+                    is drijfhout kenmerk (bijvoeglijk);
+                    is beschadigd kenmerk (bijvoeglijk);
+                    is bijzonder kenmerk (bijvoeglijk);
+                Regel bijzonder
+                    geldig altijd
+                        Een Vondst is bijzonder
+                        indien hij aan ten minste één van de volgende voorwaarden voldoet:
+                        - hij is drijfhout
+                        - hij is beschadigd.
+                """;
+        var model = Resolver.resolve(source);
+        var tree = new ObjectMapper().readTree(UcharBuild.document(model));
+        var build = UcharBuild.assemble(tree, DroolsBackend.Branch.EXEC_MODEL, true);
+        var document = Verbaliser.Document.of(IrLoader.loadWithPositions(tree));
+        Object v1 = Class.forName("dev.uchar.regelspraak.facts.Vondst", true, build.beanLoader())
+                .getConstructor().newInstance();
+        String pointer = "/rules/rules/0/versions/0";
+        var reading = new ConditionReading(v1, pointer, ConditionReading.Status.HOLDS, List.of(
+                new ConditionReading.NodeReading(0, "Compound", true, true, null, null, null, List.of(), null),
+                new ConditionReading.NodeReading(1, "CharacteristicCheck", true, false, null, null, v1, List.of(), null),
+                new ConditionReading.NodeReading(2, "CharacteristicCheck", true, false, null, null, v1, List.of(), null)));
+        var standing = new EndState(
+                List.of(new EndState.EndObject(v1, "V1", "Vondst", null, null,
+                        List.of(new EndState.Member(true, "bijzonder", null, true, null, true, null)),
+                        List.of())),
+                List.of(), List.of(), List.of());
+        var verbaliser = new Verbaliser(document, Naming.of(document.model(), Naming.CANONICAL),
+                List.of(reading), standing);
+        IllegalStateException ex = assertThrows(IllegalStateException.class, () -> verbaliser.verbalise(
+                Map.of("V1", v1), Map.of("V1", document.model().objectTypeByName("Vondst")), List.of(), List.of()));
+        assertTrue(ex.getMessage().contains("geldt, en de motor bereikte geen lid dat geldt"), ex.getMessage());
     }
 }

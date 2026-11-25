@@ -198,13 +198,15 @@ class OpenExplanationHttpTest {
                 ExplanationPartsCheck.render(group(sentence(answer, "W1: of hij vrij is"), "VARIANT").get("parts")));
     }
 
-    /** The member that decides is named, and not a word of the member that is open. */
+    /** The member that decides is named, and not a word of the member that is open or does not hold. */
     @Test
     void a_composite_that_another_member_decides() throws Exception {
         JsonNode answer = wrak("\"attributes\": {\"lengte\": 30}, \"characteristics\": {\"betwist\": {\"state\": \"holds\"}}");
         assertSentence("W1 is gevaarlijk, omdat zijn lengte (30) is groter dan 20", answer);
         assertSentence("W1 is vrij, omdat ten minste 2 van de 3 voorwaarden gelden: het onderwerp betwist is en zijn lengte (30)"
                 + " is groter dan 20", answer);
+        assertSentence("W1 is gevaarlijk, omdat zijn lengte (30) is groter dan 20",
+                wrak("\"attributes\": {\"diepte\": 5, \"lengte\": 30}"));
         assertSentence("W1 is niet keuringsplichtig, want niet geldt: zijn lengte (5) is groter dan 20",
                 wrak("\"attributes\": {\"lengte\": 5}"));
     }

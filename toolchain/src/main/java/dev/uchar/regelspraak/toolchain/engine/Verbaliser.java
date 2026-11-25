@@ -3316,7 +3316,7 @@ public final class Verbaliser {
     // ---------------- voorwaarde-verbalisatie ----------------
 
     /** Een voorwaarde in proza, met de waarden die de motor las: WAAROM ze geldt. Van een samenstelling alleen de
-     *  leden die de motor bereikte. {@code subject} is het objecttype van de regel, vanwaar een kenmerk- of rolnaam in
+     *  leden die haar oordeel dragen ({@link #carries}). {@code subject} is het objecttype van de regel, vanwaar een kenmerk- of rolnaam in
      *  de voorwaarde gelezen wordt; {@code ucharText} of uchar de regel schreef. Elke voorwaarde is een groep
      *  ({@link #conditionMeta}). */
     private void verbaliseCondition(Sentence.Builder b, Condition c, Read read, ObjectType subject, boolean ucharText) {
@@ -3340,6 +3340,9 @@ public final class Verbaliser {
                     first = false;
                     verbaliseCondition(b, d, read, subject, ucharText);
                 }
+            if (first && s.quantifier() == Condition.Quantifier.TEN_MINSTE && s.threshold() == 1 && read.holds(s))
+                throw new IllegalStateException("de samenstelling \"" + summary(s) + "\" van " + read.form() + " op "
+                        + read.label() + " geldt, en de motor bereikte geen lid dat geldt");
             b.close(Part.Kind.CONDITION);
             return;
         }
@@ -3347,13 +3350,17 @@ public final class Verbaliser {
     }
 
     /** Of lid {@code d} van samenstelling {@code s}, waarvan het oordeel staat, in haar zin staat: de motor bereikte het, en het
-     *  draagt dat oordeel. Een lid dat onbepaald is, draagt niets bij. */
+     *  draagt dat oordeel. Een lid dat onbepaald is, draagt niets bij; bij "ten minste één van" die geldt, draagt alleen het lid
+     *  dat geldt. */
     private static boolean carries(Condition.Compound s, Condition d, Read read) {
-        return read.reached(d) && !read.of(d).undetermined();
+        if (!read.reached(d) || read.of(d).undetermined()) return false;
+        if (s.quantifier() == Condition.Quantifier.TEN_MINSTE && s.threshold() == 1 && read.holds(s))
+            return read.holds(d);
+        return true;
     }
 
-    /** Of samenstelling {@code s} een telling is waarvan de uitleg de drempel noemt. Ten minste 1 leest als "A of B",
-     *  wat precies die drempel zegt. */
+    /** Of samenstelling {@code s} een telling is waarvan de uitleg de drempel noemt. Ten minste 1 noemt waar zij geldt
+     *  alleen het lid dat geldt, en waar zij niet geldt "A of B", wat precies die drempel zegt. */
     private static boolean counting(Condition.Compound s) {
         return switch (s.quantifier()) {
             case TEN_MINSTE -> s.threshold() > 1;

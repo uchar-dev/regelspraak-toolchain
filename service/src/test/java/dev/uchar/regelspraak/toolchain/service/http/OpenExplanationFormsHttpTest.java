@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
@@ -622,6 +623,153 @@ class OpenExplanationFormsHttpTest {
                 ask(source, vondst("\"gewicht\": 5", "\"betwist\": {\"state\": \"holds\"}")));
         assertSentence("V1 is verkoopbaar, omdat het onderwerp betwist is en zijn gewicht (20) is groter dan 10",
                 ask(source, vondst("\"gewicht\": 20", "\"betwist\": {\"state\": \"holds\"}")));
+        JsonNode secondMember = ask(source, vondst("\"gewicht\": 5, \"taxatie\": 200", "\"betwist\": {\"state\": \"holds\"}"),
+                "&explanation=true");
+        assertSentence("V1 is verkoopbaar, omdat het onderwerp betwist is en zijn taxatie (200) is groter dan 100", secondMember);
+        assertEquals("SUBJECT«V1» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=verkoopbaar, object=V1}«verkoopbaar»"
+                + " «, » CONNECTIVE«omdat» « » CONDITION{holds=true, quantifier=all}["
+                + "CONDITION{holds=true}[«het onderwerp » NAME{declaration=KENMERK, owner=Vondst, canonical=betwist,"
+                + " object=V1}«betwist» « is»] « » CONNECTIVE«en» « »"
+                + " CONDITION{holds=true, quantifier=atLeast, threshold=1}["
+                + "CONDITION{holds=true}[QUOTE{declaration=ATTRIBUUT, owner=Vondst, canonical=taxatie, object=V1}«zijn taxatie»"
+                + " READING[« (» VALUE«200» «)»] « is groter dan » VALUE«100»]]]",
+                ExplanationPartsCheck.render(sentenceParts(secondMember, "V1 is verkoopbaar")));
+        assertEquals("V1 is verkoopbaar, omdat het onderwerp betwist is en zijn taxatie is groter dan 100",
+                ExplanationPartsCheck.withoutOmissibleParts(sentenceParts(secondMember, "V1 is verkoopbaar")));
+    }
+
+    /** Card disjunction-members-in-explanation: over HTTP with {@code ?explanation=true&explanationParts=true}, a holding
+     *  "ten minste één van de volgende voorwaarden" names only the member that holds — when the first member holds, when a
+     *  later member holds after non-holding members of every kind (a quantifier fold with 0 members and with 1 non-betwist
+     *  vinder, a characteristic check, a comparison, gevuld/leeg predicates, and a nested failing "alle"), when an earlier
+     *  member is open and another fails in a strict rule set, and when nested inside a count ("ten minste twee van de
+     *  volgende"); a non-holding "ten minste één van" keeps "want niet geldt: A of B". */
+    @Test
+    void a_holding_disjunction_over_http_names_only_the_deciding_member() throws Exception {
+        String source = """
+            Afleiden uit leeg: nee
+
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                is betwist kenmerk (bijvoeglijk);
+
+            Objecttype de Vondst (mv: Vondsten)
+                het gewicht Numeriek (geheel getal);
+                de taxatie Numeriek (geheel getal);
+                de code Tekst (volledig gegeven);
+                is drijfhout kenmerk (bijvoeglijk);
+                is gemeld kenmerk (bijvoeglijk);
+                is bijzonder kenmerk (bijvoeglijk);
+                is verkoopbaar kenmerk (bijvoeglijk);
+                is keurwaardig kenmerk (bijvoeglijk);
+
+            Feittype vondst van een vinder
+                de vinder (mv: vinders) Jutter
+                de vondst Vondst
+            Eén vondst heeft meerdere vinders
+
+            Regel bijzonder
+                geldig altijd
+                    Een Vondst is bijzonder
+                    indien hij aan ten minste één van de volgende voorwaarden voldoet:
+                    - ten minste één van de vinders van de Vondst betwist is
+                    - hij is drijfhout
+                    - zijn gewicht is groter dan 1000
+                    - zijn code is gevuld
+                    - zijn taxatie is leeg
+                    - hij voldoet aan alle volgende voorwaarden:
+                      .. hij is gemeld
+                      .. zijn gewicht is groter dan 500
+                    - zijn gewicht is groter dan 100.
+
+            Regel verkoopbaar
+                geldig altijd
+                    Een Vondst is verkoopbaar
+                    indien hij aan ten minste één van de volgende voorwaarden voldoet:
+                    - zijn taxatie is groter dan 100
+                    - hij is drijfhout
+                    - zijn gewicht is groter dan 100.
+
+            Regel keurwaardig
+                geldig altijd
+                    Een Vondst is keurwaardig
+                    indien hij aan ten minste twee van de volgende voorwaarden voldoet:
+                    - zijn taxatie is groter dan 10
+                    - hij voldoet aan ten minste één van de volgende voorwaarden:
+                      .. hij is drijfhout
+                      .. zijn gewicht is groter dan 100
+                    - zijn code is gevuld.
+            """;
+        String request = """
+            {"instances": [
+              {"type": "Jutter", "id": "J1", "characteristics": {"betwist": {"state": "holds"}}},
+              {"type": "Jutter", "id": "J2", "characteristics": {"betwist": {"state": "holdsNot"}}},
+              {"type": "Vondst", "id": "V1", "roles": {"vinders": ["J1"]}},
+              {"type": "Vondst", "id": "V2", "attributes": {"gewicht": 200, "taxatie": 50},
+               "characteristics": {"drijfhout": {"state": "holdsNot"}, "gemeld": {"state": "holds"}}},
+              {"type": "Vondst", "id": "V3", "attributes": {"gewicht": 200, "taxatie": 50},
+               "characteristics": {"drijfhout": {"state": "holdsNot"}, "gemeld": {"state": "holds"}},
+               "roles": {"vinders": ["J2"]}},
+              {"type": "Vondst", "id": "V4", "attributes": {"gewicht": 200},
+               "characteristics": {"drijfhout": {"state": "holdsNot"}}},
+              {"type": "Vondst", "id": "V5", "attributes": {"gewicht": 50, "taxatie": 50},
+               "characteristics": {"drijfhout": {"state": "holdsNot"}, "gemeld": {"state": "holdsNot"}}}]}""";
+        JsonNode answer = ask(source, request, "&explanation=true");
+        String fold = "aan de voorwaarde \"ten minste één van de vinders van de Vondst betwist is\"";
+        // 1. First member holds (V1).
+        assertSentence("V1 is bijzonder, omdat " + fold + " is voldaan: voor J1, het enige lid", answer);
+        // 2. Later member holds after non-holding members of every kind: 0 vinders (V2) and 1 non-betwist vinder (V3).
+        assertSentence("V2 is bijzonder, omdat zijn gewicht (200) is groter dan 100", answer);
+        assertSentence("V3 is bijzonder, omdat zijn gewicht (200) is groter dan 100", answer);
+        for (String prefix : List.of("V2 is bijzonder", "V3 is bijzonder")) {
+            String text = sentenceText(answer, prefix);
+            assertFalse(text.contains("is voldaan: er is geen enkel lid")
+                    || text.contains("is voldaan: niet voor") || text.contains("drijfhout") || text.contains("1.000"), text);
+        }
+        // 3. Strict rule set: member 1 open (taxatie not given), member 2 holdsNot (drijfhout), member 3 holds (gewicht 200 > 100).
+        assertSentence("V4 is verkoopbaar, omdat zijn gewicht (200) is groter dan 100", answer);
+        // 4. Nested disjunction inside a count ("ten minste twee van de volgende"), second member of disjunction holds.
+        assertSentence("V2 is keurwaardig, omdat ten minste 2 van de 3 voorwaarden gelden: zijn taxatie (50) is groter dan 10"
+                + " en zijn gewicht (200) is groter dan 100", answer);
+        JsonNode v2CountParts = sentenceParts(answer, "V2 is keurwaardig");
+        assertEquals("SUBJECT«V2» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=keurwaardig, object=V2}«keurwaardig»"
+                + " «, » CONNECTIVE«omdat» « » CONDITION{holds=true, quantifier=atLeast, threshold=2}["
+                + "CONNECTIVE«ten minste 2 van de 3 voorwaarden gelden» «: »"
+                + " CONDITION{holds=true}[QUOTE{declaration=ATTRIBUUT, owner=Vondst, canonical=taxatie, object=V2}«zijn taxatie»"
+                + " READING[« (» VALUE«50» «)»] « is groter dan » VALUE«10»] « » CONNECTIVE«en» « »"
+                + " CONDITION{holds=true, quantifier=atLeast, threshold=1}["
+                + "CONDITION{holds=true}[QUOTE{declaration=ATTRIBUUT, owner=Vondst, canonical=gewicht, object=V2}«zijn gewicht»"
+                + " READING[« (» VALUE«200» «)»] « is groter dan » VALUE«100»]]]",
+                ExplanationPartsCheck.render(v2CountParts));
+        assertEquals("V2 is keurwaardig, omdat ten minste 2 van de 3 voorwaarden gelden: zijn taxatie is groter dan 10"
+                + " en zijn gewicht is groter dan 100",
+                ExplanationPartsCheck.withoutOmissibleParts(v2CountParts));
+        // 5. Non-holding disjunction stays "want niet geldt: A of B".
+        assertSentence("V5 is niet verkoopbaar, want niet geldt: zijn taxatie (50) is groter dan 100 of het onderwerp drijfhout"
+                + " is of zijn gewicht (50) is groter dan 100", answer);
+        // 6. Parts and omissibility: outer CONDITION{holds=true, quantifier=atLeast, threshold=1} wraps the holding member.
+        for (String id : List.of("V2", "V3")) {
+            JsonNode parts = sentenceParts(answer, id + " is bijzonder");
+            assertEquals("SUBJECT«" + id + "» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=bijzonder, object=" + id
+                    + "}«bijzonder» «, » CONNECTIVE«omdat» « » CONDITION{holds=true, quantifier=atLeast, threshold=1}["
+                    + "CONDITION{holds=true}[QUOTE{declaration=ATTRIBUUT, owner=Vondst, canonical=gewicht, object=" + id
+                    + "}«zijn gewicht» READING[« (» VALUE«200» «)»] « is groter dan » VALUE«100»]]",
+                    ExplanationPartsCheck.render(parts));
+            assertEquals(id + " is bijzonder, omdat zijn gewicht is groter dan 100",
+                    ExplanationPartsCheck.withoutOmissibleParts(parts));
+        }
+        JsonNode v4Parts = sentenceParts(answer, "V4 is verkoopbaar");
+        assertEquals("SUBJECT«V4» « is » NAME{declaration=KENMERK, owner=Vondst, canonical=verkoopbaar, object=V4}«verkoopbaar»"
+                + " «, » CONNECTIVE«omdat» « » CONDITION{holds=true, quantifier=atLeast, threshold=1}["
+                + "CONDITION{holds=true}[QUOTE{declaration=ATTRIBUUT, owner=Vondst, canonical=gewicht, object=V4}"
+                + "«zijn gewicht» READING[« (» VALUE«200» «)»] « is groter dan » VALUE«100»]]",
+                ExplanationPartsCheck.render(v4Parts));
+        assertEquals("V4 is verkoopbaar, omdat zijn gewicht is groter dan 100",
+                ExplanationPartsCheck.withoutOmissibleParts(v4Parts));
+        for (JsonNode p : answer.get("explanationParts")) {
+            String stripped = ExplanationPartsCheck.withoutOmissibleParts(p);
+            assertFalse(stripped.endsWith(": ") || stripped.endsWith("; ")
+                    || stripped.contains("()"), stripped);
+        }
     }
 
     @Test
@@ -807,6 +955,18 @@ class OpenExplanationFormsHttpTest {
         List<String> texts = texts(answer);
         assertEquals(1, texts.stream().filter(expected::equals).count(), () -> expected + "\nniet in\n"
                 + String.join("\n", texts));
+    }
+
+    private static String sentenceText(JsonNode answer, String begin) {
+        for (JsonNode z : answer.get("explanation"))
+            if (z.asText().startsWith(begin)) return z.asText();
+        throw new AssertionError("geen zin begint met " + begin);
+    }
+
+    private static JsonNode sentenceParts(JsonNode answer, String begin) {
+        for (int i = 0; i < answer.get("explanation").size(); i++)
+            if (answer.get("explanation").get(i).asText().startsWith(begin)) return answer.get("explanationParts").get(i);
+        throw new AssertionError("geen zin begint met " + begin);
     }
 
     /** The one sentence about J1 that begins with {@code begin}, whose text of the fold is left out. */
