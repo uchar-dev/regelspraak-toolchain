@@ -45,3 +45,24 @@ May touch:
 Out of scope:
 - `uchar`-semantiek (geland in `uchar`-kaart `20261126-open-to-one-roles.md`)
 - `to-many`-rollen (`20261126-open-to-many-roles-in-service.md`)
+
+## Result (2026-11-26)
+
+Geland:
+- `uchar` gepind op `f6ad5e87e` (`20261126-open-to-one-roles` + `20261126-fold-read-settled-range`).
+- Strikte HTTP-verzoeken (`JDK` én `Quarkus`): niet-wederkerige `to-one`-rollen ondersteunen `"<rol>": {"state": "empty"}` (vaststaand leeg via `Input.roleEmpty`), en weglaten of `"<rol>": null` (open, tenzij `(volledig gegeven)` of gekoppeld vanuit de tegenrol / `relations`), inclusief vocabulairevertaling; botsing tussen tegenrol/`relations` en `{"state": "empty"}` geeft `422 EVALUATION_FAULT` `EF-049`; gewone regelsets blijven ongewijzigd (`null` en `{"state": "empty"}` geven `400`).
+- `?openInputs=true` en `/info`: `OpenReads` en `OpenInputs` rapporteren open `to-one`-rollen als `{"kind": "role", "instance": "<id>", "name": "<rolnaam>", "forOutputs": [...]}`; `/info` vermeldt `to-one`-rollen met `(volledig gegeven)` onder `completeInput` (`kind: "role"`).
+- Uitleg (`Verbaliser` + `explanationParts`): open `to-one`-rollen worden verwoord als `"zijn <rol> is niet gegeven"` (en bij navigatie `"van <X> is zijn <rol> niet gegeven"`), met volledige `explanationParts`-dekking inclusief onbepaalde `QuantifierFold` bij open vouwbereik.
+- OpenAPI (`/openapi`), `?fixpoint=true` (`FixpointGivens`), `ScenarioData`, `SituationToRequest`, `playground.html` (`node --check` groen), `scripts/service_replay.py`, `scripts/check-service-replay.sh`, `README.md` en `docs/ENGINE.md` bijgewerkt.
+
+Buiten scope gebleven:
+- `to-many`-rollen (`backlog/new/20261126-open-to-many-roles-in-service.md`).
+
+Verificatie (`make gates` 7/7 GROEN in 7m58s):
+- `1 pin`: GROEN (1s, `uchar` op `f6ad5e87e`).
+- `2 reactor`: GROEN (3m31s, testgevallen per module `216/671/71`).
+- `3 twins`: GROEN (3s, 3 tweelingen, 18 cases + vocabulairetweeling 34 verzoeken + 4 getuigenissen).
+- `4 replay`: GROEN (2m29s, `391` goldens, `1119` cases, `69` rode foutsoorten).
+- `5 manifest`: GROEN (2s, 32 regels, 29 ok, 3 uitgesloten, 0 mismatch).
+- `6 image`: GROEN (39s, `decision-service:dev`).
+- `7 kind-smoke`: GROEN (1m18s, `H2 PASS, H3 PASS, H4 PASS`).
