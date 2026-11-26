@@ -97,38 +97,16 @@ public final class FixpointGivens {
      */
     public record InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
                                Map<String, ArrayNode> periods, Set<String> absent, Set<String> emptyAttributes,
-                               Set<EmptyRole> emptyRoles) {
-        public InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
-                           Map<String, ArrayNode> periods, Set<String> absent) {
-            this(label, attributes, characteristics, periods, absent, Set.of(), Set.of());
-        }
-
-        public InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
-                           Map<String, ArrayNode> periods, Set<String> absent, Set<String> emptyAttributes) {
-            this(label, attributes, characteristics, periods, absent, emptyAttributes, Set.of());
-        }
-    }
+                               Set<EmptyRole> emptyRoles) {}
 
     /**
      * The input objects of a request, in the order of {@code labels}, as uchar's reading {@code standing} gives what
      * their bean fields hold without the write-back ({@link EndState.Member#given}): the attributes that hold a value
      * and the characteristics that hold. Of a dimensioned member the filled cells are, in the order of {@code model}'s
-     * labels. {@code absent} holds per label the characteristics the request states not to hold, and
-     * {@code emptyAttributes} the attributes it states to be leeg, which no bean field holds; the input object keys them
-     * case-insensitively, as its characteristics and attributes.
+     * labels. {@code absent} holds per label the characteristics the request states not to hold,
+     * {@code emptyAttributes} the scalar attributes it states to be leeg, and {@code emptyRoles} the non-reciprocal
+     * to-one roles it states to have no link, none of which a bean field holds.
      */
-    public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
-                                            RegelSpraakModel model, Naming ng) {
-        return inputOf(standing, labels, absent, Map.of(), Map.of(), model, ng);
-    }
-
-    /** As {@link #inputOf(EndState, List, Map, RegelSpraakModel, Naming)}, with {@code emptyAttributes} per label. */
-    public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
-                                            Map<String, Set<String>> emptyAttributes, RegelSpraakModel model, Naming ng) {
-        return inputOf(standing, labels, absent, emptyAttributes, Map.of(), model, ng);
-    }
-
-    /** As {@link #inputOf(EndState, List, Map, Map, RegelSpraakModel, Naming)}, with {@code emptyRoles} per label. */
     public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
                                             Map<String, Set<String>> emptyAttributes,
                                             Map<String, Set<EmptyRole>> emptyRoles, RegelSpraakModel model, Naming ng) {

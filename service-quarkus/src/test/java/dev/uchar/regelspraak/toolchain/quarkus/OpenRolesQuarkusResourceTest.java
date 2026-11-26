@@ -77,6 +77,40 @@ class OpenRolesQuarkusResourceTest {
         assertArrayEquals(jdkDoc.body(), (byte[]) oaResp.getEntity());
         String oaText = new String(jdkDoc.body(), StandardCharsets.UTF_8);
         assertTrue(oaText.contains("EmptyRoleInput"), oaText);
+
+        // 6. Canonically colliding role without plural via vocabulary designation -> 400 UNSUPPORTED (never 500)
+        DecisionCore collidingCore = DecisionCore.assemble("""
+            { "service": {"name":"botsend","version":"1"},
+              "entrypoints": [ { "name":"wrak","path":"wrak", "scope": {"ruleNames": ["uitwijking"]},
+                                 "input": [], "output": ["Wrak:uitgeweken"] } ],
+              "parameters": {} }""",
+                java.util.Map.of("botsend.rgs", """
+                    Afleiden uit leeg: nee
+                    Vocabulaire handboek (taal: nl)
+                    Objecttype de Haven (mv: Havens)
+                    Objecttype het Vaartuig (mv: Vaartuigen)
+                    Objecttype het Wrak is een Vaartuig (mv: Wrakken)
+                        is uitgeweken kenmerk (bijvoeglijk);
+                    Feittype thuishaven
+                        de haven (handboek: vaste haven) Haven
+                        het vaartuig (mv: vaartuigen) Vaartuig
+                        één haven heeft meerdere vaartuigen
+                    Feittype noodhavenrelatie
+                        de haven (handboek: uitwijkhaven) Haven
+                        het noodwrak (mv: noodwrakken) Wrak
+                        één haven heeft meerdere noodwrakken
+                    Regel uitwijking
+                        geldig altijd
+                            Een Wrak is uitgeweken indien hij een noodwrak is.
+                    """),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        DecideResource collidingResource = new DecideResource();
+        collidingResource.core = collidingCore;
+        JsonNode unsupported = comparePost(collidingCore, collidingResource, "wrak",
+                "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\", \"roles\": {\"uitwijkhaven\": {\"state\": \"empty\"}}}]}",
+                null, null, null, 400);
+        assertEquals("UNSUPPORTED", unsupported.at("/violations/0/kind").asText(), unsupported.toString());
+        assertEquals("instances[0].roles.uitwijkhaven", unsupported.at("/violations/0/field").asText(), unsupported.toString());
     }
 
     private static JsonNode comparePost(DecisionCore core, DecideResource resource, String path, String request,

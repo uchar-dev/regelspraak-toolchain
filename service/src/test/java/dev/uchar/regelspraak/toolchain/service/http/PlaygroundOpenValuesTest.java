@@ -515,6 +515,8 @@ class PlaygroundOpenValuesTest {
             """).replace("Afleiden uit leeg: nee", "").replace(" (volledig gegeven)", "");
         ScenarioBundle ordinaryBundle = ScenarioResolver.resolve(ordinarySource);
         assertTrue(ordinaryBundle.isOk());
+        assertEquals(1, ordinaryBundle.warnings().size());
+        assertEquals("RGS-480", ordinaryBundle.warnings().get(0).code());
         assertTrue(SituationToRequest.assemble(ordinaryBundle.scenarios().get(0), ordinaryBundle.model())
                 .at("/instances/0/roles").isMissingNode());
         JsonNode ordinaryAnalysis = Playground.analyze(ordinarySource);

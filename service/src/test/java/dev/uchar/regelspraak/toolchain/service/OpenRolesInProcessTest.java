@@ -436,6 +436,167 @@ class OpenRolesInProcessTest {
         assertEquals(Map.of("label", "V2", "role", "vinder"), fault.errors().get(0).params());
     }
 
+    @Test
+    void canonically_colliding_role_without_unambiguous_plural_is_400_unsupported() throws Exception {
+        String source = """
+            Afleiden uit leeg: nee
+
+            Vocabulaire handboek (taal: nl)
+
+            Objecttype de Haven (mv: Havens)
+
+            Objecttype het Vaartuig (mv: Vaartuigen)
+                is aangemeld kenmerk (bijvoeglijk);
+
+            Objecttype het Wrak is een Vaartuig (mv: Wrakken)
+                is uitgeweken kenmerk (bijvoeglijk);
+                is doorgestuurd kenmerk (bijvoeglijk);
+
+            Feittype thuishaven
+                de haven (handboek: vaste haven) Haven
+                het vaartuig (mv: vaartuigen) Vaartuig
+                één haven heeft meerdere vaartuigen
+
+            Feittype noodhavenrelatie
+                de haven (handboek: uitwijkhaven) Haven
+                het noodwrak (mv: noodwrakken) Wrak
+                één haven heeft meerdere noodwrakken
+
+            Feittype reservehavenrelatie
+                de haven (mv: havens) (handboek: reservehaven) Haven
+                het reservewrak (mv: reservewrakken) Wrak
+                één haven heeft meerdere reservewrakken
+
+            Feittype havengroeprelatie
+                de havens (handboek: havengroep) Haven
+                het groepswrak (mv: groepswrakken) Wrak
+                één havens heeft meerdere groepswrakken
+
+            Regel aanmelding
+                geldig altijd
+                    Een Vaartuig is aangemeld indien hij een vaartuig is.
+
+            Regel uitwijking
+                geldig altijd
+                    Een Wrak is uitgeweken indien hij een noodwrak is.
+
+            Regel doorsturing
+                geldig altijd
+                    Een Wrak is doorgestuurd indien hij een reservewrak is.
+            """;
+        String descriptor = """
+            { "service": {"name":"botsende-rol","version":"1"},
+              "entrypoints": [
+                { "name":"wrak","path":"wrak",
+                  "scope": {"ruleNames": ["aanmelding", "uitwijking", "doorsturing"]},
+                  "input": [],
+                  "output": ["Vaartuig:aangemeld", "Wrak:uitgeweken", "Wrak:doorgestuurd"] } ],
+              "parameters": {} }""";
+        DecisionCore core = DecisionCore.assemble(descriptor, Map.of("botsend.rgs", source),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+
+        // 1. On Wrak, "uitwijkhaven" has no plural and shares singular "haven" with thuishaven:
+        //    both {"state": "empty"} and a linked id are 400 UNSUPPORTED on instances[...].roles.uitwijkhaven (never 500!)
+        ServiceError emptyErr = assertThrows(ServiceError.class, () -> core.process("wrak", json("""
+            {"instances": [{"type": "Wrak", "id": "W1", "roles": {"uitwijkhaven": {"state": "empty"}}}]}""")));
+        assertEquals(1, emptyErr.violations().size(), emptyErr.violations().toString());
+        assertEquals(Violation.Kind.UNSUPPORTED, emptyErr.violations().get(0).kind(), emptyErr.violations().toString());
+        assertEquals("instances[0].roles.uitwijkhaven", emptyErr.violations().get(0).field());
+
+        ServiceError linkErr = assertThrows(ServiceError.class, () -> core.process("wrak", json("""
+            {"instances": [{"type": "Haven", "id": "H1"},
+                           {"type": "Wrak", "id": "W1", "roles": {"uitwijkhaven": "H1"}}]}""")));
+        assertEquals(1, linkErr.violations().size(), linkErr.violations().toString());
+        assertEquals(Violation.Kind.UNSUPPORTED, linkErr.violations().get(0).kind(), linkErr.violations().toString());
+        assertEquals("instances[1].roles.uitwijkhaven", linkErr.violations().get(0).field());
+
+        // 2. Plural "havens" on reservehavenrelatie collides with singular "havens" on havengroeprelatie -> 400 UNSUPPORTED
+        ServiceError pluralCollisionErr = assertThrows(ServiceError.class, () -> core.process("wrak", json("""
+            {"instances": [{"type": "Wrak", "id": "W1", "roles": {"reservehaven": {"state": "empty"}}}]}""")));
+        assertEquals(1, pluralCollisionErr.violations().size(), pluralCollisionErr.violations().toString());
+        assertEquals(Violation.Kind.UNSUPPORTED, pluralCollisionErr.violations().get(0).kind());
+        assertEquals("instances[0].roles.reservehaven", pluralCollisionErr.violations().get(0).field());
+
+        // 3. On supertype Vaartuig (which does NOT participate in noodhavenrelatie), "vaste haven" resolves uniquely to "haven" -> 200
+        ObjectNode vaartuigOk = process(core, "wrak", """
+            {"instances": [{"type": "Vaartuig", "id": "V1", "roles": {"vaste haven": {"state": "empty"}}}]}""",
+                new RequestOptions(false, null, "handboek", false, false, false, false, false));
+        assertEquals(json("{\"state\": \"holdsNot\"}"), vaartuigOk.at("/instances/0/characteristics/aangemeld"));
+    }
+
+    @Test
+    void undetermined_quantifier_fold_without_contributors_writes_reading_and_no_empty_members() throws Exception {
+        ClassLoader cl = Thread.currentThread().getContextClassLoader();
+
+        // Case A: 3-step range from Wrak (keuringen van de ploeg van de vinder), step 1 (vinder) open on W1 -> 0 contributors
+        String wrakFoldSource = STRICT_ROLES_SOURCE.replace("is uitwijkplichtig kenmerk (bijvoeglijk);",
+                "is uitwijkplichtig kenmerk (bijvoeglijk);\n            is goedgekeurd kenmerk (bijvoeglijk);") + """
+            Regel goedkeuring
+                geldig altijd
+                    Een Wrak is goedgekeurd indien het keurcijfer van alle keuringen van de ploeg van de vinder van het Wrak groter is dan 5.
+            """;
+        String wrakFoldDescriptor = """
+            { "service": {"name":"wrak-vouw","version":"1"},
+              "entrypoints": [
+                { "name":"wrak","path":"wrak",
+                  "scope": {"ruleNames": ["goedkeuring"]},
+                  "input": [],
+                  "output": ["Wrak:goedgekeurd"] } ],
+              "parameters": {} }""";
+        DecisionCore wrakFoldCore = DecisionCore.assemble(wrakFoldDescriptor, Map.of("vouw.rgs", wrakFoldSource),
+                CoreConfig.strict(), cl);
+        ObjectNode wrakAns = wrakFoldCore.process("wrak", json("""
+            {"instances": [{"type": "Wrak", "id": "W1"}]}"""),
+                new RequestOptions(true, null, null, false, false, false, true, true));
+        ExplanationPartsCheck.assertPartsAreTheSentences(wrakAns.get("explanation"), wrakAns.get("explanationParts"));
+        String expectedWrakSentence = "W1: of hij goedgekeurd is, staat niet vast, want zijn vinder is niet gegeven;"
+                + " voor de regel 'goedkeuring' staat niet vast: aan de voorwaarde"
+                + " \"het keurcijfer van alle keuringen van de ploeg van de vinder van het Wrak groter is dan 5\""
+                + " is voldaan (staat niet vast)";
+        assertSentence(expectedWrakSentence, wrakAns);
+        JsonNode wrakParts = sentenceStarting(wrakAns, "W1: of hij goedgekeurd");
+        assertFalse(wrakParts.toString().contains("\"MEMBERS\""), wrakParts.toString());
+        assertEquals("W1: of hij goedgekeurd is, staat niet vast, want zijn vinder is niet gegeven",
+                ExplanationPartsCheck.withoutOmissibleParts(wrakParts));
+        assertTrue(ExplanationPartsCheck.render(wrakParts).contains(
+                "QUOTE«het keurcijfer van alle keuringen van de ploeg van de vinder van het Wrak groter is dan 5»"
+                        + " «\" is voldaan»"
+                        + " READING{open={\"object\":\"W1\",\"canonical\":\"vinder\",\"kind\":\"role\"}}[« (staat niet vast)»]"),
+                ExplanationPartsCheck.render(wrakParts));
+
+        // Case B: 2-step range (alle bewaarplaatsen van alle vondsten van de Jutter), J1 has only V2 whose bewaarplaats is open -> 0 contributors
+        Path dir = TokaSource.REPO.resolve("uchar/corpus/golden/jutterswet-invoer-rol-strikt");
+        String source = Files.readString(dir.resolve("source.rgs"));
+        JsonNode doc = DescriptorLoader.MAPPER.readTree(UcharBuild.document(Resolver.resolve(source)));
+        DecisionCore jutterCore = DecisionCore.assemble(replayDescriptor(doc), Map.of("s.rgs", source),
+                CoreConfig.strict(), cl);
+        ObjectNode jutterAns = jutterCore.process("replay", json("""
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V2"]}},
+                           {"type": "Vondst", "id": "V2"}]}"""),
+                new RequestOptions(true, null, null, false, false, false, true, true));
+        ExplanationPartsCheck.assertPartsAreTheSentences(jutterAns.get("explanation"), jutterAns.get("explanationParts"));
+        String expectedJutterSentence = "J1: of hij ruim bewaard is, staat niet vast, want van V2 is zijn bewaarplaats niet gegeven;"
+                + " voor de regel 'ruim bewaard' staat niet vast: aan de voorwaarde"
+                + " \"de capaciteit van alle bewaarplaatsen van alle vondsten van de Jutter groter is dan 5\""
+                + " is voldaan (staat niet vast)";
+        assertSentence(expectedJutterSentence, jutterAns);
+        JsonNode jutterParts = sentenceStarting(jutterAns, "J1: of hij ruim bewaard");
+        assertFalse(jutterParts.toString().contains("\"MEMBERS\""), jutterParts.toString());
+        assertEquals("J1: of hij ruim bewaard is, staat niet vast, want van V2 is zijn bewaarplaats niet gegeven",
+                ExplanationPartsCheck.withoutOmissibleParts(jutterParts));
+        assertTrue(ExplanationPartsCheck.render(jutterParts).contains(
+                "QUOTE«de capaciteit van alle bewaarplaatsen van alle vondsten van de Jutter groter is dan 5»"
+                        + " «\" is voldaan»"
+                        + " READING{open={\"object\":\"V2\",\"canonical\":\"bewaarplaats\",\"kind\":\"role\"}}[« (staat niet vast)»]"),
+                ExplanationPartsCheck.render(jutterParts));
+    }
+
+    private static void assertSentence(String expected, JsonNode answer) {
+        for (JsonNode z : answer.get("explanation"))
+            if (expected.equals(z.asText())) return;
+        throw new AssertionError(expected + "\nniet in\n" + answer.get("explanation"));
+    }
+
     private static JsonNode sentenceStarting(JsonNode answer, String prefix) {
         JsonNode texts = answer.get("explanation");
         for (int i = 0; i < texts.size(); i++)

@@ -3532,13 +3532,14 @@ public final class Verbaliser {
      * lezing het geeft ({@link #filterOpen}), en nergens anders; staat er zo'n lid, dan noemt de zin geen totaal en geen
      * aantal. Staat het oordeel van de vouw vast, dan noemt de zin de leden die het dragen ({@link #carriers}); staat het
      * niet, dan de leden waarvoor de matrix geldt, die waarvoor zij niet geldt en die waarvoor zij onbepaald is
-     * ({@link #openMembers}); in beide gevallen onder de leden met een vaststaand filter. Wat de vouw openhoudt, zegt de
-     * oorzaak van de zin.
+     * ({@link #openMembers}, of {@link #openReading} wanneer door een open stap in het bereik geen enkele bijdrager werd
+     * bereikt); in beide gevallen onder de leden met een vaststaand filter. Wat de vouw openhoudt, zegt de oorzaak van de zin.
      */
     private void members(Sentence.Builder b, Condition.QuantifierFold q, Read read) {
         ConditionReading.NodeReading n = read.of(q);
         if (n.undetermined()) {
-            openMembers(b, q, n, read);
+            if (n.contributors().isEmpty()) openReading(b, n.open(), read.label(), false);
+            else openMembers(b, q, n, read);
             return;
         }
         if (!(n.value() instanceof Boolean holds))

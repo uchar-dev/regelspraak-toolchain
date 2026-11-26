@@ -171,13 +171,7 @@ public final class RequestMapper {
     public record Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations,
                          List<RuntimeException> inputFaults, Map<String, java.util.Set<String>> absent,
                          Map<String, java.util.Set<String>> emptyAttributes,
-                         Map<String, java.util.Set<FixpointGivens.EmptyRole>> emptyRoles) {
-        public Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations,
-                      List<RuntimeException> inputFaults, Map<String, java.util.Set<String>> absent,
-                      Map<String, java.util.Set<String>> emptyAttributes) {
-            this(world, typePerLabel, violations, inputFaults, absent, emptyAttributes, Map.of());
-        }
-    }
+                         Map<String, java.util.Set<FixpointGivens.EmptyRole>> emptyRoles) {}
 
     /** A role link the mapper writes into the case: under the {@code roles} of instance {@code id}, the key
      *  {@code role}, naming {@code doel}; uchar's {@link CaseInput.RoleError} names a refused link the same way. */
@@ -833,16 +827,39 @@ public final class RequestMapper {
         return null;
     }
 
-    /** The key {@code CaseInput} reads unambiguously from {@code ot} for {@code role} of {@code ft}: its declared name,
-     *  or its declared plural where another fact type {@code ot} takes part in reaches a role of the same singular name. */
-    private String caseRoleKey(ObjectType ot, FactType ft, Role role) {
-        if (role.plural() != null)
-            for (FactType other : model.factTypes.values())
-                if (other != ft)
-                    for (Role r : other.roles)
-                        if (DescriptorLoader.sameName(r.name(), role.name()) && Naming.reachable(model, other, r, ot))
-                            return role.plural();
-        return role.name();
+    /** The key {@code CaseInput} resolves to a single opposite role from {@code ot} for {@code role}: its declared
+     *  name where that resolves uniquely across all opposite roles' names and plurals, else its declared plural where
+     *  present and unique, or {@code null} when neither resolves uniquely in {@code uchar-case-v0}. */
+    private String unambiguousCaseRoleKey(ObjectType ot, Role role) {
+        if (role.name() != null && oppositeRoleHits(ot, role.name()) == 1) return role.name();
+        if (role.plural() != null && oppositeRoleHits(ot, role.plural()) == 1) return role.plural();
+        return null;
+    }
+
+    /** Counts how many opposite role slots reachable from {@code type} match {@code key} by singular name or plural,
+     *  mirroring {@code CaseInput.resolveOppositeRoles}. */
+    private int oppositeRoleHits(ObjectType type, String key) {
+        int hits = 0;
+        String norm = dev.uchar.regelspraak.transpiler.core.Namen.norm(key);
+        for (FactType ft : model.factTypes.values()) {
+            if (ft.roles.size() == 2) {
+                Role a = ft.roles.get(0), b = ft.roles.get(1);
+                ObjectType fillA = model.objectTypeByName(a.objectTypeName());
+                ObjectType fillB = model.objectTypeByName(b.objectTypeName());
+                if (fillA != null && type.isA(fillA) && matchesRoleKey(b, norm)) hits++;
+                if (fillB != null && type.isA(fillB) && matchesRoleKey(a, norm)) hits++;
+            } else if (ft.roles.size() == 1 && ft.reciprocal) {
+                Role r = ft.roles.get(0);
+                ObjectType fillR = model.objectTypeByName(r.objectTypeName());
+                if (fillR != null && type.isA(fillR) && matchesRoleKey(r, norm)) hits++;
+            }
+        }
+        return hits;
+    }
+
+    private static boolean matchesRoleKey(Role r, String norm) {
+        return (r.name() != null && dev.uchar.regelspraak.transpiler.core.Namen.norm(r.name()).equals(norm))
+                || (r.plural() != null && dev.uchar.regelspraak.transpiler.core.Namen.norm(r.plural()).equals(norm));
     }
 
     private void setRoles(ObjectType ot, String id, Map<String, ObjectType> typePerLabel, JsonNode roles, String path,
@@ -876,7 +893,15 @@ public final class RequestMapper {
                 } else {
                     OpenValues.RoleInput state = OpenValues.roleState(val, role, field, s);
                     if (state == OpenValues.RoleInput.EMPTY) {
-                        listIn(instances.get(id), "rolesEmpty").add(caseRoleKey(ot, resolved.factType(), resolved.role()));
+                        String emptyKey = unambiguousCaseRoleKey(ot, resolved.role());
+                        if (emptyKey == null) {
+                            s.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "rol '" + role
+                                    + "' (canonieke rol '" + resolved.role().name() + "' van feittype '"
+                                    + resolved.factType().name + "') heeft vanaf objecttype '" + ot.name
+                                    + "' geen ondubbelzinnige canonieke rolsleutel in uchar-case-v0"));
+                            return;
+                        }
+                        listIn(instances.get(id), "rolesEmpty").add(emptyKey);
                         emptyRoles.computeIfAbsent(id, k -> new java.util.LinkedHashSet<>())
                                 .add(new FixpointGivens.EmptyRole(resolved.factType().name, resolved.farIndex()));
                         return;
@@ -892,8 +917,9 @@ public final class RequestMapper {
             List<String> targets = ids(val, role, field, s);
             if (targets == null) return;
             ObjectType targetType = resolved.targetType();
+            String unambiguous = unambiguousCaseRoleKey(ot, resolved.role());
             String caseKey = DescriptorLoader.sameName(wasRead.name(), resolved.role().name())
-                    ? caseRoleKey(ot, resolved.factType(), resolved.role()) : wasRead.name();
+                    ? (unambiguous != null ? unambiguous : resolved.role().name()) : wasRead.name();
             for (String label : targets) {
                 ObjectType labelType = typePerLabel.get(label);
                 if (labelType == null) {
