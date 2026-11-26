@@ -250,9 +250,10 @@ refuse the start as well.
 - The cells of a dimensioned attribute whose labels name no cell of it (EF-034) or that give one cell twice, also in
   two spellings of a label (EF-035), get the same 422 with that code and uchar's sentence; uchar's input step refuses
   them before the values of the cells and stops at the first. So does a cycle in the links of the switch relation of
-  an instance-ordered cycle (EF-033). The mapper tells these refusals by uchar's types of them (`CaseInput.CellFault`,
-  `CaseInput.LinkCycleFault`) and takes their sentences; an `IllegalArgumentException` of uchar's input step that the
-  mapper did not foresee stays a 500.
+  an instance-ordered cycle (EF-033), and in a strict rule set a link from the opposite instance or `relations` beside
+  `{"state": "empty"}` on the same directed `to-one` role (EF-049). The mapper tells these refusals by uchar's types of
+  them (`CaseInput.CellFault`, `CaseInput.LinkCycleFault`, `CaseInput.NameFault`) and takes their sentences; an
+  `IllegalArgumentException` of uchar's input step that the mapper did not foresee stays a 500.
 - A request whose session reaches no fixpoint gets 422 with `{"status": "NO_FIXPOINT", "error": <uchar's
   sentence>, "code": …, "params": {…}}`: uchar's `DroolsBackend.fire` ended the run at its fire cap or at the creation
   budget (`Firing.noFixpoint`), and the core throws `NoFixpoint` with that sentence and the fault kind uchar names for
@@ -427,7 +428,9 @@ refuse the start as well.
   `TmsTranspiler.generated`, `TmsTranspiler.stacks`). Per scenario it gets uchar's report with its
   `trace`, `explanation` and `explanationParts`. Beside the report stand the source line of the scenario and of each expectation (`line`,
   `lineText`: uchar gives the line an expectation begins on), the `situation` uchar's scenario resolver makes (each
-  role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in; a dimensioned
+  role in `objects[].roles[]` with its `factType`, the fact type the resolver found the role in, and an empty `labels`
+  list where the situation states a non-reciprocal `to-one` role to be leeg, "- de vinder is leeg" (the case's
+  `rolesEmpty`), which the page shows as `leeg`; a dimensioned
   attribute in `objects[].attributes[]` as `cells`, `[{labels, value}]`, as a request gives it; an attribute the
   situation states to be leeg, "- de taxatie is leeg" (the case's `attributesEmpty`), with `value: null`, which the page
   shows as `leeg`; a characteristic the
@@ -494,9 +497,10 @@ refuse the start as well.
       (ch. 7.2): pass on the first conflict, make a conflict where two members decide differently, take the decision
       of the first deciding member, and, only in a document that infers nothing from an empty value (ch. 1.5), leave
       the outcome open where a member is open and nothing conflicts or differs;
-    - `fold-contribution`, `fold-filter-fault`, `fold-member-fault`, `fold-filter-deposit`: of a fold (ch. 3.4): insert
-      the contribution of a member that passes the filter, note a member whose filter faults (ch. 5.11), a member whose
-      timeline the case gives as the asOfDate-bucket scalar (ch. 3.6, 8.4), a member whose filter deposits (ch. 5.10);
+    - `fold-contribution`, `fold-filter-fault`, `fold-member-fault`, `fold-filter-deposit`, `fold-range-open`: of a
+      fold (ch. 3.4): insert the contribution of a member that passes the filter, note a member whose filter faults
+      (ch. 5.11), a member whose timeline the case gives as the asOfDate-bucket scalar (ch. 3.6, 8.4), a member whose
+      filter deposits (ch. 5.10), an open single step in the range of the fold (ch. 1.5, 5.11);
     - `uniqueness-key`, `uniqueness-key-form-fault`, `uniqueness-channel`: of a uniqueness (ch. 5.9): insert the key of
       an instance, fault an instance whose key on a timeline is given as a bucket scalar, put the violation on the §9.5
       channel (ch. 5.6);
@@ -575,8 +579,9 @@ refuse the start as well.
     it as `path`, after `rule`. Without one the result is a MARKER whose `diagnosis` says what each entry point lacks,
     with `path` null; there is no fallback to the ordinary route;
   - the situation becomes a request (`SituationToRequest`, each instance with its label as its id, the names
-    canonical, read with `inputVocabulary=canonical`, a dimensioned attribute as its `cells`, an attribute the situation
-    states to be leeg as `{"state": "empty"}` in a strict rule set and left out otherwise, a characteristic the
+    canonical, read with `inputVocabulary=canonical`, a dimensioned attribute as its `cells`, an attribute or a
+    non-reciprocal `to-one` role the situation states to be leeg as `{"state": "empty"}` in a strict rule set and left out
+    otherwise, a characteristic the
     situation gives as not holding as `false`, in a strict rule set as `{"state": "holdsNot"}`; a value without a
     variant, which uchar's RegelSpraak frontend does not write, is a 500 `interne fout` with the sentence that names it
     on stderr, as on the ordinary route), and the core answers it
@@ -605,10 +610,12 @@ refuse the start as well.
 ## A strict rule set
 
 A rule set whose source says `Afleiden uit leeg: nee` infers nothing from what is open (`inferFromEmpty: false` in its
-document; uchar's RUNTIME-SEMANTICS ch. 1.5). A member of an object is then **filled**, **settled leeg** (it stands that
-an attribute has no value, or that a characteristic does not hold) or **open** (neither stands); a settled leeg value
-computes as in any rule set, and a condition over an open value is undetermined, a test on leeg or gevuld as any other
-(Kleene's three values). An input member that the request does not give is open, unless its declaration says
+document; uchar's RUNTIME-SEMANTICS ch. 1.5). A member of an object — an attribute, a characteristic or a non-reciprocal
+`to-one` role — is then **filled** (or linked), **settled leeg** (it stands that an attribute has no value, that a
+characteristic does not hold, or that a non-reciprocal `to-one` role has no linked object) or **open** (neither stands); a
+settled leeg value computes as in any rule set, and a condition or navigation over an open value or role is undetermined, a
+test on leeg or gevuld and a role check as any other (Kleene's three values). An input member that the request does not give
+(and for a `to-one` role that no link from the opposite end or `relations` connects) is open, unless its declaration says
 `(volledig gegeven)`: then it is settled leeg, or stands not to hold. An initialisation is the lowest writer of its
 target and makes no member derived: a member that only an initialisation writes (a rule, or the initialisation default
 of a defaults group without an exception group) is an input member with a default value, open where the request does
@@ -630,7 +637,17 @@ as well. Another state is a `WRONG_TYPE` too, and an object without `state` or w
 `null` where it is not given (open). Another state on an attribute (`open`, `holds`, `holdsNot`, `{"state": "filled",
 "value": ...}` or an unknown state) is a 400 `WRONG_TYPE` naming a plain value, `{"state": "empty"}` and leaving it out
 or `null`, `{"state": "empty"}` on a dimensioned or time-dependent attribute is a 400 `WRONG_TYPE`, and a non-textual
-`state` or extra keys beside `state` is a 400 `MALFORMED`. A value, `{"state": "empty"}` or `holdsNot` on a member that
+`state` or extra keys beside `state` is a 400 `MALFORMED`. Under `instances[].roles`, a non-reciprocal `to-one` role is a
+target id (or single-element list of ids) where it is linked, `{"state": "empty"}` where it stands to have no linked object,
+which the mapper writes under the `rolesEmpty` of the case, and left out or `null` where it is not given (open unless
+declared `(volledig gegeven)` or linked from the opposite end or `relations`). A `state` object (`{"state": "empty"}` or
+another state) in an ordinary rule set, on a `to-many` or reciprocal role, or in top-level `relations[].roles` is a 400
+`WRONG_TYPE`, another state on a `to-one` role (`open`, `holds`, `holdsNot`, `{"state": "filled", "value": ...}` or an
+unknown state) is a 400 `WRONG_TYPE`, a non-textual `state`, extra keys beside `state` or two spellings of one role on the
+same instance is a 400 `MALFORMED`, and a link from the opposite instance or `relations` beside `{"state": "empty"}` on the
+same directed `to-one` role is a 422 `EVALUATION_FAULT` with uchar's code `EF-049` and parameters `label` (the instance id)
+and `role` (`CaseInput.NameFault`). Role names in `{"state": "empty"}` are read by `NameReader` (canonical, plural or any
+vocabulary designation, or pinned by `?inputVocabulary=`). A value, `{"state": "empty"}` or `holdsNot` on a member that
 a rule writes stands where every writer of the member fills nothing; while a writer is open, the member is open. A
 characteristic the request gives holds whatever its rules do.
 
@@ -653,19 +670,25 @@ holds. "De taxatie van een Vondst moet gevuld zijn" over a taxatie that is not g
 a member among the `members` of its object, among its `open`, or in neither, which is settled leeg.
 
 **`/info`** has `"inferFromEmpty": false` and `completeInput`, the input members whose declaration says `(volledig
-gegeven)` (the `opgegeven X` of the opgave marker and a member that only an initialisation writes among them), `[{"kind": "attribute", "objectType": "Vondst", "name":
-"toeslag"}, {"kind": "characteristic", …}]`, per object type as declared. **The OpenAPI document** has the states as enumerations:
+gegeven)` (the `opgegeven X` of the opgave marker, a member that only an initialisation writes, and a non-reciprocal
+`to-one` role that no creation writes on its near type among them), `[{"kind": "attribute", "objectType": "Vondst", "name":
+"toeslag"}, {"kind": "characteristic", …}, {"kind": "role", "objectType": "Vaartuig", "name": "haven"}]`, per object type
+its attributes, characteristics and `to-one` roles as declared. **The OpenAPI document** has the states as enumerations:
 the components `AttributeState` and `CharacteristicState`, to which `Answer` refers, `CharacteristicInput` (`holds` and
-`holdsNot`), to which the characteristics of `Request` and of every object type refer, and `EmptyAttributeInput` (`empty`),
-which every scalar attribute of an object type offers in `oneOf` beside its plain datatype; and in the description of every
-member what it means that a request does not give it.
+`holdsNot`), to which the characteristics of `Request` and of every object type refer, `EmptyAttributeInput` (`empty`),
+which every scalar attribute of an object type offers in `oneOf` beside its plain datatype, and `EmptyRoleInput` (`empty`),
+which `Request.properties.instances.items.properties.roles` offers in `oneOf` beside a target id or list of ids (nullable),
+with `"role"` in `Answer.properties.openInputs.items.properties.kind` and `ExplanationPart.properties.open.properties.kind`;
+and in the description of every member what it means that a request does not give it.
 
 **`fixpoint`** (of an answer and of a 422) gives every object the list `open` after `characteristics`: its open
-attributes and then its open characteristics, in declaration order, each with the `unit` of an attribute that has one and
+attributes and then its open characteristics, in declaration order, followed by its open non-reciprocal `to-one` roles from
+`EndState.openLinks()` in the declaration order of `model.factTypes` and role slot (`{"role": "vinder"}`, with
+`roleCanonical` where a vocabulary designates it otherwise), each with the `unit` of an attribute that has one and
 with `input` where the request gave the member a value or stated it to be leeg or not holding, which does not stand beside a
 writer that is open (`{"attribute": "bergloon", "input": "7"}`, `{"attribute": "bergloon", "input": {"state": "empty"}}`,
-`{"characteristic": "kostbaar", "input": {"state": "holdsNot"}}`). An open member is in no other row; a member in no row is
-settled leeg, or stands not to hold. An attribute the request gave as `{"state": "empty"}` that a rule or an initialisation
+`{"characteristic": "kostbaar", "input": {"state": "holdsNot"}}`, `{"role": "vinder", "input": {"state": "empty"}}`). An open member is in no other row; a member in no row is
+settled leeg (including a `to-one` role given as `{"state": "empty"}`), or stands not to hold. An attribute the request gave as `{"state": "empty"}` that a rule or an initialisation
 fills is a row of `values` with the origin `derived` and `"input": {"state": "empty"}` (shown in the playground as `(invoer
 leeg)`); one that stays settled leeg is no row. A characteristic the request gave
 as not holding that a rule assigns all the same, since the rule decides above the input (uchar's RUNTIME-SEMANTICS
@@ -679,9 +702,13 @@ one place that says what. It evaluates no condition and no value: it takes the o
 open over those forms to the members that are open by their own input, the input members that no form left open.
 An open attribute is `<SUBJECT>: zijn <NAME> staat niet vast, want <cause>`, an open characteristic
 `<SUBJECT>: of hij <NAME> is, staat niet vast, want <cause>`, with one cause: the member that keeps the first open form
-open, "zijn taxatie is niet gegeven" of an input member that is open by its own input, "zijn vindloon staat niet vast" of
-a derived member and of a complete member that its initialisation leaves open, "van J1 is zijn bonus niet gegeven" of
-another object. Then every form follows in a `VARIANT` (`decided: false`) with what it found: `; voor de regel 'vindloon' staat niet
+open, "zijn taxatie is niet gegeven" or "zijn vinder is niet gegeven" of an input member or role that is open by its own
+input, "zijn vindloon staat niet vast" of
+a derived member and of a complete member that its initialisation leaves open, "van J1 is zijn bonus niet gegeven" or "van J1
+is zijn ploeg niet gegeven" of
+another object (with the role as a `NAME` of `declaration: "ROL"`, without `object`; a navigated read or check that breaks
+off on an open role says `(staat niet vast)` with `object: null`, and an undetermined role check `het onderwerp een vondst is
+(staat niet vast)`). Then every form follows in a `VARIANT` (`decided: false`) with what it found: `; voor de regel 'vindloon' staat niet
 vast: …` with its condition or its computation up to the open read, `; de regel … gold niet, want …`, and in a stack
 `; niet aan de beurt: …` for what stands below an open default (a default whose own reading does not stand by its name
 alone), `; <variant> staat niet vast, maar kan alleen hetzelfde beslissen` for an open constant default beside a
@@ -729,17 +756,23 @@ sentences:
 
 No sentence calls what is open leeg.
 
-**`?openInputs=true`** adds `openInputs` to the answer of a POST, with or without `explanation`: the input members that keep an open outcome of
-`output` open now, each once, in the order of the instances of the request and then of the declarations, with the outcomes
+**`?openInputs=true`** adds `openInputs` to the answer of a POST, with or without `explanation`: the input members (`"kind"`:
+`"attribute"`, `"characteristic"` or `"role"`) that keep an open outcome of
+`output` open now, each once, in the order of the instances of the request and then of the declarations (per instance its
+open attributes and characteristics in chain and declaration order, followed by its open non-reciprocal `to-one` roles in the
+declaration order of `model.factTypes` and role slot `0` then `1`), with the outcomes
 each keeps open, in the vocabulary of the answer:
 
 ```json
 {"openInputs": [{"kind": "attribute", "instance": "V1", "name": "taxatie",
-                 "forOutputs": [{"instance": "V1", "name": "vindloon", "kind": "attribute"}]}]}
+                 "forOutputs": [{"instance": "V1", "name": "vindloon", "kind": "attribute"}]},
+                {"kind": "role", "instance": "W1", "name": "vinder",
+                 "forOutputs": [{"instance": "W1", "name": "vindpremie", "kind": "attribute"}]}]}
 ```
 
 An open outcome is followed over the forms that leave it open to the input members that are open by their own input,
-those that nothing but an initialisation writes and that no form left open; a complete one that its initialisation
+those that nothing but an initialisation writes and that no form left open, and the open non-reciprocal `to-one` roles of
+`EndState.openLinks()` (a role given as `{"state": "empty"}` or declared `(volledig gegeven)` is settled and never appears); a complete one that its initialisation
 leaves open is followed on to what the initialisation reads. An input member in `output` that is open by its own input
 is under its own name, and an outcome that stands is under none. A check member that the opgave marker generated
 (`berekende X` or `afwijkende opgave X`, `RegelSpraakModel.generatedFrom` with `OPGAVE_BOVEN_BEREKENING`) is skipped as
@@ -761,16 +794,18 @@ situation that a form leaves open (a derived member, or a complete member that i
 `?via=service` those of the `output` of the entry point.
 
 **The scenarios.** A test document of a strict rule set gives an attribute as settled leeg ("- de taxatie is leeg": the
-case's `attributesEmpty`) and a characteristic as not holding in a situation ("- is niet
+case's `attributesEmpty`), a non-reciprocal `to-one` role as settled without a link ("- de vinder is leeg": the case's
+`rolesEmpty`) and a characteristic as not holding in a situation ("- is niet
 drijfhout", "- heeft geen strandrecht": the case's `characteristicsAbsent`), and expects that an outcome stays open ("- de
 afhaaldatum van V1 staat niet vast", "- of V1 afhaalbaar is, staat niet vast": `attributeOpen` and `characteristicOpen`,
 uchar's scenario layer). uchar's replay judges them as any expectation, on the ordinary route and with `?via=service`,
-whose request gives a settled-empty attribute of the situation as `{"state": "empty"}` (left out in an ordinary rule set)
-and a characteristic as `{"state": "holds"}` or `{"state": "holdsNot"}`; in the playground `situation.objects[].attributes[]`
-carries `value: null`. In a rule set that is not strict a characteristic the situation gives as not holding or an attribute
-it gives as leeg without replacing an inherited value changes no outcome, and uchar's scenario layer warns (RGS-469,
-RGS-473) beside the model: `bin/regelspraak scenario` prints the warning on stderr, and the playground shows it among the
-warnings of the resolver.
+whose request gives a settled-empty attribute or `to-one` role of the situation as `{"state": "empty"}` (left out in an
+ordinary rule set) and a characteristic as `{"state": "holds"}` or `{"state": "holdsNot"}`; in the playground
+`situation.objects[].attributes[]` carries `value: null` and `situation.objects[].roles[]` carries an empty `labels` list.
+In a rule set that is not strict a characteristic the situation gives as not holding or an attribute or `to-one` role
+it gives as leeg without replacing an inherited value or link changes no outcome, and uchar's scenario layer warns (RGS-469,
+RGS-473, RGS-475) beside the model: `bin/regelspraak scenario` prints the warning on stderr, and the playground shows it
+among the warnings of the resolver.
 
 **The start.** A dimensioned attribute in `output` refuses the start (`UNSUPPORTED`): uchar does not say whether a cell is
 open. So does an attribute without a bean field of its own. A form whose reading of ch. 1.5 uchar's Drools branch does
@@ -801,7 +836,7 @@ part a consumer may leave out with its glue (`COMPUTATION`, `MEMBERS`, `VARIANT`
 | `MEMBERS` | group | the members of a quantifier fold that carry its outcome, with the colon before them as its first `TEXT`; in a computation the members of a fold over a set, each with what it contributed, or the recipients of an allocation, each with the share it holds, with `", over "` before them | `members` (m), `holding` (k), `unjudged`; in a computation `members` alone; of a quantifier fold in a strict rule set, where the fold or one of its members does not stand, also `unsettled`, the members on which its matrix is undetermined, and `filterUnsettled`, those on which its filter is undetermined, which count there alone: the other four count the members whose filter holds |
 | `COMPUTATION` | group | how the rule of a computed value, or the variant that decided a defaults group on an attribute, computed it, how an allocation divided, or the waardetoekenningen of an object creation, after its name, with its colon (below) | — |
 | `VARIANT` | group | a writer that did not write the value of its sentence, with the separator before it (`"; "`, or `", "` between displaced variants): in the sentence of a defaults group every variant but the decider (before it, beside it in an unordered group, after it), in that of a computed value every writer but the one that wrote | `decided: false`, and `displaced: true` for a variant after the decider of a defaults group and for an initialisation that was not at its turn; on a displaced variant of a defaults group `holds` (absent without a condition), `decision` for a characteristic, `unreadable: true` where its reading carried a fault (also on a provisionally read open default whose evaluation faulted; below); in a strict rule set `undetermined: true` on a displaced variant whose reading does not stand, which is its name alone, and an open constant default beside a same-conclusion decider or root-closing characteristic stack says `staat niet vast, maar kan alleen hetzelfde beslissen` |
-| `READING` | group | the value the engine read for the operand or the member right before it, with its brackets: `" ("`, the `VALUE`, `")"` | —; in a strict rule set `open`, `{"object", "canonical", "kind": "attribute" \| "characteristic"}`, where the read broke off at that open member: it then has no `VALUE` and says "(niet gegeven)" or "(staat niet vast)" |
+| `READING` | group | the value the engine read for the operand or the member right before it, with its brackets: `" ("`, the `VALUE`, `")"` | —; in a strict rule set `open`, `{"object", "canonical", "kind": "attribute" \| "characteristic" \| "role"}`, where the read broke off at that open member: it then has no `VALUE` and says "(niet gegeven)" or "(staat niet vast)" |
 | `GROUND` | group | the ground, always the last part: `". Grondslag: "` as `TEXT`, then the annotations parsed | the decider whose annotations they are (below): `rule`, or `group`, `pointer`, `position` and `variant` where it has a name |
 | `STATUTE` | leaf | a Juriconnect anchor, literally | `bwb`, `article`, and `paragraph` and `part` where it names them |
 | `LEMMA` | leaf | the slug of a lemma | — |
@@ -825,7 +860,7 @@ attribute or a characteristic carries `object` where the sentence names the valu
 label as `SUBJECT` writes it, a made object by its name. The head of a sentence names its subject; an own member in a
 condition or a computation names the object of the reading, a read cell too, with the cell under `labels`; a read over
 a role names the object its walk reached, and
-`object: null` where a link on the walk is absent, so that the read is empty (uchar's RUNTIME-SEMANTICS ch. 5.8). The
+`object: null` where a link on the walk is absent or open, so that no target object was reached (uchar's RUNTIME-SEMANTICS ch. 5.8). The
 object is the engine's: the reading records it at the node of every read of a member (ch. 5.12, "The object of a
 read"). With `canonical`, `object` is
 the pair a consumer looks up: the sentence of the writer of that value begins with `SUBJECT` equal to `object` and its

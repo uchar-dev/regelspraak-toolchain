@@ -267,7 +267,10 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar 8d7a98c9b (kaart settled-empty-input, toolchainkaart settled-empty-input-in-service): 389 — de set van gate
 # 12 groeit van 396 naar 398 met jutterswet-invoer-leeg en jutterswet-invoer-leeg-strikt (attributesEmpty en de
 # scenariovorm is leeg; in een strikt verzoek {"state": "empty"} op het attribuut), en beide spelen door de dienst.
-EXPECTED_REPLAY_PLAYED=389
+# Pin uchar a0e2ff077 (kaart open-to-one-roles, toolchainkaart open-to-one-roles-in-service): 391 — de set van gate 12
+# groeit van 398 naar 400 met jutterswet-invoer-rol en jutterswet-invoer-rol-strikt (rolesEmpty en open naar-één-rollen;
+# in een strikt verzoek {"state": "empty"} op de naar-één-rol), en beide spelen door de dienst.
+EXPECTED_REPLAY_PLAYED=391
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -291,7 +294,8 @@ EXPECTED_REPLAY_PLAYED=389
 # 1102 (pin uchar 4d6bbe6be): de 40 cases van de zeven jutterswet-zelfde-conclusie-* goldens (8 waarde, 9 kenmerk, 6
 # ongeordend, 5 genest, 3 deponering, 2 fout, 7 initialisatie).
 # 1110 (pin uchar 8d7a98c9b): de drie cases van jutterswet-invoer-leeg en de vijf van jutterswet-invoer-leeg-strikt.
-EXPECTED_REPLAY_CASES=1110
+# 1119 (pin uchar a0e2ff077): de drie cases van jutterswet-invoer-rol en de zes van jutterswet-invoer-rol-strikt.
+EXPECTED_REPLAY_CASES=1119
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
@@ -363,6 +367,7 @@ RED_REFUSED=(
   "jutterswet-emmerscalair-per-periode/case1.json|scalaire waarde op een tijdsafhankelijk attribuut, die uchars replay in de periode van de rekendatum legt: 400 UNSUPPORTED in de dienst"
   "jutterswet-kenmerk-wel-en-niet/case1.json|een kenmerk dat geldt en niet geldt (EF-047): het verzoek geeft een kenmerk één keer"
   "jutterswet-kenmerknaam-wel-en-niet/case1.json|een kenmerk dat geldt en niet geldt (EF-047): het verzoek geeft een kenmerk één keer"
+  "jutterswet-rol-gevuld-en-leeg/case1-zelfde-instantie.json|een rol met een koppeling die op dezelfde instantie ook als leeg staat opgegeven (EF-049): het verzoek geeft een rol één keer"
   "undeclared-input-name/case1.json|een attribuut dat het document niet declareert (EF-040): 400 UNKNOWN_FIELD op het attribuut"
   "unknown-role-target-label/case1.json|een rol naar een id dat geen instantie draagt (EF-002): 400 UNKNOWN_FIELD op de rol"
   "unresolved-behind-a-holding-condition/case1.json|een Unresolved-knoop in het document (EF-019 waar de evaluatie hem bereikt): de dienst start niet op een onopgeloste naam"
@@ -376,7 +381,9 @@ RED_REFUSED=(
 # leeg met een §9.5-feit, geen evaluatiefout. Pin uchar e25f201ef: 67 — de rode map jutterswet-afwezigheidsmarkers-botsing
 # (twee cases, EF-016 tussen een marker en een waarde) verviel met de markers. Pin uchar 4d6bbe6be: 68 — de rode map
 # jutterswet-zelfde-conclusie-fout (EF-011 zonder peildatum wanneer de hogere constante default niet geldt) kwam erbij.
-EXPECTED_RED_FAULTS=68
+# Pin uchar a0e2ff077: 69 — van de rode map jutterswet-rol-gevuld-en-leeg (EF-049) geeft case2-tegeninstantie.json haar
+# foutsoort door de dienst; case1-zelfde-instantie.json staat hierboven in RED_REFUSED.
+EXPECTED_RED_FAULTS=69
 
 is_red_refused() {
   local e; for e in "${RED_REFUSED[@]+"${RED_REFUSED[@]}"}"; do [ "${e%%|*}" = "$1" ] && return 0; done; return 1

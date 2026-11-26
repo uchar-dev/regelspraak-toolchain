@@ -453,5 +453,89 @@ class PlaygroundOpenValuesTest {
         assertTrue(html.contains("w.input && w.input.state === \"empty\" ? \"leeg\""), "values row mist (invoer leeg)");
         assertTrue(html.contains("v.input && v.input.state === \"empty\" ? \"leeg\""), "open row mist (invoer leeg)");
         assertTrue(html.contains("o.unit && (o.timeline || o.cells || o.value != null)"), "valueHtml plakt unit achter leeg");
+        assertTrue(html.contains("r.labels.length ?"), "situationHtml mist lege rolweergave");
+        assertTrue(html.contains("\"characteristic\" in v ? \"characteristic\" : \"role\""), "fixpointHtml mist open rol");
+    }
+
+    @Test
+    void a_to_one_role_the_situation_states_to_be_leeg() throws Exception {
+        DecisionCore wrakCore = OpenValuesSource.wrak(CoreConfig.strict().withDetail());
+        String source = OpenValuesSource.WRAK_SOURCE + """
+
+            Scenario wrak zonder vinder en met lege vinder
+            toetst de regel vindpremie
+            Gegeven is de volgende situatie:
+            een Wrak W1
+            - de lengte is 30
+            een Wrak W2
+            - de lengte is 30
+            - de vinder is leeg
+            Met als verwacht resultaat:
+            - de vindpremie van W1 staat niet vast
+            - de vindpremie van W2 is 30
+            """;
+        for (JsonNode analysis : new JsonNode[]{
+                Playground.analyze(source),
+                Playground.analyze(source, null, wrakCore, null, false)}) {
+            JsonNode result = analysis.at("/scenario/results/0");
+            assertEquals("PASS", result.get("status").asText(), result.toString());
+            JsonNode w2Roles = result.at("/situation/objects/1/roles");
+            assertEquals(1, w2Roles.size(), w2Roles.toString());
+            assertEquals("vinder", w2Roles.at("/0/role").asText());
+            assertEquals("wrakvondst", w2Roles.at("/0/factType").asText());
+            assertEquals("Jutter", w2Roles.at("/0/targetType").asText());
+            assertEquals(0, w2Roles.at("/0/labels").size());
+            assertFalse(w2Roles.at("/0/multiple").asBoolean());
+            assertTrue(result.at("/fixpoint/objects/0/open").toString().contains("{\"role\":\"vinder\"}"),
+                    result.at("/fixpoint/objects/0/open").toString());
+            assertFalse(result.at("/fixpoint/objects/1/open").toString().contains("{\"role\":\"vinder\"}"),
+                    result.at("/fixpoint/objects/1/open").toString());
+            assertEquals(ServiceHttp.MAPPER.readTree("""
+                [{"kind": "role", "instance": "W1", "name": "vinder", "forOutputs": [
+                    {"instance": "W1", "name": "vindpremie", "kind": "attribute"}]}]"""),
+                    forOutput(result.get("openInputs"), "W1", "vindpremie"));
+        }
+
+        ScenarioBundle strictBundle = ScenarioResolver.resolve(source);
+        assertTrue(strictBundle.isOk());
+        JsonNode strictReq = SituationToRequest.assemble(strictBundle.scenarios().get(0), strictBundle.model());
+        assertTrue(strictReq.at("/instances/0/roles").isMissingNode());
+        assertEquals("{\"vinder\":{\"state\":\"empty\"}}", strictReq.at("/instances/1/roles").toString());
+
+        String ordinarySource = (OpenValuesSource.WRAK_SOURCE + """
+
+            Scenario wrak met lege vinder in gewone regelset
+            toetst de regel vindpremie
+            Gegeven is de volgende situatie:
+            een Wrak W2
+            - de lengte is 30
+            - de vinder is leeg
+            Met als verwacht resultaat:
+            - de vindpremie van W2 is 30
+            """).replace("Afleiden uit leeg: nee", "").replace(" (volledig gegeven)", "");
+        ScenarioBundle ordinaryBundle = ScenarioResolver.resolve(ordinarySource);
+        assertTrue(ordinaryBundle.isOk());
+        assertTrue(SituationToRequest.assemble(ordinaryBundle.scenarios().get(0), ordinaryBundle.model())
+                .at("/instances/0/roles").isMissingNode());
+        JsonNode ordinaryAnalysis = Playground.analyze(ordinarySource);
+        assertEquals("PASS", ordinaryAnalysis.at("/scenario/results/0/status").asText(), ordinaryAnalysis.toString());
+        assertEquals(1, ordinaryAnalysis.at("/resolver/warnings").size(), ordinaryAnalysis.toString());
+        assertTrue(ordinaryAnalysis.at("/resolver/warnings/0/message").asText().contains("vinder"),
+                ordinaryAnalysis.at("/resolver/warnings").toString());
+    }
+
+    private static JsonNode forOutput(JsonNode inputs, String instance, String output) {
+        var out = ServiceHttp.MAPPER.createArrayNode();
+        for (JsonNode i : inputs) {
+            var filtered = ServiceHttp.MAPPER.createArrayNode();
+            for (JsonNode o : i.get("forOutputs"))
+                if (o.get("instance").asText().equals(instance) && o.get("name").asText().equals(output)) filtered.add(o);
+            if (!filtered.isEmpty()) {
+                var copy = (com.fasterxml.jackson.databind.node.ObjectNode) i.deepCopy();
+                copy.set("forOutputs", filtered);
+                out.add(copy);
+            }
+        }
+        return out;
     }
 }

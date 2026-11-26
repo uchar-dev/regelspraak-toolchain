@@ -7,11 +7,16 @@ import dev.uchar.regelspraak.ir.ExceptionGroup;
 import dev.uchar.regelspraak.ir.Expr;
 import dev.uchar.regelspraak.ir.PrioritizedDefaults;
 import dev.uchar.regelspraak.ir.ResolvedConsistency;
+import dev.uchar.regelspraak.ir.ResolvedFactCreation;
+import dev.uchar.regelspraak.ir.ResolvedObjectCreation;
 import dev.uchar.regelspraak.ir.ResolvedRule;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
+import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.OriginForm;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
+import dev.uchar.regelspraak.model.RegelSpraakModel.RoleBindingRef;
 import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading;
 import dev.uchar.regelspraak.transpiler.tms.ConditionReading.NodeReading;
@@ -50,6 +55,8 @@ public final class OpenReads {
     private final RegelSpraakModel model;
     private final Map<String, Form> forms = new HashMap<>();
     private final Map<Object, EndState.EndObject> ends = new IdentityHashMap<>();
+    /** The open non-reciprocal to-one roles per object, in the declaration order of {@code model.factTypes} and role slot. */
+    private final Map<Object, List<OpenValue>> openRoles = new IdentityHashMap<>();
     /** The readings that left a target open, per object. */
     private final Map<Object, List<ConditionReading>> open = new IdentityHashMap<>();
 
@@ -58,6 +65,7 @@ public final class OpenReads {
         this.document = document;
         this.model = document.model();
         for (EndState.EndObject o : standing.objects()) ends.put(o.object(), o);
+        indexOpenRoles(standing.openLinks());
         for (ResolvedRule r : document.rules())
             if (r.target() instanceof Expr.AttributeReference a) {
                 boolean characteristic = r.kind() == ResolvedRule.Kind.KENMERKTOEKENNING;
@@ -105,6 +113,46 @@ public final class OpenReads {
 
     // ---------------- the members ----------------
 
+    /** Indexes {@code links} per near-side object, ordered deterministically by the declaration order of
+     *  {@code model.factTypes} and then the far-role slot ({@code 0} before {@code 1}). */
+    private void indexOpenRoles(List<EndState.OpenLink> links) {
+        if (links.isEmpty()) return;
+        Map<Object, List<EndState.OpenLink>> perObject = new IdentityHashMap<>();
+        for (EndState.OpenLink k : links) {
+            Object near = k.first() != null ? k.first() : k.second();
+            perObject.computeIfAbsent(near, o -> new ArrayList<>()).add(k);
+        }
+        perObject.forEach((bean, list) -> {
+            List<OpenValue> ordered = new ArrayList<>();
+            boolean[] matched = new boolean[list.size()];
+            for (FactType ft : model.factTypes.values()) {
+                if (ft.reciprocal || ft.roles.size() != 2) continue;
+                String ftNorm = Namen.norm(ft.name);
+                for (int farIdx = 0; farIdx < 2; farIdx++) {
+                    Role far = ft.roles.get(farIdx);
+                    if (far.many() || far.name() == null) continue;
+                    for (int i = 0; i < list.size(); i++) {
+                        if (matched[i]) continue;
+                        EndState.OpenLink k = list.get(i);
+                        int kFar = k.first() != null ? 1 : 0;
+                        if (kFar == farIdx && Namen.norm(k.factType()).equals(ftNorm)) {
+                            matched[i] = true;
+                            ordered.add(OpenValue.role(bean, far.name(), ft.name, farIdx));
+                        }
+                    }
+                }
+            }
+            for (int i = 0; i < list.size(); i++)
+                if (!matched[i]) {
+                    EndState.OpenLink k = list.get(i);
+                    ordered.add(k.first() != null
+                            ? OpenValue.role(bean, k.secondRole(), k.factType(), 1)
+                            : OpenValue.role(bean, k.firstRole(), k.factType(), 0));
+                }
+            openRoles.put(bean, List.copyOf(ordered));
+        });
+    }
+
     /** Member {@code name} of {@code object} among its open members, a characteristic where {@code characteristic}; null
      *  where it is not open. */
     EndState.Open open(Object object, String name, boolean characteristic) {
@@ -114,17 +162,107 @@ public final class OpenReads {
         return null;
     }
 
-    /** Whether {@code member} is input on its object: nothing but an initialisation writes it there. */
+    /** Whether {@code member} is input on its object: nothing but an initialisation writes an attribute or characteristic
+     *  there, and no creation writes a non-reciprocal to-one role there. */
     boolean input(OpenValue member) {
+        if (member.role())
+            return !roleWritten(model, document.loaded().roleBindings(), typeOf(member.object()),
+                    member.factType(), member.roleIndex());
         return !written(model, document.groups(), typeOf(member.object()), member.member(), member.characteristic());
     }
 
     /** Whether {@code member}, an open member, is open by its own input: an input member ({@link #input}) that no form left
-     *  open, so that its initialisation was not at its turn. A complete input member without a value is settled leeg above
-     *  its initialisation, which is at its turn there, and open only where the initialisation leaves it so by an open read
-     *  (ch. 1.5, "An initialisation"): that member is open by what its initialisation reads, not by its own input. */
+     *  open, so that its initialisation was not at its turn (or an open input to-one role in {@link EndState#openLinks}).
+     *  A complete input member without a value is settled leeg above its initialisation, which is at its turn there, and
+     *  open only where the initialisation leaves it so by an open read (ch. 1.5, "An initialisation"): that member is open
+     *  by what its initialisation reads, not by its own input. */
     boolean notGiven(OpenValue member) {
+        if (member.role())
+            return input(member) && openRoles.getOrDefault(member.object(), List.of()).contains(member);
         return input(member) && writers(member.object(), member.member(), member.characteristic()).isEmpty();
+    }
+
+    /** Whether an object creation or fact creation of {@code model} can lay a link on {@code factType} placing an instance
+     *  of {@code type} in the sister role opposite {@code farIdx} (uchar's RUNTIME-SEMANTICS ch. 1.5). */
+    public static boolean roleWritten(RegelSpraakModel model, Map<Object, RoleBindingRef> roleBindings, ObjectType type,
+                                      String factType, int farIdx) {
+        FactType ft = factTypeByName(model, factType);
+        if (ft == null || ft.reciprocal || ft.roles.size() != 2 || farIdx < 0 || farIdx >= 2) return false;
+        Role far = ft.roles.get(farIdx);
+        for (ResolvedObjectCreation oc : model.objectCreations) {
+            if (oc.subject() == null || oc.createdType() == null || !type.isA(oc.subject())) continue;
+            RoleBindingRef rb = roleBindings.get(oc);
+            if (rb == null) rb = oc.connectingRole();
+            if (rb != null) {
+                FactType ocFt = factTypeByName(model, rb.factType());
+                if (ocFt == ft && roleIndexByDeclaredName(ocFt, rb.role()) == farIdx) return true;
+            } else {
+                FactType uniqueFt = null;
+                int uniqueIdx = -1, count = 0;
+                for (FactType cand : model.factTypes.values()) {
+                    if (!cand.reciprocal && cand.roles.size() == 2) {
+                        for (int idx = 0; idx < 2; idx++) {
+                            ObjectType nearType = model.objectTypeByName(cand.roles.get(1 - idx).objectTypeName());
+                            ObjectType farType = model.objectTypeByName(cand.roles.get(idx).objectTypeName());
+                            if (nearType != null && farType != null
+                                    && oc.subject().isA(nearType) && oc.createdType().isA(farType)) {
+                                uniqueFt = cand;
+                                uniqueIdx = idx;
+                                count++;
+                            }
+                        }
+                    } else if (cand.reciprocal && cand.roles.size() == 1) {
+                        ObjectType rType = model.objectTypeByName(cand.roles.get(0).objectTypeName());
+                        if (rType != null && oc.subject().isA(rType) && oc.createdType().isA(rType)) count++;
+                    }
+                }
+                if (count == 1 && uniqueFt == ft && uniqueIdx == farIdx) return true;
+            }
+        }
+        for (ResolvedFactCreation fc : model.factCreations) {
+            if (fc.factType() == null || !Namen.norm(fc.factType()).equals(Namen.norm(ft.name))) continue;
+            boolean matchesTarget = matchesNameOrPlural(far, fc.targetRole());
+            boolean matchesAnchor = matchesNameOrPlural(far, fc.anchorRole());
+            ObjectType targetOt = fc.target() != null ? fc.target() : targetTypeFromRole(model, ft, fc.targetRole());
+            if ((matchesTarget && fc.anchor() != null && type.isA(fc.anchor()))
+                    || (matchesAnchor && targetOt != null && type.isA(targetOt)))
+                return true;
+        }
+        return false;
+    }
+
+    private static FactType factTypeByName(RegelSpraakModel model, String name) {
+        if (name == null) return null;
+        String norm = Namen.norm(name);
+        for (FactType ft : model.factTypes.values())
+            if (Namen.norm(ft.name).equals(norm)) return ft;
+        return null;
+    }
+
+    private static int roleIndexByDeclaredName(FactType ft, String roleName) {
+        if (ft == null || roleName == null) return -1;
+        String norm = Namen.norm(roleName);
+        for (int i = 0; i < ft.roles.size(); i++) {
+            String n = ft.roles.get(i).name();
+            if (n != null && Namen.norm(n).equals(norm)) return i;
+        }
+        return -1;
+    }
+
+    private static boolean matchesNameOrPlural(Role role, String candidate) {
+        if (candidate == null) return false;
+        String norm = Namen.norm(candidate);
+        return role.name() != null && Namen.norm(role.name()).equals(norm)
+                || role.plural() != null && Namen.norm(role.plural()).equals(norm);
+    }
+
+    private static ObjectType targetTypeFromRole(RegelSpraakModel model, FactType ft, String roleName) {
+        if (roleName == null || ft.roles.size() != 2) return null;
+        boolean m0 = ft.roles.get(0).name() != null && Namen.norm(ft.roles.get(0).name()).equals(Namen.norm(roleName));
+        boolean m1 = ft.roles.get(1).name() != null && Namen.norm(ft.roles.get(1).name()).equals(Namen.norm(roleName));
+        if (m0 && !m1) return model.objectTypeByName(ft.roles.get(0).objectTypeName());
+        if (m1 && !m0) return model.objectTypeByName(ft.roles.get(1).objectTypeName());
+        return null;
     }
 
     /** Whether a form other than an initialisation writes member {@code name}, a characteristic where
@@ -245,9 +383,11 @@ public final class OpenReads {
     /**
      * The open input members that keep one of {@code outcomes} open, each once, with the outcomes it keeps open: an outcome
      * that is open itself is followed over the forms that leave it open ({@link #of}) to the members open by their own input
-     * ({@link #notGiven}). They come in the order of {@code instances} and then of the declarations; an outcome that is not
-     * open has none, and an open check member of the opgave marker ({@code berekende X}, {@code afwijkende opgave X}) is
-     * skipped where the marked attribute {@code X} itself already stands on that object ({@link #settledOpgaveCheck}).
+     * ({@link #notGiven}). They come in the order of {@code instances} and then of the declarations: per instance its open
+     * attributes and characteristics ({@link EndState.EndObject#open}) followed by its open non-reciprocal to-one roles in
+     * the declaration order of {@code model.factTypes} and role slot. An outcome that is not open has none, and an open check
+     * member of the opgave marker ({@code berekende X}, {@code afwijkende opgave X}) is skipped where the marked attribute
+     * {@code X} itself already stands on that object ({@link #settledOpgaveCheck}).
      *
      * <p>It is what the session met and can be given now: a composite was read past its first undetermined member, but a value
      * broke off at its first open read and a fold names its first open member, so once these are given another can turn out
@@ -269,12 +409,17 @@ public final class OpenReads {
             for (OpenValue i : inputs) found.computeIfAbsent(i, k -> new ArrayList<>()).add(outcome);
         }
         List<OpenInput> out = new ArrayList<>();
-        for (Object instance : instances)
+        for (Object instance : instances) {
             for (EndState.Open o : end(instance).open()) {
                 OpenValue member = new OpenValue(instance, o.name(), o.characteristic());
                 List<OpenValue> of = found.remove(member);
                 if (of != null) out.add(new OpenInput(member, List.copyOf(of)));
             }
+            for (OpenValue role : openRoles.getOrDefault(instance, List.of())) {
+                List<OpenValue> of = found.remove(role);
+                if (of != null) out.add(new OpenInput(role, List.copyOf(of)));
+            }
+        }
         if (!found.isEmpty())
             throw new IllegalStateException("een open uitkomst rust op een lid dat geen open lid van een instantie is: "
                     + found.keySet().stream().map(OpenValue::member).toList());
@@ -325,6 +470,7 @@ public final class OpenReads {
             inputs.add(member);
             return;
         }
+        if (member.role()) return;
         for (ConditionReading r : writers(member.object(), member.member(), member.characteristic()))
             for (OpenValue read : of(r)) follow(read, seen, inputs);
     }

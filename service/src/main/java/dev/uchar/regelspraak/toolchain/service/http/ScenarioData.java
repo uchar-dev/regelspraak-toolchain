@@ -8,6 +8,7 @@ import dev.uchar.regelspraak.engine.ScenarioResult.ExpectationResult;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.ir.ResolvedScenario.AttributeValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Cell;
+import dev.uchar.regelspraak.ir.ResolvedScenario.EmptyRole;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Instance;
 import dev.uchar.regelspraak.ir.ResolvedScenario.CharacteristicValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterValue;
@@ -62,8 +63,9 @@ final class ScenarioData {
      *  {@code parameters}: the values of the chosen parameter set on the peildatum first, then those of the
      *  situation. An attribute the situation states to be leeg ("- de X is leeg", the case's {@code attributesEmpty})
      *  carries {@code value: null}; a characteristic it gives as not holding ("- is niet drijfhout", the case's
-     *  {@code characteristicsAbsent}) carries {@code holds: false}. Every assignment carries its source line
-     *  ({@code line}). */
+     *  {@code characteristicsAbsent}) carries {@code holds: false}; a non-reciprocal to-one role it states to be leeg
+     *  ("- de X is leeg", the case's {@code rolesEmpty}) carries an empty {@code labels} array. Every assignment carries
+     *  its source line ({@code line}). */
     static ObjectNode situation(ResolvedScenario s, RegelSpraakModel model, Naming ng) {
         ObjectNode n = NF.objectNode();
         if (s.asOfDate() == null) n.putNull("asOfDate"); else n.put("asOfDate", s.asOfDate().toString());
@@ -100,12 +102,21 @@ final class ScenarioData {
             ArrayNode roles = on.putArray("roles");
             for (RoleValue r : i.roles()) {
                 ObjectNode rn = roles.addObject();
-                name(rn, "role", ng.roleFrom(ot, r.key()), r.key());
+                name(rn, "role", ng.role(r.factType(), r.farIndex(), r.key()), r.key());
                 name(rn, "factType", ng.factType(r.factType().name), r.factType().name);
                 name(rn, "targetType", ng.objectType(r.targetType().name), r.targetType().name);
                 ArrayNode labels = rn.putArray("labels");
                 for (String l : r.targetLabels()) labels.add(l);
                 rn.put("multiple", r.many());
+                rn.put("line", r.line());
+            }
+            for (EmptyRole r : i.rolesEmpty()) {
+                ObjectNode rn = roles.addObject();
+                name(rn, "role", ng.role(r.factType(), r.farIndex(), r.key()), r.key());
+                name(rn, "factType", ng.factType(r.factType().name), r.factType().name);
+                name(rn, "targetType", ng.objectType(r.targetType().name), r.targetType().name);
+                rn.putArray("labels");
+                rn.put("multiple", false);
                 rn.put("line", r.line());
             }
         }
@@ -183,8 +194,11 @@ final class ScenarioData {
                 for (TimeWindow w : k.periods()) p.addObject().put("from", w.van().toString()).put("to", w.until().toString());
                 periods.put(k.characteristic(), p);
             }
+            Set<FixpointGivens.EmptyRole> emptyRoles = new java.util.LinkedHashSet<>();
+            for (EmptyRole r : i.rolesEmpty())
+                emptyRoles.add(new FixpointGivens.EmptyRole(r.factType().name, r.farIndex()));
             input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods, absent,
-                    emptyAttributes));
+                    emptyAttributes, emptyRoles));
         }
         return FixpointGivens.fixpoint(session.standing(), input, model, ng);
     }

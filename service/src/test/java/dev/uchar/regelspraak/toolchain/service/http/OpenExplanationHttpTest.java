@@ -72,6 +72,12 @@ class OpenExplanationHttpTest {
 
     @Test
     void a_member_of_another_object() throws Exception {
+        assertSentence("W1: zijn vindpremie staat niet vast, want zijn vinder is niet gegeven; voor de regel 'vindpremie'"
+                + " staat niet vast: zijn lengte plus de bonus van de vinder van het Wrak, met zijn lengte (30) en de bonus van"
+                + " de vinder van het Wrak (staat niet vast)", wrak("\"attributes\": {\"lengte\": 30}"));
+        assertSentence("W1 heeft als vindpremie 30 volgens de regel 'vindpremie' (onvoorwaardelijk): zijn lengte plus de bonus"
+                + " van de vinder van het Wrak, met zijn lengte (30) en de bonus van de vinder van het Wrak (leeg)",
+                wrak("\"attributes\": {\"lengte\": 30}, \"roles\": {\"vinder\": {\"state\": \"empty\"}}"));
         assertSentence("W1: zijn vindpremie staat niet vast, want van J1 is zijn bonus niet gegeven; voor de regel 'vindpremie'"
                 + " staat niet vast: zijn lengte plus de bonus van de vinder van het Wrak, met zijn lengte (30) en de bonus van"
                 + " de vinder van het Wrak (van J1 niet gegeven)", post("""
@@ -359,6 +365,8 @@ class OpenExplanationHttpTest {
                 + "\"gevaarlijk\",\"kind\":\"characteristic\"}}[« (staat niet vast)»]]",
                 ExplanationPartsCheck.render(ServiceHttp.MAPPER.createArrayNode()
                         .add(group(sentence(wrak(""), "W1: of hij stil is"), "CONDITION"))));
+        assertEquals(json("{\"object\": \"W1\", \"canonical\": \"vinder\", \"kind\": \"role\"}"),
+                group(sentence(wrak("\"attributes\": {\"lengte\": 30}"), "W1: zijn vindpremie"), "READING", "open").get("open"));
         assertEquals(json("{\"object\": \"J1\", \"canonical\": \"bonus\", \"kind\": \"attribute\"}"), group(sentence(post("""
                 {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
                                {"type": "Wrak", "id": "W1", "attributes": {"lengte": 30}}]}"""), "W1: zijn vindpremie"),
@@ -397,7 +405,7 @@ class OpenExplanationHttpTest {
         for (JsonNode answer : List.of(wrak(""), jutter("", "", ""), wrak("\"attributes\": {\"lengte\": 5}")))
             for (String text : texts(answer)) {
                 assertFalse(text.contains("onbekend"), text);
-                assertFalse(text.replace("zijn opgegeven kadegeld (leeg)", "").replace("het Wrak (leeg)", "")
+                assertFalse(text.replace("zijn opgegeven kadegeld (leeg)", "")
                         .replace(") leeg is", ")").contains("leeg"), text);
             }
     }

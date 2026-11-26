@@ -437,6 +437,18 @@ writes one does not start:
   strict rule set and leaves it out in an ordinary one (where the playground shows uchar's warning RGS-473 when it replaces
   no inherited value). The strict OpenAPI document adds `EmptyAttributeInput` (`oneOf` on scalar request attributes); all
   ordinary rule sets keep their requests, answers, `/info` and OpenAPI documents byte for byte.
+- **Open and settled-empty to-one roles** (card `open-to-one-roles-in-service`, uchar's card `open-to-one-roles`): in a
+  strict rule set (`Afleiden uit leeg: nee`) a non-reciprocal `to-one` role at an instance is linked (`"<role>": "<id>"` or
+  `["<id>"]`), settled without a link (`"<role>": {"state": "empty"}`, uchar's `rolesEmpty`), or left out / `null` (open
+  unless declared `(volledig gegeven)` or linked from the opposite end or `relations`). `{"state": "empty"}` in an ordinary
+  rule set, on a `to-many` or reciprocal role, or in `relations`, and another state name on a role are a 400 `WRONG_TYPE`;
+  an ill-formed `state` object or two spellings of one role on an instance are a 400 `MALFORMED`; a link from the opposite
+  end or `relations` beside `{"state": "empty"}` on the same directed `to-one` role is a 422 `EVALUATION_FAULT` with uchar's
+  code `EF-049` (`label`, `role`). `?openInputs=true` reports an open `to-one` role as `{"kind": "role", "instance", "name",
+  "forOutputs"}`, `/info` includes `(volledig gegeven)` `to-one` roles in `completeInput`, `fixpoint` lists open `to-one`
+  roles in `objects[].open`, the explanation renders an open `to-one` role from uchar's `ConditionReading` (`"zijn <rol> is
+  niet gegeven"`, `"van <id> is zijn <rol> niet gegeven"`), scenarios carry `- de/het <rol> is leeg` on both routes, and the
+  strict OpenAPI document adds `EmptyRoleInput`. Ordinary rule sets remain byte for byte unchanged.
 
 ## The pin
 
@@ -504,10 +516,10 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (389). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (400). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   replay excludes a case, not a golden: a golden plays when every case the service carries plays. The numbers of
-  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 380; `EXPECTED_REPLAY_CASES`, 1062); every case
+  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 391; `EXPECTED_REPLAY_CASES`, 1119); every case
   that does not play is listed by golden and case file with its reason (10 cases of 9 goldens, each with a scalar on a
   time-dependent attribute, which the request does not carry), and every golden the service does not start on by name
   (1, whose document holds an `Unresolved` node); a deviation always fails, and the list fails when it goes stale in
@@ -517,9 +529,9 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   from an empty value the request states what does not hold, the comparison reads the states of the answer, and the
   explanation is asked and checked as of any other golden. A red leg sends every red case
   of uchar (`uchar/corpus/red`) on which uchar's gate 8 lets the Drools branch fault as a request, and the 422 must
-  carry the pinned `code` with the pinned `params` as a subset, as gate 8 holds them (`EXPECTED_RED_FAULTS`, 67); the
+  carry the pinned `code` with the pinned `params` as a subset, as gate 8 holds them (`EXPECTED_RED_FAULTS`, 69); the
   cases the service refuses first, with a 400 or by not starting on the document, stand in `RED_REFUSED` with the
-  reason (14), and that list fails when it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
+  reason (17), and that list fails when it goes stale in either direction. About 90 seconds with four services at a time (`REPLAY_WORKERS`; 88 s measured 2026-10-22, 238 goldens).
 - `scenario-test` runs the 32 lines of `examples/toka-scenarios/manifest`; the three golden TOKA scenarios uchar's
   scenario resolver refuses are listed in `scripts/toka-manifest-exclusions.txt` with a fragment of that refusal,
   and a listed scenario uchar accepts fails the run.
@@ -625,11 +637,14 @@ is still asking needs that difference, so the answer of such a rule set gives ev
 A request gives a characteristic as `{"state": "holds"}`, as `{"state": "holdsNot"}` where it stands not to hold, and
 leaves it out (or `null`) where it is not given; a bare boolean, `true` or `false`, is a 400. A scalar attribute gets a
 plain value of its datatype, `{"state": "empty"}` where it stands to be leeg, or is left out (or `null`) where it is not
-given. What is not given is open, unless its declaration says `(volledig gegeven)`; `/info` lists those members
-(`completeInput`) beside `"inferFromEmpty": false`. A member that only an initialisation writes is input, with the
+given; a non-reciprocal `to-one` role under `instances[].roles` gets a target id, `{"state": "empty"}` where it stands to
+have no linked object, or is left out (or `null`) where it is not given (a link from the opposite end or `relations` beside
+`{"state": "empty"}` is a 422 `EF-049`). What is not given is open, unless its declaration says `(volledig gegeven)`; `/info`
+lists those members — attributes, characteristics and non-reciprocal `to-one` roles — (`completeInput`) beside
+`"inferFromEmpty": false`. A member that only an initialisation writes is input, with the
 initialisation as its default value where it is `(volledig gegeven)` or given as `{"state": "empty"}`. `inconsistencies` names what stands, so an empty list does not
-say that every consistency holds. The explanation says of an open outcome that it does not stand and which member keeps it open.
-`?openInputs=true` (a 400 on any other rule set) adds `openInputs`: the input members that keep an open outcome of `output` open now, with the
+say that every consistency holds. The explanation says of an open outcome that it does not stand and which member or role keeps it open.
+`?openInputs=true` (a 400 on any other rule set) adds `openInputs`: the input members (`attribute`, `characteristic` or `role`) that keep an open outcome of `output` open now, with the
 outcomes each keeps open, `{"kind", "instance", "name", "forOutputs": [{"instance", "name", "kind"}]}`. It is what can be
 asked now, not the whole questionnaire: once that is given, another read can turn out open. `docs/ENGINE.md`, "A strict
 rule set", has the whole contract; for every other rule set nothing of it applies.

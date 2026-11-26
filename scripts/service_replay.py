@@ -176,8 +176,19 @@ def request_body(case, document):
             characteristics[k] = {"periods": [{"from": p["from"], "to": p["to"]} for p in periods]}
         if characteristics:
             inst["characteristics"] = characteristics
-        if i.get("roles"):
-            inst["roles"] = {r: list(ls) for r, ls in i["roles"].items()}
+        roles = {r: list(ls) for r, ls in (i.get("roles") or {}).items()}
+        linked = {norm(x) for x in roles}
+        seen_empty_roles = set()
+        for r in i.get("rolesEmpty") or []:
+            nr = norm(r)
+            if nr in linked:
+                raise NotExpressible(f"rol {r!r} staat in beide lijsten van de case, en het verzoek geeft een rol"
+                                     f" één keer ({i['label']})")
+            if strict(document) and nr not in seen_empty_roles:
+                seen_empty_roles.add(nr)
+                roles[r] = {"state": "empty"}
+        if roles:
+            inst["roles"] = roles
         instances.append(inst)
     v["instances"] = instances
     return v

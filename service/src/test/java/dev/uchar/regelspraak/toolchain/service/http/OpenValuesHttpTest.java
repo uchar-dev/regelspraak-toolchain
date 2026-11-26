@@ -448,7 +448,8 @@ class OpenValuesHttpTest {
         assertEquals(json("""
             [{"attribute": "taxatie"}, {"attribute": "vindloon"}, {"attribute": "uitbetaling"},
              {"attribute": "bewakingstoeslag"}, {"attribute": "bergloon", "input": "7"}, {"attribute": "vrachtprijs"},
-             {"characteristic": "kostbaar", "input": {"state": "holdsNot"}}]"""), o.get("open"), answer.toString());
+             {"characteristic": "kostbaar", "input": {"state": "holdsNot"}}, {"role": "jutter"}]"""),
+                o.get("open"), answer.toString());
         assertEquals(json("""
             [{"attribute": "toeslag", "value": "3", "origin": "input"},
              {"attribute": "premie", "value": "0", "origin": "derived"}]"""), o.get("values"), answer.toString());
@@ -485,7 +486,16 @@ class OpenValuesHttpTest {
              {"attribute": "uitbetaling", "value": "0", "origin": "derived"},
              {"attribute": "bewakingstoeslag", "value": "5", "origin": "derived"},
              {"attribute": "premie", "value": "10", "origin": "derived"}]"""), derived.get("values"), derived.toString());
-        assertEquals(json("[{\"attribute\": \"vrachtprijs\"}]"), derived.get("open"), derived.toString());
+        assertEquals(json("[{\"attribute\": \"vrachtprijs\"}, {\"role\": \"jutter\"}]"),
+                derived.get("open"), derived.toString());
+
+        // Settled-empty to-one role jutter leaves open as well
+        JsonNode emptyRole = ok(post(detail, "vondst?fixpoint=true", request(
+                "\"attributes\": {\"taxatie\": {\"state\": \"empty\"}, \"herkomst\": {\"state\": \"empty\"}},"
+                        + " \"characteristics\": {\"onleesbaar\": {\"state\": \"holds\"}, \"betwist\": {\"state\": \"holdsNot\"}},"
+                        + " \"roles\": {\"jutter\": {\"state\": \"empty\"}}",
+                ""))).at("/fixpoint/objects/0");
+        assertEquals(json("[{\"attribute\": \"vrachtprijs\"}]"), emptyRole.get("open"), emptyRole.toString());
 
         // 2. Waiting beside an open writer (bergloon empty while taxatie is not given)
         JsonNode waiting = ok(post(detail, "vondst?fixpoint=true", request(
@@ -598,6 +608,14 @@ class OpenValuesHttpTest {
         assertTrue(schemas.at("/Vondst/properties/taxatie/nullable").asBoolean());
         assertTrue(schemas.at("/Request/properties/instances/items/properties/attributes/description").asText()
                 .contains("{\"state\": \"empty\"}"));
+        JsonNode emptyRoleInput = schemas.get("EmptyRoleInput");
+        assertEquals(json("""
+            {"type": "object", "required": ["state"], "additionalProperties": false, "properties":
+              {"state": {"type": "string", "enum": ["empty"]}}}"""),
+                ((com.fasterxml.jackson.databind.node.ObjectNode) emptyRoleInput.deepCopy()).without("description"));
+        assertTrue(schemas.at("/Request/properties/instances/items/properties/roles/additionalProperties/nullable").asBoolean());
+        assertEquals("#/components/schemas/EmptyRoleInput",
+                schemas.at("/Request/properties/instances/items/properties/roles/additionalProperties/oneOf/2/$ref").asText());
         assertFalse(schemas.get("Vondst").toString().contains("boolean"), schemas.get("Vondst").toString());
         assertTrue(schemas.at("/Vondst/properties/toeslag/description").asText().contains("Volledig gegeven"));
         // a complete attribute that only an initialisation writes is no leeg of its own: the initialisation is at its turn
@@ -673,6 +691,48 @@ class OpenValuesHttpTest {
     }
 
     // ---------------- helpers ----------------
+
+    @Test
+    void open_and_settled_empty_to_one_roles_and_ef049_over_http() throws Exception {
+        ServiceHttp wrakken = ServiceHttp.bind(OpenValuesSource.wrak(CoreConfig.strict().withDetail()), "127.0.0.1", 0).start();
+        try {
+            // Omitted and null vinder both keep vindpremie open; {"state": "empty"} settles vinder without a Jutter
+            for (String rolePart : List.of("", ", \"roles\": {\"vinder\": null}")) {
+                JsonNode open = ok(post(wrakken, "wrak?openInputs=true&fixpoint=true",
+                        "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\", \"attributes\": {\"lengte\": 30}" + rolePart + "}]}"));
+                assertEquals(json("{\"state\": \"open\"}"), open.at("/instances/0/attributes/vindpremie"));
+                assertTrue(open.get("openInputs").toString().contains("\"kind\":\"role\",\"instance\":\"W1\",\"name\":\"vinder\""),
+                        open.toString());
+                assertTrue(open.at("/fixpoint/objects/0/open").toString().contains("{\"role\":\"vinder\"}"), open.toString());
+            }
+            JsonNode settled = ok(post(wrakken, "wrak?openInputs=true&fixpoint=true",
+                    "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\", \"attributes\": {\"lengte\": 30},"
+                            + " \"roles\": {\"vinder\": {\"state\": \"empty\"}}}]}"));
+            assertEquals(json("{\"state\": \"filled\", \"value\": 30}"), settled.at("/instances/0/attributes/vindpremie"));
+            assertFalse(settled.get("openInputs").toString().contains("\"vinder\""), settled.toString());
+            assertFalse(settled.at("/fixpoint/objects/0/open").toString().contains("{\"role\":\"vinder\"}"), settled.toString());
+
+            // 422 EF-049 from opposite instance and from top-level relations
+            for (String conflictBody : List.of(
+                    """
+                    {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
+                                   {"type": "Wrak", "id": "W1", "roles": {"vinder": {"state": "empty"}}}]}""",
+                    """
+                    {"instances": [{"type": "Jutter", "id": "J1"},
+                                   {"type": "Wrak", "id": "W1", "roles": {"vinder": {"state": "empty"}}}],
+                     "relations": [{"factType": "wrakvondst", "roles": {"vinder": "J1", "gevonden wrak": "W1"}}]}""")) {
+                HttpResponse<String> r = post(wrakken, "wrak", conflictBody);
+                assertEquals(422, r.statusCode(), r.body());
+                JsonNode body = json(r.body());
+                assertEquals("EVALUATION_FAULT", body.get("status").asText(), r.body());
+                assertEquals("EF-049", body.at("/faults/0/code").asText(), r.body());
+                assertEquals("W1", body.at("/faults/0/params/label").asText(), r.body());
+                assertEquals("vinder", body.at("/faults/0/params/role").asText(), r.body());
+            }
+        } finally {
+            wrakken.stop(0);
+        }
+    }
 
     /** The answer for V1 with {@code given} on the service from the sources: the attributes and characteristics are those of
      *  {@code expected}, in that order. */

@@ -63,8 +63,9 @@ import java.util.List;
  *
  * <p><b>A strict rule set</b> ({@link OpenValues}) has the states of a member as enumerations: the components
  * {@code AttributeState} and {@code CharacteristicState} for the answer, {@code CharacteristicInput} for a
- * characteristic of a request, and {@code EmptyAttributeInput} as an option in {@code oneOf} on every scalar attribute of a
- * request; every member says what it means that a request does not give it; the operations have the
+ * characteristic of a request, {@code EmptyAttributeInput} as an option in {@code oneOf} on every scalar attribute of a
+ * request, and {@code EmptyRoleInput} in {@code Request.properties.instances.items.properties.roles}; every member says
+ * what it means that a request does not give it; the operations have the
  * flag {@code openInputs} and {@code Answer} its field. The document of any other rule set has none of this.
  *
  * <p><b>The comment of a declaration.</b> The description of an object type, of an attribute and of a characteristic
@@ -131,6 +132,7 @@ public final class OpenApiEmitter {
             schemas.set("CharacteristicState", characteristicStateSchema());
             schemas.set(CHARACTERISTIC_INPUT, characteristicInputSchema());
             schemas.set(EMPTY_ATTRIBUTE_INPUT, emptyAttributeInputSchema());
+            schemas.set(EMPTY_ROLE_INPUT, emptyRoleInputSchema());
         }
         schemas.set("Error", errorSchema());
         schemas.set("EvaluationFault", evaluationFaultSchema());
@@ -477,6 +479,9 @@ public final class OpenApiEmitter {
     /** The component of a settled-empty scalar attribute in a request of a strict rule set. */
     private static final String EMPTY_ATTRIBUTE_INPUT = "EmptyAttributeInput";
 
+    /** The component of a settled-empty non-reciprocal to-one role in a request of a strict rule set. */
+    private static final String EMPTY_ROLE_INPUT = "EmptyRoleInput";
+
     /** A characteristic as a request of a strict rule set ({@link OpenValues}) gives it: its state. */
     private static ObjectNode characteristicInputSchema() {
         ObjectNode s = stateSchema(OpenValues.HOLDS, OpenValues.HOLDS_NOT);
@@ -492,6 +497,15 @@ public final class OpenApiEmitter {
         s.put("description", "De lege stand van een scalair attribuut in een verzoek: {\"state\": \"empty\"} waar vaststaat"
                 + " dat het leeg is. Een gevulde waarde staat als gewone waarde van het datatype, niet als {\"state\":"
                 + " \"filled\", ...} (400 WRONG_TYPE); waar het niet gegeven is, ontbreekt het of is het null.");
+        return s;
+    }
+
+    /** The settled-empty state of a non-reciprocal to-one role in a request of a strict rule set ({@link OpenValues}). */
+    private static ObjectNode emptyRoleInputSchema() {
+        ObjectNode s = stateSchema(OpenValues.EMPTY);
+        s.put("description", "De lege stand van een niet-wederkerige naar-één-rol in een verzoek: {\"state\": \"empty\"}"
+                + " waar vaststaat dat er geen gekoppeld object is. Een gekoppeld object staat als zijn id; waar de rol niet"
+                + " gegeven is, ontbreekt zij of is zij null.");
         return s;
     }
 
@@ -799,8 +813,11 @@ public final class OpenApiEmitter {
         else
             freeObject(instProps.putObject("characteristics"), "kenmerknaam -> boolean; een tijdsafhankelijk kenmerk neemt"
                     + " de perioden waarin het geldt: " + TimelineInput.PERIODS_FORM + ".");
-        freeObject(instProps.putObject("roles"),
-                "rolnaam -> doel-id of lijst van doel-ids.");
+        if (OpenValues.in(model))
+            strictRolesSchema(instProps.putObject("roles"));
+        else
+            freeObject(instProps.putObject("roles"),
+                    "rolnaam -> doel-id of lijst van doel-ids.");
 
         // relaties[]
         ObjectNode relations = props.putObject("relations");
@@ -879,19 +896,20 @@ public final class OpenApiEmitter {
                     + " openhouden, elk eenmaal, in de volgorde van de instanties van het verzoek en dan van de declaratie."
                     + " De namen staan in het vocabulaire van het antwoord.");
             ObjectNode openProps = open.putObject("properties");
-            member(openProps);
+            member(openProps, true);
             ObjectNode outputs = list(openProps, "forOutputs", "de open uitkomsten die dit lid openhoudt.");
-            member(outputs.putObject("properties"));
+            member(outputs.putObject("properties"), false);
         }
         detailFields(props);
         return s;
     }
 
     /** A member of an instance, as {@link OpenInputs} writes it, on {@code props}. */
-    private static void member(ObjectNode props) {
+    private static void member(ObjectNode props, boolean withRole) {
         ObjectNode kind = props.putObject("kind");
         kind.put("type", "string");
-        kind.putArray("enum").add("attribute").add("characteristic");
+        ArrayNode kinds = kind.putArray("enum").add("attribute").add("characteristic");
+        if (withRole) kinds.add("role");
         props.putObject("instance").put("type", "string").put("description", "het id van de instantie.");
         props.putObject("name").put("type", "string");
     }
@@ -987,7 +1005,8 @@ public final class OpenApiEmitter {
         if (strict) {
             s.put("description", s.get("description").asText() + " In een regelset die uit leeg niets afleidt: een CONDITION die"
                     + " niet vaststaat draagt undetermined: true en geen holds; een READING van een lezing die op een open lid"
-                    + " afbrak draagt open, dat lid (object zoals SUBJECT het noemt, canonical, en kind: attribute of characteristic), en geen VALUE;"
+                    + " afbrak draagt open, dat lid (object zoals SUBJECT het noemt, canonical, en kind: attribute,"
+                    + " characteristic of role), en geen VALUE;"
                     + " MEMBERS van een kwantorvouw waarvan het oordeel of dat van een lid niet vaststaat, draagt unsettled,"
                     + " het aantal leden waarvoor niet vaststaat of de toets geldt, en filterUnsettled, het aantal leden"
                     + " waarvan het filter onbepaald is, zodat niet vaststaat of zij meetellen; zo'n lid telt alleen daar,"
@@ -1008,7 +1027,7 @@ public final class OpenApiEmitter {
             openProps.putObject("canonical").put("type", "string");
             ObjectNode kindOfMember = openProps.putObject("kind");
             kindOfMember.put("type", "string");
-            kindOfMember.putArray("enum").add("attribute").add("characteristic");
+            kindOfMember.putArray("enum").add("attribute").add("characteristic").add("role");
         }
         return s;
     }
@@ -1082,11 +1101,12 @@ public final class OpenApiEmitter {
                 + " die van de invoer.");
         characteristics.put("additionalProperties", true);
         if (strict)
-            list(objectProps, "open", "elk lid dat openstaat: attribute of characteristic, met unit bij een attribuut met"
-                    + " een eenheid, en met input waar het verzoek het een waarde of lege stand gaf, die niet staat naast"
-                    + " een regel die openstaat (bij een attribuut zijn waarde of {\"state\": \"empty\"}, bij een kenmerk"
-                    + " {\"state\": \"holdsNot\"}). Een lid dat hier niet staat en onder values of"
-                    + " characteristics evenmin, is vaststaand leeg of geldt vaststaand niet.")
+            list(objectProps, "open", "elk lid dat openstaat: attribute, characteristic of role, met unit bij een"
+                    + " attribuut met een eenheid, en met input waar het verzoek het een waarde of lege stand gaf, die"
+                    + " niet staat naast een regel die openstaat (bij een attribuut zijn waarde of {\"state\": \"empty\"},"
+                    + " bij een kenmerk {\"state\": \"holdsNot\"}, bij een rol {\"state\": \"empty\"}). Een lid dat hier"
+                    + " niet staat en onder values of characteristics evenmin, is vaststaand leeg of geldt vaststaand"
+                    + " niet.")
                     .put("additionalProperties", true);
         ObjectNode made = list(props, "madeObjects", "de objecten die een objectcreatie maakte.");
         ObjectNode madeProps = made.putObject("properties");
@@ -1280,10 +1300,26 @@ public final class OpenApiEmitter {
             infer.put("type", "boolean");
             infer.putArray("enum").add(false);
             infer.put("description", "de regelset leidt uit leeg niets af: een lid is gevuld, vaststaand leeg of open.");
-            list(props, "completeInput", "de invoerleden waarvan de declaratie zegt dat hun invoer volledig is: kind (attribute"
-                    + " of characteristic), objectType en name.").put("additionalProperties", true);
+            list(props, "completeInput", "de invoerleden waarvan de declaratie zegt dat hun invoer volledig is: kind"
+                    + " (attribute, characteristic of role), objectType en name.").put("additionalProperties", true);
         }
         return s;
+    }
+
+    /** The {@code instances[].roles} property of {@code Request} in a strict rule set ({@link OpenValues}). */
+    private static void strictRolesSchema(ObjectNode node) {
+        node.put("type", "object");
+        ObjectNode value = node.putObject("additionalProperties");
+        value.put("nullable", true);
+        ArrayNode oneOf = value.putArray("oneOf");
+        oneOf.addObject().put("type", "string");
+        ObjectNode list = oneOf.addObject();
+        list.put("type", "array");
+        list.putObject("items").put("type", "string");
+        oneOf.addObject().put("$ref", "#/components/schemas/" + EMPTY_ROLE_INPUT);
+        node.put("description", "rolnaam -> doel-id, lijst van doel-ids, of {\"state\": \"empty\"} op een"
+                + " niet-wederkerige naar-één-rol waar vaststaat dat er geen gekoppeld object is; waar een rol niet"
+                + " gegeven is, ontbreekt zij of is zij null.");
     }
 
     /** An object whose every property is the component {@code schema}. */

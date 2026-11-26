@@ -103,6 +103,19 @@ public final class Naming {
     /** Role {@code role} of fact type {@code factType}, both as the model declares them. */
     public String role(String factType, String role) { return designate(Designatable.role(factType, role), role); }
 
+    /** Role at {@code roleIndex} of {@code factType}, designated in the chosen vocabulary or by its declared name. */
+    public String role(FactType factType, int roleIndex) {
+        Role r = factType.roles.get(roleIndex);
+        return role(factType.name, r.name());
+    }
+
+    /** Role at {@code roleIndex} of {@code factType}, designated in the chosen vocabulary or {@code fallback} where it
+     *  has no designation (or in the canonical choice, so a written plural stays as written). */
+    public String role(FactType factType, int roleIndex, String fallback) {
+        Role r = factType.roles.get(roleIndex);
+        return designate(Designatable.role(factType.name, r.name()), fallback);
+    }
+
     /** The role written {@code written} (its name, declared plural or best-effort plural) that {@code subject}
      *  reaches: the far role of a fact type {@code subject} takes part in. When the written name names no such role,
      *  or more than one, it stays as written. */

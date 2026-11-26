@@ -9,9 +9,12 @@ import dev.uchar.regelspraak.cases.EndState;
 import dev.uchar.regelspraak.model.Datatype;
 import dev.uchar.regelspraak.model.Unit;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
 import dev.uchar.regelspraak.toolchain.engine.CaseSession;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
+import dev.uchar.regelspraak.transpiler.core.Namen;
 import dev.uchar.regelspraak.transpiler.tms.ComputeHelpers;
 import dev.uchar.regelspraak.transpiler.tms.Fault;
 
@@ -74,6 +77,13 @@ public final class FixpointGivens {
         UnrenderableValue(String sentence) { super(sentence); }
     }
 
+    /** A non-reciprocal to-one role slot on an instance: the normalised fact-type name and the 0-based far-role index. */
+    public record EmptyRole(String factType, int roleIndex) {
+        public EmptyRole {
+            factType = Namen.norm(factType);
+        }
+    }
+
     /**
      * An object of the input of a session: its label and what the input gave it. {@code attributes} holds per attribute
      * the input value as a node with {@code value} (and {@code valueCanonical} for an enumeration value named
@@ -81,15 +91,21 @@ public final class FixpointGivens {
      * (as uchar keys a cell) and {@code value}, keyed case-insensitively; {@code characteristics} the characteristics
      * the input set, case-insensitively, and {@code periods} per time-dependent characteristic the input gave periods
      * those periods, as {@code from}, {@code to} nodes ({@link #periodNodes}), keyed case-insensitively; {@code absent}
-     * the characteristics the input states not to hold and {@code emptyAttributes} the scalar attributes the input states
-     * to be leeg ({@link OpenValues}), by their declared names, case-insensitively. Its object in the session is the one
-     * uchar's reading labels so ({@link EndState.EndObject#label}).
+     * the characteristics the input states not to hold, {@code emptyAttributes} the scalar attributes the input states
+     * to be leeg, and {@code emptyRoles} the non-reciprocal to-one roles the input states to have no link
+     * ({@link OpenValues}). Its object in the session is the one uchar's reading labels so ({@link EndState.EndObject#label}).
      */
     public record InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
-                               Map<String, ArrayNode> periods, Set<String> absent, Set<String> emptyAttributes) {
+                               Map<String, ArrayNode> periods, Set<String> absent, Set<String> emptyAttributes,
+                               Set<EmptyRole> emptyRoles) {
         public InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
                            Map<String, ArrayNode> periods, Set<String> absent) {
-            this(label, attributes, characteristics, periods, absent, Set.of());
+            this(label, attributes, characteristics, periods, absent, Set.of(), Set.of());
+        }
+
+        public InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
+                           Map<String, ArrayNode> periods, Set<String> absent, Set<String> emptyAttributes) {
+            this(label, attributes, characteristics, periods, absent, emptyAttributes, Set.of());
         }
     }
 
@@ -103,12 +119,19 @@ public final class FixpointGivens {
      */
     public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
                                             RegelSpraakModel model, Naming ng) {
-        return inputOf(standing, labels, absent, Map.of(), model, ng);
+        return inputOf(standing, labels, absent, Map.of(), Map.of(), model, ng);
     }
 
     /** As {@link #inputOf(EndState, List, Map, RegelSpraakModel, Naming)}, with {@code emptyAttributes} per label. */
     public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
                                             Map<String, Set<String>> emptyAttributes, RegelSpraakModel model, Naming ng) {
+        return inputOf(standing, labels, absent, emptyAttributes, Map.of(), model, ng);
+    }
+
+    /** As {@link #inputOf(EndState, List, Map, Map, RegelSpraakModel, Naming)}, with {@code emptyRoles} per label. */
+    public static List<InputObject> inputOf(EndState standing, List<String> labels, Map<String, Set<String>> absent,
+                                            Map<String, Set<String>> emptyAttributes,
+                                            Map<String, Set<EmptyRole>> emptyRoles, RegelSpraakModel model, Naming ng) {
         Map<String, EndState.EndObject> labelled = new HashMap<>();
         for (EndState.EndObject o : standing.objects()) if (o.label() != null) labelled.put(o.label(), o);
         List<InputObject> sink = new ArrayList<>();
@@ -128,8 +151,9 @@ public final class FixpointGivens {
             notHolding.addAll(absent.getOrDefault(label, Set.of()));
             Set<String> empty = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
             empty.addAll(emptyAttributes.getOrDefault(label, Set.of()));
+            Set<EmptyRole> rolesEmpty = Set.copyOf(emptyRoles.getOrDefault(label, Set.of()));
             sink.add(new InputObject(label, attributes(typeOf(o, model), given(o), model, ng), characteristics,
-                    periods, notHolding, empty));
+                    periods, notHolding, empty, rolesEmpty));
         }
         return sink;
     }
@@ -295,6 +319,15 @@ public final class FixpointGivens {
         madeObjects.sort(Comparator.comparing(key::get));
         for (int i = 0; i < madeObjects.size(); i++) ref.put(madeObjects.get(i), "#" + (i + 1));
 
+        Map<Object, Set<EmptyRole>> openRoles = new IdentityHashMap<>();
+        if (strict)
+            for (EndState.OpenLink k : standing.openLinks()) {
+                Object near = k.first() != null ? k.first() : k.second();
+                int farIdx = k.first() != null ? 1 : 0;
+                openRoles.computeIfAbsent(near, x -> new java.util.LinkedHashSet<>())
+                        .add(new EmptyRole(k.factType(), farIdx));
+            }
+
         ObjectNode n = NF.objectNode();
         ArrayNode objects = n.putArray("objects");
         List<Object> all = new ArrayList<>(inputObjects);
@@ -305,9 +338,12 @@ public final class FixpointGivens {
             name(on, "objectType", ng.objectType(type.get(o).name), type.get(o).name);
             on.set("values", members.get(o)[0]);
             on.set("characteristics", members.get(o)[1]);
-            if (strict)
-                on.set("open", openOf(type.get(o), held.get(o).open(), entered.get(o).absent(),
-                        entered.get(o).emptyAttributes(), ng));
+            if (strict) {
+                InputObject in = entered.get(o);
+                on.set("open", openOf(type.get(o), held.get(o).open(), openRoles.getOrDefault(o, Set.of()),
+                        in == null ? Set.of() : in.absent(), in == null ? Set.of() : in.emptyAttributes(),
+                        in == null ? Set.of() : in.emptyRoles(), model, ng));
+            }
         }
         ArrayNode madeNode = n.putArray("madeObjects");
         for (Object o : madeObjects) {
@@ -369,14 +405,18 @@ public final class FixpointGivens {
     }
 
     /** The members of an object of type {@code ot} that are {@code open}, in a strict rule set ({@link OpenValues}): its
-     *  attributes and then its characteristics, each in declaration order, the nearest type of its chain first. Where the
+     *  attributes and then its characteristics, each in declaration order, the nearest type of its chain first, followed by
+     *  its open non-reciprocal to-one roles in the declaration order of {@code model.factTypes} and role slot. Where the
      *  input gave the member a value or stated it to be leeg / not holding, which does not stand beside a writer that is
      *  open, it is {@code input}: of an attribute its value or {@code {"state": "empty"}} where it is among
-     *  {@code emptyAttributes}, of a characteristic {@code {"state": "holdsNot"}} where it is among {@code absent}. */
-    private static ArrayNode openOf(ObjectType ot, List<EndState.Open> open, Set<String> absent,
-                                    Set<String> emptyAttributes, Naming ng) {
+     *  {@code emptyAttributes}, of a characteristic {@code {"state": "holdsNot"}} where it is among {@code absent}, of a
+     *  role {@code {"state": "empty"}} where it is among {@code emptyRoles}. */
+    private static ArrayNode openOf(ObjectType ot, List<EndState.Open> open, Set<EmptyRole> openRoles, Set<String> absent,
+                                    Set<String> emptyAttributes, Set<EmptyRole> emptyRoles, RegelSpraakModel model,
+                                    Naming ng) {
         Map<String, EndState.Open> attributes = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
         Map<String, EndState.Open> characteristics = new TreeMap<>(String.CASE_INSENSITIVE_ORDER);
+        Set<EmptyRole> remainingRoles = new java.util.LinkedHashSet<>(openRoles);
         for (EndState.Open v : open) (v.characteristic() ? characteristics : attributes).put(v.name(), v);
         ArrayNode sink = NF.arrayNode();
         for (ObjectType t : ot.chain())
@@ -409,9 +449,22 @@ public final class FixpointGivens {
                     throw new IllegalStateException("het kenmerk '" + k + "' staat open terwijl de invoer het zet; een"
                             + " schrijver kent een kenmerk alleen toe");
             }
-        if (!attributes.isEmpty() || !characteristics.isEmpty())
-            throw new IllegalStateException("het fixpunt geeft de open leden " + attributes.keySet() + " en "
-                    + characteristics.keySet() + ", die het objecttype '" + ot.name + "' niet declareert");
+        for (FactType ft : model.factTypes.values()) {
+            if (ft.reciprocal || ft.roles.size() != 2) continue;
+            for (int farIdx = 0; farIdx < 2; farIdx++) {
+                Role far = ft.roles.get(farIdx);
+                if (far.many() || far.name() == null) continue;
+                EmptyRole slot = new EmptyRole(ft.name, farIdx);
+                if (!remainingRoles.remove(slot)) continue;
+                ObjectNode rn = sink.addObject();
+                name(rn, "role", ng.role(ft, farIdx), far.name());
+                if (emptyRoles.contains(slot)) rn.set("input", OpenValues.state(OpenValues.EMPTY));
+            }
+        }
+        if (!attributes.isEmpty() || !characteristics.isEmpty() || !remainingRoles.isEmpty())
+            throw new IllegalStateException("het fixpunt geeft de open leden " + attributes.keySet() + ", "
+                    + characteristics.keySet() + " en " + remainingRoles + ", die het objecttype '" + ot.name
+                    + "' niet declareert");
         return sink;
     }
 

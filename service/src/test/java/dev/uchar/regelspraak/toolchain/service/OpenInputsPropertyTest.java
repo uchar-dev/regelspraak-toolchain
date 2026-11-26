@@ -50,6 +50,7 @@ class OpenInputsPropertyTest {
                 "jutterswet-afleiden-uit-leeg",
                 "jutterswet-volledig-gegeven",
                 "jutterswet-invoer-leeg-strikt",
+                "jutterswet-invoer-rol-strikt",
                 "jutterswet-zelfde-conclusie-waarde",
                 "jutterswet-zelfde-conclusie-kenmerk",
                 "jutterswet-zelfde-conclusie-ongeordend",
@@ -130,7 +131,7 @@ class OpenInputsPropertyTest {
         JsonNode full = read(request);
         Counts checked = holds(core, path, full, faultOnInput);
         for (int i = 0; i < full.get("instances").size(); i++)
-            for (String list : List.of("attributes", "characteristics")) {
+            for (String list : List.of("attributes", "characteristics", "roles")) {
                 JsonNode members = full.get("instances").get(i).get(list);
                 if (members == null) continue;
                 for (String name : (Iterable<String>) members::fieldNames) {
@@ -234,16 +235,20 @@ class OpenInputsPropertyTest {
         return member.get("instance").asText() + "|" + member.get("kind").asText() + "|" + member.get("name").asText();
     }
 
-    /** {@code request} with {@code input} given: 3 for an attribute, {@code charState} for a characteristic. */
+    /** {@code request} with {@code input} given: 3 for an attribute, {@code charState} for a characteristic, settled empty for a
+     *  to-one role. */
     private static JsonNode with(JsonNode request, String input, String charState) {
         String[] member = input.split("\\|");
         ObjectNode out = request.deepCopy();
         for (JsonNode i : out.get("instances"))
             if (i.get("id").asText().equals(member[0])) {
-                boolean attribute = member[1].equals("attribute");
-                ObjectNode list = ((ObjectNode) i).withObject(attribute ? "/attributes" : "/characteristics");
-                if (attribute) list.put(member[2], 3);
-                else list.putObject(member[2]).put("state", charState);
+                if (member[1].equals("attribute")) {
+                    ((ObjectNode) i).withObject("/attributes").put(member[2], 3);
+                } else if (member[1].equals("characteristic")) {
+                    ((ObjectNode) i).withObject("/characteristics").putObject(member[2]).put("state", charState);
+                } else {
+                    ((ObjectNode) i).withObject("/roles").putObject(member[2]).put("state", "empty");
+                }
             }
         return out;
     }
@@ -265,6 +270,13 @@ class OpenInputsPropertyTest {
             for (JsonNode a : i.path("attributesEmpty")) attributes.putObject(a.asText()).put("state", "empty");
             for (JsonNode k : i.path("characteristics")) characteristics.putObject(k.asText()).put("state", "holds");
             for (JsonNode k : i.path("characteristicsAbsent")) characteristics.putObject(k.asText()).put("state", "holdsNot");
+            ObjectNode roles = DescriptorLoader.MAPPER.createObjectNode();
+            i.path("roles").fields().forEachRemaining(e -> {
+                ArrayNode targets = roles.putArray(e.getKey());
+                e.getValue().forEach(t -> targets.add(t.asText()));
+            });
+            for (JsonNode r : i.path("rolesEmpty")) roles.putObject(r.asText()).put("state", "empty");
+            if (!roles.isEmpty()) n.set("roles", roles);
         }
         return request.toString();
     }

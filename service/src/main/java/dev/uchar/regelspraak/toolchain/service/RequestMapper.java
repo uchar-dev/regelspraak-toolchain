@@ -14,6 +14,7 @@ import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
+import dev.uchar.regelspraak.toolchain.engine.Naming;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
@@ -73,7 +74,10 @@ import java.util.Map;
  * {@code {"state": "holdsNot"}} where it stands not to hold, written under the {@code characteristicsAbsent} of the case,
  * and left out or null where it is not given; a bare boolean is a violation of the type. A scalar attribute is a value of
  * its datatype where it is filled, {@code {"state": "empty"}} where it stands to be leeg, written under the
- * {@code attributesEmpty} of the case, and left out or null where it is not given.
+ * {@code attributesEmpty} of the case, and left out or null where it is not given. A non-reciprocal to-one role at an
+ * instance is a target id where it is linked, {@code {"state": "empty"}} where it stands to have no linked object, written
+ * under the {@code rolesEmpty} of the case (a link from the opposite end or {@code relations} beside it is uchar's input
+ * fault EF-049, {@link CaseInput.NameFault}), and left out or null where it is not given.
  *
  * <p>An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid mismatch, an unknown
  * enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without dimensions are all
@@ -160,13 +164,20 @@ public final class RequestMapper {
     }
 
     /** The mapped world, the id→objecttype map (for the response builder), the violations produced while
-     *  mapping (empty on success), the values uchar's input refused before any session (EF-004, EF-034, EF-035;
-     *  empty on success), and per id the characteristics and attributes the request of a strict rule set
-     *  ({@link OpenValues}) states not to hold or to be leeg, by their declared names, no entry for an id without.
-     *  The world is null when uchar refused the input. */
+     *  mapping (empty on success), the values uchar's input refused before any session (EF-004, EF-033, EF-034,
+     *  EF-035, EF-049; empty on success), and per id the characteristics, scalar attributes and non-reciprocal
+     *  to-one roles the request of a strict rule set ({@link OpenValues}) states not to hold or to be leeg, no entry
+     *  for an id without. The world is null when uchar refused the input. */
     public record Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations,
                          List<RuntimeException> inputFaults, Map<String, java.util.Set<String>> absent,
-                         Map<String, java.util.Set<String>> emptyAttributes) {}
+                         Map<String, java.util.Set<String>> emptyAttributes,
+                         Map<String, java.util.Set<FixpointGivens.EmptyRole>> emptyRoles) {
+        public Result(World world, Map<String, ObjectType> typePerLabel, List<Violation> violations,
+                      List<RuntimeException> inputFaults, Map<String, java.util.Set<String>> absent,
+                      Map<String, java.util.Set<String>> emptyAttributes) {
+            this(world, typePerLabel, violations, inputFaults, absent, emptyAttributes, Map.of());
+        }
+    }
 
     /** A role link the mapper writes into the case: under the {@code roles} of instance {@code id}, the key
      *  {@code role}, naming {@code doel}; uchar's {@link CaseInput.RoleError} names a refused link the same way. */
@@ -290,6 +301,7 @@ public final class RequestMapper {
         }
 
         // 4. rollen — inline per instance, then top-level relaties (both after all instances exist)
+        Map<String, java.util.Set<FixpointGivens.EmptyRole>> emptyRoles = new LinkedHashMap<>();
         if (insts != null && insts.isArray())
             for (int i = 0; i < insts.size(); i++) {
                 JsonNode in = insts.get(i);
@@ -298,7 +310,8 @@ public final class RequestMapper {
                 String id = idN.asText();
                 ObjectType ot = typePerLabel.get(id);
                 if (ot == null) continue;
-                setRoles(ot, id, typePerLabel, in.get("roles"), "instances[" + i + "].roles", instances, paths, s);
+                setRoles(ot, id, typePerLabel, in.get("roles"), "instances[" + i + "].roles", instances, paths,
+                        emptyRoles, s);
             }
         setRelations(request.relations(), typePerLabel, instances, paths, s);
         refusals.addAll(parameterRefusals);
@@ -332,7 +345,7 @@ public final class RequestMapper {
             s.add(Violation.of(Violation.Kind.UNSUPPORTED, "instances", x.getMessage()));
         } catch (CaseRunner.InputPrecisionFault f) {
             inputFaults.add(f);
-        } catch (CaseInput.CellFault | CaseInput.LinkCycleFault f) {
+        } catch (CaseInput.CellFault | CaseInput.LinkCycleFault | CaseInput.NameFault f) {
             inputFaults.add(f);
         } catch (IllegalArgumentException f) {
             // after the validation above uchar's input step can refuse a year the refusals list, and it stops at the
@@ -349,7 +362,7 @@ public final class RequestMapper {
                     emptyAttributes.computeIfAbsent(id, x -> new java.util.LinkedHashSet<>()).add(a.asText()));
         });
         return new Result(input == null ? null : new World(input, date), typePerLabel, s, inputFaults, absent,
-                emptyAttributes);
+                emptyAttributes, emptyRoles);
     }
 
     /** The field of the request that wrote the link uchar refused. A link the mapper did not write is a broken promise
@@ -805,25 +818,82 @@ public final class RequestMapper {
      *  id whose objecttype does not fill the role (the role's type or a subtype of it): the input step falls back on the
      *  type pair, and would write such a link into another relation between the two types, or refuse it as a form the
      *  service does not carry. */
+    private record ResolvedRole(FactType factType, int farIndex, Role role, ObjectType targetType) {}
+
+    private ResolvedRole resolveRole(ObjectType ot, NameReader.Found g) {
+        FactType ft = factType(g.declaration().owner());
+        if (ft == null) return null;
+        for (int i = 0; i < ft.roles.size(); i++) {
+            Role r = ft.roles.get(i);
+            if (DescriptorLoader.sameName(r.name(), g.declaration().name()) && Naming.reachable(model, ft, r, ot)) {
+                ObjectType targetType = model.objectTypeByName(r.objectTypeName());
+                if (targetType != null) return new ResolvedRole(ft, i, r, targetType);
+            }
+        }
+        return null;
+    }
+
+    /** The key {@code CaseInput} reads unambiguously from {@code ot} for {@code role} of {@code ft}: its declared name,
+     *  or its declared plural where another fact type {@code ot} takes part in reaches a role of the same singular name. */
+    private String caseRoleKey(ObjectType ot, FactType ft, Role role) {
+        if (role.plural() != null)
+            for (FactType other : model.factTypes.values())
+                if (other != ft)
+                    for (Role r : other.roles)
+                        if (DescriptorLoader.sameName(r.name(), role.name()) && Naming.reachable(model, other, r, ot))
+                            return role.plural();
+        return role.name();
+    }
+
     private void setRoles(ObjectType ot, String id, Map<String, ObjectType> typePerLabel, JsonNode roles, String path,
-                           Map<String, ObjectNode> instances, Map<Link, String> paths, List<Violation> s) {
+                           Map<String, ObjectNode> instances, Map<Link, String> paths,
+                           Map<String, java.util.Set<FixpointGivens.EmptyRole>> emptyRoles, List<Violation> s) {
         if (roles == null || roles.isNull()) return;
         if (!roles.isObject()) { s.add(Violation.of(Violation.Kind.MALFORMED, path, "roles moet een object zijn")); return; }
         Duplicate duplicate = new Duplicate("deze instantie");
         roles.fields().forEachRemaining(e -> {
             String role = e.getKey();
             String field = path + "." + role;
-            Read wasRead = read(reader.roleFrom(ot, role), role, field, duplicate, s);
+            NameReader.Reading reading = reader.roleFrom(ot, role);
+            Read wasRead = read(reading, role, field, duplicate, s);
             if (wasRead.refused()) return;
-            String canonical = wasRead.name();
-            ObjectType targetType = canonical == null ? null : model.roleTargetTypeToSubject(ot, canonical);
-            if (targetType == null) {
+            ResolvedRole resolved = reading instanceof NameReader.Found g ? resolveRole(ot, g) : null;
+            if (resolved == null) {
                 s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, field,
                         "onbekende rol '" + role + "' vanaf objecttype '" + ot.name + "'" + reader.pinnedClause()));
                 return;
             }
-            List<String> targets = ids(e.getValue(), role, field, s);
+            JsonNode val = e.getValue();
+            if (OpenValues.in(model)) {
+                if (val.isNull()) return;
+                if (resolved.factType().reciprocal || resolved.role().many()) {
+                    if (val.isObject() && val.has(OpenValues.STATE)) {
+                        s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "rol '" + role + "' is " + val
+                                + ", en {\"state\": \"empty\"} hoort alleen bij een niet-wederkerige naar-één-rol;"
+                                + " deze rol neemt een id of lijst ids"));
+                        return;
+                    }
+                } else {
+                    OpenValues.RoleInput state = OpenValues.roleState(val, role, field, s);
+                    if (state == OpenValues.RoleInput.EMPTY) {
+                        listIn(instances.get(id), "rolesEmpty").add(caseRoleKey(ot, resolved.factType(), resolved.role()));
+                        emptyRoles.computeIfAbsent(id, k -> new java.util.LinkedHashSet<>())
+                                .add(new FixpointGivens.EmptyRole(resolved.factType().name, resolved.farIndex()));
+                        return;
+                    }
+                    if (state == OpenValues.RoleInput.INVALID) return;
+                }
+            } else if (val.isObject() && val.has(OpenValues.STATE)) {
+                s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "rol '" + role + "' is " + val
+                        + ", en een stand hoort alleen bij een regelset die uit leeg niets afleidt"
+                        + " (Afleiden uit leeg: nee)"));
+                return;
+            }
+            List<String> targets = ids(val, role, field, s);
             if (targets == null) return;
+            ObjectType targetType = resolved.targetType();
+            String caseKey = DescriptorLoader.sameName(wasRead.name(), resolved.role().name())
+                    ? caseRoleKey(ot, resolved.factType(), resolved.role()) : wasRead.name();
             for (String label : targets) {
                 ObjectType labelType = typePerLabel.get(label);
                 if (labelType == null) {
@@ -835,7 +905,7 @@ public final class RequestMapper {
                     s.add(wrongType(field, role, targetType, label, labelType));
                     continue;
                 }
-                writeLink(instances, paths, id, canonical, label, field);
+                writeLink(instances, paths, id, caseKey, label, field);
             }
         });
     }
@@ -903,7 +973,15 @@ public final class RequestMapper {
             Map<String, List<String>> ids = new LinkedHashMap<>();
             for (Role r : roles) {
                 JsonNode v = rolesN.get(r.name());
-                List<String> read = v == null ? null : ids(v, r.name(), field.apply(r.name()), s);
+                if (v == null) continue;
+                String roleField = field.apply(r.name());
+                String writtenRole = written.getOrDefault(r.name(), r.name());
+                if (v.isObject() && v.has(OpenValues.STATE)) {
+                    s.add(Violation.of(Violation.Kind.WRONG_TYPE, roleField, "rol '" + writtenRole
+                            + "' in een relatie neemt een id (tekst) of een lijst ids, geen stand (" + v + ")"));
+                    continue;
+                }
+                List<String> read = ids(v, writtenRole, roleField, s);
                 if (read != null) ids.put(r.name(), read);
             }
             if (ids.size() != rolesN.size()) continue;

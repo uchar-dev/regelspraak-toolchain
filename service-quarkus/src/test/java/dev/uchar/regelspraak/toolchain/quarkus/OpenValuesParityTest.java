@@ -101,6 +101,54 @@ class OpenValuesParityTest {
     @Test
     void a_422_is_equal() throws Exception {
         assertEquals("EF-014", compare("vracht", ", \"attributes\": {\"taxatie\": 5}", 422).at("/faults/0/code").asText());
+        String ef049 = """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1"]}},
+                           {"type": "Vondst", "id": "V1", "roles": {"jutter": {"state": "empty"}}}]}""";
+        JsonNode conflict = compareRaw(core, service, "vondst", ef049, null, null, null, 422);
+        assertEquals("EF-049", conflict.at("/faults/0/code").asText(), conflict.toString());
+        assertEquals("V1", conflict.at("/faults/0/params/label").asText(), conflict.toString());
+        assertEquals("jutter", conflict.at("/faults/0/params/role").asText(), conflict.toString());
+    }
+
+    @Test
+    void role_states_and_invalid_role_states_are_equal() throws Exception {
+        JsonNode emptyRole = compare(core, service, "vondst", ", \"roles\": {\"jutter\": {\"state\": \"empty\"}}",
+                null, null, "true", 200);
+        assertFalse(emptyRole.at("/fixpoint/objects/0/open").toString().contains("\"role\":\"jutter\""),
+                emptyRole.toString());
+        JsonNode nullRole = compare(core, service, "vondst", ", \"roles\": {\"jutter\": null}",
+                null, null, "true", 200);
+        assertTrue(nullRole.at("/fixpoint/objects/0/open").toString().contains("{\"role\":\"jutter\"}"),
+                nullRole.toString());
+        for (String[] bad : new String[][]{
+                {"{\"state\": \"open\"}", "WRONG_TYPE"},
+                {"{\"state\": \"filled\", \"value\": \"J1\"}", "WRONG_TYPE"},
+                {"{\"state\": \"empty\", \"extra\": 1}", "MALFORMED"},
+                {"{\"state\": 123}", "MALFORMED"}}) {
+            JsonNode body = compare("vondst", ", \"roles\": {\"jutter\": " + bad[0] + "}", 400);
+            assertEquals(1, body.get("violations").size(), body.toString());
+            assertEquals(bad[1], body.at("/violations/0/kind").asText(), body.toString());
+            assertEquals("instances[0].roles.jutter", body.at("/violations/0/field").asText(), body.toString());
+        }
+        String toManyEmpty = "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\","
+                + " \"roles\": {\"vondsten\": {\"state\": \"empty\"}}}]}";
+        JsonNode many = compareRaw(core, service, "vondst", toManyEmpty, null, null, null, 400);
+        assertEquals("WRONG_TYPE", many.at("/violations/0/kind").asText(), many.toString());
+        assertEquals("instances[0].roles.vondsten", many.at("/violations/0/field").asText(), many.toString());
+
+        DecisionCore wrakken = OpenValuesSource.wrak(CoreConfig.strict().withDetail());
+        ServiceHttp wrakHttp = ServiceHttp.bind(wrakken, "127.0.0.1", 0).start();
+        try {
+            JsonNode wrakOpen = compareRaw(wrakken, wrakHttp, "wrak",
+                    "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\", \"attributes\": {\"lengte\": 30}}]}",
+                    "true", "true", "true", 200);
+            assertTrue(wrakOpen.get("openInputs").toString().contains("\"kind\":\"role\",\"instance\":\"W1\",\"name\":\"vinder\""),
+                    wrakOpen.toString());
+            assertTrue(wrakOpen.get("explanation").toString().contains("want zijn vinder is niet gegeven"),
+                    wrakOpen.toString());
+        } finally {
+            wrakHttp.stop(0);
+        }
     }
 
     @Test
@@ -160,6 +208,11 @@ class OpenValuesParityTest {
     private static JsonNode compare(DecisionCore core, ServiceHttp service, String path, String given, String parts,
                                     String openInputs, String fixpoint, int expected) throws Exception {
         String request = "{\"instances\": [{\"type\": \"Vondst\", \"id\": \"V1\"" + given + "}]}";
+        return compareRaw(core, service, path, request, parts, openInputs, fixpoint, expected);
+    }
+
+    private static JsonNode compareRaw(DecisionCore core, ServiceHttp service, String path, String request, String parts,
+                                       String openInputs, String fixpoint, int expected) throws Exception {
         DecideResource resource = new DecideResource();
         resource.core = core;
         Response quarkus = resource.process(path, null, null, null, null, null, fixpoint, parts, openInputs, request);

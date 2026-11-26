@@ -122,9 +122,16 @@ class OpenInputsHttpTest {
         assertEquals(json("[\"W1 diepte\"]"), membersFor(jutter("\"lading\": 5", "", ""), "J1", "gepeilde ladingsom"));
     }
 
-    /** A read over a role: the bonus of the vinder, asked of J1. */
+    /** A read over a role: when vinder is not given, vindpremie asks the role vinder on W1; when vinder is settled empty,
+     *  vindpremie stands at 30; when vinder links to J1 without a bonus, vindpremie asks J1's bonus. */
     @Test
     void a_member_of_another_instance() throws Exception {
+        assertEquals(json("""
+            [{"kind": "role", "instance": "W1", "name": "vinder", "forOutputs": [
+                {"instance": "W1", "name": "vindpremie", "kind": "attribute"}]}]"""),
+                forOutput(wrak("\"attributes\": {\"lengte\": 30}"), "W1", "vindpremie"));
+        assertEquals(json("[]"), forOutput(wrak("\"attributes\": {\"lengte\": 30}, \"roles\": {\"vinder\": {\"state\": \"empty\"}}"),
+                "W1", "vindpremie"));
         assertEquals(json("[\"J1 bonus\"]"), membersFor(open("wrak", """
             {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
                            {"type": "Wrak", "id": "W1", "attributes": {"lengte": 30}}]}"""), "W1", "vindpremie"));
@@ -148,7 +155,7 @@ class OpenInputsHttpTest {
         JsonNode doc = json(get("openapi"));
         assertTrue(doc.at("/paths/~1vondst/post/parameters").toString().contains("\"name\":\"openInputs\""));
         JsonNode item = doc.at("/components/schemas/Answer/properties/openInputs/items/properties");
-        assertEquals(json("[\"attribute\", \"characteristic\"]"), item.at("/kind/enum"));
+        assertEquals(json("[\"attribute\", \"characteristic\", \"role\"]"), item.at("/kind/enum"));
         assertEquals(json("[\"attribute\", \"characteristic\"]"), item.at("/forOutputs/items/properties/kind/enum"));
         JsonNode part = doc.at("/components/schemas/ExplanationPart/properties");
         assertEquals("boolean", part.at("/undetermined/type").asText());
@@ -156,6 +163,7 @@ class OpenInputsHttpTest {
         assertEquals("integer", part.at("/unsettled/type").asText());
         assertEquals("integer", part.at("/filterUnsettled/type").asText());
         assertTrue(part.at("/open/properties").has("canonical"));
+        assertEquals(json("[\"attribute\", \"characteristic\", \"role\"]"), part.at("/open/properties/kind/enum"));
     }
 
     // ---------------- opgave check members ----------------
@@ -564,6 +572,21 @@ class OpenInputsHttpTest {
 
     private static JsonNode membersFor(JsonNode inputs, String instance, String output) {
         return of(inputs, instance, output, true);
+    }
+
+    private static JsonNode forOutput(JsonNode inputs, String instance, String output) {
+        var out = ServiceHttp.MAPPER.createArrayNode();
+        for (JsonNode i : inputs) {
+            var filtered = ServiceHttp.MAPPER.createArrayNode();
+            for (JsonNode o : i.get("forOutputs"))
+                if (o.get("instance").asText().equals(instance) && o.get("name").asText().equals(output)) filtered.add(o);
+            if (!filtered.isEmpty()) {
+                ObjectNode copy = i.deepCopy();
+                copy.set("forOutputs", filtered);
+                out.add(copy);
+            }
+        }
+        return out;
     }
 
     private static JsonNode of(JsonNode inputs, String instance, String output, boolean withInstance) {

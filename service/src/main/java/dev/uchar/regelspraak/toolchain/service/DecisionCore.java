@@ -428,7 +428,7 @@ public final class DecisionCore {
         refuseParameters(perPath.values(), defaults, sets, model);
         return new DecisionCore(descriptor, model, perPath, sets, defaults, periodWarnings(model, sets),
                 config.detail(), forms, documentJson,
-                OpenValues.completeInput(model, loaded.prioritizedDefaults()));
+                OpenValues.completeInput(model, loaded.prioritizedDefaults(), loaded.roleBindings()));
     }
 
     /** The start refused for names the resolver bound to no declaration ({@link UcharBuild.UnresolvedName}), one
@@ -903,7 +903,7 @@ public final class DecisionCore {
             try {
                 n.set("fixpoint", FixpointGivens.fixpoint(standing,
                         FixpointGivens.inputOf(standing, List.copyOf(mr.world().beans().keySet()), mr.absent(),
-                                mr.emptyAttributes(), model, naming), model, naming));
+                                mr.emptyAttributes(), mr.emptyRoles(), model, naming), model, naming));
             } catch (FixpointGivens.UnrenderableValue o) {
                 n.put("fixpointError", o.getMessage());
             }

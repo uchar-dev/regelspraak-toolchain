@@ -19,7 +19,7 @@ import java.util.Set;
 
 /**
  * The one writer of {@code openInputs}, the input members that keep an open outcome of a strict rule set open now
- * ({@link OpenReads#openInputs}): per member {@code {"kind": "attribute" | "characteristic", "instance", "name",
+ * ({@link OpenReads#openInputs}): per member {@code {"kind": "attribute" | "characteristic" | "role", "instance", "name",
  * "forOutputs": [{"instance", "name", "kind"}, ...]}}, the names in the vocabulary of the answer. The decision service and
  * both routes of the playground write the field through this class.
  */
@@ -66,9 +66,12 @@ public final class OpenInputs {
         return out;
     }
 
-    private static String kind(OpenValue v) { return v.characteristic() ? "characteristic" : "attribute"; }
+    private static String kind(OpenValue v) {
+        return v.role() ? "role" : v.characteristic() ? "characteristic" : "attribute";
+    }
 
     private static String name(OpenValue v, ObjectType type, Naming naming) {
-        return v.characteristic() ? naming.characteristic(type, v.member()) : naming.attribute(type, v.member());
+        return v.role() ? naming.role(v.factType(), v.member())
+                : v.characteristic() ? naming.characteristic(type, v.member()) : naming.attribute(type, v.member());
     }
 }

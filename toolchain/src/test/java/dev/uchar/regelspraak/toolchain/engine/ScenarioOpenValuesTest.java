@@ -252,4 +252,81 @@ class ScenarioOpenValuesTest {
                 + " zijn"), played.get(0)::explanationError);
         assertEquals(played.get(0).explanationError(), played.get(0).sessionError());
     }
+
+    @Test
+    void open_and_settled_empty_to_one_roles_in_scenarios_and_explanations() {
+        String rules = """
+            Afleiden uit leeg: nee
+
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                de bonus Numeriek (geheel getal);
+                is ingezetene kenmerk (bijvoeglijk);
+
+            Objecttype de Vondst (mv: Vondsten)
+                de taxatie Numeriek (geheel getal);
+                het eindloon Numeriek (geheel getal);
+                is toegewezen kenmerk (bijvoeglijk);
+                is kustvondst kenmerk (bijvoeglijk);
+
+            Feittype vinding
+                de vinder Jutter
+                de vondst (mv: vondsten) Vondst
+                één vinder heeft meerdere vondsten
+
+            Regel eindloon
+                geldig altijd
+                    Het eindloon van een Vondst moet berekend worden als zijn taxatie plus de bonus van de vinder van de Vondst.
+
+            Regel toegewezen
+                geldig altijd
+                    Een Vondst is toegewezen indien hij een vondst is.
+
+            Regel kustvondst
+                geldig altijd
+                    Een Vondst is kustvondst indien zijn vinder ingezetene is.
+            """;
+        List<ScenarioRunner.Explained> played = ScenarioRunner.runWithExplanation(ScenarioResolver.resolve(rules + """
+
+            Scenario zonder vinder
+            Gegeven is de volgende situatie:
+            een Vondst V1
+            - de taxatie is 50
+            Met als verwacht resultaat:
+            - het eindloon van V1 staat niet vast
+            - of V1 toegewezen is, staat niet vast
+            - of V1 kustvondst is, staat niet vast
+
+            Scenario met lege vinder
+            Gegeven is de volgende situatie:
+            een Vondst V1
+            - de taxatie is 50
+            - de vinder is leeg
+            Met als verwacht resultaat:
+            - het eindloon van V1 is 50
+            - V1 is niet toegewezen
+            - V1 is niet kustvondst
+            """));
+        assertEquals(2, played.size());
+        ScenarioRunner.Explained open = played.get(0);
+        assertEquals(Status.PASS, open.result().status(), open.result()::diagnostic);
+        assertTrue(open.explanation().contains("V1: zijn eindloon staat niet vast, want zijn vinder is niet gegeven; voor de"
+                + " regel 'eindloon' staat niet vast: zijn taxatie plus de bonus van de vinder van de Vondst, met zijn taxatie"
+                + " (50) en de bonus van de vinder van de Vondst (staat niet vast)"), open.explanation()::toString);
+        assertTrue(open.explanation().contains("V1: of hij toegewezen is, staat niet vast, want zijn vinder is niet gegeven;"
+                + " voor de regel 'toegewezen' staat niet vast: het onderwerp een vondst is (staat niet vast)"),
+                open.explanation()::toString);
+        assertTrue(open.explanation().contains("V1: of hij kustvondst is, staat niet vast, want zijn vinder is niet gegeven;"
+                + " voor de regel 'kustvondst' staat niet vast: zijn vinder ingezetene is (staat niet vast)"),
+                open.explanation()::toString);
+        assertEquals(1, open.openInputs().size(), open.openInputs()::toString);
+        assertTrue(open.openInputs().get(0).input().role());
+        assertEquals("vinder", open.openInputs().get(0).input().member());
+        assertEquals("vinding", open.openInputs().get(0).input().factType());
+        assertEquals(List.of("eindloon", "toegewezen", "kustvondst"),
+                open.openInputs().get(0).outcomes().stream().map(o -> o.member()).toList());
+
+        ScenarioRunner.Explained settled = played.get(1);
+        assertEquals(Status.PASS, settled.result().status(), settled.result()::diagnostic);
+        assertEquals(List.of(), settled.openInputs());
+    }
 }

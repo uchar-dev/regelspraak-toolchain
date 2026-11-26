@@ -521,8 +521,9 @@ class PlaygroundDrlRulesTest {
         for (TmsTranspiler.RuleOrigin.Role r : TmsTranspiler.RuleOrigin.Role.values()) keys.add(r.key());
         assertEquals(List.of("own", "fallback", "condition-fault", "condition-deposit", "no-evaluation-date",
                 "reading", "reconcile-pass-on", "reconcile-difference", "reconcile-agreement", "reconcile-open",
-                "fold-contribution", "fold-filter-fault", "fold-member-fault", "fold-filter-deposit", "uniqueness-key",
-                "uniqueness-key-form-fault", "uniqueness-channel", "allocation-recipient"), keys);
+                "fold-contribution", "fold-filter-fault", "fold-member-fault", "fold-filter-deposit",
+                "fold-range-open", "uniqueness-key", "uniqueness-key-form-fault", "uniqueness-channel",
+                "allocation-recipient"), keys);
     }
 
     /** Floors of the sweep below, measured 2026-10-24 on uchar's corpus at the pin of this card: goldens the

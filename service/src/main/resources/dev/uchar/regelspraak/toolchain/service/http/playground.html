@@ -403,7 +403,9 @@ function situationHtml(sit) {
           + '</td><td class="num">' + k.line + "</td></tr>");
     for (const r of o.roles)
       if (whole || matches(r.role, r.roleCanonical) || (r.labels.length && matchesLabel(...r.labels)))
-        rows.push("<tr><td>" + nameOf(r, "role") + "</td><td>" + r.labels.map((l) => objectWithType(l, types, r.targetType)).join(", ")
+        rows.push("<tr><td>" + nameOf(r, "role") + "</td><td>"
+          + (r.labels.length ? r.labels.map((l) => objectWithType(l, types, r.targetType)).join(", ")
+                             : '<span class="muted">leeg</span>')
           + '</td><td class="num">' + r.line + "</td></tr>");
     if (!whole && !rows.length) continue;
     n++;
@@ -465,11 +467,11 @@ function fixpointHtml(r) {
           + '</td><td><span class="origin ' + esc(k.origin) + '">' + esc(k.origin) + "</span></td></tr>");
     // a strict rule set: the members that are open, with the input that does not stand beside a writer that is open
     for (const v of o.open || []) {
-      const member = "attribute" in v ? "attribute" : "characteristic";
+      const member = "attribute" in v ? "attribute" : "characteristic" in v ? "characteristic" : "role";
       if (whole || matches(v[member], v[member + "Canonical"]))
         rows.push("<tr><td>" + nameOf(v, member) + "</td><td>staat niet vast"
           + ("input" in v ? ' <span class="small">(invoer '
-             + (member !== "attribute" ? "geldt niet" : v.input && v.input.state === "empty" ? "leeg" : scalar(v.input))
+             + (member === "characteristic" ? "geldt niet" : v.input && v.input.state === "empty" ? "leeg" : scalar(v.input))
              + ")</span>" : "") + "</td><td></td></tr>");
     }
     if (!rows.length) continue;

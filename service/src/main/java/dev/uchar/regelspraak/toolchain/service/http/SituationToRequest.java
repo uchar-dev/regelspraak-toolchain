@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.ir.ResolvedScenario.AttributeValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Cell;
+import dev.uchar.regelspraak.ir.ResolvedScenario.EmptyRole;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Instance;
 import dev.uchar.regelspraak.ir.ResolvedScenario.CharacteristicValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.ParameterValue;
@@ -39,8 +40,9 @@ import java.util.List;
  * segment with its bounds and its value in that form, and a time-dependent kenmerk as the {@code periods} in which it
  * holds. A kenmerk the situation asserts goes as {@code true}, one it gives as not holding ("- is niet drijfhout",
  * {@link CharacteristicValue#holds} false) as {@code false}; in a strict rule set ({@link OpenValues}) each as its
- * state, {@code holds} or {@code holdsNot}, and an attribute the situation states to be leeg ("- de X is leeg",
- * {@link AttributeValue#isEmpty}) as {@code {"state": "empty"}} (left out in an ordinary rule set). A fraction that has
+ * state, {@code holds} or {@code holdsNot}, and an attribute or a non-reciprocal to-one role the situation states to be
+ * leeg ("- de X is leeg", {@link AttributeValue#isEmpty} / {@link Instance#rolesEmpty}) as {@code {"state": "empty"}}
+ * (left out in an ordinary rule set). A fraction that has
  * no exact decimal form has no request form, and fails here by name ({@link NonPortable}).
  *
  * <p>The request it builds has the shape of {@link dev.uchar.regelspraak.toolchain.service.Request}:
@@ -108,8 +110,8 @@ final class SituationToRequest {
                     else characteristics.put(k.characteristic(), k.holds());
                 }
             }
-            if (!i.roles().isEmpty()) {
-                ObjectNode roles = inst.putObject("roles");
+            if (!i.roles().isEmpty() || !i.rolesEmpty().isEmpty()) {
+                ObjectNode roles = NF.objectNode();
                 for (RoleValue r : i.roles()) {
                     if (r.many()) {
                         ArrayNode targets = roles.putArray(r.key());
@@ -118,6 +120,9 @@ final class SituationToRequest {
                         roles.put(r.key(), r.targetLabels().get(0));
                     }
                 }
+                if (OpenValues.in(model))
+                    for (EmptyRole r : i.rolesEmpty()) roles.set(r.key(), OpenValues.state(OpenValues.EMPTY));
+                if (!roles.isEmpty()) inst.set("roles", roles);
             }
         }
         return root;

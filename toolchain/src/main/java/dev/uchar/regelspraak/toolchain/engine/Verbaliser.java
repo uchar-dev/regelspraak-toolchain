@@ -2833,13 +2833,22 @@ public final class Verbaliser {
         b.text(" geldt pas als vaststaat dat geen regel een waarde geeft");
     }
 
-    /** Open lid {@code v} als oorzaak, in een zin over het object met naam {@code label}: "zijn taxatie is niet gegeven" van
-     *  invoer die open is omdat zij niet gegeven is ({@link OpenReads#notGiven}), "zijn vindloon staat niet vast" van een
-     *  afgeleid lid en van een volledig gegeven lid dat zijn initialisatie openliet, "van J1 is zijn bonus niet gegeven" van
-     *  een ander object, en "het is niet gegeven of hij betwist is" van een kenmerk. Het model draagt het lidwoord van een
-     *  declaratie niet, dus is het "zijn". */
+    /** Open lid {@code v} als oorzaak, in een zin over het object met naam {@code label}: "zijn taxatie is niet gegeven" of
+     *  "zijn vinder is niet gegeven" van invoer die open is omdat zij niet gegeven is ({@link OpenReads#notGiven}), "zijn
+     *  vindloon staat niet vast" van een afgeleid lid en van een volledig gegeven lid dat zijn initialisatie openliet, "van J1
+     *  is zijn bonus niet gegeven" of "van J1 is zijn ploeg niet gegeven" van een ander object, en "het is niet gegeven of hij
+     *  betwist is" van een kenmerk. Het model draagt het lidwoord van een declaratie niet, dus is het "zijn". */
     private void cause(Sentence.Builder b, OpenValue v, String label) {
         boolean input = open.notGiven(v);
+        if (v.role()) {
+            boolean own = nameOf(v.object()).equals(label);
+            of(b, v, label);
+            if (!own) b.text(input ? "is " : "staat ");
+            b.text("zijn ");
+            declaredName(b, naming.role(v.factType(), v.member()), Designatable.role(v.factType(), v.member()));
+            b.text(own ? input ? " is niet gegeven" : " staat niet vast" : input ? " niet gegeven" : " niet vast");
+            return;
+        }
         if (v.characteristic()) {
             b.text(input ? "het is " : "het staat ");
             of(b, v, label);
@@ -2885,13 +2894,13 @@ public final class Verbaliser {
         b.text(")").close(Part.Kind.READING);
     }
 
-    /** Open lid {@code v} als meta: zijn object zoals {@code SUBJECT} het noemt, zijn canonieke naam en of het een attribuut
-     *  of een kenmerk is, zoals {@code openInputs} van de dienst haar leden noemt. */
+    /** Open lid {@code v} als meta: zijn object zoals {@code SUBJECT} het noemt, zijn canonieke naam en of het een attribuut,
+     *  een kenmerk of een rol is, zoals {@code openInputs} van de dienst haar leden noemt. */
     private Map<String, String> openMember(OpenValue v) {
         Map<String, String> m = new LinkedHashMap<>();
         m.put("object", nameOf(v.object()));
         m.put("canonical", v.member());
-        m.put("kind", v.characteristic() ? "characteristic" : "attribute");
+        m.put("kind", v.role() ? "role" : v.characteristic() ? "characteristic" : "attribute");
         return m;
     }
 
@@ -2906,7 +2915,7 @@ public final class Verbaliser {
 
     /** Of operand {@code e} open lid {@code v} zelf leest. */
     private static boolean reads(Expr e, OpenValue v) {
-        return e instanceof Expr.AttributeReference a && !v.characteristic()
+        return !v.role() && !v.characteristic() && e instanceof Expr.AttributeReference a
                 && Namen.norm(a.attribute()).equals(Namen.norm(v.member()));
     }
 
@@ -3448,7 +3457,8 @@ public final class Verbaliser {
                 who(b, walk);
                 b.text(" ");
                 predicate.clause(b, objectOn(k, k.characteristic(), read));
-                if (read.of(k).undetermined()) openReading(b, read.of(k).open(), read.label(), true);
+                if (read.of(k).undetermined())
+                    openReading(b, read.of(k).open(), read.label(), !read.of(k).open().role());
             };
         }
         if (c instanceof Condition.RoleMembership rl)
@@ -3457,6 +3467,7 @@ public final class Verbaliser {
                 declaredName(b, naming.roleFulfilled(subject, rl.role()),
                         Naming.roleFulfilledBy(model, subject, rl.role()));
                 b.text(" is");
+                if (read.of(rl).undetermined()) openReading(b, read.of(rl).open(), read.label(), false);
             };
         if (c instanceof Condition.Predicate p) {
             String core = switch (p.kind()) {
@@ -4159,10 +4170,10 @@ public final class Verbaliser {
 
     /** Het object waarop de motor knoop {@code node}, een lezing van lid {@code member}, las: dat van de lezing
      *  (uchars RUNTIME-SEMANTICS ch. 5.12, "The object of a read"), bij een eigen lid het object van de lezing, over een
-     *  rol het object dat de wandeling bereikte; zonder object waar een link op de wandeling ontbreekt. */
+     *  rol het object dat de wandeling bereikte; zonder object waar een link op de wandeling ontbreekt of openstaat. */
     private On objectOn(Object node, String member, Read read) {
         ConditionReading.NodeReading n = read.of(node);
-        Object o = n.undetermined() ? n.open().object() : n.object();
+        Object o = n.undetermined() ? (n.open().role() ? null : n.open().object()) : n.object();
         return new On(o == null ? null : nameOf(o, member, read));
     }
 
