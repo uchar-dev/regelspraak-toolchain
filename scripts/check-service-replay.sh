@@ -267,7 +267,7 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar 8d7a98c9b (kaart settled-empty-input, toolchainkaart settled-empty-input-in-service): 389 — de set van gate
 # 12 groeit van 396 naar 398 met jutterswet-invoer-leeg en jutterswet-invoer-leeg-strikt (attributesEmpty en de
 # scenariovorm is leeg; in een strikt verzoek {"state": "empty"} op het attribuut), en beide spelen door de dienst.
-# Pin uchar a0e2ff077 (kaart open-to-one-roles, toolchainkaart open-to-one-roles-in-service): 391 — de set van gate 12
+# Pin uchar f6ad5e87e (kaart open-to-one-roles, toolchainkaart open-to-one-roles-in-service): 391 — de set van gate 12
 # groeit van 398 naar 400 met jutterswet-invoer-rol en jutterswet-invoer-rol-strikt (rolesEmpty en open naar-één-rollen;
 # in een strikt verzoek {"state": "empty"} op de naar-één-rol), en beide spelen door de dienst.
 EXPECTED_REPLAY_PLAYED=391
@@ -294,7 +294,7 @@ EXPECTED_REPLAY_PLAYED=391
 # 1102 (pin uchar 4d6bbe6be): de 40 cases van de zeven jutterswet-zelfde-conclusie-* goldens (8 waarde, 9 kenmerk, 6
 # ongeordend, 5 genest, 3 deponering, 2 fout, 7 initialisatie).
 # 1110 (pin uchar 8d7a98c9b): de drie cases van jutterswet-invoer-leeg en de vijf van jutterswet-invoer-leeg-strikt.
-# 1119 (pin uchar a0e2ff077): de drie cases van jutterswet-invoer-rol en de zes van jutterswet-invoer-rol-strikt.
+# 1119 (pin uchar f6ad5e87e): de drie cases van jutterswet-invoer-rol en de zes van jutterswet-invoer-rol-strikt.
 EXPECTED_REPLAY_CASES=1119
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
@@ -381,7 +381,7 @@ RED_REFUSED=(
 # leeg met een §9.5-feit, geen evaluatiefout. Pin uchar e25f201ef: 67 — de rode map jutterswet-afwezigheidsmarkers-botsing
 # (twee cases, EF-016 tussen een marker en een waarde) verviel met de markers. Pin uchar 4d6bbe6be: 68 — de rode map
 # jutterswet-zelfde-conclusie-fout (EF-011 zonder peildatum wanneer de hogere constante default niet geldt) kwam erbij.
-# Pin uchar a0e2ff077: 69 — van de rode map jutterswet-rol-gevuld-en-leeg (EF-049) geeft case2-tegeninstantie.json haar
+# Pin uchar f6ad5e87e: 69 — van de rode map jutterswet-rol-gevuld-en-leeg (EF-049) geeft case2-tegeninstantie.json haar
 # foutsoort door de dienst; case1-zelfde-instantie.json staat hierboven in RED_REFUSED.
 EXPECTED_RED_FAULTS=69
 
