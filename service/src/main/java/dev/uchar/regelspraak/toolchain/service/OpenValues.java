@@ -66,10 +66,11 @@ public final class OpenValues {
 
     /** The input members of {@code model} whose declaration says that their input is complete ({@code (volledig gegeven)},
      *  uchar's RUNTIME-SEMANTICS ch. 1.5), as {@code /info} lists them: {@code {"kind": "attribute" | "characteristic" |
-     *  "role", "objectType", "name"}}, per object type its attributes, then its characteristics, then its non-reciprocal
-     *  to-one roles, as declared. A member that a form other than an initialisation writes on the objects of the type that
-     *  declares it ({@link OpenReads#written} / {@link OpenReads#roleWritten}, with {@code groups} and {@code roleBindings}),
-     *  such as the {@code berekende X} of the opgave marker, is no input. */
+     *  "role", "objectType", "factType"?, "name"}}, {@code factType} on a role, per object type its attributes, then its
+     *  characteristics, then its non-reciprocal to-one roles, as declared, canonically. A member that a form other than an
+     *  initialisation writes on the objects of the type that declares it ({@link OpenReads#written} /
+     *  {@link OpenReads#roleWritten}, with {@code groups} and {@code roleBindings}), such as the {@code berekende X} of the
+     *  opgave marker, is no input. */
     static ArrayNode completeInput(RegelSpraakModel model, List<PrioritizedDefaults> groups) {
         return completeInput(model, groups, Map.of());
     }
@@ -91,7 +92,8 @@ public final class OpenValues {
                     if (!far.many() && far.complete() && far.name() != null
                             && near.objectTypeName().equalsIgnoreCase(ot.name)
                             && !OpenReads.roleWritten(model, roleBindings, ot, ft.name, farIdx))
-                        out.addObject().put("kind", "role").put("objectType", ot.name).put("name", far.name());
+                        out.addObject().put("kind", "role").put("objectType", ot.name)
+                                .put("factType", ft.name).put("name", far.name());
                 }
             }
         }

@@ -19,9 +19,9 @@ import java.util.Set;
 
 /**
  * The one writer of {@code openInputs}, the input members that keep an open outcome of a strict rule set open now
- * ({@link OpenReads#openInputs}): per member {@code {"kind": "attribute" | "characteristic" | "role", "instance", "name",
- * "forOutputs": [{"instance", "name", "kind"}, ...]}}, the names in the vocabulary of the answer. The decision service and
- * both routes of the playground write the field through this class.
+ * ({@link OpenReads#openInputs}): per member {@code {"kind": "attribute" | "characteristic" | "role", "instance",
+ * "factType"?, "name", "forOutputs": [{"instance", "name", "kind"}, ...]}}, {@code factType} on a role, the names in the
+ * vocabulary of the answer. The decision service and both routes of the playground write the field through this class.
  */
 public final class OpenInputs {
 
@@ -56,7 +56,9 @@ public final class OpenInputs {
         for (OpenReads.OpenInput i : inputs) {
             ObjectNode n = out.addObject();
             String id = ids.get(i.input().object());
-            n.put("kind", kind(i.input())).put("instance", id).put("name", name(i.input(), types.get(id), naming));
+            n.put("kind", kind(i.input())).put("instance", id);
+            if (i.input().role()) n.put("factType", naming.factType(i.input().factType()));
+            n.put("name", name(i.input(), types.get(id), naming));
             ArrayNode outputs = n.putArray("forOutputs");
             for (OpenValue o : i.outcomes()) {
                 String of = ids.get(o.object());

@@ -86,7 +86,7 @@ class OpenRolesInProcessTest {
             het vaartuig (mv: vaartuigen) Vaartuig
             één haven heeft meerdere vaartuigen
 
-        Feittype noodhavenrelatie
+        Feittype noodhavenrelatie (register: uitwijkrelatie)
             de haven (mv: noodhavens) (handboek: uitwijkhaven) Haven
             het noodwrak (mv: noodwrakken) Wrak
             één haven heeft meerdere noodwrakken
@@ -171,24 +171,28 @@ class OpenRolesInProcessTest {
 
             // Deterministic order of openInputs on W1: vinder (wrakvondst) before haven (noodhavenrelatie), thuishaven omitted
             assertEquals(json("""
-                [{"kind": "role", "instance": "W1", "name": "vinder", "forOutputs": [
+                [{"kind": "role", "instance": "W1", "factType": "wrakvondst", "name": "vinder", "forOutputs": [
                     {"instance": "W1", "name": "premie", "kind": "attribute"},
                     {"instance": "W1", "name": "ploegpremie", "kind": "attribute"},
                     {"instance": "W1", "name": "keursom", "kind": "attribute"},
                     {"instance": "W1", "name": "toegewezen", "kind": "characteristic"},
                     {"instance": "W1", "name": "vrijgesteld", "kind": "characteristic"},
                     {"instance": "W1", "name": "kustwrak", "kind": "characteristic"}]},
-                 {"kind": "role", "instance": "W1", "name": "haven", "forOutputs": [
+                 {"kind": "role", "instance": "W1", "factType": "noodhavenrelatie", "name": "haven", "forOutputs": [
                     {"instance": "W1", "name": "uitwijkplichtig", "kind": "characteristic"}]}]"""),
                     ans.get("openInputs"), ans.toString());
+            assertEquals(List.of("kind", "instance", "factType", "name", "forOutputs"),
+                    fields(ans.at("/openInputs/0")));
 
             // Fixpoint open roles: vinder and noodhavenrelatie's haven (not complete thuishaven)
             assertEquals(json("""
                 [{"attribute": "premie"}, {"attribute": "ploegpremie"}, {"attribute": "keursom"},
                  {"characteristic": "toegewezen"}, {"characteristic": "vrijgesteld"},
                  {"characteristic": "kustwrak"}, {"characteristic": "uitwijkplichtig"},
-                 {"role": "vinder"}, {"role": "haven"}]"""),
+                 {"role": "vinder", "factType": "wrakvondst"},
+                 {"role": "haven", "factType": "noodhavenrelatie"}]"""),
                     ans.at("/fixpoint/objects/0/open"), ans.toString());
+            assertEquals(List.of("role", "factType"), fields(ans.at("/fixpoint/objects/0/open/7")));
         }
 
         // 2. Settled empty {"state": "empty"} on vinder and noodhavens: everything settles, openInputs is []
@@ -217,10 +221,14 @@ class OpenRolesInProcessTest {
                 {"instance": "W1", "name": "premie", "kind": "attribute"}]},
              {"kind": "characteristic", "instance": "J1", "name": "ingezetene", "forOutputs": [
                 {"instance": "W1", "name": "kustwrak", "kind": "characteristic"}]},
-             {"kind": "role", "instance": "J1", "name": "ploeg", "forOutputs": [
+             {"kind": "role", "instance": "J1", "factType": "ploegverband", "name": "ploeg", "forOutputs": [
                 {"instance": "W1", "name": "ploegpremie", "kind": "attribute"},
                 {"instance": "W1", "name": "keursom", "kind": "attribute"}]}]"""),
                 secondHopOpen.get("openInputs"), secondHopOpen.toString());
+        assertEquals(List.of("kind", "instance", "name", "forOutputs"), fields(secondHopOpen.at("/openInputs/0")));
+        assertEquals(List.of("kind", "instance", "name", "forOutputs"), fields(secondHopOpen.at("/openInputs/1")));
+        assertEquals(List.of("kind", "instance", "factType", "name", "forOutputs"),
+                fields(secondHopOpen.at("/openInputs/2")));
         assertTrue(secondHopOpen.get("explanation").toString()
                 .contains("W1: zijn ploegpremie staat niet vast, want van J1 is zijn ploeg niet gegeven"),
                 secondHopOpen.get("explanation").toString());
@@ -238,25 +246,52 @@ class OpenRolesInProcessTest {
         ObjectNode openAns = process(core, "wrak", """
             {"instances": [{"type": "Wrak", "id": "W1", "attributes": {"lengte": 20},
                             "roles": {"melder": null}}]}""", handboek);
-        // "vinder" -> "melder", and noodhavenrelatie's "haven" -> "uitwijkhaven" (NOT thuishaven's "vaste haven"!)
+        // "vinder" -> "melder" (factType "wrakvondst" -> "bergingsgeval"),
+        // and noodhavenrelatie's "haven" -> "uitwijkhaven" (factType "noodhavenrelatie" canonical; NOT thuishaven!)
         assertEquals(json("""
-            [{"kind": "role", "instance": "W1", "name": "melder", "forOutputs": [
+            [{"kind": "role", "instance": "W1", "factType": "bergingsgeval", "name": "melder", "forOutputs": [
                 {"instance": "W1", "name": "premie", "kind": "attribute"},
                 {"instance": "W1", "name": "ploegpremie", "kind": "attribute"},
                 {"instance": "W1", "name": "keursom", "kind": "attribute"},
                 {"instance": "W1", "name": "toegewezen", "kind": "characteristic"},
                 {"instance": "W1", "name": "vrijgesteld", "kind": "characteristic"},
                 {"instance": "W1", "name": "kustwrak", "kind": "characteristic"}]},
-             {"kind": "role", "instance": "W1", "name": "uitwijkhaven", "forOutputs": [
+             {"kind": "role", "instance": "W1", "factType": "noodhavenrelatie", "name": "uitwijkhaven", "forOutputs": [
                 {"instance": "W1", "name": "uitwijkplichtig", "kind": "characteristic"}]}]"""),
                 openAns.get("openInputs"), openAns.toString());
+        assertEquals(List.of("kind", "instance", "factType", "name", "forOutputs"),
+                fields(openAns.at("/openInputs/0")));
         assertTrue(openAns.get("explanation").toString().contains("want zijn melder is niet gegeven"),
                 openAns.get("explanation").toString());
         assertTrue(openAns.get("explanation").toString().contains("want zijn uitwijkhaven is niet gegeven"),
                 openAns.get("explanation").toString());
-        assertTrue(openAns.at("/fixpoint/objects/0/open").toString()
-                .contains("{\"role\":\"uitwijkhaven\",\"roleCanonical\":\"haven\"}"),
-                openAns.at("/fixpoint/objects/0/open").toString());
+        // In handboek: wrakvondst has both roleCanonical and factTypeCanonical; noodhavenrelatie has roleCanonical only
+        JsonNode handboekRole0 = openAns.at("/fixpoint/objects/0/open/7");
+        JsonNode handboekRole1 = openAns.at("/fixpoint/objects/0/open/8");
+        assertEquals(json("""
+            {"role": "melder", "roleCanonical": "vinder",
+             "factType": "bergingsgeval", "factTypeCanonical": "wrakvondst"}"""), handboekRole0);
+        assertEquals(List.of("role", "roleCanonical", "factType", "factTypeCanonical"), fields(handboekRole0));
+        assertEquals(json("""
+            {"role": "uitwijkhaven", "roleCanonical": "haven", "factType": "noodhavenrelatie"}"""), handboekRole1);
+        assertEquals(List.of("role", "roleCanonical", "factType"), fields(handboekRole1));
+
+        // In register: wrakvondst has roleCanonical only; noodhavenrelatie has factTypeCanonical only!
+        RequestOptions register = new RequestOptions(false, "register", null, false, false, true, false, true);
+        ObjectNode registerAns = process(core, "wrak", """
+            {"instances": [{"type": "Wrak", "id": "W1", "attributes": {"lengte": 20}}]}""", register);
+        JsonNode regRole0 = registerAns.at("/fixpoint/objects/0/open/7");
+        JsonNode regRole1 = registerAns.at("/fixpoint/objects/0/open/8");
+        assertEquals(json("""
+            {"role": "aanmelder", "roleCanonical": "vinder", "factType": "wrakvondst"}"""), regRole0);
+        assertEquals(List.of("role", "roleCanonical", "factType"), fields(regRole0));
+        assertEquals(json("""
+            {"role": "haven", "factType": "uitwijkrelatie", "factTypeCanonical": "noodhavenrelatie"}"""), regRole1);
+        assertEquals(List.of("role", "factType", "factTypeCanonical"), fields(regRole1));
+        assertEquals("wrakvondst", registerAns.at("/openInputs/0/factType").asText());
+        assertEquals("aanmelder", registerAns.at("/openInputs/0/name").asText());
+        assertEquals("uitwijkrelatie", registerAns.at("/openInputs/1/factType").asText());
+        assertEquals("haven", registerAns.at("/openInputs/1/name").asText());
 
         // Settled empty via vocabulary designation "uitwijkhaven" settles uitwijkplichtig while leaving melder open
         ObjectNode settledNoodhaven = process(core, "wrak", """
@@ -265,6 +300,7 @@ class OpenRolesInProcessTest {
         assertEquals(json("{\"state\": \"holdsNot\"}"),
                 settledNoodhaven.at("/instances/0/characteristics/uitwijkplichtig"));
         assertEquals(1, settledNoodhaven.get("openInputs").size(), settledNoodhaven.get("openInputs").toString());
+        assertEquals("bergingsgeval", settledNoodhaven.at("/openInputs/0/factType").asText());
         assertEquals("melder", settledNoodhaven.at("/openInputs/0/name").asText());
     }
 
@@ -364,9 +400,10 @@ class OpenRolesInProcessTest {
         DecisionCore fromDoc = DecisionCore.buildFromDocument(STRICT_ROLES_DESCRIPTOR, irJson,
                 CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader(), null);
         JsonNode expectedComplete = json("""
-            [{"kind": "role", "objectType": "Vaartuig", "name": "haven"}]""");
+            [{"kind": "role", "objectType": "Vaartuig", "factType": "thuishaven", "name": "haven"}]""");
         assertEquals(expectedComplete, fromSource.completeInput());
         assertEquals(expectedComplete, fromDoc.completeInput());
+        assertEquals(List.of("kind", "objectType", "factType", "name"), fields(fromSource.completeInput().get(0)));
 
         // Explanation parts on open role: navigated read has object: null on QUOTE, role has declaration=ROL without object
         ObjectNode ans = fromSource.process("wrak", json("""
@@ -589,6 +626,145 @@ class OpenRolesInProcessTest {
                         + " «\" is voldaan»"
                         + " READING{open={\"object\":\"V2\",\"canonical\":\"bewaarplaats\",\"kind\":\"role\"}}[« (staat niet vast)»]"),
                 ExplanationPartsCheck.render(jutterParts));
+    }
+
+    @Test
+    void multiple_open_and_complete_roles_sharing_a_role_name_and_ordinary_untouched() throws Exception {
+        String source = """
+            Afleiden uit leeg: nee
+
+            Vocabulaire handboek (taal: nl)
+
+            Objecttype de Haven (mv: Havens) (handboek: Bergingshaven)
+
+            Objecttype het Vaartuig (mv: Vaartuigen)
+                is thuisgeregistreerd kenmerk (bijvoeglijk);
+                is zomergeregistreerd kenmerk (bijvoeglijk);
+
+            Objecttype het Wrak is een Vaartuig (mv: Wrakken)
+                is noodgeregistreerd kenmerk (bijvoeglijk);
+                is wintergeregistreerd kenmerk (bijvoeglijk);
+
+            Feittype thuishavenrelatie (handboek: thuiskoppeling)
+                de haven (mv: thuishavens) (handboek: haven) Haven
+                het vaartuig (mv: vaartuigen) Vaartuig
+                één haven heeft meerdere vaartuigen
+
+            Feittype noodhavenrelatie
+                de haven (mv: noodhavens) (handboek: uitwijkhaven) Haven
+                het noodwrak (mv: noodwrakken) Wrak
+                één haven heeft meerdere noodwrakken
+
+            Feittype zomerhavenrelatie (handboek: zomerkoppeling)
+                de kade (mv: zomerkades) (handboek: zomerkade) Haven (volledig gegeven)
+                het zomervaartuig (mv: zomervaartuigen) Vaartuig
+                één kade heeft meerdere zomervaartuigen
+
+            Feittype winterhavenrelatie (handboek: winterkoppeling)
+                de kade (mv: winterkades) (handboek: winterkade) Haven (volledig gegeven)
+                het winterwrak (mv: winterwrakken) Wrak
+                één kade heeft meerdere winterwrakken
+
+            Regel thuisregistratie
+                geldig altijd
+                    Een Vaartuig is thuisgeregistreerd indien hij een vaartuig is.
+
+            Regel noodregistratie
+                geldig altijd
+                    Een Wrak is noodgeregistreerd indien hij een noodwrak is.
+
+            Regel zomerregistratie
+                geldig altijd
+                    Een Vaartuig is zomergeregistreerd indien hij een zomervaartuig is.
+
+            Regel winterregistratie
+                geldig altijd
+                    Een Wrak is wintergeregistreerd indien hij een winterwrak is.
+            """;
+        String descriptor = """
+            { "service": {"name":"gelijknamige-rollen","version":"1"},
+              "entrypoints": [
+                { "name":"wrak","path":"wrak",
+                  "scope": {"ruleNames": ["thuisregistratie", "noodregistratie",
+                                          "zomerregistratie", "winterregistratie"]},
+                  "input": ["Wrak"],
+                  "output": ["Wrak:thuisgeregistreerd", "Wrak:noodgeregistreerd",
+                             "Wrak:zomergeregistreerd", "Wrak:wintergeregistreerd"] } ],
+              "parameters": {} }""";
+        DecisionCore core = DecisionCore.assemble(descriptor, Map.of("gelijknamig.rgs", source),
+                CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
+
+        // 1. /info completeInput distinguishes the two (volledig gegeven) "kade" roles by canonical factType
+        assertEquals(json("""
+            [{"kind": "role", "objectType": "Vaartuig", "factType": "zomerhavenrelatie", "name": "kade"},
+             {"kind": "role", "objectType": "Wrak", "factType": "winterhavenrelatie", "name": "kade"}]"""),
+                core.completeInput());
+
+        // 2. Canonical: on W1 (a Wrak, which is also a Vaartuig), both open roles are named "haven",
+        //    distinguished by factType in fixpoint and openInputs
+        ObjectNode canonical = process(core, "wrak", "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\"}]}",
+                new RequestOptions(false, null, null, false, false, true, false, true));
+        assertEquals(json("""
+            [{"characteristic": "noodgeregistreerd"},
+             {"characteristic": "thuisgeregistreerd"},
+             {"role": "haven", "factType": "thuishavenrelatie"},
+             {"role": "haven", "factType": "noodhavenrelatie"}]"""),
+                canonical.at("/fixpoint/objects/0/open"));
+        assertEquals(json("""
+            [{"kind": "role", "instance": "W1", "factType": "thuishavenrelatie", "name": "haven",
+              "forOutputs": [{"instance": "W1", "name": "thuisgeregistreerd", "kind": "characteristic"}]},
+             {"kind": "role", "instance": "W1", "factType": "noodhavenrelatie", "name": "haven",
+              "forOutputs": [{"instance": "W1", "name": "noodgeregistreerd", "kind": "characteristic"}]}]"""),
+                canonical.get("openInputs"));
+
+        // 3. Vocabulary handboek: thuishavenrelatie -> factTypeCanonical only (designation "haven" equals canonical),
+        //    noodhavenrelatie -> roleCanonical only (factType has no designation in handboek)
+        ObjectNode handboek = process(core, "wrak", "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\"}]}",
+                new RequestOptions(false, "handboek", null, false, false, true, false, true));
+        assertEquals(json("""
+            [{"characteristic": "noodgeregistreerd"},
+             {"characteristic": "thuisgeregistreerd"},
+             {"role": "haven", "factType": "thuiskoppeling", "factTypeCanonical": "thuishavenrelatie"},
+             {"role": "uitwijkhaven", "roleCanonical": "haven", "factType": "noodhavenrelatie"}]"""),
+                handboek.at("/fixpoint/objects/0/open"));
+        assertEquals(json("""
+            [{"kind": "role", "instance": "W1", "factType": "thuiskoppeling", "name": "haven",
+              "forOutputs": [{"instance": "W1", "name": "thuisgeregistreerd", "kind": "characteristic"}]},
+             {"kind": "role", "instance": "W1", "factType": "noodhavenrelatie", "name": "uitwijkhaven",
+              "forOutputs": [{"instance": "W1", "name": "noodgeregistreerd", "kind": "characteristic"}]}]"""),
+                handboek.get("openInputs"));
+
+        // 4. OpenAPI schema for strict vs ordinary rule set
+        ServiceDescriptor parsedDesc = DescriptorLoader.MAPPER.readValue(descriptor, ServiceDescriptor.class);
+        ObjectNode strictDoc = OpenApiEmitter.emit(parsedDesc, core.model());
+        JsonNode openItemProps = strictDoc.at("/components/schemas/Answer/properties/openInputs/items/properties");
+        assertEquals(List.of("kind", "instance", "factType", "name", "forOutputs"), fields(openItemProps));
+        assertEquals("string", openItemProps.at("/factType/type").asText());
+        assertEquals(List.of("kind", "instance", "name"),
+                fields(openItemProps.at("/forOutputs/items/properties")));
+        JsonNode completeItemProps = strictDoc.at("/components/schemas/Info/properties/completeInput/items/properties");
+        assertEquals(List.of("kind", "objectType", "factType", "name"), fields(completeItemProps));
+        assertTrue(strictDoc.at("/components/schemas/Fixpoint/properties/objects/items/properties/open/description")
+                .asText().contains("factType"));
+
+        DecisionCore ordinary = ordinaryCore();
+        ServiceDescriptor ordDesc = DescriptorLoader.MAPPER.readValue(STRICT_ROLES_DESCRIPTOR, ServiceDescriptor.class);
+        String ordOpenApi = new String(OpenApiEmitter.toBytes(OpenApiEmitter.emit(ordDesc, ordinary.model())),
+                StandardCharsets.UTF_8);
+        assertFalse(ordOpenApi.contains("openInputs") || ordOpenApi.contains("completeInput")
+                || ordOpenApi.contains("EmptyRoleInput"), ordOpenApi);
+        ObjectNode ordInfo = dev.uchar.regelspraak.toolchain.service.http.ServiceHttp.info(ordinary);
+        assertFalse(ordInfo.has("inferFromEmpty") || ordInfo.has("completeInput"), ordInfo.toString());
+        ObjectNode ordAns = process(ordinary, "wrak",
+                "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\", \"attributes\": {\"lengte\": 20}}]}",
+                new RequestOptions(true, null, null, false, false, true, true, false));
+        assertFalse(ordAns.at("/fixpoint/objects/0").has("open"), ordAns.toString());
+    }
+
+    private static List<String> fields(JsonNode node) {
+        List<String> out = new ArrayList<>();
+        node.fieldNames().forEachRemaining(out::add);
+        return out;
     }
 
     private static void assertSentence(String expected, JsonNode answer) {

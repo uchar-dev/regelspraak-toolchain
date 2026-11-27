@@ -384,7 +384,8 @@ public final class FixpointGivens {
 
     /** The members of an object of type {@code ot} that are {@code open}, in a strict rule set ({@link OpenValues}): its
      *  attributes and then its characteristics, each in declaration order, the nearest type of its chain first, followed by
-     *  its open non-reciprocal to-one roles in the declaration order of {@code model.factTypes} and role slot. Where the
+     *  its open non-reciprocal to-one roles in the declaration order of {@code model.factTypes} and role slot, each with its
+     *  {@code factType} (and {@code factTypeCanonical} where it differs). Where the
      *  input gave the member a value or stated it to be leeg / not holding, which does not stand beside a writer that is
      *  open, it is {@code input}: of an attribute its value or {@code {"state": "empty"}} where it is among
      *  {@code emptyAttributes}, of a characteristic {@code {"state": "holdsNot"}} where it is among {@code absent}, of a
@@ -436,6 +437,7 @@ public final class FixpointGivens {
                 if (!remainingRoles.remove(slot)) continue;
                 ObjectNode rn = sink.addObject();
                 name(rn, "role", ng.role(ft, farIdx), far.name());
+                name(rn, "factType", ng.factType(ft.name), ft.name);
                 if (emptyRoles.contains(slot)) rn.set("input", OpenValues.state(OpenValues.EMPTY));
             }
         }

@@ -448,7 +448,8 @@ class OpenValuesHttpTest {
         assertEquals(json("""
             [{"attribute": "taxatie"}, {"attribute": "vindloon"}, {"attribute": "uitbetaling"},
              {"attribute": "bewakingstoeslag"}, {"attribute": "bergloon", "input": "7"}, {"attribute": "vrachtprijs"},
-             {"characteristic": "kostbaar", "input": {"state": "holdsNot"}}, {"role": "jutter"}]"""),
+             {"characteristic": "kostbaar", "input": {"state": "holdsNot"}},
+             {"role": "jutter", "factType": "vangst"}]"""),
                 o.get("open"), answer.toString());
         assertEquals(json("""
             [{"attribute": "toeslag", "value": "3", "origin": "input"},
@@ -486,7 +487,7 @@ class OpenValuesHttpTest {
              {"attribute": "uitbetaling", "value": "0", "origin": "derived"},
              {"attribute": "bewakingstoeslag", "value": "5", "origin": "derived"},
              {"attribute": "premie", "value": "10", "origin": "derived"}]"""), derived.get("values"), derived.toString());
-        assertEquals(json("[{\"attribute\": \"vrachtprijs\"}, {\"role\": \"jutter\"}]"),
+        assertEquals(json("[{\"attribute\": \"vrachtprijs\"}, {\"role\": \"jutter\", \"factType\": \"vangst\"}]"),
                 derived.get("open"), derived.toString());
 
         // Settled-empty to-one role jutter leaves open as well
@@ -625,7 +626,10 @@ class OpenValuesHttpTest {
                 schemas.at("/Vondst/properties/onleesbaar/description").asText());
         assertTrue(schemas.at("/Vondst/properties/taxatie/description").asText().contains("niet gegeven"));
         assertTrue(schemas.at("/Info/properties").has("completeInput"));
+        assertEquals("string", schemas.at("/Info/properties/completeInput/items/properties/factType/type").asText());
         assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties").has("open"));
+        assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties/open/description").asText()
+                .contains("factType"), schemas.at("/Fixpoint").toString());
         assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties/values/description").asText()
                 .contains("{\"state\": \"empty\"}"), schemas.at("/Fixpoint").toString());
         assertTrue(schemas.at("/Fixpoint/properties/objects/items/properties/open/description").asText()
@@ -701,16 +705,18 @@ class OpenValuesHttpTest {
                 JsonNode open = ok(post(wrakken, "wrak?openInputs=true&fixpoint=true",
                         "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\", \"attributes\": {\"lengte\": 30}" + rolePart + "}]}"));
                 assertEquals(json("{\"state\": \"open\"}"), open.at("/instances/0/attributes/vindpremie"));
-                assertTrue(open.get("openInputs").toString().contains("\"kind\":\"role\",\"instance\":\"W1\",\"name\":\"vinder\""),
+                assertTrue(open.get("openInputs").toString()
+                        .contains("\"kind\":\"role\",\"instance\":\"W1\",\"factType\":\"wrakvondst\",\"name\":\"vinder\""),
                         open.toString());
-                assertTrue(open.at("/fixpoint/objects/0/open").toString().contains("{\"role\":\"vinder\"}"), open.toString());
+                assertTrue(open.at("/fixpoint/objects/0/open").toString()
+                        .contains("{\"role\":\"vinder\",\"factType\":\"wrakvondst\"}"), open.toString());
             }
             JsonNode settled = ok(post(wrakken, "wrak?openInputs=true&fixpoint=true",
                     "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\", \"attributes\": {\"lengte\": 30},"
                             + " \"roles\": {\"vinder\": {\"state\": \"empty\"}}}]}"));
             assertEquals(json("{\"state\": \"filled\", \"value\": 30}"), settled.at("/instances/0/attributes/vindpremie"));
             assertFalse(settled.get("openInputs").toString().contains("\"vinder\""), settled.toString());
-            assertFalse(settled.at("/fixpoint/objects/0/open").toString().contains("{\"role\":\"vinder\"}"), settled.toString());
+            assertFalse(settled.at("/fixpoint/objects/0/open").toString().contains("\"role\":\"vinder\""), settled.toString());
 
             // 422 EF-049 from opposite instance and from top-level relations
             for (String conflictBody : List.of(

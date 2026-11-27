@@ -468,8 +468,10 @@ function fixpointHtml(r) {
     // a strict rule set: the members that are open, with the input that does not stand beside a writer that is open
     for (const v of o.open || []) {
       const member = "attribute" in v ? "attribute" : "characteristic" in v ? "characteristic" : "role";
-      if (whole || matches(v[member], v[member + "Canonical"]))
-        rows.push("<tr><td>" + nameOf(v, member) + "</td><td>staat niet vast"
+      if (whole || matches(v[member], v[member + "Canonical"], v.factType, v.factTypeCanonical))
+        rows.push("<tr><td>" + nameOf(v, member)
+          + (v.factType != null ? ' <span class="muted">(' + nameOf(v, "factType") + ")</span>" : "")
+          + "</td><td>staat niet vast"
           + ("input" in v ? ' <span class="small">(invoer '
              + (member === "characteristic" ? "geldt niet" : v.input && v.input.state === "empty" ? "leeg" : scalar(v.input))
              + ")</span>" : "") + "</td><td></td></tr>");
@@ -528,7 +530,9 @@ function openInputsHtml(inputs) {
   if (!inputs.length) return '<div class="diag muted">Geen afgeleide uitkomst staat open.</div>';
   let h = "<table><tr><th>niet gegeven</th><th>houdt open</th></tr>";
   for (const i of inputs)
-    h += "<tr><td>" + esc(i.instance) + " " + esc(i.name) + "</td><td>"
+    h += "<tr><td>" + esc(i.instance) + " " + esc(i.name)
+       + (i.factType != null ? ' <span class="muted">(' + esc(i.factType) + ")</span>" : "")
+       + "</td><td>"
        + i.forOutputs.map((o) => esc(o.instance) + " " + esc(o.name)).join(", ") + "</td></tr>";
   return h + "</table>";
 }

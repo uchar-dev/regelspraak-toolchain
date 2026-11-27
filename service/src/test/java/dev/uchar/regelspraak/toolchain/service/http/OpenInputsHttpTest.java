@@ -127,7 +127,7 @@ class OpenInputsHttpTest {
     @Test
     void a_member_of_another_instance() throws Exception {
         assertEquals(json("""
-            [{"kind": "role", "instance": "W1", "name": "vinder", "forOutputs": [
+            [{"kind": "role", "instance": "W1", "factType": "wrakvondst", "name": "vinder", "forOutputs": [
                 {"instance": "W1", "name": "vindpremie", "kind": "attribute"}]}]"""),
                 forOutput(wrak("\"attributes\": {\"lengte\": 30}"), "W1", "vindpremie"));
         assertEquals(json("[]"), forOutput(wrak("\"attributes\": {\"lengte\": 30}, \"roles\": {\"vinder\": {\"state\": \"empty\"}}"),
@@ -156,7 +156,9 @@ class OpenInputsHttpTest {
         assertTrue(doc.at("/paths/~1vondst/post/parameters").toString().contains("\"name\":\"openInputs\""));
         JsonNode item = doc.at("/components/schemas/Answer/properties/openInputs/items/properties");
         assertEquals(json("[\"attribute\", \"characteristic\", \"role\"]"), item.at("/kind/enum"));
+        assertEquals("string", item.at("/factType/type").asText());
         assertEquals(json("[\"attribute\", \"characteristic\"]"), item.at("/forOutputs/items/properties/kind/enum"));
+        assertTrue(item.at("/forOutputs/items/properties/factType").isMissingNode());
         JsonNode part = doc.at("/components/schemas/ExplanationPart/properties");
         assertEquals("boolean", part.at("/undetermined/type").asText());
         assertTrue(part.at("/closure").isMissingNode(), part.toString());

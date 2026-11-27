@@ -232,6 +232,12 @@ class OpenInputsPropertyTest {
     }
 
     private static String key(JsonNode member) {
+        if ("role".equals(member.get("kind").asText())) {
+            assertTrue(member.hasNonNull("factType") && !member.get("factType").asText().isBlank(), member.toString());
+            return member.get("instance").asText() + "|role|" + member.get("factType").asText() + "|"
+                    + member.get("name").asText();
+        }
+        assertFalse(member.has("factType"), member.toString());
         return member.get("instance").asText() + "|" + member.get("kind").asText() + "|" + member.get("name").asText();
     }
 
@@ -247,7 +253,7 @@ class OpenInputsPropertyTest {
                 } else if (member[1].equals("characteristic")) {
                     ((ObjectNode) i).withObject("/characteristics").putObject(member[2]).put("state", charState);
                 } else {
-                    ((ObjectNode) i).withObject("/roles").putObject(member[2]).put("state", "empty");
+                    ((ObjectNode) i).withObject("/roles").putObject(member[3]).put("state", "empty");
                 }
             }
         return out;

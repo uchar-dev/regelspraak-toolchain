@@ -911,6 +911,9 @@ public final class OpenApiEmitter {
         ArrayNode kinds = kind.putArray("enum").add("attribute").add("characteristic");
         if (withRole) kinds.add("role");
         props.putObject("instance").put("type", "string").put("description", "het id van de instantie.");
+        if (withRole)
+            props.putObject("factType").put("type", "string")
+                    .put("description", "bij kind role: het feittype waarin de rol gedeclareerd is.");
         props.putObject("name").put("type", "string");
     }
 
@@ -1101,12 +1104,12 @@ public final class OpenApiEmitter {
                 + " die van de invoer.");
         characteristics.put("additionalProperties", true);
         if (strict)
-            list(objectProps, "open", "elk lid dat openstaat: attribute, characteristic of role, met unit bij een"
-                    + " attribuut met een eenheid, en met input waar het verzoek het een waarde of lege stand gaf, die"
-                    + " niet staat naast een regel die openstaat (bij een attribuut zijn waarde of {\"state\": \"empty\"},"
-                    + " bij een kenmerk {\"state\": \"holdsNot\"}, bij een rol {\"state\": \"empty\"}). Een lid dat hier"
-                    + " niet staat en onder values of characteristics evenmin, is vaststaand leeg of geldt vaststaand"
-                    + " niet.")
+            list(objectProps, "open", "elk lid dat openstaat: attribute, characteristic of role (met factType), met unit"
+                    + " bij een attribuut met een eenheid, en met input waar het verzoek het een waarde of lege stand gaf,"
+                    + " die niet staat naast een regel die openstaat (bij een attribuut zijn waarde of"
+                    + " {\"state\": \"empty\"}, bij een kenmerk {\"state\": \"holdsNot\"}, bij een rol"
+                    + " {\"state\": \"empty\"}). Een lid dat hier niet staat en onder values of characteristics evenmin,"
+                    + " is vaststaand leeg of geldt vaststaand niet.")
                     .put("additionalProperties", true);
         ObjectNode made = list(props, "madeObjects", "de objecten die een objectcreatie maakte.");
         ObjectNode madeProps = made.putObject("properties");
@@ -1300,8 +1303,16 @@ public final class OpenApiEmitter {
             infer.put("type", "boolean");
             infer.putArray("enum").add(false);
             infer.put("description", "de regelset leidt uit leeg niets af: een lid is gevuld, vaststaand leeg of open.");
-            list(props, "completeInput", "de invoerleden waarvan de declaratie zegt dat hun invoer volledig is: kind"
-                    + " (attribute, characteristic of role), objectType en name.").put("additionalProperties", true);
+            ObjectNode complete = list(props, "completeInput", "de invoerleden waarvan de declaratie zegt dat hun invoer"
+                    + " volledig is: kind (attribute, characteristic of role), objectType, factType (bij role) en name.");
+            ObjectNode completeProps = complete.putObject("properties");
+            ObjectNode kind = completeProps.putObject("kind");
+            kind.put("type", "string");
+            kind.putArray("enum").add("attribute").add("characteristic").add("role");
+            completeProps.putObject("objectType").put("type", "string");
+            completeProps.putObject("factType").put("type", "string")
+                    .put("description", "bij kind role: het feittype waarin de rol gedeclareerd is.");
+            completeProps.putObject("name").put("type", "string");
         }
         return s;
     }

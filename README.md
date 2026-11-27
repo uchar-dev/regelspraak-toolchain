@@ -444,11 +444,18 @@ writes one does not start:
   rule set, on a `to-many` or reciprocal role, or in `relations`, and another state name on a role are a 400 `WRONG_TYPE`;
   an ill-formed `state` object or two spellings of one role on an instance are a 400 `MALFORMED`; a link from the opposite
   end or `relations` beside `{"state": "empty"}` on the same directed `to-one` role is a 422 `EVALUATION_FAULT` with uchar's
-  code `EF-049` (`label`, `role`). `?openInputs=true` reports an open `to-one` role as `{"kind": "role", "instance", "name",
-  "forOutputs"}`, `/info` includes `(volledig gegeven)` `to-one` roles in `completeInput`, `fixpoint` lists open `to-one`
-  roles in `objects[].open`, the explanation renders an open `to-one` role from uchar's `ConditionReading` (`"zijn <rol> is
-  niet gegeven"`, `"van <id> is zijn <rol> niet gegeven"`), scenarios carry `- de/het <rol> is leeg` on both routes, and the
-  strict OpenAPI document adds `EmptyRoleInput`. Ordinary rule sets remain byte for byte unchanged.
+  code `EF-049` (`label`, `role`). `?openInputs=true` reports an open `to-one` role as `{"kind": "role", "instance",
+  "factType", "name", "forOutputs"}`, `/info` includes `(volledig gegeven)` `to-one` roles in `completeInput` (`{"kind":
+  "role", "objectType", "factType", "name"}`), `fixpoint` lists open `to-one` roles in `objects[].open` (`{"role",
+  "factType"}`, with `roleCanonical` / `factTypeCanonical` where a vocabulary differs), the explanation renders an open
+  `to-one` role from uchar's `ConditionReading` (`"zijn <rol> is niet gegeven"`, `"van <id> is zijn <rol> niet gegeven"`),
+  scenarios carry `- de/het <rol> is leeg` on both routes, and the strict OpenAPI document adds `EmptyRoleInput`. Ordinary
+  rule sets remain byte for byte unchanged.
+- **Fact type on open and complete roles** (card `fact-type-on-open-roles`): every role entry in `fixpoint.objects[].open[]`
+  carries `factType` (with `factTypeCanonical` where the chosen vocabulary designates it otherwise), every `"kind": "role"`
+  entry in `openInputs` carries `factType` in the vocabulary of the answer, and every `"kind": "role"` entry in `/info`
+  `completeInput` carries canonical `factType`, so same-named roles across fact types are unambiguous (`docs/ENGINE.md`).
+  Ordinary rule sets remain byte for byte unchanged.
 
 ## The pin
 
@@ -645,7 +652,7 @@ lists those members — attributes, characteristics and non-reciprocal `to-one` 
 initialisation as its default value where it is `(volledig gegeven)` or given as `{"state": "empty"}`. `inconsistencies` names what stands, so an empty list does not
 say that every consistency holds. The explanation says of an open outcome that it does not stand and which member or role keeps it open.
 `?openInputs=true` (a 400 on any other rule set) adds `openInputs`: the input members (`attribute`, `characteristic` or `role`) that keep an open outcome of `output` open now, with the
-outcomes each keeps open, `{"kind", "instance", "name", "forOutputs": [{"instance", "name", "kind"}]}`. It is what can be
+outcomes each keeps open, `{"kind", "instance", "factType"?, "name", "forOutputs": [{"instance", "name", "kind"}]}` (`factType` on a `role`). It is what can be
 asked now, not the whole questionnaire: once that is given, another read can turn out open. `docs/ENGINE.md`, "A strict
 rule set", has the whole contract; for every other rule set nothing of it applies.
 

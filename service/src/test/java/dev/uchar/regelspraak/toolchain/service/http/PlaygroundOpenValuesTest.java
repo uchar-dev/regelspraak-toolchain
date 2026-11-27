@@ -455,6 +455,8 @@ class PlaygroundOpenValuesTest {
         assertTrue(html.contains("o.unit && (o.timeline || o.cells || o.value != null)"), "valueHtml plakt unit achter leeg");
         assertTrue(html.contains("r.labels.length ?"), "situationHtml mist lege rolweergave");
         assertTrue(html.contains("\"characteristic\" in v ? \"characteristic\" : \"role\""), "fixpointHtml mist open rol");
+        assertTrue(html.contains("nameOf(v, \"factType\")"), "fixpointHtml mist feittype op open rol");
+        assertTrue(html.contains("i.factType != null"), "openInputsHtml mist feittype op open rol");
     }
 
     @Test
@@ -486,14 +488,68 @@ class PlaygroundOpenValuesTest {
             assertEquals("Jutter", w2Roles.at("/0/targetType").asText());
             assertEquals(0, w2Roles.at("/0/labels").size());
             assertFalse(w2Roles.at("/0/multiple").asBoolean());
-            assertTrue(result.at("/fixpoint/objects/0/open").toString().contains("{\"role\":\"vinder\"}"),
+            assertTrue(result.at("/fixpoint/objects/0/open").toString()
+                    .contains("{\"role\":\"vinder\",\"factType\":\"wrakvondst\"}"),
                     result.at("/fixpoint/objects/0/open").toString());
-            assertFalse(result.at("/fixpoint/objects/1/open").toString().contains("{\"role\":\"vinder\"}"),
+            assertFalse(result.at("/fixpoint/objects/1/open").toString().contains("\"role\":\"vinder\""),
                     result.at("/fixpoint/objects/1/open").toString());
             assertEquals(ServiceHttp.MAPPER.readTree("""
-                [{"kind": "role", "instance": "W1", "name": "vinder", "forOutputs": [
+                [{"kind": "role", "instance": "W1", "factType": "wrakvondst", "name": "vinder", "forOutputs": [
                     {"instance": "W1", "name": "vindpremie", "kind": "attribute"}]}]"""),
                     forOutput(result.get("openInputs"), "W1", "vindpremie"));
+        }
+
+        // With a vocabulary on both playground routes: fixpoint carries factType + factTypeCanonical, openInputs carries translated factType
+        String vocabSource = """
+            Afleiden uit leeg: nee
+
+            Vocabulaire handboek (taal: nl)
+
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                de bonus Numeriek (geheel getal);
+
+            Objecttype het Wrak (mv: Wrakken)
+                de lengte Numeriek (geheel getal);
+                de vindpremie (handboek: bergingspremie) Numeriek (geheel getal);
+
+            Feittype wrakvondst (handboek: bergingsgeval)
+                de vinder (handboek: melder) Jutter
+                het gevonden wrak (mv: gevonden wrakken) Wrak
+                één vinder heeft meerdere gevonden wrakken
+
+            Regel vindpremie
+                geldig altijd
+                    De vindpremie van een Wrak moet berekend worden als zijn lengte plus de bonus van de vinder van het Wrak.
+            """;
+        String vocabScenario = vocabSource + """
+
+            Scenario open rol in vocabulaire
+            Gegeven is de volgende situatie:
+            een Wrak W1
+            - de lengte is 30
+            Met als verwacht resultaat:
+            - de vindpremie van W1 staat niet vast
+            """;
+        DecisionCore vocabCore = DecisionCore.assemble("""
+            { "service": {"name":"vocab-rol","version":"1"},
+              "entrypoints": [ { "name":"wrak","path":"wrak", "scope": {"ruleNames": ["vindpremie"]},
+                                 "input": ["Wrak"], "output": ["Wrak.vindpremie"] } ],
+              "parameters": {} }""",
+                java.util.Map.of("v.rgs", vocabSource), CoreConfig.strict().withDetail(),
+                Thread.currentThread().getContextClassLoader());
+        for (JsonNode analysis : new JsonNode[]{
+                Playground.analyze(vocabScenario, "handboek"),
+                Playground.analyze(vocabScenario, "handboek", vocabCore, null, false)}) {
+            JsonNode res = analysis.at("/scenario/results/0");
+            assertEquals("PASS", res.get("status").asText(), res.toString());
+            assertTrue(res.at("/fixpoint/objects/0/open").toString().contains(
+                    "{\"role\":\"melder\",\"roleCanonical\":\"vinder\","
+                            + "\"factType\":\"bergingsgeval\",\"factTypeCanonical\":\"wrakvondst\"}"),
+                    res.at("/fixpoint/objects/0/open").toString());
+            assertEquals(ServiceHttp.MAPPER.readTree("""
+                [{"kind": "role", "instance": "W1", "factType": "bergingsgeval", "name": "melder", "forOutputs": [
+                    {"instance": "W1", "name": "bergingspremie", "kind": "attribute"}]}]"""),
+                    res.get("openInputs"));
         }
 
         ScenarioBundle strictBundle = ScenarioResolver.resolve(source);

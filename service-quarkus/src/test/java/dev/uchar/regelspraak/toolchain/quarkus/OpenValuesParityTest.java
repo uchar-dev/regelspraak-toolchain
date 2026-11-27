@@ -118,7 +118,8 @@ class OpenValuesParityTest {
                 emptyRole.toString());
         JsonNode nullRole = compare(core, service, "vondst", ", \"roles\": {\"jutter\": null}",
                 null, null, "true", 200);
-        assertTrue(nullRole.at("/fixpoint/objects/0/open").toString().contains("{\"role\":\"jutter\"}"),
+        assertTrue(nullRole.at("/fixpoint/objects/0/open").toString()
+                .contains("{\"role\":\"jutter\",\"factType\":\"vangst\"}"),
                 nullRole.toString());
         for (String[] bad : new String[][]{
                 {"{\"state\": \"open\"}", "WRONG_TYPE"},
@@ -142,7 +143,8 @@ class OpenValuesParityTest {
             JsonNode wrakOpen = compareRaw(wrakken, wrakHttp, "wrak",
                     "{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\", \"attributes\": {\"lengte\": 30}}]}",
                     "true", "true", "true", 200);
-            assertTrue(wrakOpen.get("openInputs").toString().contains("\"kind\":\"role\",\"instance\":\"W1\",\"name\":\"vinder\""),
+            assertTrue(wrakOpen.get("openInputs").toString()
+                    .contains("\"kind\":\"role\",\"instance\":\"W1\",\"factType\":\"wrakvondst\",\"name\":\"vinder\""),
                     wrakOpen.toString());
             assertTrue(wrakOpen.get("explanation").toString().contains("want zijn vinder is niet gegeven"),
                     wrakOpen.toString());

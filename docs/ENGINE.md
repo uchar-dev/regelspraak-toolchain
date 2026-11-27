@@ -672,22 +672,26 @@ a member among the `members` of its object, among its `open`, or in neither, whi
 **`/info`** has `"inferFromEmpty": false` and `completeInput`, the input members whose declaration says `(volledig
 gegeven)` (the `opgegeven X` of the opgave marker, a member that only an initialisation writes, and a non-reciprocal
 `to-one` role that no creation writes on its near type among them), `[{"kind": "attribute", "objectType": "Vondst", "name":
-"toeslag"}, {"kind": "characteristic", …}, {"kind": "role", "objectType": "Vaartuig", "name": "haven"}]`, per object type
-its attributes, characteristics and `to-one` roles as declared. **The OpenAPI document** has the states as enumerations:
+"toeslag"}, {"kind": "characteristic", …}, {"kind": "role", "objectType": "Vaartuig", "factType": "thuishaven", "name":
+"haven"}]`, per object type its attributes, characteristics and `to-one` roles as declared, canonically. **The OpenAPI
+document** has the states as enumerations:
 the components `AttributeState` and `CharacteristicState`, to which `Answer` refers, `CharacteristicInput` (`holds` and
 `holdsNot`), to which the characteristics of `Request` and of every object type refer, `EmptyAttributeInput` (`empty`),
 which every scalar attribute of an object type offers in `oneOf` beside its plain datatype, and `EmptyRoleInput` (`empty`),
 which `Request.properties.instances.items.properties.roles` offers in `oneOf` beside a target id or list of ids (nullable),
-with `"role"` in `Answer.properties.openInputs.items.properties.kind` and `ExplanationPart.properties.open.properties.kind`;
+with `"role"` (and `factType`) in `Answer.properties.openInputs.items` and `Info.properties.completeInput.items` and
+`"role"` in `ExplanationPart.properties.open.properties.kind`;
 and in the description of every member what it means that a request does not give it.
 
 **`fixpoint`** (of an answer and of a 422) gives every object the list `open` after `characteristics`: its open
 attributes and then its open characteristics, in declaration order, followed by its open non-reciprocal `to-one` roles from
-`EndState.openLinks()` in the declaration order of `model.factTypes` and role slot (`{"role": "vinder"}`, with
-`roleCanonical` where a vocabulary designates it otherwise), each with the `unit` of an attribute that has one and
+`EndState.openLinks()` in the declaration order of `model.factTypes` and role slot (`{"role": "vinder", "factType":
+"wrakvondst"}`, with `roleCanonical` and `factTypeCanonical` where a vocabulary designates them otherwise), each with the
+`unit` of an attribute that has one and
 with `input` where the request gave the member a value or stated it to be leeg or not holding, which does not stand beside a
 writer that is open (`{"attribute": "bergloon", "input": "7"}`, `{"attribute": "bergloon", "input": {"state": "empty"}}`,
-`{"characteristic": "kostbaar", "input": {"state": "holdsNot"}}`, `{"role": "vinder", "input": {"state": "empty"}}`). An open member is in no other row; a member in no row is
+`{"characteristic": "kostbaar", "input": {"state": "holdsNot"}}`, `{"role": "vinder", "factType": "wrakvondst", "input":
+{"state": "empty"}}`). An open member is in no other row; a member in no row is
 settled leeg (including a `to-one` role given as `{"state": "empty"}`), or stands not to hold. An attribute the request gave as `{"state": "empty"}` that a rule or an initialisation
 fills is a row of `values` with the origin `derived` and `"input": {"state": "empty"}` (shown in the playground as `(invoer
 leeg)`); one that stays settled leeg is no row. A characteristic the request gave
@@ -762,13 +766,13 @@ No sentence calls what is open leeg.
 `"attribute"`, `"characteristic"` or `"role"`) that keep an open outcome of
 `output` open now, each once, in the order of the instances of the request and then of the declarations (per instance its
 open attributes and characteristics in chain and declaration order, followed by its open non-reciprocal `to-one` roles in the
-declaration order of `model.factTypes` and role slot `0` then `1`), with the outcomes
-each keeps open, in the vocabulary of the answer:
+declaration order of `model.factTypes` and role slot `0` then `1`, each `"role"` entry with `"factType"` beside `"name"`),
+with the outcomes each keeps open, in the vocabulary of the answer:
 
 ```json
 {"openInputs": [{"kind": "attribute", "instance": "V1", "name": "taxatie",
                  "forOutputs": [{"instance": "V1", "name": "vindloon", "kind": "attribute"}]},
-                {"kind": "role", "instance": "W1", "name": "vinder",
+                {"kind": "role", "instance": "W1", "factType": "wrakvondst", "name": "vinder",
                  "forOutputs": [{"instance": "W1", "name": "vindpremie", "kind": "attribute"}]}]}
 ```
 
