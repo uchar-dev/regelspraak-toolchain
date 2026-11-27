@@ -42,3 +42,21 @@ Out of scope:
 - `uchar`-semantiek (geland in `uchar`-kaart `20261126-open-to-many-roles.md`)
 - gedeeltelijke/gefilterde collectiesluiting
 - rollen of gemaakte instanties toevoegen aan `AnswerBuilder` (geparkeerde kaart `20261126-role-and-existence-expectations-in-service.md`)
+
+## Result (2026-11-27)
+
+Geland:
+- `uchar`-submodule gepind op `c4c2e70c5ba5ba45bbbb057e2c84d2aac46785b9` (draagt `open-to-many-roles` én `role-and-existence-expectations` mee in één pin-bump).
+- HTTP-verzoek (`OpenValues`, `RequestMapper`): Optie B-contract op niet-wederkerige `to-many`-rollen in strikte regelsets (`Afleiden uit leeg: nee`) — weglaten/`null` = open, `{"state": "open", "items": [...]}` = open met bekende doel-ids (`roles`), `{"state": "closed", "items": [...]}` = gesloten (`roles` + `rolesClosed`), `{"state": "empty"}` = verkorting voor gesloten + `[]` (`rolesClosed`), kale array/doel-id op niet-`(volledig gegeven)` `to-many`-rol = `400 WRONG_TYPE`; op `(volledig gegeven)` `to-many`-rollen blijven kale array/doel-id, `{"state": "closed", ...}` en `{"state": "empty"}` gesloten terwijl `{"state": "open", ...}` `400 WRONG_TYPE` geeft; ondubbelzinnige `uchar-case-v0`-sleutelbewaking (`400 UNSUPPORTED`) en volledige enkelvoud/meervoud/vocabulaire-resolutie via `NameReader`.
+- `?openInputs=true` (`OpenReads`, `OpenInputs`) & `/info` (`OpenValues.completeInput`): open niet-wederkerige `to-many`-rollen verschijnen in `openInputs` met `"kind": "role"`, `"instance"`, `"factType"`, `"name"` en `"forOutputs"`; `/info` vermeldt niet-wederkerige `to-many`-invoerrollen met `(volledig gegeven)` onder `completeInput` met `"kind": "role"`, `"objectType"`, `"factType"` en `"name"`.
+- Uitleg (`Verbaliser`) & `?fixpoint=true` (`FixpointGivens.openOf`): open kwantoren (zowel zonder als met bekende bijdragers naast een open `to-many`-bereik), waardevouwen en roltoetsen worden verwoord vanuit uchars `ConditionReading` met oorzaak `"zijn <rol> is niet volledig gegeven"` / `"van <id> is zijn <rol> niet volledig gegeven"` bij open `to-many`-rollen; `fixpoint.objects[].open[]` toont ook open niet-wederkerige `to-many`-rollen met `role` en `factType` (plus `*Canonical` bij afwijkend vocabulaire).
+- OpenAPI (`OpenApiEmitter`), scenarioloper/playground (`SituationToRequest`, `ScenarioData`, `playground.html`), replay (`scripts/service_replay.py`, `scripts/check-service-replay.sh`), documentatie (`docs/ENGINE.md`, `README.md`) en JDK/Quarkus-tests bijgewerkt; `jutterswet-invoer-collectie` en `jutterswet-invoer-collectie-strikt` spelen in replay (`EXPECTED_REPLAY_PLAYED=393`, `EXPECTED_REPLAY_CASES=1130`), negen cases met rolverwachtingen van `jutterswet-rolverwachting*` staan gedocumenteerd in `REPLAY_EXCLUDED` in afwachting van `role-and-existence-expectations-in-service`, en gewone verzoeken/antwoorden/OpenAPI-goldens zijn byte-voor-byte ongewijzigd.
+
+Verificatie (`make gates` 7/7 GROEN in 7m37s):
+- `1 pin`: GROEN (0s, `uchar` op `c4c2e70c5`).
+- `2 reactor`: GROEN (3m14s, testgevallen per module `216/677/71`).
+- `3 twins`: GROEN (4s, 3 tweelingen, 18 cases + vocabulairetweeling 34 verzoeken + 4 getuigenissen).
+- `4 replay`: GROEN (2m24s, `393` goldens, `1130` cases, `6580` uitlegzinnen, `0` met `"niet is vast te stellen"`, `69` rode foutsoorten).
+- `5 manifest`: GROEN (2s, 32 regels, 29 ok, 3 uitgesloten, 0 mismatch).
+- `6 image`: GROEN (41s, `decision-service:dev`).
+- `7 kind-smoke`: GROEN (1m18s, `H2 PASS, H3 PASS, H4 PASS`).
