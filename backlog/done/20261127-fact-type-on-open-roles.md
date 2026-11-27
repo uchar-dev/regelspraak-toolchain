@@ -42,3 +42,20 @@ Out of scope:
 ## Beslispunt bij oppakken
 
 - **`factTypeCanonical` in `openInputs`?** `openInputs` gebruikt bij `attribute` en `characteristic` nu alleen `name` in het gekozen vocabulaire (geen `*Canonical`-sleutels), terwijl `fixpoint` wel consequent `<veld>` + `<veld>Canonical` gebruikt. Voorkeur: in `fixpoint.objects[].open[]` zowel `factType` als (bij afwijking) `factTypeCanonical`; in `openInputs` alleen `factType` in het antwoordvocabulaire (consistent met `name`), tenzij er een bredere behoefte aan `*Canonical` op `openInputs` is.
+
+## Result (2026-11-27)
+
+Geland (conform de voorkeurskeuze op het beslispunt):
+- `?fixpoint=true` (`FixpointGivens.openOf`): elke open rol in `fixpoint.objects[].open[]` draagt `factType` via `Naming.factType(ft.name)` én `factTypeCanonical` zodra die van de canonieke feittypenaam verschilt (`name(rn, "factType", ...)` direct na `name(rn, "role", ...)`).
+- `?openInputs=true` (`OpenInputs.json`): elke vermelding met `"kind": "role"` draagt `"factType"` in het antwoordvocabulaire via `Naming.factType(...)` (veldvolgorde `"kind"`, `"instance"`, `"factType"`, `"name"`, `"forOutputs"`, zonder `*Canonical`).
+- `GET /info` (`OpenValues.completeInput`): elke vermelding met `"kind": "role"` draagt canoniek `"factType"` (veldvolgorde `"kind"`, `"objectType"`, `"factType"`, `"name"`).
+- Strikte OpenAPI-schema's (`OpenApiEmitter`: `Answer.properties.openInputs`, `Info.properties.completeInput` en `Fixpoint.properties.objects.items.properties.open`), `playground.html` (`node --check` groen), `docs/ENGINE.md`, `README.md`, en tests in `service/` en `service-quarkus/` (inclusief gelijknamige open en volledig gegeven rollen over meerdere feittypen, vocabulaires en JDK/Quarkus-pariteit) bijgewerkt. Gewone regelsets blijven byte-voor-byte ongewijzigd.
+
+Verificatie (`make gates` 7/7 GROEN in 7m25s):
+- `1 pin`: GROEN (1s, `uchar` op `f6ad5e87e`).
+- `2 reactor`: GROEN (3m11s, testgevallen per module `216/672/71`).
+- `3 twins`: GROEN (4s, 3 tweelingen, 18 cases + vocabulairetweeling 34 verzoeken + 4 getuigenissen).
+- `4 replay`: GROEN (2m24s, `391` goldens, `1119` cases, `69` rode foutsoorten).
+- `5 manifest`: GROEN (2s, 32 regels, 29 ok, 3 uitgesloten, 0 mismatch).
+- `6 image`: GROEN (32s, `decision-service:dev`).
+- `7 kind-smoke`: GROEN (1m17s, `H2 PASS, H3 PASS, H4 PASS`).
