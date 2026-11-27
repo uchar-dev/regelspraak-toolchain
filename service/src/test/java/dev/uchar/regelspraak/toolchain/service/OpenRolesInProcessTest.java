@@ -5,7 +5,11 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
 import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
+import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
 import dev.uchar.regelspraak.resolver.Resolver;
+import dev.uchar.regelspraak.toolchain.engine.Naming;
 import dev.uchar.regelspraak.toolchain.engine.UcharBuild;
 
 import org.junit.jupiter.api.Test;
@@ -14,8 +18,10 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -24,11 +30,12 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /**
- * In-process verification of open versus settled-empty non-reciprocal {@code to-one} roles in strict rule sets
- * ({@code Afleiden uit leeg: nee}): request mapping, {@code 400} violations, {@code 422} {@code EF-049}, vocabularies
- * and {@code ?inputVocabulary=}, {@code /info} {@code completeInput}, {@code ?openInputs=true}, {@code Verbaliser} and
- * {@code explanationParts}, {@code ?fixpoint=true}, OpenAPI emission, and replay of uchar's {@code jutterswet-invoer-rol*}
- * and {@code jutterswet-rol-gevuld-en-leeg} cases without binding loopback sockets.
+ * In-process verification of open versus settled-empty/closed non-reciprocal {@code to-one} and {@code to-many} roles in
+ * strict rule sets ({@code Afleiden uit leeg: nee}): request mapping, {@code 400} violations, {@code 422} {@code EF-049},
+ * vocabularies and {@code ?inputVocabulary=}, {@code /info} {@code completeInput}, {@code ?openInputs=true},
+ * {@code Verbaliser} and {@code explanationParts}, {@code ?fixpoint=true}, OpenAPI emission, and replay of uchar's
+ * {@code jutterswet-invoer-rol*}, {@code jutterswet-invoer-collectie*}, {@code jutterswet-rolverwachting*} and
+ * {@code jutterswet-rol-gevuld-en-leeg} cases without binding loopback sockets.
  */
 class OpenRolesInProcessTest {
 
@@ -316,11 +323,54 @@ class OpenRolesInProcessTest {
         assertEquals(Violation.Kind.WRONG_TYPE, ordErr.violations().get(0).kind());
         assertEquals("instances[0].roles.vinder", ordErr.violations().get(0).field());
 
-        // 2. {"state": "empty"} on a to-many role -> 400 WRONG_TYPE
-        ServiceError manyErr = assertThrows(ServiceError.class, () -> strict.process("wrak", json("""
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "empty"}}}]}""")));
-        assertEquals(Violation.Kind.WRONG_TYPE, manyErr.violations().get(0).kind());
-        assertEquals("instances[0].roles.gevonden wrakken", manyErr.violations().get(0).field());
+        // 2. Bare array, bare string, scalar or invalid/malformed state object on an incomplete to-many role -> 400
+        for (String[] badMany : new String[][]{
+                {"[]", "WRONG_TYPE"},
+                {"[\"W1\"]", "WRONG_TYPE"},
+                {"\"W1\"", "WRONG_TYPE"},
+                {"42", "WRONG_TYPE"},
+                {"true", "WRONG_TYPE"},
+                {"{\"state\": \"holds\"}", "WRONG_TYPE"},
+                {"{\"state\": \"filled\", \"value\": [\"W1\"]}", "WRONG_TYPE"},
+                {"{\"state\": \"anders\", \"items\": [\"W1\"]}", "WRONG_TYPE"},
+                {"{\"state\": \"open\"}", "MALFORMED"},
+                {"{\"state\": \"closed\"}", "MALFORMED"},
+                {"{\"state\": \"open\", \"items\": \"W1\"}", "MALFORMED"},
+                {"{\"state\": \"closed\", \"items\": [1]}", "MALFORMED"},
+                {"{\"state\": \"open\", \"items\": [], \"extra\": 1}", "MALFORMED"},
+                {"{\"state\": \"empty\", \"items\": []}", "MALFORMED"},
+                {"{\"state\": \"anders\", \"extra\": 1}", "MALFORMED"},
+                {"{\"state\": 42}", "MALFORMED"},
+                {"{}", "MALFORMED"}}) {
+            ServiceError manyErr = assertThrows(ServiceError.class, () -> strict.process("wrak", json(
+                    "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\","
+                            + " \"roles\": {\"gevonden wrakken\": " + badMany[0] + "}},"
+                            + " {\"type\": \"Wrak\", \"id\": \"W1\"}]}")));
+            assertEquals(Violation.Kind.valueOf(badMany[1]), manyErr.violations().get(0).kind(),
+                    badMany[0] + ": " + manyErr.violations());
+            assertEquals("instances[0].roles.gevonden wrakken", manyErr.violations().get(0).field());
+        }
+        // Whereas {"state": "empty"}, {"state": "closed", "items": [...]} and {"state": "open", "items": [...]} succeed
+        for (String okMany : List.of(
+                "{\"state\": \"empty\"}",
+                "{\"state\": \"closed\", \"items\": [\"W1\"]}",
+                "{\"state\": \"open\", \"items\": [\"W1\"]}",
+                "{\"state\": \"open\", \"items\": []}")) {
+            ObjectNode okAns = strict.process("wrak", json(
+                    "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\","
+                            + " \"roles\": {\"gevonden wrakken\": " + okMany + "}},"
+                            + " {\"type\": \"Wrak\", \"id\": \"W1\", \"attributes\": {\"lengte\": 20}}]}"));
+            assertEquals(1, okAns.get("instances").size());
+        }
+        // State object on a to-many role in an ordinary rule set -> 400 WRONG_TYPE
+        for (String stateObj : List.of("{\"state\": \"empty\"}", "{\"state\": \"closed\", \"items\": []}",
+                "{\"state\": \"open\", \"items\": []}")) {
+            ServiceError ordManyErr = assertThrows(ServiceError.class, () -> ordinary.process("wrak", json(
+                    "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\","
+                            + " \"roles\": {\"gevonden wrakken\": " + stateObj + "}}]}")));
+            assertEquals(Violation.Kind.WRONG_TYPE, ordManyErr.violations().get(0).kind());
+            assertEquals("instances[0].roles.gevonden wrakken", ordManyErr.violations().get(0).field());
+        }
 
         // 3. {"state": "empty"} on a reciprocal role -> 400 WRONG_TYPE
         ServiceError recErr = assertThrows(ServiceError.class, () -> strict.process("wrak", json("""
@@ -375,7 +425,7 @@ class OpenRolesInProcessTest {
         // 8. 422 EVALUATION_FAULT EF-049 when linked from opposite instance or top-level relations AND {"state": "empty"}
         for (String conflictReq : List.of(
                 """
-                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
+                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "open", "items": ["W1"]}}},
                                {"type": "Wrak", "id": "W1", "roles": {"melder": {"state": "empty"}}}]}""",
                 """
                 {"instances": [{"type": "Jutter", "id": "J1"},
@@ -434,7 +484,13 @@ class OpenRolesInProcessTest {
     @Test
     void uchar_role_goldens_and_red_case_play_through_decision_core() throws Exception {
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
-        for (String golden : List.of("jutterswet-invoer-rol", "jutterswet-invoer-rol-strikt")) {
+        for (String golden : List.of(
+                "jutterswet-invoer-rol",
+                "jutterswet-invoer-rol-strikt",
+                "jutterswet-invoer-collectie",
+                "jutterswet-invoer-collectie-strikt",
+                "jutterswet-rolverwachting",
+                "jutterswet-rolverwachting-strikt")) {
             Path dir = TokaSource.REPO.resolve("uchar/corpus/golden").resolve(golden);
             String source = Files.readString(dir.resolve("source.rgs"));
             JsonNode doc = DescriptorLoader.MAPPER.readTree(UcharBuild.document(Resolver.resolve(source)));
@@ -451,11 +507,18 @@ class OpenRolesInProcessTest {
                 RequestOptions opts = strict
                         ? new RequestOptions(true, null, null, false, false, true, true, true)
                         : new RequestOptions(true, null, null, false, false, true, true, false);
-                DecisionCore.Assessment assessment = core.assess("replay", caseToRequest(c, strict), opts, c.get("expected"));
+                DecisionCore.Assessment assessment = core.assess(
+                        "replay", caseToRequest(c, core.model(), strict), opts, c.get("expected"));
                 assertTrue(assessment.comparison().expectations().stream().allMatch(e -> e.ok()),
                         () -> golden + "/" + caseFile.getFileName() + ": " + assessment.comparison().expectations());
                 ExplanationPartsCheck.assertPartsAreTheSentences(
                         assessment.answer().get("explanation"), assessment.answer().get("explanationParts"));
+                for (JsonNode z : assessment.answer().get("explanation"))
+                    assertFalse(z.asText().contains("onbekend"), z.asText());
+                for (JsonNode p : assessment.answer().get("explanationParts")) {
+                    String stripped = ExplanationPartsCheck.withoutOmissibleParts(p);
+                    assertFalse(stripped.endsWith(": ") || stripped.endsWith("; ") || stripped.contains("()"), stripped);
+                }
             }
         }
 
@@ -468,9 +531,159 @@ class OpenRolesInProcessTest {
         JsonNode case2 = DescriptorLoader.MAPPER.readTree(
                 Files.readString(redDir.resolve("case2-tegeninstantie.json"), StandardCharsets.UTF_8));
         EvaluationFault fault = assertThrows(EvaluationFault.class,
-                () -> redCore.process("replay", caseToRequest(case2, true)));
+                () -> redCore.process("replay", caseToRequest(case2, redCore.model(), true)));
         assertEquals("EF-049", fault.errors().get(0).code());
         assertEquals(Map.of("label", "V2", "role", "vinder"), fault.errors().get(0).params());
+    }
+
+    @Test
+    void to_many_roles_complete_incomplete_vocabularies_and_colliding_keys() throws Exception {
+        String source = """
+            Afleiden uit leeg: nee
+
+            Vocabulaire handboek (taal: nl)
+
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                het vondstenaantal Numeriek (geheel getal);
+                het keuringenaantal Numeriek (geheel getal);
+                is actief kenmerk (bijvoeglijk);
+
+            Objecttype de Vondst (mv: Vondsten)
+                de waarde Numeriek (geheel getal);
+
+            Objecttype de Keuring (mv: Keuringen)
+                het keurloon Numeriek (geheel getal);
+
+            Feittype vinding (handboek: vondstgeval)
+                de vinder Jutter
+                de vondst (mv: vondsten) (handboek: geregistreerde vondst) Vondst
+                één vinder heeft meerdere vondsten
+
+            Feittype keurwerk (handboek: keuringsgeval)
+                de keurmeester Jutter
+                de verrichte keuring (mv: verrichte keuringen) (handboek: afgeronde keuring) Keuring (volledig gegeven)
+                één keurmeester verricht meerdere verrichte keuringen
+
+            Regel vondstenaantal
+                geldig altijd
+                    Het vondstenaantal van een Jutter moet berekend worden als het aantal vondsten van de Jutter.
+
+            Regel keuringenaantal
+                geldig altijd
+                    Het keuringenaantal van een Jutter moet berekend worden als het aantal verrichte keuringen van de Jutter.
+
+            Regel actief
+                geldig altijd
+                    Een Jutter is actief indien hij een vinder is.
+            """;
+        String descriptor = """
+            { "service": {"name":"collecties","version":"1"},
+              "entrypoints": [
+                { "name":"jutter","path":"jutter",
+                  "scope": {"ruleNames": ["vondstenaantal", "keuringenaantal", "actief"]},
+                  "input": [],
+                  "output": ["Jutter.vondstenaantal", "Jutter.keuringenaantal", "Jutter:actief"] } ],
+              "parameters": {} }""";
+        DecisionCore core = DecisionCore.assemble(descriptor, Map.of("c.rgs", source),
+                CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
+
+        // 1. /info completeInput lists the (volledig gegeven) to-many role
+        assertEquals(json("""
+            [{"kind": "role", "objectType": "Jutter", "factType": "keurwerk", "name": "verrichte keuring"}]"""),
+                core.completeInput());
+
+        // 2. Omitted / null on both: incomplete vondst stays open, complete verrichte keuring settles at 0
+        RequestOptions handboek = new RequestOptions(true, "handboek", "handboek", false, false, true, true, true);
+        ObjectNode openAns = process(core, "jutter", """
+            {"instances": [{"type": "Jutter", "id": "J1",
+                            "roles": {"geregistreerde vondst": null, "afgeronde keuring": null}}]}""", handboek);
+        assertEquals(json("{\"state\": \"open\"}"), openAns.at("/instances/0/attributes/vondstenaantal"));
+        assertEquals(json("{\"state\": \"filled\", \"value\": 0}"), openAns.at("/instances/0/attributes/keuringenaantal"));
+        assertEquals(json("{\"state\": \"open\"}"), openAns.at("/instances/0/characteristics/actief"));
+        assertEquals(json("""
+            [{"kind": "role", "instance": "J1", "factType": "vondstgeval", "name": "geregistreerde vondst", "forOutputs": [
+                {"instance": "J1", "name": "vondstenaantal", "kind": "attribute"},
+                {"instance": "J1", "name": "actief", "kind": "characteristic"}]}]"""),
+                openAns.get("openInputs"));
+        assertTrue(openAns.at("/fixpoint/objects/0/open").toString().contains(
+                "{\"role\":\"geregistreerde vondst\",\"roleCanonical\":\"vondst\","
+                        + "\"factType\":\"vondstgeval\",\"factTypeCanonical\":\"vinding\"}"),
+                openAns.at("/fixpoint/objects/0/open").toString());
+        assertTrue(openAns.get("explanation").toString()
+                .contains("want zijn geregistreerde vondst is niet volledig gegeven"),
+                openAns.get("explanation").toString());
+
+        // 3. Complete to-many role accepts bare array, bare string, closed+items and empty; refuses open with 400 WRONG_TYPE
+        for (String completeVal : List.of("[\"K1\"]", "\"K1\"", "{\"state\": \"closed\", \"items\": [\"K1\"]}")) {
+            ObjectNode ans = process(core, "jutter", """
+                {"instances": [{"type": "Jutter", "id": "J1",
+                                "roles": {"vondsten": {"state": "empty"}, "verrichte keuringen": %s}},
+                               {"type": "Keuring", "id": "K1"}]}""".formatted(completeVal), ALL);
+            assertEquals(json("{\"state\": \"filled\", \"value\": 0}"), ans.at("/instances/0/attributes/vondstenaantal"));
+            assertEquals(json("{\"state\": \"filled\", \"value\": 1}"), ans.at("/instances/0/attributes/keuringenaantal"));
+            assertEquals(json("{\"state\": \"holdsNot\"}"), ans.at("/instances/0/characteristics/actief"));
+        }
+        for (String emptyComplete : List.of("[]", "{\"state\": \"empty\"}", "{\"state\": \"closed\", \"items\": []}")) {
+            ObjectNode ans = process(core, "jutter", """
+                {"instances": [{"type": "Jutter", "id": "J1",
+                                "roles": {"vondsten": {"state": "empty"}, "verrichte keuringen": %s}}]}"""
+                    .formatted(emptyComplete), ALL);
+            assertEquals(json("{\"state\": \"filled\", \"value\": 0}"), ans.at("/instances/0/attributes/keuringenaantal"));
+        }
+        ServiceError completeOpenErr = assertThrows(ServiceError.class, () -> core.process("jutter", json("""
+            {"instances": [{"type": "Jutter", "id": "J1",
+                            "roles": {"verrichte keuringen": {"state": "open", "items": []}}}]}""")));
+        assertEquals(Violation.Kind.WRONG_TYPE, completeOpenErr.violations().get(0).kind());
+        assertEquals("instances[0].roles.verrichte keuringen", completeOpenErr.violations().get(0).field());
+
+        ServiceError completeMalformedErr = assertThrows(ServiceError.class, () -> core.process("jutter", json("""
+            {"instances": [{"type": "Jutter", "id": "J1",
+                            "roles": {"verrichte keuringen": {"state": "open", "extra": 1}}}]}""")));
+        assertEquals(Violation.Kind.MALFORMED, completeMalformedErr.violations().get(0).kind());
+
+        // 4. Opposite-side link alongside {"state": "empty"} on J1 is NOT rejected by RequestMapper; uchar closes all stated links!
+        ObjectNode oppositeBesideEmpty = process(core, "jutter", """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "empty"}}},
+                           {"type": "Vondst", "id": "V1", "roles": {"vinder": "J1"}}]}""", ALL);
+        assertEquals(json("{\"state\": \"filled\", \"value\": 1}"),
+                oppositeBesideEmpty.at("/instances/0/attributes/vondstenaantal"));
+        assertEquals(json("{\"state\": \"holds\"}"),
+                oppositeBesideEmpty.at("/instances/0/characteristics/actief"));
+
+        // 5. Canonically colliding to-many role without unambiguous uchar-case-v0 key -> 400 UNSUPPORTED on closed/empty
+        DecisionCore collidingMany = DecisionCore.assemble("""
+            { "service": {"name":"botsend-many","version":"1"},
+              "entrypoints": [ { "name":"j","path":"j", "scope": {"ruleNames": ["actief"]},
+                                 "input": [], "output": ["Strandjutter:actief"] } ],
+              "parameters": {} }""",
+                Map.of("bm.rgs", """
+                    Afleiden uit leeg: nee
+                    Vocabulaire handboek (taal: nl)
+                    Objecttype de Jutter (mv: Jutters) (bezield)
+                    Objecttype de Strandjutter is een Jutter (mv: Strandjutters) (bezield)
+                        is actief kenmerk (bijvoeglijk);
+                    Objecttype de Vondst (mv: Vondsten)
+                    Feittype eerstevinding
+                        de vinder Jutter
+                        de vondst (handboek: eerste vondst) Vondst
+                        één vinder heeft meerdere vondst
+                    Feittype tweedevinding
+                        de strandvinder Strandjutter
+                        de vondst (handboek: tweede vondst) Vondst
+                        één strandvinder heeft meerdere vondst
+                    Regel actief
+                        geldig altijd
+                            Een Strandjutter is actief indien hij een strandvinder is.
+                    """),
+                CoreConfig.strict(), Thread.currentThread().getContextClassLoader());
+        for (String closedShape : List.of("{\"state\": \"empty\"}", "{\"state\": \"closed\", \"items\": []}")) {
+            ServiceError unsup = assertThrows(ServiceError.class, () -> collidingMany.process("j", json(
+                    "{\"instances\": [{\"type\": \"Strandjutter\", \"id\": \"J1\","
+                            + " \"roles\": {\"tweede vondst\": " + closedShape + "}}]}"),
+                    new RequestOptions(false, null, "handboek", false, false, false, false, false)));
+            assertEquals(Violation.Kind.UNSUPPORTED, unsup.violations().get(0).kind(), unsup.violations().toString());
+            assertEquals("instances[0].roles.tweede vondst", unsup.violations().get(0).field());
+        }
     }
 
     @Test
@@ -780,11 +993,39 @@ class OpenRolesInProcessTest {
         throw new AssertionError("geen zin met '" + prefix + "' in " + texts);
     }
 
-    private static ObjectNode caseToRequest(JsonNode c, boolean strict) {
+    private record ResolvedOppositeRole(FactType factType, int roleIndex, Role role) {}
+
+    private static ResolvedOppositeRole resolveOppositeRole(RegelSpraakModel model, ObjectType ot, String key) {
+        if (ot == null) return null;
+        NameReader reader = new NameReader(model, Naming.CANONICAL);
+        if (!(reader.roleFrom(ot, key) instanceof NameReader.Found g)) return null;
+        for (FactType ft : model.factTypes.values()) {
+            if (!DescriptorLoader.sameName(ft.name, g.declaration().owner())) continue;
+            for (int idx = 0; idx < ft.roles.size(); idx++) {
+                Role r = ft.roles.get(idx);
+                if (DescriptorLoader.sameName(r.name(), g.declaration().name()) && Naming.reachable(model, ft, r, ot))
+                    return new ResolvedOppositeRole(ft, idx, r);
+            }
+        }
+        return null;
+    }
+
+    private static ObjectNode caseToRequest(JsonNode c, RegelSpraakModel model, boolean strict) {
         ObjectNode req = DescriptorLoader.MAPPER.createObjectNode();
         if (c.hasNonNull("asOfDate")) req.put("rekendatum", c.get("asOfDate").asText());
+        ObjectNode params = DescriptorLoader.MAPPER.createObjectNode();
+        c.at("/input/parameters").fields().forEachRemaining(e -> {
+            JsonNode w = e.getValue();
+            if (w.has("number")) params.put(e.getKey(), new java.math.BigDecimal(w.get("number").asText()));
+            else if (w.has("text")) params.put(e.getKey(), w.get("text").asText());
+            else if (w.has("boolean")) params.put(e.getKey(), w.get("boolean").asBoolean());
+            else if (w.has("date")) params.put(e.getKey(), w.get("date").asText());
+            else if (w.has("enumeration")) params.put(e.getKey(), w.get("enumeration").asText());
+        });
+        if (!params.isEmpty()) req.set("parameters", params);
         ArrayNode instances = req.putArray("instances");
         for (JsonNode i : c.at("/input/instances")) {
+            ObjectType ot = model.objectTypeByName(i.get("objectType").asText());
             ObjectNode inst = instances.addObject()
                     .put("type", i.get("objectType").asText())
                     .put("id", i.get("label").asText());
@@ -813,12 +1054,43 @@ class OpenRolesInProcessTest {
             if (!chars.isEmpty()) inst.set("characteristics", chars);
 
             ObjectNode roles = DescriptorLoader.MAPPER.createObjectNode();
+            Set<FixpointGivens.EmptyRole> closedSlots = new HashSet<>();
+            if (strict && ot != null)
+                for (JsonNode cr : i.path("rolesClosed")) {
+                    ResolvedOppositeRole hit = resolveOppositeRole(model, ot, cr.asText());
+                    if (hit != null)
+                        closedSlots.add(new FixpointGivens.EmptyRole(hit.factType().name, hit.roleIndex()));
+                }
+            Set<FixpointGivens.EmptyRole> handledClosed = new HashSet<>();
             i.path("roles").fields().forEachRemaining(e -> {
-                ArrayNode targets = roles.putArray(e.getKey());
+                ArrayNode targets = DescriptorLoader.MAPPER.createArrayNode();
                 e.getValue().forEach(t -> targets.add(t.asText()));
+                ResolvedOppositeRole hit = strict ? resolveOppositeRole(model, ot, e.getKey()) : null;
+                if (strict && hit != null && !hit.factType().reciprocal && hit.role().many()) {
+                    FixpointGivens.EmptyRole slot = new FixpointGivens.EmptyRole(hit.factType().name, hit.roleIndex());
+                    if (hit.role().complete()) {
+                        handledClosed.add(slot);
+                        roles.set(e.getKey(), targets);
+                    } else if (closedSlots.contains(slot)) {
+                        handledClosed.add(slot);
+                        roles.set(e.getKey(), OpenValues.collection(OpenValues.CLOSED, targets));
+                    } else {
+                        roles.set(e.getKey(), OpenValues.collection(OpenValues.OPEN, targets));
+                    }
+                } else {
+                    roles.set(e.getKey(), targets);
+                }
             });
-            if (strict)
+            if (strict) {
                 for (JsonNode r : i.path("rolesEmpty")) roles.putObject(r.asText()).put("state", "empty");
+                for (JsonNode cr : i.path("rolesClosed")) {
+                    ResolvedOppositeRole hit = resolveOppositeRole(model, ot, cr.asText());
+                    FixpointGivens.EmptyRole slot = hit != null
+                            ? new FixpointGivens.EmptyRole(hit.factType().name, hit.roleIndex()) : null;
+                    if (slot == null || handledClosed.add(slot))
+                        roles.putObject(cr.asText()).put("state", "empty");
+                }
+            }
             if (!roles.isEmpty()) inst.set("roles", roles);
         }
         return req;
@@ -826,7 +1098,8 @@ class OpenRolesInProcessTest {
 
     private static String replayDescriptor(JsonNode document) {
         List<String> forms = new ArrayList<>(), output = new ArrayList<>();
-        for (String list : List.of("rules", "prioritizedDefaults"))
+        for (String list : List.of("rules", "objectCreations", "allocations", "consistencies",
+                "uniquenesses", "factCreations", "prioritizedDefaults"))
             for (JsonNode f : document.at("/rules/" + list))
                 if (f.hasNonNull("name") && !forms.contains(f.get("name").asText())) forms.add(f.get("name").asText());
         for (JsonNode t : document.at("/model/objectTypes")) {

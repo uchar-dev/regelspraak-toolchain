@@ -77,7 +77,13 @@ import java.util.Map;
  * {@code attributesEmpty} of the case, and left out or null where it is not given. A non-reciprocal to-one role at an
  * instance is a target id where it is linked, {@code {"state": "empty"}} where it stands to have no linked object, written
  * under the {@code rolesEmpty} of the case (a link from the opposite end or {@code relations} beside it is uchar's input
- * fault EF-049, {@link CaseInput.NameFault}), and left out or null where it is not given.
+ * fault EF-049, {@link CaseInput.NameFault}), and left out or null where it is not given. A non-reciprocal to-many role that
+ * is not {@code (volledig gegeven)} is {@code {"state": "open", "items": [...]}} where its known targets are given without
+ * closing the collection, {@code {"state": "closed", "items": [...]}} where its targets are closed (written under
+ * {@code roles} and {@code rolesClosed}), {@code {"state": "empty"}} where it stands closed without a link (written under
+ * {@code rolesClosed}), and left out or null where it is open without inline targets; a bare array or target id on it is a
+ * violation of the type, whereas a {@code (volledig gegeven)} to-many role also takes a bare list of target ids (and refuses
+ * {@code "open"}).
  *
  * <p>An unknown objecttype/attribuut/kenmerk/parameter/rol, an ill-typed value, an eenheid mismatch, an unknown
  * enumeratie-waarde, a dimensioned attribute without cells and cells on an attribute without dimensions are all
@@ -883,22 +889,18 @@ public final class RequestMapper {
             JsonNode val = e.getValue();
             if (OpenValues.in(model)) {
                 if (val.isNull()) return;
-                if (resolved.factType().reciprocal || resolved.role().many()) {
+                if (resolved.factType().reciprocal) {
                     if (val.isObject() && val.has(OpenValues.STATE)) {
                         s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "rol '" + role + "' is " + val
-                                + ", en {\"state\": \"empty\"} hoort alleen bij een niet-wederkerige naar-één-rol;"
-                                + " deze rol neemt een id of lijst ids"));
+                                + ", en een wederkerige rol heeft geen stand; deze rol neemt een id of lijst ids"));
                         return;
                     }
-                } else {
+                } else if (!resolved.role().many()) {
                     OpenValues.RoleInput state = OpenValues.roleState(val, role, field, s);
                     if (state == OpenValues.RoleInput.EMPTY) {
                         String emptyKey = unambiguousCaseRoleKey(ot, resolved.role());
                         if (emptyKey == null) {
-                            s.add(Violation.of(Violation.Kind.UNSUPPORTED, field, "rol '" + role
-                                    + "' (canonieke rol '" + resolved.role().name() + "' van feittype '"
-                                    + resolved.factType().name + "') heeft vanaf objecttype '" + ot.name
-                                    + "' geen ondubbelzinnige canonieke rolsleutel in uchar-case-v0"));
+                            s.add(noUnambiguousRoleKey(field, role, ot, resolved));
                             return;
                         }
                         listIn(instances.get(id), "rolesEmpty").add(emptyKey);
@@ -907,6 +909,43 @@ public final class RequestMapper {
                         return;
                     }
                     if (state == OpenValues.RoleInput.INVALID) return;
+                } else {
+                    OpenValues.CollectionRoleInput col = OpenValues.collectionRoleState(
+                            val, role, resolved.role().complete(), field, s);
+                    switch (col.kind()) {
+                        case INVALID -> { return; }
+                        case EMPTY -> {
+                            String closedKey = unambiguousCaseRoleKey(ot, resolved.role());
+                            if (closedKey == null) {
+                                s.add(noUnambiguousRoleKey(field, role, ot, resolved));
+                                return;
+                            }
+                            listIn(instances.get(id), "rolesClosed").add(closedKey);
+                            emptyRoles.computeIfAbsent(id, k -> new java.util.LinkedHashSet<>())
+                                    .add(new FixpointGivens.EmptyRole(resolved.factType().name, resolved.farIndex()));
+                            return;
+                        }
+                        case CLOSED -> {
+                            String closedKey = unambiguousCaseRoleKey(ot, resolved.role());
+                            if (closedKey == null) {
+                                s.add(noUnambiguousRoleKey(field, role, ot, resolved));
+                                return;
+                            }
+                            listIn(instances.get(id), "rolesClosed").add(closedKey);
+                            if (col.items().isEmpty())
+                                emptyRoles.computeIfAbsent(id, k -> new java.util.LinkedHashSet<>())
+                                        .add(new FixpointGivens.EmptyRole(resolved.factType().name, resolved.farIndex()));
+                            writeRoleTargets(id, role, field, ot, resolved, wasRead, col.items(), typePerLabel,
+                                    instances, paths, s);
+                            return;
+                        }
+                        case OPEN -> {
+                            writeRoleTargets(id, role, field, ot, resolved, wasRead, col.items(), typePerLabel,
+                                    instances, paths, s);
+                            return;
+                        }
+                        case BARE_LINKS -> {}
+                    }
                 }
             } else if (val.isObject() && val.has(OpenValues.STATE)) {
                 s.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "rol '" + role + "' is " + val
@@ -916,24 +955,37 @@ public final class RequestMapper {
             }
             List<String> targets = ids(val, role, field, s);
             if (targets == null) return;
-            ObjectType targetType = resolved.targetType();
-            String unambiguous = unambiguousCaseRoleKey(ot, resolved.role());
-            String caseKey = DescriptorLoader.sameName(wasRead.name(), resolved.role().name())
-                    ? (unambiguous != null ? unambiguous : resolved.role().name()) : wasRead.name();
-            for (String label : targets) {
-                ObjectType labelType = typePerLabel.get(label);
-                if (labelType == null) {
-                    s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, field,
-                            "rol '" + role + "' verwijst naar onbekend id '" + label + "'"));
-                    continue;
-                }
-                if (!labelType.isA(targetType)) {
-                    s.add(wrongType(field, role, targetType, label, labelType));
-                    continue;
-                }
-                writeLink(instances, paths, id, caseKey, label, field);
-            }
+            writeRoleTargets(id, role, field, ot, resolved, wasRead, targets, typePerLabel, instances, paths, s);
         });
+    }
+
+    private static Violation noUnambiguousRoleKey(String field, String role, ObjectType ot, ResolvedRole resolved) {
+        return Violation.of(Violation.Kind.UNSUPPORTED, field, "rol '" + role
+                + "' (canonieke rol '" + resolved.role().name() + "' van feittype '"
+                + resolved.factType().name + "') heeft vanaf objecttype '" + ot.name
+                + "' geen ondubbelzinnige canonieke rolsleutel in uchar-case-v0");
+    }
+
+    private void writeRoleTargets(String id, String role, String field, ObjectType ot, ResolvedRole resolved,
+                                  Read wasRead, List<String> targets, Map<String, ObjectType> typePerLabel,
+                                  Map<String, ObjectNode> instances, Map<Link, String> paths, List<Violation> s) {
+        ObjectType targetType = resolved.targetType();
+        String unambiguous = unambiguousCaseRoleKey(ot, resolved.role());
+        String caseKey = DescriptorLoader.sameName(wasRead.name(), resolved.role().name())
+                ? (unambiguous != null ? unambiguous : resolved.role().name()) : wasRead.name();
+        for (String label : targets) {
+            ObjectType labelType = typePerLabel.get(label);
+            if (labelType == null) {
+                s.add(Violation.of(Violation.Kind.UNKNOWN_FIELD, field,
+                        "rol '" + role + "' verwijst naar onbekend id '" + label + "'"));
+                continue;
+            }
+            if (!labelType.isA(targetType)) {
+                s.add(wrongType(field, role, targetType, label, labelType));
+                continue;
+            }
+            writeLink(instances, paths, id, caseKey, label, field);
+        }
     }
 
     /** Writes the link {@code id} -{@code role}-> {@code doel} into the case, and records {@code field} as the field of

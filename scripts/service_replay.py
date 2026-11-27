@@ -19,8 +19,10 @@ Uitvoer: regels "<sleutel>\\t<STATUS>\\t<detail>" in de volgorde van de invoer, 
            (detail: wat).
 Een golden waarvan geen case speelt, heeft alleen haar EXCLUDE-regels. In een document dat uit leeg niets afleidt
 (inferFromEmpty false) gaat een kenmerk als stand in het verzoek, {"state": "holds"} en waar het vaststaand niet geldt
-(characteristicsAbsent) {"state": "holdsNot"}, een attribuut uit attributesEmpty als {"state": "empty"}, en leest een
-verwachting de stand van haar lid.
+(characteristicsAbsent) {"state": "holdsNot"}, een attribuut uit attributesEmpty als {"state": "empty"}, een
+niet-wederkerige naar-één-rol uit rolesEmpty als {"state": "empty"}, en een niet-wederkerige meervoudige rol die niet
+volledig gegeven is als {"state": "open", "items": [...]}, {"state": "closed", "items": [...]} of {"state": "empty"}
+(rolesClosed), en leest een verwachting de stand van haar lid.
 Met --explanation vraagt het script elk verzoek een tweede keer, met ?explanation=true&explanationParts=true: het
 antwoord buiten de uitleg en haar stukken moet dat van het eerste zijn, per zin moeten de teksten van de bladeren van
 haar stukken achter elkaar de zin zijn (kaart explanation-parts), en een PLAYED-regel krijgt vijf velden erbij: het
@@ -134,6 +136,49 @@ def strict(document):
     return document.get("inferFromEmpty") is False
 
 
+def resolve_opposite_roles(document, object_type_name, key):
+    """De tegenrollen van `document['model']` die vanaf `object_type_name` (langs supertype onder norm) bij `key`
+    (naam of meervoud onder norm) passen, net als CaseInput.resolveOppositeRoles: lijst van (ft, far_idx, far_role)."""
+    model = document.get("model") or {}
+    types = {norm(t["name"]): t for t in model.get("objectTypes") or [] if "name" in t}
+
+    def is_a(sub_name, sup_name):
+        cur = norm(sub_name)
+        target = norm(sup_name)
+        seen = set()
+        while cur and cur not in seen:
+            if cur == target:
+                return True
+            seen.add(cur)
+            t = types.get(cur)
+            nxt = t.get("supertype") if t else None
+            cur = norm(nxt) if nxt else None
+        return False
+
+    def matches_role(role, nk):
+        rname = role.get("name")
+        rplural = role.get("plural")
+        return (rname is not None and norm(rname) == nk) or (rplural is not None and norm(rplural) == nk)
+
+    if norm(object_type_name) not in types:
+        return []
+    nk = norm(key)
+    hits = []
+    for ft in model.get("factTypes") or []:
+        roles = ft.get("roles") or []
+        if len(roles) == 2:
+            a, b = roles[0], roles[1]
+            if a.get("objectType") and is_a(object_type_name, a["objectType"]) and matches_role(b, nk):
+                hits.append((ft, 1, b))
+            if b.get("objectType") and is_a(object_type_name, b["objectType"]) and matches_role(a, nk):
+                hits.append((ft, 0, a))
+        elif len(roles) == 1 and ft.get("reciprocal"):
+            r = roles[0]
+            if r.get("objectType") and is_a(object_type_name, r["objectType"]) and matches_role(r, nk):
+                hits.append((ft, 0, r))
+    return hits
+
+
 def request_body(case, document):
     """Het verzoek van een casebestand van `document`."""
     v = {}
@@ -146,6 +191,7 @@ def request_body(case, document):
             else value_of(w, "parameter " + name)
     if params:
         v["parameters"] = params
+    is_strict = strict(document)
     instances = []
     for i in inp["instances"]:
         inst = {"type": i["objectType"], "id": i["label"]}
@@ -159,34 +205,78 @@ def request_body(case, document):
             if na in filled:
                 raise NotExpressible(f"attribuut {a!r} staat in beide lijsten van de case, en het verzoek geeft een attribuut"
                                      f" één keer ({i['label']})")
-            if strict(document) and na not in seen_empty:
+            if is_strict and na not in seen_empty:
                 seen_empty.add(na)
                 attr[a] = {"state": "empty"}
         if attr:
             inst["attributes"] = attr
         # een kenmerk: in een document dat uit leeg niets afleidt een stand, anders een boolean
-        characteristics = {k: {"state": "holds"} if strict(document) else True for k in i.get("characteristics") or []}
+        characteristics = {k: {"state": "holds"} if is_strict else True for k in i.get("characteristics") or []}
         for k in i.get("characteristicsAbsent") or []:
             if norm(k) in [norm(c) for c in characteristics]:
                 raise NotExpressible(f"kenmerk {k!r} staat in beide lijsten van de case, en het verzoek geeft een kenmerk"
                                      f" één keer ({i['label']})")
-            characteristics[k] = {"state": "holdsNot"} if strict(document) else False
+            characteristics[k] = {"state": "holdsNot"} if is_strict else False
         # een tijdsafhankelijk kenmerk neemt de perioden waarin het geldt, zoals de case ze geeft
         for k, periods in (i.get("characteristicTimelines") or {}).items():
             characteristics[k] = {"periods": [{"from": p["from"], "to": p["to"]} for p in periods]}
         if characteristics:
             inst["characteristics"] = characteristics
-        roles = {r: list(ls) for r, ls in (i.get("roles") or {}).items()}
-        linked = {norm(x) for x in roles}
-        seen_empty_roles = set()
-        for r in i.get("rolesEmpty") or []:
-            nr = norm(r)
-            if nr in linked:
-                raise NotExpressible(f"rol {r!r} staat in beide lijsten van de case, en het verzoek geeft een rol"
-                                     f" één keer ({i['label']})")
-            if strict(document) and nr not in seen_empty_roles:
-                seen_empty_roles.add(nr)
-                roles[r] = {"state": "empty"}
+        if not is_strict:
+            roles = {r: list(ls) for r, ls in (i.get("roles") or {}).items()}
+        else:
+            roles = {}
+            closed_entries = []
+            closed_slots = set()
+            for cr in i.get("rolesClosed") or []:
+                chits = resolve_opposite_roles(document, i["objectType"], cr)
+                if len(chits) == 1 and not chits[0][0].get("reciprocal") and chits[0][2].get("many") is True:
+                    slot = (norm(chits[0][0]["name"]), chits[0][1])
+                    closed_slots.add(slot)
+                    closed_entries.append((cr, slot))
+                else:
+                    closed_entries.append((cr, None))
+            handled_closed_slots = set()
+            for r, ls in (i.get("roles") or {}).items():
+                hits = resolve_opposite_roles(document, i["objectType"], r)
+                if len(hits) == 1 and not hits[0][0].get("reciprocal") and hits[0][2].get("many") is True:
+                    ft, far_idx, far = hits[0]
+                    slot = (norm(ft["name"]), far_idx)
+                    if far.get("complete") is True:
+                        if slot in closed_slots:
+                            handled_closed_slots.add(slot)
+                        roles[r] = list(ls)
+                    elif slot in closed_slots:
+                        handled_closed_slots.add(slot)
+                        roles[r] = {"state": "closed", "items": list(ls)}
+                    else:
+                        roles[r] = {"state": "open", "items": list(ls)}
+                else:
+                    roles[r] = list(ls)
+            linked = {norm(x) for x in roles}
+            seen_empty_roles = set()
+            for r in i.get("rolesEmpty") or []:
+                nr = norm(r)
+                if nr in linked:
+                    raise NotExpressible(f"rol {r!r} staat in beide lijsten van de case, en het verzoek geeft een rol"
+                                         f" één keer ({i['label']})")
+                if nr not in seen_empty_roles:
+                    seen_empty_roles.add(nr)
+                    roles[r] = {"state": "empty"}
+            seen_closed_keys = set()
+            for cr, slot in closed_entries:
+                if slot is not None:
+                    if slot in handled_closed_slots:
+                        continue
+                    handled_closed_slots.add(slot)
+                ncr = norm(cr)
+                if ncr in linked or ncr in seen_empty_roles or ncr in seen_closed_keys:
+                    continue
+                seen_closed_keys.add(ncr)
+                roles[cr] = {"state": "empty"}
+        if is_strict is False:
+            # ook in een gewone rode case met rolesEmpty op dezelfde instantie mag de bestaande check niet crashen
+            pass
         if roles:
             inst["roles"] = roles
         instances.append(inst)

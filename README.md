@@ -456,6 +456,15 @@ writes one does not start:
   entry in `openInputs` carries `factType` in the vocabulary of the answer, and every `"kind": "role"` entry in `/info`
   `completeInput` carries canonical `factType`, so same-named roles across fact types are unambiguous (`docs/ENGINE.md`).
   Ordinary rule sets remain byte for byte unchanged.
+- **Open and closed to-many roles** (card `open-to-many-roles-in-service`, uchar's cards `open-to-many-roles` and
+  `role-and-existence-expectations`): in a strict rule set (`Afleiden uit leeg: nee`) a non-reciprocal `to-many` role that
+  is not `(volledig gegeven)` takes `{"state": "open", "items": [...]}`, `{"state": "closed", "items": [...]}` (uchar's
+  `rolesClosed`) or `{"state": "empty"}`, or is left out / `null` (open); a bare array or target id on it is a 400
+  `WRONG_TYPE` (whereas a `(volledig gegeven)` `to-many` role also accepts a bare list and refuses `"open"`). `/info`
+  includes `(volledig gegeven)` `to-many` input roles in `completeInput`, `?openInputs=true` and `fixpoint.objects[].open[]`
+  report open `to-many` roles with `factType`, the explanation says `"zijn <rol> is niet volledig gegeven"`, scenarios carry
+  `- de <rol-mv> zijn leeg` and `(volledig gegeven)` on both routes, and the strict OpenAPI document adds
+  `CollectionRoleInput`. Ordinary rule sets remain byte for byte unchanged.
 
 ## The pin
 
@@ -523,12 +532,13 @@ pinned expectation, compared as uchar's replay compares it (`scripts/service_rep
   declarations is a 400 naming both readings, and pinning the input vocabulary answers the same request (at least 4
   testimonies).
 - `check-service-replay` takes its set from uchar's gate 12 (`uchar/scripts/check-drools.sh`: every golden with a
-  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (400). Each golden is
+  case file outside `EXPECTED_CHANNEL`) and checks its size against uchar's `EXPECTED_PLAYED` (404). Each golden is
   served from its `source.rgs`, or without one from its `ir.json`, with one entry point that carries every form. The
   replay excludes a case, not a golden: a golden plays when every case the service carries plays. The numbers of
-  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 391; `EXPECTED_REPLAY_CASES`, 1119); every case
-  that does not play is listed by golden and case file with its reason (10 cases of 9 goldens, each with a scalar on a
-  time-dependent attribute, which the request does not carry), and every golden the service does not start on by name
+  goldens and cases that play are pinned (`EXPECTED_REPLAY_PLAYED`, 393; `EXPECTED_REPLAY_CASES`, 1130); every case
+  that does not play is listed by golden and case file with its reason (19 cases of 11 goldens: 10 with a scalar on a
+  time-dependent attribute, which the request does not carry, and 9 with a role expectation on the end state in
+  `jutterswet-rolverwachting*`), and every golden the service does not start on by name
   (1, whose document holds an `Unresolved` node); a deviation always fails, and the list fails when it goes stale in
   either direction. An attribute or characteristic of the answer is compared by its name under uchar's name equality
   (`Namen.norm`), since the answer spells a name as declared and a case as it writes it. Every golden that plays is asked with
@@ -644,10 +654,12 @@ is still asking needs that difference, so the answer of such a rule set gives ev
 A request gives a characteristic as `{"state": "holds"}`, as `{"state": "holdsNot"}` where it stands not to hold, and
 leaves it out (or `null`) where it is not given; a bare boolean, `true` or `false`, is a 400. A scalar attribute gets a
 plain value of its datatype, `{"state": "empty"}` where it stands to be leeg, or is left out (or `null`) where it is not
-given; a non-reciprocal `to-one` role under `instances[].roles` gets a target id, `{"state": "empty"}` where it stands to
+given; under `instances[].roles`, a non-reciprocal `to-one` role gets a target id, `{"state": "empty"}` where it stands to
 have no linked object, or is left out (or `null`) where it is not given (a link from the opposite end or `relations` beside
-`{"state": "empty"}` is a 422 `EF-049`). What is not given is open, unless its declaration says `(volledig gegeven)`; `/info`
-lists those members — attributes, characteristics and non-reciprocal `to-one` roles — (`completeInput`) beside
+`{"state": "empty"}` is a 422 `EF-049`), and a non-reciprocal `to-many` role that is not `(volledig gegeven)` gets
+`{"state": "open", "items": [...]}`, `{"state": "closed", "items": [...]}` or `{"state": "empty"}`, or is left out (or
+`null`), while a bare array on it is a 400. What is not given is open, unless its declaration says `(volledig gegeven)`;
+`/info` lists those members — attributes, characteristics and non-reciprocal roles — (`completeInput`) beside
 `"inferFromEmpty": false`. A member that only an initialisation writes is input, with the
 initialisation as its default value where it is `(volledig gegeven)` or given as `{"state": "empty"}`. `inconsistencies` names what stands, so an empty list does not
 say that every consistency holds. The explanation says of an open outcome that it does not stand and which member or role keeps it open.

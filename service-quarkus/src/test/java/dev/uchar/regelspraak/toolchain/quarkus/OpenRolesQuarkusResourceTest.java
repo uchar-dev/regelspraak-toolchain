@@ -59,13 +59,44 @@ class OpenRolesQuarkusResourceTest {
 
         // 4. Opposite-instance link + rolesEmpty -> 422 EVALUATION_FAULT EF-049
         String ef049Req = """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "open", "items": ["W1"]}}},
                            {"type": "Wrak", "id": "W1", "roles": {"vinder": {"state": "empty"}}}]}""";
         JsonNode ef049Body = comparePost(core, resource, "wrak", ef049Req, null, null, null, null, 422);
         assertEquals("EVALUATION_FAULT", ef049Body.get("status").asText(), ef049Body.toString());
         assertEquals("EF-049", ef049Body.at("/faults/0/code").asText(), ef049Body.toString());
         assertEquals("W1", ef049Body.at("/faults/0/params/label").asText(), ef049Body.toString());
         assertEquals("vinder", ef049Body.at("/faults/0/params/role").asText(), ef049Body.toString());
+
+        // 4b. Open, closed, empty and bare-array 400 on non-reciprocal to-many role
+        String openManyReq = """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "open", "items": ["W1"]}}},
+                           {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
+                            "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holdsNot"},
+                                                "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}""";
+        JsonNode openManyBody = comparePost(core, resource, "wrak", openManyReq, null, "true", "true", "true", 200);
+        assertEquals("{\"state\":\"open\"}", openManyBody.at("/instances/0/attributes/ladingsom").toString());
+        assertTrue(openManyBody.get("openInputs").toString()
+                .contains("\"kind\":\"role\",\"instance\":\"J1\",\"factType\":\"wrakvondst\",\"name\":\"gevonden wrak\""),
+                openManyBody.toString());
+        assertTrue(openManyBody.at("/fixpoint/objects/0/open").toString()
+                .contains("{\"role\":\"gevonden wrak\",\"factType\":\"wrakvondst\"}"), openManyBody.toString());
+
+        String closedManyReq = openManyReq.replace("\"state\": \"open\"", "\"state\": \"closed\"");
+        JsonNode closedManyBody = comparePost(core, resource, "wrak", closedManyReq, null, "true", "true", "true", 200);
+        assertEquals("{\"state\":\"filled\",\"value\":5}", closedManyBody.at("/instances/0/attributes/ladingsom").toString());
+
+        String emptyManyReq = """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "empty"}}},
+                           {"type": "Wrak", "id": "W1", "roles": {"vinder": {"state": "empty"}}}]}""";
+        JsonNode emptyManyBody = comparePost(core, resource, "wrak", emptyManyReq, null, null, null, null, 200);
+        assertEquals("{\"state\":\"empty\"}", emptyManyBody.at("/instances/0/attributes/ladingsom").toString());
+
+        String bareManyReq = """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": []}},
+                           {"type": "Wrak", "id": "W1"}]}""";
+        JsonNode bareManyBody = comparePost(core, resource, "wrak", bareManyReq, null, null, null, null, 400);
+        assertEquals("WRONG_TYPE", bareManyBody.at("/violations/0/kind").asText(), bareManyBody.toString());
+        assertEquals("instances[0].roles.gevonden wrakken", bareManyBody.at("/violations/0/field").asText());
 
         // 5. /info and /openapi
         Response infoResp = resource.info();
@@ -79,6 +110,7 @@ class OpenRolesQuarkusResourceTest {
         assertArrayEquals(jdkDoc.body(), (byte[]) oaResp.getEntity());
         String oaText = new String(jdkDoc.body(), StandardCharsets.UTF_8);
         assertTrue(oaText.contains("EmptyRoleInput"), oaText);
+        assertTrue(oaText.contains("CollectionRoleInput"), oaText);
 
         // 6. Canonically colliding role without plural via vocabulary designation -> 400 UNSUPPORTED (never 500),
         //    and vocabulary parity on open roles + /info completeInput with factType
@@ -98,7 +130,7 @@ class OpenRolesQuarkusResourceTest {
                         is uitgeweken kenmerk (bijvoeglijk);
                     Feittype thuishaven (handboek: vaste havenrelatie)
                         de haven (handboek: vaste haven) Haven (volledig gegeven)
-                        het vaartuig (mv: vaartuigen) Vaartuig
+                        het vaartuig (mv: vaartuigen) Vaartuig (volledig gegeven)
                         één haven heeft meerdere vaartuigen
                     Feittype noodhavenrelatie (handboek: uitwijkrelatie)
                         de haven (handboek: uitwijkhaven) Haven
@@ -137,7 +169,8 @@ class OpenRolesQuarkusResourceTest {
         JsonNode collidingInfo = ServiceHttp.MAPPER.readTree((String) collidingInfoResp.getEntity());
         assertEquals(ServiceHttp.info(collidingCore), collidingInfo);
         assertEquals(ServiceHttp.MAPPER.readTree("""
-            [{"kind": "role", "objectType": "Vaartuig", "factType": "thuishaven", "name": "haven"}]"""),
+            [{"kind": "role", "objectType": "Haven", "factType": "thuishaven", "name": "vaartuig"},
+             {"kind": "role", "objectType": "Vaartuig", "factType": "thuishaven", "name": "haven"}]"""),
                 collidingInfo.get("completeInput"));
 
         Response vocabOaResp = collidingResource.openapi("handboek");

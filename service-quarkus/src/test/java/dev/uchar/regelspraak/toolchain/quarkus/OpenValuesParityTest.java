@@ -102,7 +102,7 @@ class OpenValuesParityTest {
     void a_422_is_equal() throws Exception {
         assertEquals("EF-014", compare("vracht", ", \"attributes\": {\"taxatie\": 5}", 422).at("/faults/0/code").asText());
         String ef049 = """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "open", "items": ["V1"]}}},
                            {"type": "Vondst", "id": "V1", "roles": {"jutter": {"state": "empty"}}}]}""";
         JsonNode conflict = compareRaw(core, service, "vondst", ef049, null, null, null, 422);
         assertEquals("EF-049", conflict.at("/faults/0/code").asText(), conflict.toString());
@@ -133,9 +133,42 @@ class OpenValuesParityTest {
         }
         String toManyEmpty = "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\","
                 + " \"roles\": {\"vondsten\": {\"state\": \"empty\"}}}]}";
-        JsonNode many = compareRaw(core, service, "vondst", toManyEmpty, null, null, null, 400);
-        assertEquals("WRONG_TYPE", many.at("/violations/0/kind").asText(), many.toString());
-        assertEquals("instances[0].roles.vondsten", many.at("/violations/0/field").asText(), many.toString());
+        JsonNode manyEmpty = compareRaw(core, service, "vondst", toManyEmpty, null, "true", "true", 200);
+        assertEquals("{\"state\":\"empty\"}", manyEmpty.at("/instances/0/attributes/totaaltaxatie").toString());
+
+        String toManyOpen = """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "open", "items": ["V1"]}}},
+                           {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50},
+                            "characteristics": {"betwist": {"state": "holdsNot"}}}]}""";
+        JsonNode manyOpen = compareRaw(core, service, "vondst", toManyOpen, "true", "true", "true", 200);
+        assertEquals("{\"state\":\"open\"}", manyOpen.at("/instances/0/attributes/totaaltaxatie").toString());
+        assertTrue(manyOpen.get("openInputs").toString()
+                .contains("\"kind\":\"role\",\"instance\":\"J1\",\"factType\":\"vangst\",\"name\":\"vondst\""),
+                manyOpen.toString());
+        assertTrue(manyOpen.at("/fixpoint/objects/0/open").toString()
+                .contains("{\"role\":\"vondst\",\"factType\":\"vangst\"}"), manyOpen.toString());
+        assertTrue(manyOpen.get("explanation").toString()
+                .contains("want zijn vondst is niet volledig gegeven"), manyOpen.toString());
+
+        String toManyClosed = """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1"]}}},
+                           {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50},
+                            "characteristics": {"betwist": {"state": "holdsNot"}}}]}""";
+        JsonNode manyClosed = compareRaw(core, service, "vondst", toManyClosed, null, "true", "true", 200);
+        assertEquals("{\"state\":\"filled\",\"value\":50}", manyClosed.at("/instances/0/attributes/totaaltaxatie").toString());
+
+        for (String[] badMany : new String[][]{
+                {"[]", "WRONG_TYPE"},
+                {"[\"V1\"]", "WRONG_TYPE"},
+                {"{\"state\": \"open\"}", "MALFORMED"},
+                {"{\"state\": \"empty\", \"items\": []}", "MALFORMED"}}) {
+            JsonNode badBody = compareRaw(core, service, "vondst",
+                    "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\", \"roles\": {\"vondsten\": " + badMany[0] + "}},"
+                            + " {\"type\": \"Vondst\", \"id\": \"V1\"}]}",
+                    null, null, null, 400);
+            assertEquals(badMany[1], badBody.at("/violations/0/kind").asText(), badBody.toString());
+            assertEquals("instances[0].roles.vondsten", badBody.at("/violations/0/field").asText(), badBody.toString());
+        }
 
         DecisionCore wrakken = OpenValuesSource.wrak(CoreConfig.strict().withDetail());
         ServiceHttp wrakHttp = ServiceHttp.bind(wrakken, "127.0.0.1", 0).start();
@@ -194,7 +227,9 @@ class OpenValuesParityTest {
         JsonNode info = ServiceHttp.MAPPER.readTree(get("info"));
         assertEquals(info, ServiceHttp.MAPPER.readTree((String) resource.info().getEntity()));
         assertEquals(false, info.get("inferFromEmpty").asBoolean(true));
-        assertEquals(get("openapi"), new String((byte[]) resource.openapi(null).getEntity(), StandardCharsets.UTF_8));
+        String openapi = get("openapi");
+        assertEquals(openapi, new String((byte[]) resource.openapi(null).getEntity(), StandardCharsets.UTF_8));
+        assertTrue(openapi.contains("CollectionRoleInput"), openapi);
     }
 
     private static JsonNode compare(String path, String given, int expected) throws Exception {

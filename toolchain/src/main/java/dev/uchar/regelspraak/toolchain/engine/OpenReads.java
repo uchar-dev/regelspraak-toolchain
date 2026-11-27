@@ -55,7 +55,7 @@ public final class OpenReads {
     private final RegelSpraakModel model;
     private final Map<String, Form> forms = new HashMap<>();
     private final Map<Object, EndState.EndObject> ends = new IdentityHashMap<>();
-    /** The open non-reciprocal to-one roles per object, in the declaration order of {@code model.factTypes} and role slot. */
+    /** The open non-reciprocal roles per object, in the declaration order of {@code model.factTypes} and role slot. */
     private final Map<Object, List<OpenValue>> openRoles = new IdentityHashMap<>();
     /** The readings that left a target open, per object. */
     private final Map<Object, List<ConditionReading>> open = new IdentityHashMap<>();
@@ -130,7 +130,7 @@ public final class OpenReads {
                 String ftNorm = Namen.norm(ft.name);
                 for (int farIdx = 0; farIdx < 2; farIdx++) {
                     Role far = ft.roles.get(farIdx);
-                    if (far.many() || far.name() == null) continue;
+                    if (far.name() == null) continue;
                     for (int i = 0; i < list.size(); i++) {
                         if (matched[i]) continue;
                         EndState.OpenLink k = list.get(i);
@@ -163,7 +163,7 @@ public final class OpenReads {
     }
 
     /** Whether {@code member} is input on its object: nothing but an initialisation writes an attribute or characteristic
-     *  there, and no creation writes a non-reciprocal to-one role there. */
+     *  there, and no creation writes a non-reciprocal role there. */
     boolean input(OpenValue member) {
         if (member.role())
             return !roleWritten(model, document.loaded().roleBindings(), typeOf(member.object()),
@@ -172,7 +172,7 @@ public final class OpenReads {
     }
 
     /** Whether {@code member}, an open member, is open by its own input: an input member ({@link #input}) that no form left
-     *  open, so that its initialisation was not at its turn (or an open input to-one role in {@link EndState#openLinks}).
+     *  open, so that its initialisation was not at its turn (or an open input non-reciprocal role in {@link EndState#openLinks}).
      *  A complete input member without a value is settled leeg above its initialisation, which is at its turn there, and
      *  open only where the initialisation leaves it so by an open read (ch. 1.5, "An initialisation"): that member is open
      *  by what its initialisation reads, not by its own input. */
@@ -384,7 +384,7 @@ public final class OpenReads {
      * The open input members that keep one of {@code outcomes} open, each once, with the outcomes it keeps open: an outcome
      * that is open itself is followed over the forms that leave it open ({@link #of}) to the members open by their own input
      * ({@link #notGiven}). They come in the order of {@code instances} and then of the declarations: per instance its open
-     * attributes and characteristics ({@link EndState.EndObject#open}) followed by its open non-reciprocal to-one roles in
+     * attributes and characteristics ({@link EndState.EndObject#open}) followed by its open non-reciprocal roles in
      * the declaration order of {@code model.factTypes} and role slot. An outcome that is not open has none, and an open check
      * member of the opgave marker ({@code berekende X}, {@code afwijkende opgave X}) is skipped where the marked attribute
      * {@code X} itself already stands on that object ({@link #settledOpgaveCheck}).

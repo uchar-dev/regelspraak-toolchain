@@ -117,7 +117,7 @@ class OpenValuesHttpTest {
     void a_fold_over_a_set_with_an_open_member_is_open() throws Exception {
         String request = """
             {"instances": [
-              {"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
+              {"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2"]}}},
               {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50}},
               {"type": "Vondst", "id": "V2", "attributes": {%s}}]}""";
         JsonNode filled = ok(post(service, "vondst", request.formatted("\"taxatie\": 70")));
@@ -614,9 +614,17 @@ class OpenValuesHttpTest {
             {"type": "object", "required": ["state"], "additionalProperties": false, "properties":
               {"state": {"type": "string", "enum": ["empty"]}}}"""),
                 ((com.fasterxml.jackson.databind.node.ObjectNode) emptyRoleInput.deepCopy()).without("description"));
+        JsonNode collectionRoleInput = schemas.get("CollectionRoleInput");
+        assertEquals(json("""
+            {"type": "object", "required": ["state", "items"], "additionalProperties": false, "properties":
+              {"state": {"type": "string", "enum": ["open", "closed"]},
+               "items": {"type": "array", "items": {"type": "string"}}}}"""),
+                ((com.fasterxml.jackson.databind.node.ObjectNode) collectionRoleInput.deepCopy()).without("description"));
         assertTrue(schemas.at("/Request/properties/instances/items/properties/roles/additionalProperties/nullable").asBoolean());
         assertEquals("#/components/schemas/EmptyRoleInput",
                 schemas.at("/Request/properties/instances/items/properties/roles/additionalProperties/oneOf/2/$ref").asText());
+        assertEquals("#/components/schemas/CollectionRoleInput",
+                schemas.at("/Request/properties/instances/items/properties/roles/additionalProperties/oneOf/3/$ref").asText());
         assertFalse(schemas.get("Vondst").toString().contains("boolean"), schemas.get("Vondst").toString());
         assertTrue(schemas.at("/Vondst/properties/toeslag/description").asText().contains("Volledig gegeven"));
         // a complete attribute that only an initialisation writes is no leeg of its own: the initialisation is at its turn
@@ -721,7 +729,7 @@ class OpenValuesHttpTest {
             // 422 EF-049 from opposite instance and from top-level relations
             for (String conflictBody : List.of(
                     """
-                    {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
+                    {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "open", "items": ["W1"]}}},
                                    {"type": "Wrak", "id": "W1", "roles": {"vinder": {"state": "empty"}}}]}""",
                     """
                     {"instances": [{"type": "Jutter", "id": "J1"},
@@ -737,6 +745,57 @@ class OpenValuesHttpTest {
             }
         } finally {
             wrakken.stop(0);
+        }
+    }
+
+    @Test
+    void open_closed_and_empty_to_many_roles_and_bare_array_400_over_http() throws Exception {
+        // Open collection with known member V1: totaaltaxatie stays open, openInputs and fixpoint name role vondst
+        JsonNode openWithKnown = ok(post(detail, "vondst?openInputs=true&fixpoint=true&explanation=true", """
+            {"instances": [
+              {"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "open", "items": ["V1"]}}},
+              {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50},
+               "characteristics": {"betwist": {"state": "holdsNot"}}}]}"""));
+        assertEquals(json("{\"state\": \"open\"}"), openWithKnown.at("/instances/0/attributes/totaaltaxatie"));
+        assertTrue(openWithKnown.get("openInputs").toString()
+                .contains("\"kind\":\"role\",\"instance\":\"J1\",\"factType\":\"vangst\",\"name\":\"vondst\""),
+                openWithKnown.toString());
+        assertTrue(openWithKnown.at("/fixpoint/objects/0/open").toString()
+                .contains("{\"role\":\"vondst\",\"factType\":\"vangst\"}"),
+                openWithKnown.toString());
+        assertTrue(openWithKnown.get("explanation").toString()
+                .contains("J1: zijn totaaltaxatie staat niet vast, want zijn vondst is niet volledig gegeven"),
+                openWithKnown.toString());
+
+        // Closed collection with V1 -> 50; empty / closed [] -> 0
+        JsonNode closed = ok(post(detail, "vondst?openInputs=true&fixpoint=true", """
+            {"instances": [
+              {"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1"]}}},
+              {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50},
+               "characteristics": {"betwist": {"state": "holdsNot"}}}]}"""));
+        assertEquals(json("{\"state\": \"filled\", \"value\": 50}"), closed.at("/instances/0/attributes/totaaltaxatie"));
+        assertFalse(closed.get("openInputs").toString().contains("\"vondst\""), closed.toString());
+        assertFalse(closed.at("/fixpoint/objects/0/open").toString().contains("\"vondst\""), closed.toString());
+
+        for (String emptyRole : List.of("{\"state\": \"empty\"}", "{\"state\": \"closed\", \"items\": []}")) {
+            JsonNode empty = ok(post(detail, "vondst?openInputs=true&fixpoint=true",
+                    "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\", \"roles\": {\"vondsten\": " + emptyRole + "}}]}"));
+            assertEquals(json("{\"state\": \"empty\"}"), empty.at("/instances/0/attributes/totaaltaxatie"));
+            assertEquals(json("[]"), empty.get("openInputs"));
+        }
+
+        // Bare array or bare string on incomplete to-many role -> 400 WRONG_TYPE
+        for (String bare : List.of("[]", "[\"V1\"]", "\"V1\"")) {
+            HttpResponse<String> r = post(service, "vondst", """
+                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": %s}},
+                               {"type": "Vondst", "id": "V1"}]}""".formatted(bare));
+            assertEquals(400, r.statusCode(), r.body());
+            JsonNode v = json(r.body()).at("/violations/0");
+            assertEquals("WRONG_TYPE", v.get("kind").asText(), r.body());
+            assertEquals("instances[0].roles.vondsten", v.get("field").asText(), r.body());
+            assertTrue(v.get("error").asText().contains("\"open\""), r.body());
+            assertTrue(v.get("error").asText().contains("\"closed\""), r.body());
+            assertTrue(v.get("error").asText().contains("\"empty\""), r.body());
         }
     }
 

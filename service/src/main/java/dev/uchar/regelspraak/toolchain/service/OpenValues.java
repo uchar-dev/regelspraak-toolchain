@@ -24,8 +24,10 @@ import java.util.Map;
  * there, settled leeg, or open: neither a value nor leeg stands. So the answer gives every member with its state
  * ({@link #state(String)} and its sisters) and no null or boolean, and a request gives a characteristic as its state, that
  * it holds or stands not to hold ({@link #characteristic}), a scalar attribute either as its value or as
- * {@code {"state": "empty"}} where it is settled leeg ({@link #attributeState}), and a non-reciprocal to-one role either as
- * its target id or as {@code {"state": "empty"}} where it stands to have no linked object ({@link #roleState}).
+ * {@code {"state": "empty"}} where it is settled leeg ({@link #attributeState}), a non-reciprocal to-one role either as
+ * its target id or as {@code {"state": "empty"}} where it stands to have no linked object ({@link #roleState}), and a
+ * non-reciprocal to-many role as {@code {"state": "open", "items": [...]}}, {@code {"state": "closed", "items": [...]}} or
+ * {@code {"state": "empty"}} ({@link #collectionRoleState}; a complete one also takes a bare list of target ids).
  * {@link #in} is the one place where the
  * service asks whether a rule set is strict; every other rule set is read and answered without this class.
  */
@@ -36,9 +38,12 @@ public final class OpenValues {
     /** The key of the state of a member, in a request and in an answer. */
     static final String STATE = "state";
 
-    static final String FILLED = "filled", OPEN = "open";
+    static final String FILLED = "filled";
 
-    /** The state of a scalar attribute that stands to have no value. */
+    /** The open and closed states and the items list key of a non-reciprocal to-many role in a strict request. */
+    public static final String OPEN = "open", CLOSED = "closed", ITEMS = "items";
+
+    /** The state of a scalar attribute or role that stands to have no value or linked object. */
     public static final String EMPTY = "empty";
 
     /** The states of a characteristic that holds, and of one that stands not to hold. */
@@ -49,6 +54,15 @@ public final class OpenValues {
 
     /** What {@link #roleState} read of a non-reciprocal to-one role in a request of a strict rule set. */
     enum RoleInput { LINK, EMPTY, INVALID }
+
+    /** What {@link #collectionRoleState} read of a non-reciprocal to-many role in a request of a strict rule set. */
+    enum CollectionKind { OPEN, CLOSED, EMPTY, BARE_LINKS, INVALID }
+
+    record CollectionRoleInput(CollectionKind kind, List<String> items) {
+        static final CollectionRoleInput EMPTY_INPUT = new CollectionRoleInput(CollectionKind.EMPTY, List.of());
+        static final CollectionRoleInput BARE = new CollectionRoleInput(CollectionKind.BARE_LINKS, List.of());
+        static final CollectionRoleInput INVALID_INPUT = new CollectionRoleInput(CollectionKind.INVALID, List.of());
+    }
 
     private OpenValues() {}
 
@@ -67,7 +81,7 @@ public final class OpenValues {
     /** The input members of {@code model} whose declaration says that their input is complete ({@code (volledig gegeven)},
      *  uchar's RUNTIME-SEMANTICS ch. 1.5), as {@code /info} lists them: {@code {"kind": "attribute" | "characteristic" |
      *  "role", "objectType", "factType"?, "name"}}, {@code factType} on a role, per object type its attributes, then its
-     *  characteristics, then its non-reciprocal to-one roles, as declared, canonically. A member that a form other than an
+     *  characteristics, then its non-reciprocal roles, as declared, canonically. A member that a form other than an
      *  initialisation writes on the objects of the type that declares it ({@link OpenReads#written} /
      *  {@link OpenReads#roleWritten}, with {@code groups} and {@code roleBindings}), such as the {@code berekende X} of the
      *  opgave marker, is no input. */
@@ -89,7 +103,7 @@ public final class OpenValues {
                 if (ft.reciprocal || ft.roles.size() != 2) continue;
                 for (int farIdx = 0; farIdx < 2; farIdx++) {
                     Role far = ft.roles.get(farIdx), near = ft.roles.get(1 - farIdx);
-                    if (!far.many() && far.complete() && far.name() != null
+                    if (far.complete() && far.name() != null
                             && near.objectTypeName().equalsIgnoreCase(ot.name)
                             && !OpenReads.roleWritten(model, roleBindings, ot, ft.name, farIdx))
                         out.addObject().put("kind", "role").put("objectType", ot.name)
@@ -102,6 +116,13 @@ public final class OpenValues {
 
     /** A member in the state {@code state}, without a value. */
     public static ObjectNode state(String state) { return NF.objectNode().put(STATE, state); }
+
+    /** A non-reciprocal to-many role in the state {@code state} ({@link #OPEN} or {@link #CLOSED}) with {@code items}. */
+    public static ObjectNode collection(String state, ArrayNode items) {
+        ObjectNode n = state(state);
+        n.set(ITEMS, items);
+        return n;
+    }
 
     /** An attribute filled with {@code value}. */
     static ObjectNode filled(JsonNode value) {
@@ -205,7 +226,10 @@ public final class OpenValues {
             }
             return RoleInput.EMPTY;
         }
-        if (!other.isEmpty() && !(state.equals(FILLED) && other.equals(List.of("value")))) {
+        if (!other.isEmpty()
+                && !(state.equals(FILLED) && other.equals(List.of("value")))
+                && !((state.equals(OPEN) || state.equals(CLOSED)) && other.equals(List.of(ITEMS))
+                        && textualItems(value.get(ITEMS)))) {
             sink.add(Violation.of(Violation.Kind.MALFORMED, field, "de stand van rol '" + name
                     + "' in een verzoek is {\"state\": \"empty\"}, zonder " + String.join(", ", other)));
             return RoleInput.INVALID;
@@ -215,6 +239,91 @@ public final class OpenValues {
                 + " doel-id, of {\"state\": \"empty\"} waar vaststaat dat er geen gekoppeld object is; waar zij niet"
                 + " gegeven is, ontbreekt zij of is zij null"));
         return RoleInput.INVALID;
+    }
+
+    /**
+     * What a request of a strict rule set says of a non-reciprocal to-many role ({@code name} as it writes it, declared
+     * {@code complete} where {@code (volledig gegeven)} stands on it) on {@code field}:
+     * <ul>
+     *   <li>where {@code !complete}: {@code {"state": "open", "items": [...]}} ({@link CollectionKind#OPEN}),
+     *       {@code {"state": "closed", "items": [...]}} ({@link CollectionKind#CLOSED}) or {@code {"state": "empty"}}
+     *       ({@link CollectionKind#EMPTY}); a bare array, string, number, boolean or invalid state is a {@code WRONG_TYPE},
+     *       and a malformed state object (non-textual {@code state}, missing or non-string-array {@code items}, or extra
+     *       keys) is a {@code MALFORMED};</li>
+     *   <li>where {@code complete}: a bare list or target id ({@link CollectionKind#BARE_LINKS}),
+     *       {@code {"state": "closed", "items": [...]}} or {@code {"state": "empty"}}; {@code {"state": "open", ...}} or
+     *       another state is a {@code WRONG_TYPE} (checked after {@code MALFORMED} on non-textual {@code state} or invalid
+     *       keys).</li>
+     * </ul>
+     */
+    static CollectionRoleInput collectionRoleState(JsonNode value, String name, boolean complete, String field,
+                                                   List<Violation> sink) {
+        if (!value.isObject()) {
+            if (complete) return CollectionRoleInput.BARE;
+            sink.add(Violation.of(Violation.Kind.WRONG_TYPE, field, incompleteCollectionWrongType(name, value)));
+            return CollectionRoleInput.INVALID_INPUT;
+        }
+        List<String> other = new ArrayList<>();
+        value.fieldNames().forEachRemaining(f -> { if (!f.equals(STATE)) other.add(f); });
+        JsonNode stateNode = value.get(STATE);
+        String allowedForms = complete
+                ? "{\"state\": \"closed\", \"items\": [...]} of {\"state\": \"empty\"}"
+                : "{\"state\": \"open\", \"items\": [...]}, {\"state\": \"closed\", \"items\": [...]} of"
+                        + " {\"state\": \"empty\"}";
+        if (stateNode == null || !stateNode.isTextual()) {
+            sink.add(Violation.of(Violation.Kind.MALFORMED, field, "de stand van rol '" + name
+                    + "' in een verzoek is " + allowedForms
+                    + (other.isEmpty() ? "" : ", zonder " + String.join(", ", other))));
+            return CollectionRoleInput.INVALID_INPUT;
+        }
+        String state = stateNode.asText();
+        if (state.equals(EMPTY)) {
+            if (!other.isEmpty()) {
+                sink.add(Violation.of(Violation.Kind.MALFORMED, field, "de stand van rol '" + name
+                        + "' in een verzoek is {\"state\": \"empty\"}, zonder " + String.join(", ", other)));
+                return CollectionRoleInput.INVALID_INPUT;
+            }
+            return CollectionRoleInput.EMPTY_INPUT;
+        }
+        if (state.equals(CLOSED) || (!complete && state.equals(OPEN))) {
+            JsonNode itemsNode = value.get(ITEMS);
+            if (!other.equals(List.of(ITEMS)) || !textualItems(itemsNode)) {
+                List<String> unexpected = other.stream().filter(k -> !k.equals(ITEMS)).toList();
+                sink.add(Violation.of(Violation.Kind.MALFORMED, field, "de stand '" + state + "' van rol '" + name
+                        + "' vraagt {\"state\": \"" + state + "\", \"items\": [<id>, ...]}"
+                        + (unexpected.isEmpty() ? "" : ", zonder " + String.join(", ", unexpected))));
+                return CollectionRoleInput.INVALID_INPUT;
+            }
+            List<String> items = itemsNode.valueStream().map(JsonNode::asText).toList();
+            return new CollectionRoleInput(state.equals(OPEN) ? CollectionKind.OPEN : CollectionKind.CLOSED, items);
+        }
+        if (!other.stream().allMatch(k -> k.equals(ITEMS) || k.equals("value"))
+                || (value.has(ITEMS) && !textualItems(value.get(ITEMS)))) {
+            sink.add(Violation.of(Violation.Kind.MALFORMED, field, "de stand van rol '" + name
+                    + "' in een verzoek is " + allowedForms
+                    + (other.isEmpty() ? "" : ", zonder " + String.join(", ", other))));
+            return CollectionRoleInput.INVALID_INPUT;
+        }
+        if (complete) {
+            sink.add(Violation.of(Violation.Kind.WRONG_TYPE, field, "rol '" + name + "' is " + value
+                    + ", en een volledig gegeven meervoudige rol staat vast en kan niet openstaan: zij neemt een lijst"
+                    + " doel-ids, {\"state\": \"closed\", \"items\": [...]} of {\"state\": \"empty\"}; waar zij niet"
+                    + " gegeven is, ontbreekt zij of is zij null"));
+        } else {
+            sink.add(Violation.of(Violation.Kind.WRONG_TYPE, field, incompleteCollectionWrongType(name, value)));
+        }
+        return CollectionRoleInput.INVALID_INPUT;
+    }
+
+    private static boolean textualItems(JsonNode items) {
+        return items != null && items.isArray() && items.valueStream().allMatch(JsonNode::isTextual);
+    }
+
+    private static String incompleteCollectionWrongType(String name, JsonNode value) {
+        return "rol '" + name + "' is " + value + ", en in een regelset die uit leeg niets afleidt vraagt een"
+                + " niet-volledig-gegeven meervoudige rol een stand: {\"state\": \"open\", \"items\": [...]},"
+                + " {\"state\": \"closed\", \"items\": [...]} of {\"state\": \"empty\"}; waar zij niet gegeven is,"
+                + " ontbreekt zij of is zij null";
     }
 
     /** The two states a request gives of a characteristic, as a sentence names them. */

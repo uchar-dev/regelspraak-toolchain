@@ -77,7 +77,7 @@ public final class FixpointGivens {
         UnrenderableValue(String sentence) { super(sentence); }
     }
 
-    /** A non-reciprocal to-one role slot on an instance: the normalised fact-type name and the 0-based far-role index. */
+    /** A non-reciprocal role slot on an instance: the normalised fact-type name and the 0-based far-role index. */
     public record EmptyRole(String factType, int roleIndex) {
         public EmptyRole {
             factType = Namen.norm(factType);
@@ -92,7 +92,7 @@ public final class FixpointGivens {
      * the input set, case-insensitively, and {@code periods} per time-dependent characteristic the input gave periods
      * those periods, as {@code from}, {@code to} nodes ({@link #periodNodes}), keyed case-insensitively; {@code absent}
      * the characteristics the input states not to hold, {@code emptyAttributes} the scalar attributes the input states
-     * to be leeg, and {@code emptyRoles} the non-reciprocal to-one roles the input states to have no link
+     * to be leeg, and {@code emptyRoles} the non-reciprocal roles the input states to have no link
      * ({@link OpenValues}). Its object in the session is the one uchar's reading labels so ({@link EndState.EndObject#label}).
      */
     public record InputObject(String label, Map<String, ObjectNode> attributes, Set<String> characteristics,
@@ -384,7 +384,7 @@ public final class FixpointGivens {
 
     /** The members of an object of type {@code ot} that are {@code open}, in a strict rule set ({@link OpenValues}): its
      *  attributes and then its characteristics, each in declaration order, the nearest type of its chain first, followed by
-     *  its open non-reciprocal to-one roles in the declaration order of {@code model.factTypes} and role slot, each with its
+     *  its open non-reciprocal roles in the declaration order of {@code model.factTypes} and role slot, each with its
      *  {@code factType} (and {@code factTypeCanonical} where it differs). Where the
      *  input gave the member a value or stated it to be leeg / not holding, which does not stand beside a writer that is
      *  open, it is {@code input}: of an attribute its value or {@code {"state": "empty"}} where it is among
@@ -432,7 +432,7 @@ public final class FixpointGivens {
             if (ft.reciprocal || ft.roles.size() != 2) continue;
             for (int farIdx = 0; farIdx < 2; farIdx++) {
                 Role far = ft.roles.get(farIdx);
-                if (far.many() || far.name() == null) continue;
+                if (far.name() == null) continue;
                 EmptyRole slot = new EmptyRole(ft.name, farIdx);
                 if (!remainingRoles.remove(slot)) continue;
                 ObjectNode rn = sink.addObject();

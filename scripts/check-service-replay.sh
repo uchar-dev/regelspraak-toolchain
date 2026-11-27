@@ -270,7 +270,13 @@ command -v python3 >/dev/null 2>&1 || fail "python3 ontbreekt"
 # Pin uchar f6ad5e87e (kaart open-to-one-roles, toolchainkaart open-to-one-roles-in-service): 391 — de set van gate 12
 # groeit van 398 naar 400 met jutterswet-invoer-rol en jutterswet-invoer-rol-strikt (rolesEmpty en open naar-één-rollen;
 # in een strikt verzoek {"state": "empty"} op de naar-één-rol), en beide spelen door de dienst.
-EXPECTED_REPLAY_PLAYED=391
+# Pin uchar c4c2e70c5 (kaarten open-to-many-roles en role-and-existence-expectations, toolchainkaart
+# open-to-many-roles-in-service): 393 — de set van gate 12 groeit van 400 naar 404 met jutterswet-invoer-collectie,
+# jutterswet-invoer-collectie-strikt, jutterswet-rolverwachting en jutterswet-rolverwachting-strikt. De twee
+# invoer-collectie-goldens spelen door de dienst (in een strikt verzoek met open/closed/empty op niet-wederkerige
+# meervoudige rollen); de negen cases van jutterswet-rolverwachting* toetsen rolverwachtingen op de eindtoestand, die
+# het HTTP-antwoord niet teruggeeft, en staan hieronder in REPLAY_EXCLUDED.
+EXPECTED_REPLAY_PLAYED=393
 # Het aantal cases dat door de dienst speelt, over de gespeelde goldens; gemeten 2026-11-06 bij de kaart
 # dienst-replay-per-case (pin uchar 50f17953): 968. Pin uchar ff489f7e: 999 — de negen cases van de vier N:M-goldens,
 # de 21 van de elf nieuwe goldens en jutterswet-filterwacht/case3-een-jutter-die-niet-actief-is-naast-een-actieve.
@@ -295,13 +301,16 @@ EXPECTED_REPLAY_PLAYED=391
 # ongeordend, 5 genest, 3 deponering, 2 fout, 7 initialisatie).
 # 1110 (pin uchar 8d7a98c9b): de drie cases van jutterswet-invoer-leeg en de vijf van jutterswet-invoer-leeg-strikt.
 # 1119 (pin uchar f6ad5e87e): de drie cases van jutterswet-invoer-rol en de zes van jutterswet-invoer-rol-strikt.
-EXPECTED_REPLAY_CASES=1119
+# 1130 (pin uchar c4c2e70c5): de vier cases van jutterswet-invoer-collectie en de zeven van jutterswet-invoer-collectie-strikt.
+EXPECTED_REPLAY_CASES=1130
 
 # De cases van de set van gate 12 die de dienst niet speelt, "<golden>/<case>|<reden>", en de goldens waarop hij niet
 # start, "<golden>|<reden>". Het verzoek van de dienst draagt een tijdsafhankelijke parameter en een tijdsafhankelijk
 # attribuut als tijdlijn en een tijdsafhankelijk kenmerk als zijn perioden, maar geen scalaire waarde op een
 # tijdsafhankelijk attribuut: uchars replay legt die in de periode van de rekendatum (RUNTIME-SEMANTICS ch. 8.4), en de
-# dienst weigert haar met een 400 UNSUPPORTED. Op een document met een Unresolved-knoop start de dienst niet: hij
+# dienst weigert haar met een 400 UNSUPPORTED. Een rolverwachting op de eindtoestand (roleEmpty, roleCount, roleTarget,
+# roleOpen) drukt het antwoord van de dienst nog niet uit (alleen geselecteerde attributen en kenmerken). Op een
+# document met een Unresolved-knoop start de dienst niet: hij
 # weigert een onopgeloste naam als fout in de bron, waar uchar pas faalt als de evaluatie de knoop bereikt (WF-044).
 REPLAY_EXCLUDED=(
   "jutterswet-gevolg-buiten-de-beurt/case1-buiten-de-beurt.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
@@ -310,6 +319,15 @@ REPLAY_EXCLUDED=(
   "jutterswet-keurlast/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-muntbewaring/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-penningjaar/case.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
+  "jutterswet-rolverwachting/case1-geen-creatie-onder-drempel.json|rolverwachting op de eindtoestand: het antwoord van de dienst geeft alleen geselecteerde attributen en kenmerken"
+  "jutterswet-rolverwachting/case2-enkele-creatie-zonder-oorkonde-of-haventoewijzing.json|rolverwachting op de eindtoestand: het antwoord van de dienst geeft alleen geselecteerde attributen en kenmerken"
+  "jutterswet-rolverwachting/case3-meervoudige-creatie-feitcreatie-en-strandmaten.json|rolverwachting op de eindtoestand: het antwoord van de dienst geeft alleen geselecteerde attributen en kenmerken"
+  "jutterswet-rolverwachting/case4-zelfrelatie-vergunningketen-naast-creatie.json|rolverwachting op de eindtoestand: het antwoord van de dienst geeft alleen geselecteerde attributen en kenmerken"
+  "jutterswet-rolverwachting-strikt/case1-open-rollen-zonder-koppeling.json|rolverwachting op de eindtoestand: het antwoord van de dienst geeft alleen geselecteerde attributen en kenmerken"
+  "jutterswet-rolverwachting-strikt/case2-open-collectie-naast-bekende-koppelingen.json|rolverwachting op de eindtoestand: het antwoord van de dienst geeft alleen geselecteerde attributen en kenmerken"
+  "jutterswet-rolverwachting-strikt/case3-gesloten-lege-rollen.json|rolverwachting op de eindtoestand: het antwoord van de dienst geeft alleen geselecteerde attributen en kenmerken"
+  "jutterswet-rolverwachting-strikt/case4-volledig-gegeven-collectie-en-subtype-doel.json|rolverwachting op de eindtoestand: het antwoord van de dienst geeft alleen geselecteerde attributen en kenmerken"
+  "jutterswet-rolverwachting-strikt/case5-zelfrelatie-vergunningketen-onder-strikte-leegte.json|rolverwachting op de eindtoestand: het antwoord van de dienst geeft alleen geselecteerde attributen en kenmerken"
   "jutterswet-tempototaal/case1-totaal-en-som-naast-elkaar.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-vast-startpunt/case5-geklemde-maand.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"
   "jutterswet-vast-startpunt/case7-week-en-kwartaal.json|scalaire waarde op een tijdsafhankelijk attribuut (UNSUPPORTED in de dienst)"

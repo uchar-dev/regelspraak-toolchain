@@ -242,6 +242,7 @@ class ScenarioOpenValuesTest {
             Scenario geen wrak
             Gegeven is de volgende situatie:
             een Jutter J1
+            - de geholpen wrakken zijn leeg
             Met als verwacht resultaat:
             - de hulpsom van J1 is leeg
             """));

@@ -133,8 +133,40 @@ class OpenInputsHttpTest {
         assertEquals(json("[]"), forOutput(wrak("\"attributes\": {\"lengte\": 30}, \"roles\": {\"vinder\": {\"state\": \"empty\"}}"),
                 "W1", "vindpremie"));
         assertEquals(json("[\"J1 bonus\"]"), membersFor(open("wrak", """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1"]}}},
                            {"type": "Wrak", "id": "W1", "attributes": {"lengte": 30}}]}"""), "W1", "vindpremie"));
+    }
+
+    @Test
+    void an_open_to_many_role_is_reported_with_fact_type_and_name() throws Exception {
+        for (String request : List.of(
+                """
+                {"instances": [{"type": "Jutter", "id": "J1"},
+                               {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
+                                "roles": {"vinder": {"state": "empty"}},
+                                "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holdsNot"},
+                                                    "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holds"}}}]}""",
+                """
+                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "open", "items": ["W1"]}}},
+                               {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5},
+                                "characteristics": {"gemerkt": {"state": "holds"}}}]}""")) {
+            JsonNode inputs = open("wrak", request);
+            assertEquals(json("""
+                [{"kind": "role", "instance": "J1", "factType": "wrakvondst", "name": "gevonden wrak", "forOutputs": [
+                    {"instance": "J1", "name": "ladingsom", "kind": "attribute"}]}]"""),
+                    forOutput(inputs, "J1", "ladingsom"));
+            assertEquals(json("""
+                [{"kind": "role", "instance": "J1", "factType": "wrakvondst", "name": "gevonden wrak", "forOutputs": [
+                    {"instance": "J1", "name": "kundig", "kind": "characteristic"}]}]"""),
+                    forOutput(inputs, "J1", "kundig"));
+        }
+        assertEquals(json("[]"), open("wrak", """
+                {"instances": [{"type": "Jutter", "id": "J1",
+                                "roles": {"gevonden wrakken": {"state": "empty"}}, "attributes": {"bonus": 4}},
+                               {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
+                                "roles": {"vinder": {"state": "empty"}},
+                                "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holdsNot"},
+                                                    "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}"""));
     }
 
     /** It stands beside the explanation and without it, and the answer is the same otherwise. */
@@ -518,7 +550,7 @@ class OpenInputsHttpTest {
                                  "output": ["Jutter.hulpsom"] } ],
               "parameters": {} }""";
         String request = """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"geholpen wrakken": ["W1", "W2"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"geholpen wrakken": {"state": "closed", "items": ["W1", "W2"]}}},
               {"type": "Wrak", "id": "W1", "attributes": {"lading": 5}}, {"type": "Wrak", "id": "W2"%s}]}""";
         ClassLoader cl = Thread.currentThread().getContextClassLoader();
         String document = dev.uchar.regelspraak.toolchain.engine.UcharBuild.document(
@@ -552,7 +584,7 @@ class OpenInputsHttpTest {
 
     private static JsonNode jutter(String w1, String w2, String w3) throws Exception {
         return open("wrak", """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2", "W3"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1", "W2", "W3"]}}},
               {"type": "Wrak", "id": "W1", "attributes": {%s}}, {"type": "Wrak", "id": "W2", "attributes": {%s}},
               {"type": "Wrak", "id": "W3", "attributes": {%s}}]}""".formatted(w1, w2, w3));
     }

@@ -8,6 +8,7 @@ import dev.uchar.regelspraak.engine.ScenarioResult.ExpectationResult;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.ir.ResolvedScenario.AttributeValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Cell;
+import dev.uchar.regelspraak.ir.ResolvedScenario.ClosedRole;
 import dev.uchar.regelspraak.ir.ResolvedScenario.EmptyRole;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Instance;
 import dev.uchar.regelspraak.ir.ResolvedScenario.CharacteristicValue;
@@ -63,8 +64,9 @@ final class ScenarioData {
      *  {@code parameters}: the values of the chosen parameter set on the peildatum first, then those of the
      *  situation. An attribute the situation states to be leeg ("- de X is leeg", the case's {@code attributesEmpty})
      *  carries {@code value: null}; a characteristic it gives as not holding ("- is niet drijfhout", the case's
-     *  {@code characteristicsAbsent}) carries {@code holds: false}; a non-reciprocal to-one role it states to be leeg
-     *  ("- de X is leeg", the case's {@code rolesEmpty}) carries an empty {@code labels} array. Every assignment carries
+     *  {@code characteristicsAbsent}) carries {@code holds: false}; a non-reciprocal role it states to be leeg
+     *  ("- de X is leeg" / "- de Xen zijn leeg", the case's {@code rolesEmpty} / {@code rolesClosed}) carries an empty
+     *  {@code labels} array, and a closed to-many role carries {@code closed: true}. Every assignment carries
      *  its source line ({@code line}). */
     static ObjectNode situation(ResolvedScenario s, RegelSpraakModel model, Naming ng) {
         ObjectNode n = NF.objectNode();
@@ -100,6 +102,10 @@ final class ScenarioData {
                 kn.put("line", k.line());
             }
             ArrayNode roles = on.putArray("roles");
+            Set<FixpointGivens.EmptyRole> closedSlots = new java.util.HashSet<>();
+            for (ClosedRole cr : i.rolesClosed())
+                closedSlots.add(new FixpointGivens.EmptyRole(cr.factType().name, cr.farIndex()));
+            Set<FixpointGivens.EmptyRole> handledClosed = new java.util.HashSet<>();
             for (RoleValue r : i.roles()) {
                 ObjectNode rn = roles.addObject();
                 name(rn, "role", ng.role(r.factType(), r.farIndex(), r.key()), r.key());
@@ -108,6 +114,11 @@ final class ScenarioData {
                 ArrayNode labels = rn.putArray("labels");
                 for (String l : r.targetLabels()) labels.add(l);
                 rn.put("multiple", r.many());
+                FixpointGivens.EmptyRole slot = new FixpointGivens.EmptyRole(r.factType().name, r.farIndex());
+                if (closedSlots.contains(slot)) {
+                    handledClosed.add(slot);
+                    rn.put("closed", true);
+                }
                 rn.put("line", r.line());
             }
             for (EmptyRole r : i.rolesEmpty()) {
@@ -117,6 +128,18 @@ final class ScenarioData {
                 name(rn, "targetType", ng.objectType(r.targetType().name), r.targetType().name);
                 rn.putArray("labels");
                 rn.put("multiple", false);
+                rn.put("line", r.line());
+            }
+            for (ClosedRole r : i.rolesClosed()) {
+                FixpointGivens.EmptyRole slot = new FixpointGivens.EmptyRole(r.factType().name, r.farIndex());
+                if (!handledClosed.add(slot)) continue;
+                ObjectNode rn = roles.addObject();
+                name(rn, "role", ng.role(r.factType(), r.farIndex(), r.key()), r.key());
+                name(rn, "factType", ng.factType(r.factType().name), r.factType().name);
+                name(rn, "targetType", ng.objectType(r.targetType().name), r.targetType().name);
+                rn.putArray("labels");
+                rn.put("multiple", true);
+                rn.put("closed", true);
                 rn.put("line", r.line());
             }
         }
@@ -197,6 +220,13 @@ final class ScenarioData {
             Set<FixpointGivens.EmptyRole> emptyRoles = new java.util.LinkedHashSet<>();
             for (EmptyRole r : i.rolesEmpty())
                 emptyRoles.add(new FixpointGivens.EmptyRole(r.factType().name, r.farIndex()));
+            Set<FixpointGivens.EmptyRole> linkedRoles = new java.util.HashSet<>();
+            for (RoleValue r : i.roles())
+                linkedRoles.add(new FixpointGivens.EmptyRole(r.factType().name, r.farIndex()));
+            for (ClosedRole r : i.rolesClosed()) {
+                FixpointGivens.EmptyRole slot = new FixpointGivens.EmptyRole(r.factType().name, r.farIndex());
+                if (!linkedRoles.contains(slot)) emptyRoles.add(slot);
+            }
             input.add(new FixpointGivens.InputObject(i.label(), attributes, characteristics, periods, absent,
                     emptyAttributes, emptyRoles));
         }

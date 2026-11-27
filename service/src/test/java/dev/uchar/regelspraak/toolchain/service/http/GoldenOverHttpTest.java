@@ -257,8 +257,9 @@ class GoldenOverHttpTest {
                     assertTrue(inc.contains(line),
                             () -> "verwacht dat regel '" + line + "' in de inconsistenties staat, kreeg " + inc + ctx);
             }
-            case ATTRIBUTE_TIMELINE -> throw new AssertionError(
-                    "het antwoord van de dienst draagt geen tijdlijn, dus deze verwachting is over HTTP niet te toetsen" + ctx);
+            case ATTRIBUTE_TIMELINE, ATTRIBUTE_OPEN, CHARACTERISTIC_OPEN,
+                 ROLE_EMPTY, ROLE_COUNT, ROLE_TARGET, ROLE_OPEN -> throw new AssertionError(
+                    "het antwoord van de dienst draagt deze verwachting niet, dus zij is over HTTP niet te toetsen" + ctx);
         }
     }
 

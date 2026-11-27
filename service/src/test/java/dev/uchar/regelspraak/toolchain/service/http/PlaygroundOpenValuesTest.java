@@ -582,6 +582,155 @@ class PlaygroundOpenValuesTest {
                 ordinaryAnalysis.at("/resolver/warnings").toString());
     }
 
+    @Test
+    void to_many_roles_open_closed_empty_and_role_expectations_in_scenarios() throws Exception {
+        String rules = """
+            Afleiden uit leeg: nee
+
+            Objecttype de Jutter (mv: Jutters) (bezield)
+                het vondstenaantal Numeriek (geheel getal);
+                de totaaltaxatie Numeriek (geheel getal);
+                het keuringenaantal Numeriek (geheel getal);
+                is actief kenmerk (bijvoeglijk);
+
+            Objecttype de Vondst (mv: Vondsten)
+                de taxatie Numeriek (geheel getal);
+
+            Objecttype de Keuring (mv: Keuringen)
+                het keurloon Numeriek (geheel getal);
+
+            Feittype vangst
+                de jutter Jutter
+                de vondst (mv: vondsten) Vondst
+                één jutter heeft meerdere vondsten
+
+            Feittype keurwerk
+                de keurmeester Jutter
+                de verrichte keuring (mv: verrichte keuringen) Keuring (volledig gegeven)
+                één keurmeester verricht meerdere verrichte keuringen
+
+            Regel vondstenaantal
+                geldig altijd
+                    Het vondstenaantal van een Jutter moet berekend worden als het aantal vondsten van de Jutter.
+
+            Regel totaaltaxatie
+                geldig altijd
+                    De totaaltaxatie van een Jutter moet berekend worden als de som van de taxatie van alle vondsten van de Jutter.
+
+            Regel keuringenaantal
+                geldig altijd
+                    Het keuringenaantal van een Jutter moet berekend worden als het aantal verrichte keuringen van de Jutter.
+
+            Regel actief
+                geldig altijd
+                    Een Jutter is actief indien hij een jutter is.
+            """;
+        String scenarios = """
+
+            Scenario open en gesloten meervoudige rollen
+            Gegeven is de volgende situatie:
+            een Vondst V1
+            - de taxatie is 40
+            een Vondst V2
+            - de taxatie is 60
+            een Vondst V3
+            - de taxatie is 40
+            een Vondst V4
+            - de taxatie is 60
+            een Keuring K1
+            - het keurloon is 15
+            een Jutter J1
+            - de vondsten zijn leeg
+            een Jutter J2
+            - de vondsten zijn V1 en V2
+            een Jutter J3
+            - de vondsten zijn V3 en V4 (volledig gegeven)
+            - de verrichte keuringen zijn K1
+            Met als verwacht resultaat:
+            - de vondsten van J1 zijn leeg
+            - het aantal vondsten van J1 is 0
+            - het vondstenaantal van J1 is 0
+            - J1 is niet actief
+            - de vondsten van J2 staan niet vast
+            - het vondstenaantal van J2 staat niet vast
+            - de totaaltaxatie van J2 staat niet vast
+            - J2 is actief
+            - het aantal vondsten van J3 is 2
+            - het vondstenaantal van J3 is 2
+            - de totaaltaxatie van J3 is 100
+            - het aantal verrichte keuringen van J3 is 1
+            - het keuringenaantal van J3 is 1
+            """;
+        String descriptor = """
+            { "service": {"name":"collectie-scenarios","version":"1"},
+              "entrypoints": [ { "name":"jutter","path":"jutter",
+                "scope": {"ruleNames": ["vondstenaantal", "totaaltaxatie", "keuringenaantal", "actief"]},
+                "input": [],
+                "output": ["Jutter.vondstenaantal", "Jutter.totaaltaxatie", "Jutter.keuringenaantal", "Jutter:actief"] } ],
+              "parameters": {} }""";
+        DecisionCore core = DecisionCore.assemble(descriptor, java.util.Map.of("c.rgs", rules),
+                CoreConfig.strict().withDetail(), Thread.currentThread().getContextClassLoader());
+        String full = rules + scenarios;
+
+        for (JsonNode analysis : new JsonNode[]{
+                Playground.analyze(full),
+                Playground.analyze(full, null, core, null, false)}) {
+            JsonNode res = analysis.at("/scenario/results/0");
+            assertEquals("PASS", res.get("status").asText(), res.toString());
+            assertEquals(13, res.get("expectations").size(), res.toString());
+
+            // Situation rows on J1 (empty closed), J2 (open with V1,V2), J3 (closed with V3,V4 + complete K1)
+            JsonNode j1Role = res.at("/situation/objects/5/roles/0");
+            assertEquals(0, j1Role.get("labels").size(), j1Role.toString());
+            assertTrue(j1Role.get("multiple").asBoolean(), j1Role.toString());
+            assertTrue(j1Role.get("closed").asBoolean(), j1Role.toString());
+
+            JsonNode j2Role = res.at("/situation/objects/6/roles/0");
+            assertEquals("[\"V1\",\"V2\"]", j2Role.get("labels").toString());
+            assertTrue(j2Role.get("multiple").asBoolean());
+            assertFalse(j2Role.has("closed"), j2Role.toString());
+
+            JsonNode j3Roles = res.at("/situation/objects/7/roles");
+            assertEquals(2, j3Roles.size(), j3Roles.toString());
+            assertEquals("[\"V3\",\"V4\"]", j3Roles.at("/0/labels").toString());
+            assertTrue(j3Roles.at("/0/closed").asBoolean(), j3Roles.toString());
+            assertEquals("[\"K1\"]", j3Roles.at("/1/labels").toString());
+
+            // Fixpoint & openInputs & explanation on J2
+            assertTrue(res.at("/fixpoint/objects/6/open").toString()
+                    .contains("{\"role\":\"vondst\",\"factType\":\"vangst\"}"),
+                    res.at("/fixpoint/objects/6/open").toString());
+            assertFalse(res.at("/fixpoint/objects/5/open").toString().contains("\"role\":\"vondst\""));
+            assertFalse(res.at("/fixpoint/objects/7/open").toString().contains("\"role\":\"vondst\""));
+            assertEquals(ServiceHttp.MAPPER.readTree("""
+                [{"kind": "role", "instance": "J2", "factType": "vangst", "name": "vondst", "forOutputs": [
+                    {"instance": "J2", "name": "vondstenaantal", "kind": "attribute"},
+                    {"instance": "J2", "name": "totaaltaxatie", "kind": "attribute"}]}]"""),
+                    res.get("openInputs"));
+            assertTrue(res.get("explanation").toString()
+                    .contains("J2: zijn totaaltaxatie staat niet vast, want zijn vondst is niet volledig gegeven"),
+                    res.get("explanation").toString());
+        }
+
+        // SituationToRequest: empty -> {"state":"empty"}, open -> {"state":"open","items":[...]},
+        // closed -> {"state":"closed","items":[...]}, complete -> bare array [...]
+        ScenarioBundle bundle = ScenarioResolver.resolve(full);
+        assertTrue(bundle.isOk());
+        JsonNode req = SituationToRequest.assemble(bundle.scenarios().get(0), bundle.model());
+        assertEquals("{\"vondsten\":{\"state\":\"empty\"}}", req.at("/instances/5/roles").toString());
+        assertEquals("{\"vondsten\":{\"state\":\"open\",\"items\":[\"V1\",\"V2\"]}}",
+                req.at("/instances/6/roles").toString());
+        assertEquals("{\"vondsten\":{\"state\":\"closed\",\"items\":[\"V3\",\"V4\"]},\"verrichte keuringen\":[\"K1\"]}",
+                req.at("/instances/7/roles").toString());
+
+        String html;
+        try (var in = Playground.class.getResourceAsStream("playground.html")) {
+            html = new String(in.readAllBytes(), java.nio.charset.StandardCharsets.UTF_8);
+        }
+        assertTrue(html.contains("(volledig gegeven)"), "situationHtml mist (volledig gegeven) bij r.closed");
+        assertTrue(html.contains("\"roleOpen\""), "KINDS_WITH_LABEL mist rolverwachtingen");
+    }
+
     private static JsonNode forOutput(JsonNode inputs, String instance, String output) {
         var out = ServiceHttp.MAPPER.createArrayNode();
         for (JsonNode i : inputs) {

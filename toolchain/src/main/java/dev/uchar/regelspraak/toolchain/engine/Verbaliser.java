@@ -2515,7 +2515,11 @@ public final class Verbaliser {
          *  ({@link #ownTotal}) evenmin. */
         private boolean overASet(Expr e, Read read) {
             return e instanceof Expr.FunctionCall f && "Aggregation".equals(kindOf(e)) && f.dimensionSelections() == null
-                    && !ownTotal(f) && (f.arguments().size() == 1 || read.has(e) && !read.of(e).contributors().isEmpty());
+                    && !ownTotal(f) && (f.arguments().size() == 1
+                    || document.loaded().roleBindings().containsKey(f)
+                    || document.loaded().sourcePaths().containsKey(f)
+                    || f.arguments().stream().anyMatch(a -> a instanceof Expr.AttributeReference ar && ar.set())
+                    || read.has(e) && !read.of(e).contributors().isEmpty());
         }
 
         /** Of {@code f} het eigen totaal van een tijdlijn is (RUNTIME-SEMANTICS ch. 3.6): het totaal van één attribuut
@@ -2834,19 +2838,26 @@ public final class Verbaliser {
     }
 
     /** Open lid {@code v} als oorzaak, in een zin over het object met naam {@code label}: "zijn taxatie is niet gegeven" of
-     *  "zijn vinder is niet gegeven" van invoer die open is omdat zij niet gegeven is ({@link OpenReads#notGiven}), "zijn
-     *  vindloon staat niet vast" van een afgeleid lid en van een volledig gegeven lid dat zijn initialisatie openliet, "van J1
-     *  is zijn bonus niet gegeven" of "van J1 is zijn ploeg niet gegeven" van een ander object, en "het is niet gegeven of hij
+     *  "zijn vinder is niet gegeven" van een scalair attribuut of naar-één-rol die open is omdat de invoer ontbreekt
+     *  ({@link OpenReads#notGiven}), "zijn vondst is niet volledig gegeven" van een open meervoudige rol, "zijn vindloon staat
+     *  niet vast" van een afgeleid lid en van een volledig gegeven lid dat zijn initialisatie openliet, "van J1 is zijn bonus
+     *  niet gegeven" of "van J1 is zijn vondst niet volledig gegeven" van een ander object, en "het is niet gegeven of hij
      *  betwist is" van een kenmerk. Het model draagt het lidwoord van een declaratie niet, dus is het "zijn". */
     private void cause(Sentence.Builder b, OpenValue v, String label) {
         boolean input = open.notGiven(v);
         if (v.role()) {
             boolean own = nameOf(v.object()).equals(label);
+            boolean many = isManyRole(v);
             of(b, v, label);
             if (!own) b.text(input ? "is " : "staat ");
             b.text("zijn ");
             declaredName(b, naming.role(v.factType(), v.member()), Designatable.role(v.factType(), v.member()));
-            b.text(own ? input ? " is niet gegeven" : " staat niet vast" : input ? " niet gegeven" : " niet vast");
+            if (many) {
+                b.text(own ? input ? " is niet volledig gegeven" : " staat niet vast"
+                        : input ? " niet volledig gegeven" : " niet vast");
+            } else {
+                b.text(own ? input ? " is niet gegeven" : " staat niet vast" : input ? " niet gegeven" : " niet vast");
+            }
             return;
         }
         if (v.characteristic()) {
@@ -2862,6 +2873,15 @@ public final class Verbaliser {
         b.text("zijn ");
         attributeName(b, typeOf(v.object()), v.member(), new On(nameOf(v.object())));
         b.text(own ? input ? " is niet gegeven" : " staat niet vast" : input ? " niet gegeven" : " niet vast");
+    }
+
+    private boolean isManyRole(OpenValue v) {
+        if (!v.role() || v.factType() == null) return false;
+        String ftNorm = Namen.norm(v.factType());
+        for (RegelSpraakModel.FactType ft : model.factTypes.values())
+            if (Namen.norm(ft.name).equals(ftNorm))
+                return v.roleIndex() >= 0 && v.roleIndex() < ft.roles.size() && ft.roles.get(v.roleIndex()).many();
+        return false;
     }
 
     /** "van J1 ", waar lid {@code v} van een ander object is dan dat van de zin. */

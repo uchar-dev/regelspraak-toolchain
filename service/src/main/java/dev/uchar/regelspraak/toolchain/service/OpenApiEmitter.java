@@ -133,6 +133,7 @@ public final class OpenApiEmitter {
             schemas.set(CHARACTERISTIC_INPUT, characteristicInputSchema());
             schemas.set(EMPTY_ATTRIBUTE_INPUT, emptyAttributeInputSchema());
             schemas.set(EMPTY_ROLE_INPUT, emptyRoleInputSchema());
+            schemas.set(COLLECTION_ROLE_INPUT, collectionRoleInputSchema());
         }
         schemas.set("Error", errorSchema());
         schemas.set("EvaluationFault", evaluationFaultSchema());
@@ -479,8 +480,11 @@ public final class OpenApiEmitter {
     /** The component of a settled-empty scalar attribute in a request of a strict rule set. */
     private static final String EMPTY_ATTRIBUTE_INPUT = "EmptyAttributeInput";
 
-    /** The component of a settled-empty non-reciprocal to-one role in a request of a strict rule set. */
+    /** The component of a settled-empty non-reciprocal role in a request of a strict rule set. */
     private static final String EMPTY_ROLE_INPUT = "EmptyRoleInput";
+
+    /** The component of an open or closed non-reciprocal to-many role in a request of a strict rule set. */
+    private static final String COLLECTION_ROLE_INPUT = "CollectionRoleInput";
 
     /** A characteristic as a request of a strict rule set ({@link OpenValues}) gives it: its state. */
     private static ObjectNode characteristicInputSchema() {
@@ -500,12 +504,26 @@ public final class OpenApiEmitter {
         return s;
     }
 
-    /** The settled-empty state of a non-reciprocal to-one role in a request of a strict rule set ({@link OpenValues}). */
+    /** The settled-empty state of a non-reciprocal role in a request of a strict rule set ({@link OpenValues}). */
     private static ObjectNode emptyRoleInputSchema() {
         ObjectNode s = stateSchema(OpenValues.EMPTY);
-        s.put("description", "De lege stand van een niet-wederkerige naar-één-rol in een verzoek: {\"state\": \"empty\"}"
-                + " waar vaststaat dat er geen gekoppeld object is. Een gekoppeld object staat als zijn id; waar de rol niet"
-                + " gegeven is, ontbreekt zij of is zij null.");
+        s.put("description", "De lege stand van een niet-wederkerige rol in een verzoek: {\"state\": \"empty\"} op een"
+                + " naar-één-rol waar vaststaat dat er geen gekoppeld object is, en op een meervoudige rol als verkorting"
+                + " voor {\"state\": \"closed\", \"items\": []}. Waar een rol niet gegeven is, ontbreekt zij of is zij"
+                + " null.");
+        return s;
+    }
+
+    /** An open or closed non-reciprocal to-many role in a request of a strict rule set ({@link OpenValues}). */
+    private static ObjectNode collectionRoleInputSchema() {
+        ObjectNode s = stateSchema(OpenValues.OPEN, OpenValues.CLOSED);
+        ((ArrayNode) s.get("required")).add(OpenValues.ITEMS);
+        ObjectNode items = ((ObjectNode) s.get("properties")).putObject(OpenValues.ITEMS);
+        items.put("type", "array");
+        items.putObject("items").put("type", "string");
+        s.put("description", "De collectiestand van een niet-wederkerige meervoudige rol in een verzoek: state \"open\""
+                + " wanneer de opgegeven doel-ids onder items bekend zijn maar de collectie nog openstaat, of \"closed\""
+                + " wanneer items de volledige lijst gekoppelde doel-ids op deze rol is.");
         return s;
     }
 
@@ -1328,9 +1346,13 @@ public final class OpenApiEmitter {
         list.put("type", "array");
         list.putObject("items").put("type", "string");
         oneOf.addObject().put("$ref", "#/components/schemas/" + EMPTY_ROLE_INPUT);
-        node.put("description", "rolnaam -> doel-id, lijst van doel-ids, of {\"state\": \"empty\"} op een"
-                + " niet-wederkerige naar-één-rol waar vaststaat dat er geen gekoppeld object is; waar een rol niet"
-                + " gegeven is, ontbreekt zij of is zij null.");
+        oneOf.addObject().put("$ref", "#/components/schemas/" + COLLECTION_ROLE_INPUT);
+        node.put("description", "rolnaam -> op een niet-wederkerige naar-één-rol een doel-id of {\"state\": \"empty\"};"
+                + " op een niet-wederkerige meervoudige rol die niet volledig gegeven is altijd CollectionRoleInput"
+                + " ({\"state\": \"open\" | \"closed\", \"items\": [...]}) of {\"state\": \"empty\"} (een kale lijst is"
+                + " een 400 WRONG_TYPE); op een volledig gegeven meervoudige rol of een wederkerige rol ook een kale"
+                + " lijst van doel-ids (en op een volledig gegeven rol geen \"open\"). Waar een rol niet gegeven is,"
+                + " ontbreekt zij of is zij null.");
     }
 
     /** An object whose every property is the component {@code schema}. */

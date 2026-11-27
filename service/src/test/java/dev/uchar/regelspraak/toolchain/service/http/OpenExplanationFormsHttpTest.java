@@ -288,14 +288,14 @@ class OpenExplanationFormsHttpTest {
             """;
         String betwist = "\"betwist\": {\"state\": \"holds\"}";
         JsonNode all = ask(VONDST + rules.formatted("alle"), """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2"]}}},
               {"type": "Vondst", "id": "V1", "attributes": {"gewicht": 20},
                "characteristics": {%s, "beschadigd": {"state": "holds"}}},
               {"type": "Vondst", "id": "V2", "attributes": {"gewicht": 5}, "characteristics": {%s}}]}"""
                 .formatted(betwist, betwist));
         assertFold("J1 is niet kundig, want", "is niet voldaan: niet voor V2 (1 van de 2)", all);
         JsonNode atLeast = ask(VONDST + rules.formatted("ten minste twee van de"), """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2", "V3"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2", "V3"]}}},
               {"type": "Vondst", "id": "V1", "attributes": {"gewicht": 20}, "characteristics": {%s}},
               {"type": "Vondst", "id": "V2", "attributes": {"gewicht": 20},
                "characteristics": {%s, "beschadigd": {"state": "holdsNot"}}},
@@ -315,7 +315,7 @@ class OpenExplanationFormsHttpTest {
                         - hij beschadigd is
                     groter is dan 10.
             """, """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2"]}}},
               {"type": "Vondst", "id": "V1", "attributes": {"gewicht": 20},
                "characteristics": {"betwist": {"state": "holds"}, "beschadigd": {"state": "holds"}}},
               {"type": "Vondst", "id": "V2", "attributes": {"gewicht": 5}, "characteristics": {"betwist": {"state": "holdsNot"}}}]}"""));
@@ -357,9 +357,13 @@ class OpenExplanationFormsHttpTest {
                 geldig altijd
                     Een Haven is druk indien de leeftijd van alle jutters van de Haven die aan de volgende voorwaarde voldoen: het aantal aangemelde vondsten van de Jutter die betwist zijn en geborgen vondsten van de Jutter is groter dan 0 groter is dan 10.
             """, """
-            {"instances": [{"type": "Haven", "id": "H1", "roles": {"jutters": ["J1", "J2"]}},
-              {"type": "Jutter", "id": "J1", "attributes": {"leeftijd": 20}, "roles": {"aangemelde vondsten": ["V1"]}},
-              {"type": "Jutter", "id": "J2", "attributes": {"leeftijd": 5}, "roles": {"aangemelde vondsten": ["V2"]}},
+            {"instances": [{"type": "Haven", "id": "H1", "roles": {"jutters": {"state": "closed", "items": ["J1", "J2"]}}},
+              {"type": "Jutter", "id": "J1", "attributes": {"leeftijd": 20},
+               "roles": {"aangemelde vondsten": {"state": "closed", "items": ["V1"]},
+                         "geborgen vondsten": {"state": "empty"}}},
+              {"type": "Jutter", "id": "J2", "attributes": {"leeftijd": 5},
+               "roles": {"aangemelde vondsten": {"state": "closed", "items": ["V2"]},
+                         "geborgen vondsten": {"state": "empty"}}},
               {"type": "Vondst", "id": "V1", "characteristics": {"betwist": {"state": "holds"}}},
               {"type": "Vondst", "id": "V2"}]}"""));
     }
@@ -392,7 +396,7 @@ class OpenExplanationFormsHttpTest {
         divideTheTestByTheTarief(document);
         JsonNode answer = post(DecisionCore.buildFromDocument(descriptor(document), document.toString(), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader(), null), """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2", "V3"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2", "V3"]}}},
               {"type": "Vondst", "id": "V1", "characteristics": {"betwist": {"state": "holdsNot"}}},
               {"type": "Vondst", "id": "V2", "characteristics": {"betwist": {"state": "holds"}}},
               {"type": "Vondst", "id": "V3"}]}""", "");
@@ -551,7 +555,7 @@ class OpenExplanationFormsHttpTest {
         divideTheTestByTheTarief(document);
         JsonNode answer = post(DecisionCore.buildFromDocument(descriptor(document), document.toString(), CoreConfig.strict(),
                 Thread.currentThread().getContextClassLoader(), null), """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2", "V3", "V4"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2", "V3", "V4"]}}},
               {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 5}, "characteristics": {"betwist": {"state": "holdsNot"}}},
               {"type": "Vondst", "id": "V2", "attributes": {"taxatie": 5}, "characteristics": {"betwist": {"state": "holds"}}},
               {"type": "Vondst", "id": "V3", "characteristics": {"betwist": {"state": "holds"}}},
@@ -601,8 +605,9 @@ class OpenExplanationFormsHttpTest {
             Regel kundig
                 geldig altijd
                     Een Jutter is kundig indien het gewicht van %s vondsten van de Jutter%s groter is dan 10.
-            """.formatted(quantifier, filter), "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\", \"roles\": {\"vondsten\": ["
-                + roles + "]}}" + instances + "]}");
+            """.formatted(quantifier, filter),
+                "{\"instances\": [{\"type\": \"Jutter\", \"id\": \"J1\", \"roles\": {\"vondsten\":"
+                        + " {\"state\": \"closed\", \"items\": [" + roles + "]}}}" + instances + "]}");
     }
 
     // ---------------- composites, binders, ground, vocabulary ----------------
@@ -703,12 +708,13 @@ class OpenExplanationFormsHttpTest {
             {"instances": [
               {"type": "Jutter", "id": "J1", "characteristics": {"betwist": {"state": "holds"}}},
               {"type": "Jutter", "id": "J2", "characteristics": {"betwist": {"state": "holdsNot"}}},
-              {"type": "Vondst", "id": "V1", "roles": {"vinders": ["J1"]}},
+              {"type": "Vondst", "id": "V1", "roles": {"vinders": {"state": "closed", "items": ["J1"]}}},
               {"type": "Vondst", "id": "V2", "attributes": {"gewicht": 200, "taxatie": 50},
-               "characteristics": {"drijfhout": {"state": "holdsNot"}, "gemeld": {"state": "holds"}}},
+               "characteristics": {"drijfhout": {"state": "holdsNot"}, "gemeld": {"state": "holds"}},
+               "roles": {"vinders": {"state": "empty"}}},
               {"type": "Vondst", "id": "V3", "attributes": {"gewicht": 200, "taxatie": 50},
                "characteristics": {"drijfhout": {"state": "holdsNot"}, "gemeld": {"state": "holds"}},
-               "roles": {"vinders": ["J2"]}},
+               "roles": {"vinders": {"state": "closed", "items": ["J2"]}}},
               {"type": "Vondst", "id": "V4", "attributes": {"gewicht": 200},
                "characteristics": {"drijfhout": {"state": "holdsNot"}}},
               {"type": "Vondst", "id": "V5", "attributes": {"gewicht": 50, "taxatie": 50},
@@ -888,7 +894,7 @@ class OpenExplanationFormsHttpTest {
 
     private static String jutter(String v1, String v2) {
         return """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2"]}}},
               {"type": "Vondst", "id": "V1", "attributes": {%s}}, {"type": "Vondst", "id": "V2", "attributes": {%s}}]}"""
                 .formatted(v1, v2);
     }

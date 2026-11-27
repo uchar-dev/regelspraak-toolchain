@@ -32,13 +32,15 @@ class ConcurrentOpenInputsTest {
 
     /** Requests of the entry point {@code vondst}, each with members that stay open. */
     private static final List<String> REQUESTS = List.of("""
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2"]}}},
               {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50, "toeslag": 3}},
               {"type": "Vondst", "id": "V2", "characteristics": {"betwist": {"state": "holds"}}}]}""", """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2"]}}},
               {"type": "Vondst", "id": "V1", "attributes": {"toeslag": 3}},
               {"type": "Vondst", "id": "V2", "attributes": {"taxatie": 1500}}]}""", """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1"]}}, {"type": "Vondst", "id": "V1"}]}""", """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1"]}}}, {"type": "Vondst", "id": "V1"}]}""", """
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "open", "items": ["V1"]}}},
+              {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50}}]}""", """
             {"instances": [{"type": "Vondst", "id": "V1", "attributes": {"taxatie": 2000},
                "characteristics": {"onleesbaar": {"state": "holdsNot"}}}]}""");
 

@@ -81,7 +81,7 @@ class OpenExplanationHttpTest {
         assertSentence("W1: zijn vindpremie staat niet vast, want van J1 is zijn bonus niet gegeven; voor de regel 'vindpremie'"
                 + " staat niet vast: zijn lengte plus de bonus van de vinder van het Wrak, met zijn lengte (30) en de bonus van"
                 + " de vinder van het Wrak (van J1 niet gegeven)", post("""
-                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
+                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1"]}}},
                                {"type": "Wrak", "id": "W1", "attributes": {"lengte": 30}}]}"""));
     }
 
@@ -250,7 +250,7 @@ class OpenExplanationHttpTest {
     @Test
     void a_quantifier_fold_with_an_open_filter() throws Exception {
         JsonNode answer = post("""
-                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2"]}},
+                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1", "W2"]}}},
                   {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20}, "characteristics": {"gemerkt": {"state": "holds"}}},
                   {"type": "Wrak", "id": "W2", "attributes": {"diepte": 5}}]}""");
         assertSentence("J1: of hij keurder is, staat niet vast, want het is van W2 niet gegeven of hij gemerkt is; voor de regel"
@@ -266,7 +266,7 @@ class OpenExplanationHttpTest {
     @Test
     void a_quantifier_fold_that_holds_beside_an_open_filter() throws Exception {
         JsonNode answer = post("""
-                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2"]}},
+                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1", "W2"]}}},
                   {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20}, "characteristics": {"gemerkt": {"state": "holds"}}},
                   {"type": "Wrak", "id": "W2", "attributes": {"diepte": 30}}]}""");
         assertSentence("J1 is keurder, omdat aan de voorwaarde \"de diepte van alle gevonden wrakken van de Jutter die gemerkt"
@@ -274,6 +274,45 @@ class OpenExplanationHttpTest {
         assertEquals("MEMBERS{members=1, holding=1, unjudged=0, unsettled=0, filterUnsettled=1}[«: voor » SUBJECT«W1»"
                 + " «, niet vast of » SUBJECT«W2» « meetelt (wel voor » SUBJECT«W2» «)»]", ExplanationPartsCheck.render(ServiceHttp.MAPPER.createArrayNode()
                 .add(group(sentence(answer, "J1 is keurder"), "MEMBERS"))));
+    }
+
+    @Test
+    void a_fold_and_a_quantifier_over_an_open_to_many_role() throws Exception {
+        JsonNode withoutMembers = post("""
+            {"instances": [{"type": "Jutter", "id": "J1"},
+                           {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
+                            "roles": {"vinder": {"state": "empty"}},
+                            "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holdsNot"},
+                                                "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}""");
+        assertSentence("J1: zijn ladingsom staat niet vast, want zijn gevonden wrak is niet volledig gegeven; voor de regel"
+                + " 'ladingsom' staat niet vast: de som van de lading van alle gevonden wrakken van de Jutter (staat niet vast)",
+                withoutMembers);
+        assertSentence("J1: of hij kundig is, staat niet vast, want zijn gevonden wrak is niet volledig gegeven; voor de regel"
+                + " 'kundigheid' staat niet vast: aan de voorwaarde \"de diepte van alle gevonden wrakken van de Jutter groter"
+                + " is dan 10\" is voldaan (staat niet vast)", withoutMembers);
+        assertEquals(json("{\"object\": \"J1\", \"canonical\": \"gevonden wrak\", \"kind\": \"role\"}"),
+                group(sentence(withoutMembers, "J1: zijn ladingsom"), "READING", "open").get("open"));
+        assertNull(find(sentence(withoutMembers, "J1: of hij kundig is"), "MEMBERS", null));
+
+        JsonNode withKnownMembers = post("""
+            {"instances": [
+              {"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "open", "items": ["W1", "W2"]}}},
+              {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5}},
+              {"type": "Wrak", "id": "W2", "attributes": {"diepte": 15, "lading": 7}}]}""");
+        assertSentence("J1: zijn ladingsom staat niet vast, want zijn gevonden wrak is niet volledig gegeven; voor de regel"
+                + " 'ladingsom' staat niet vast: de som van de lading van alle gevonden wrakken van de Jutter (staat niet vast)",
+                withKnownMembers);
+        assertSentence("J1: of hij kundig is, staat niet vast, want zijn gevonden wrak is niet volledig gegeven; voor de regel"
+                + " 'kundigheid' staat niet vast: aan de voorwaarde \"de diepte van alle gevonden wrakken van de Jutter groter"
+                + " is dan 10\" is voldaan: wel voor W1 en W2", withKnownMembers);
+        for (JsonNode ans : List.of(withoutMembers, withKnownMembers)) {
+            ExplanationPartsCheck.assertPartsAreTheSentences(ans.get("explanation"), ans.get("explanationParts"));
+            for (JsonNode parts : ans.get("explanationParts")) {
+                String stripped = ExplanationPartsCheck.withoutOmissibleParts(parts);
+                assertFalse(stripped.endsWith(": ") || stripped.endsWith("; ") || stripped.contains("()"), stripped);
+            }
+            for (String text : texts(ans)) assertFalse(text.contains("onbekend"), text);
+        }
     }
 
     // ---------------- the tests on leeg and gevuld ----------------
@@ -368,7 +407,7 @@ class OpenExplanationHttpTest {
         assertEquals(json("{\"object\": \"W1\", \"canonical\": \"vinder\", \"kind\": \"role\"}"),
                 group(sentence(wrak("\"attributes\": {\"lengte\": 30}"), "W1: zijn vindpremie"), "READING", "open").get("open"));
         assertEquals(json("{\"object\": \"J1\", \"canonical\": \"bonus\", \"kind\": \"attribute\"}"), group(sentence(post("""
-                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1"]}},
+                {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1"]}}},
                                {"type": "Wrak", "id": "W1", "attributes": {"lengte": 30}}]}"""), "W1: zijn vindpremie"),
                 "READING", "open").get("open"));
         assertEquals(true, group(sentence(wrak(""), "W1: zijn bergingsloon"), "VARIANT", "undetermined").get("displaced").asBoolean());
@@ -414,7 +453,7 @@ class OpenExplanationHttpTest {
 
     private static String everything() {
         return """
-            {"instances": [{"type": "Jutter", "id": "J1", "attributes": {"bonus": 4}, "roles": {"gevonden wrakken": ["W1"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "attributes": {"bonus": 4}, "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1"]}}},
               {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
                "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holdsNot"},
                                    "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}""";
@@ -427,7 +466,7 @@ class OpenExplanationHttpTest {
     /** Jutter J1 who found W1, W2 and W3 with the given attributes. */
     private static JsonNode jutter(String w1, String w2, String w3) throws Exception {
         return post("""
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2", "W3"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1", "W2", "W3"]}}},
               {"type": "Wrak", "id": "W1", "attributes": {%s}}, {"type": "Wrak", "id": "W2", "attributes": {%s}},
               {"type": "Wrak", "id": "W3", "attributes": {%s}}]}""".formatted(w1, w2, w3));
     }

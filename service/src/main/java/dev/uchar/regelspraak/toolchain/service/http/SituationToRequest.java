@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import dev.uchar.regelspraak.ir.ResolvedScenario;
 import dev.uchar.regelspraak.ir.ResolvedScenario.AttributeValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Cell;
+import dev.uchar.regelspraak.ir.ResolvedScenario.ClosedRole;
 import dev.uchar.regelspraak.ir.ResolvedScenario.EmptyRole;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Instance;
 import dev.uchar.regelspraak.ir.ResolvedScenario.CharacteristicValue;
@@ -16,10 +17,13 @@ import dev.uchar.regelspraak.ir.ResolvedScenario.ScenarioValue;
 import dev.uchar.regelspraak.ir.ResolvedScenario.Segment;
 import dev.uchar.regelspraak.ir.ResolvedScenario.TimeWindow;
 import dev.uchar.regelspraak.model.RegelSpraakModel;
+import dev.uchar.regelspraak.toolchain.service.FixpointGivens;
 import dev.uchar.regelspraak.toolchain.service.OpenValues;
 
 import java.math.BigDecimal;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * MECHANICALLY derive the request body of the service from a resolved scenario's merged
@@ -40,9 +44,12 @@ import java.util.List;
  * segment with its bounds and its value in that form, and a time-dependent kenmerk as the {@code periods} in which it
  * holds. A kenmerk the situation asserts goes as {@code true}, one it gives as not holding ("- is niet drijfhout",
  * {@link CharacteristicValue#holds} false) as {@code false}; in a strict rule set ({@link OpenValues}) each as its
- * state, {@code holds} or {@code holdsNot}, and an attribute or a non-reciprocal to-one role the situation states to be
- * leeg ("- de X is leeg", {@link AttributeValue#isEmpty} / {@link Instance#rolesEmpty}) as {@code {"state": "empty"}}
- * (left out in an ordinary rule set). A fraction that has
+ * state, {@code holds} or {@code holdsNot}, an attribute or a non-reciprocal role the situation states to be leeg
+ * ("- de X is leeg" / "- de Xen zijn leeg", {@link AttributeValue#isEmpty}, {@link Instance#rolesEmpty},
+ * {@link Instance#rolesClosed}) as {@code {"state": "empty"}} (left out in an ordinary rule set), and a non-reciprocal
+ * to-many role with targets as {@code {"state": "closed", "items": [...]}} where closed ({@link Instance#rolesClosed}),
+ * as a bare array where declared {@code (volledig gegeven)}, and else as {@code {"state": "open", "items": [...]}}. A
+ * fraction that has
  * no exact decimal form has no request form, and fails here by name ({@link NonPortable}).
  *
  * <p>The request it builds has the shape of {@link dev.uchar.regelspraak.toolchain.service.Request}:
@@ -110,18 +117,43 @@ final class SituationToRequest {
                     else characteristics.put(k.characteristic(), k.holds());
                 }
             }
-            if (!i.roles().isEmpty() || !i.rolesEmpty().isEmpty()) {
+            boolean strict = OpenValues.in(model);
+            if (!i.roles().isEmpty() || (strict && (!i.rolesEmpty().isEmpty() || !i.rolesClosed().isEmpty()))) {
                 ObjectNode roles = NF.objectNode();
+                Set<FixpointGivens.EmptyRole> closedSlots = new HashSet<>();
+                if (strict)
+                    for (ClosedRole cr : i.rolesClosed())
+                        closedSlots.add(new FixpointGivens.EmptyRole(cr.factType().name, cr.farIndex()));
+                Set<FixpointGivens.EmptyRole> handledClosed = new HashSet<>();
                 for (RoleValue r : i.roles()) {
                     if (r.many()) {
-                        ArrayNode targets = roles.putArray(r.key());
+                        ArrayNode targets = NF.arrayNode();
                         for (String label : r.targetLabels()) targets.add(label);
+                        if (strict && !r.factType().reciprocal) {
+                            FixpointGivens.EmptyRole slot = new FixpointGivens.EmptyRole(r.factType().name, r.farIndex());
+                            if (closedSlots.contains(slot)) {
+                                handledClosed.add(slot);
+                                roles.set(r.key(), OpenValues.collection(OpenValues.CLOSED, targets));
+                            } else if (r.factType().roles.get(r.farIndex()).complete()) {
+                                roles.set(r.key(), targets);
+                            } else {
+                                roles.set(r.key(), OpenValues.collection(OpenValues.OPEN, targets));
+                            }
+                        } else {
+                            roles.set(r.key(), targets);
+                        }
                     } else {
                         roles.put(r.key(), r.targetLabels().get(0));
                     }
                 }
-                if (OpenValues.in(model))
+                if (strict) {
                     for (EmptyRole r : i.rolesEmpty()) roles.set(r.key(), OpenValues.state(OpenValues.EMPTY));
+                    for (ClosedRole cr : i.rolesClosed()) {
+                        FixpointGivens.EmptyRole slot = new FixpointGivens.EmptyRole(cr.factType().name, cr.farIndex());
+                        if (handledClosed.add(slot))
+                            roles.set(cr.key(), OpenValues.state(OpenValues.EMPTY));
+                    }
+                }
                 if (!roles.isEmpty()) inst.set("roles", roles);
             }
         }

@@ -4,9 +4,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 
+import dev.uchar.regelspraak.model.RegelSpraakModel;
 import dev.uchar.regelspraak.model.RegelSpraakModel.Designatable;
+import dev.uchar.regelspraak.model.RegelSpraakModel.FactType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.ObjectType;
 import dev.uchar.regelspraak.model.RegelSpraakModel.OriginForm;
+import dev.uchar.regelspraak.model.RegelSpraakModel.Role;
 import dev.uchar.regelspraak.toolchain.engine.Naming;
 
 import org.junit.jupiter.api.Test;
@@ -51,6 +54,7 @@ class OpenInputsPropertyTest {
                 "jutterswet-volledig-gegeven",
                 "jutterswet-invoer-leeg-strikt",
                 "jutterswet-invoer-rol-strikt",
+                "jutterswet-invoer-collectie-strikt",
                 "jutterswet-zelfde-conclusie-waarde",
                 "jutterswet-zelfde-conclusie-kenmerk",
                 "jutterswet-zelfde-conclusie-ongeordend",
@@ -68,8 +72,8 @@ class OpenInputsPropertyTest {
             assertFalse(cases.isEmpty(), golden);
             boolean faultOnInput = golden.equals("jutterswet-zelfde-conclusie-fout");
             for (Path c : cases)
-                total = total.plus(leavingOneOut(core, "replay", request(DescriptorLoader.MAPPER.readTree(c.toFile())),
-                        faultOnInput));
+                total = total.plus(leavingOneOut(core, "replay",
+                        request(DescriptorLoader.MAPPER.readTree(c.toFile()), core.model()), faultOnInput));
         }
         assertTrue(total.open() >= 100, "open uitkomsten gezien: " + total.open());
         assertTrue(total.suppressed() > 0, "onderdrukte opgave-controleleden gezien: " + total.suppressed());
@@ -79,7 +83,7 @@ class OpenInputsPropertyTest {
     void the_rule_sets_of_the_tests() throws Exception {
         DecisionCore core = OpenValuesSource.core(CoreConfig.strict().withDetail());
         Counts total = leavingOneOut(core, "vondst", """
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": ["V1", "V2"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"vondsten": {"state": "closed", "items": ["V1", "V2"]}}},
               {"type": "Vondst", "id": "V1", "attributes": {"taxatie": 50, "toeslag": 3, "herkomst": 4},
                "characteristics": {"betwist": {"state": "holdsNot"}, "onleesbaar": {"state": "holds"}}},
               {"type": "Vondst", "id": "V2", "attributes": {"taxatie": 1500},
@@ -87,7 +91,7 @@ class OpenInputsPropertyTest {
         core = OpenValuesSource.wrak(CoreConfig.strict().withDetail());
         total = total.plus(leavingOneOut(core, "wrak", """
             {"instances": [{"type": "Jutter", "id": "J1", "attributes": {"bonus": 4},
-                            "roles": {"gevonden wrakken": ["W1", "W2", "W3"]}},
+                            "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1", "W2", "W3"]}}},
               {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
                "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holds"},
                                    "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holds"}}},
@@ -97,9 +101,15 @@ class OpenInputsPropertyTest {
               {"type": "Wrak", "id": "W3", "attributes": {"diepte": 12, "lading": 8, "lengte": 0, "voorschot": 7},
                "characteristics": {"gemeld": {"state": "holdsNot"}, "betwist": {"state": "holdsNot"},
                                    "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holdsNot"}}}]}"""));
+        total = total.plus(leavingOneOut(core, "wrak", """
+            {"instances": [{"type": "Jutter", "id": "J1", "attributes": {"bonus": 4},
+                            "roles": {"gevonden wrakken": {"state": "open", "items": ["W1"]}}},
+              {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5, "lengte": 30},
+               "characteristics": {"gemeld": {"state": "holds"}, "betwist": {"state": "holdsNot"},
+                                   "beschadigd": {"state": "holdsNot"}, "gemerkt": {"state": "holds"}}}]}"""));
         // nothing given at all, and one wreck that is
         total = total.plus(holds(core, "wrak", read("""
-            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": ["W1", "W2"]}},
+            {"instances": [{"type": "Jutter", "id": "J1", "roles": {"gevonden wrakken": {"state": "closed", "items": ["W1", "W2"]}}},
               {"type": "Wrak", "id": "W1", "attributes": {"diepte": 20, "lading": 5}}, {"type": "Wrak", "id": "W2"}]}""")));
         total = total.plus(holds(core, "wrak", read("{\"instances\": [{\"type\": \"Wrak\", \"id\": \"W1\"}]}")));
 
@@ -192,11 +202,11 @@ class OpenInputsPropertyTest {
             for (String input : inputs.get(outcome)) {
                 ObjectNode after;
                 try {
-                    after = core.process(path, with(request, input, "holdsNot"), ASKED);
+                    after = core.process(path, with(core.model(), request, input, "holdsNot"), ASKED);
                 } catch (EvaluationFault fault) {
                     if (!faultOnInput) throw fault;
                     // a provisional fault uncovered by giving the input changes the outcome; giving "holds" settles it
-                    after = core.process(path, with(request, input, "holds"), ASKED);
+                    after = core.process(path, with(core.model(), request, input, "holds"), ASKED);
                 }
                 String state = outcomes(after).get(outcome);
                 if (state.equals("open"))
@@ -241,11 +251,12 @@ class OpenInputsPropertyTest {
         return member.get("instance").asText() + "|" + member.get("kind").asText() + "|" + member.get("name").asText();
     }
 
-    /** {@code request} with {@code input} given: 3 for an attribute, {@code charState} for a characteristic, settled empty for a
-     *  to-one role. */
-    private static JsonNode with(JsonNode request, String input, String charState) {
+    /** {@code request} with {@code input} given: 3 for an attribute, {@code charState} for a characteristic, and for an open
+     *  role either closing an existing {@code "open"} collection on that role slot or setting {@code {"state": "empty"}}. */
+    private static JsonNode with(RegelSpraakModel model, JsonNode request, String input, String charState) {
         String[] member = input.split("\\|");
         ObjectNode out = request.deepCopy();
+        NameReader reader = new NameReader(model, null);
         for (JsonNode i : out.get("instances"))
             if (i.get("id").asText().equals(member[0])) {
                 if (member[1].equals("attribute")) {
@@ -253,7 +264,23 @@ class OpenInputsPropertyTest {
                 } else if (member[1].equals("characteristic")) {
                     ((ObjectNode) i).withObject("/characteristics").putObject(member[2]).put("state", charState);
                 } else {
-                    ((ObjectNode) i).withObject("/roles").putObject(member[3]).put("state", "empty");
+                    ObjectType ot = model.objectTypeByName(i.get("type").asText());
+                    ObjectNode roles = ((ObjectNode) i).withObject("/roles");
+                    String existingKey = null;
+                    for (String k : (Iterable<String>) roles::fieldNames) {
+                        if (reader.roleFrom(ot, k) instanceof NameReader.Found g
+                                && DescriptorLoader.sameName(g.declaration().owner(), member[2])
+                                && DescriptorLoader.sameName(g.declaration().name(), member[3])) {
+                            existingKey = k;
+                            break;
+                        }
+                    }
+                    if (existingKey != null && roles.get(existingKey).isObject()
+                            && OpenValues.OPEN.equals(roles.get(existingKey).path("state").asText())) {
+                        ((ObjectNode) roles.get(existingKey)).put("state", OpenValues.CLOSED);
+                    } else {
+                        roles.set(existingKey != null ? existingKey : member[3], OpenValues.state(OpenValues.EMPTY));
+                    }
                 }
             }
         return out;
@@ -264,11 +291,29 @@ class OpenInputsPropertyTest {
         throw new AssertionError(instance);
     }
 
+    private record ResolvedOppositeRole(FactType factType, int roleIndex, Role role) {}
+
+    private static ResolvedOppositeRole resolveOppositeRole(RegelSpraakModel model, ObjectType ot, String key) {
+        if (ot == null) return null;
+        NameReader reader = new NameReader(model, Naming.CANONICAL);
+        if (!(reader.roleFrom(ot, key) instanceof NameReader.Found g)) return null;
+        for (FactType ft : model.factTypes.values()) {
+            if (!DescriptorLoader.sameName(ft.name, g.declaration().owner())) continue;
+            for (int idx = 0; idx < ft.roles.size(); idx++) {
+                Role r = ft.roles.get(idx);
+                if (DescriptorLoader.sameName(r.name(), g.declaration().name()) && Naming.reachable(model, ft, r, ot))
+                    return new ResolvedOppositeRole(ft, idx, r);
+            }
+        }
+        return null;
+    }
+
     /** A case of a strict golden as a request. */
-    private static String request(JsonNode c) {
+    private static String request(JsonNode c, RegelSpraakModel model) {
         ObjectNode request = DescriptorLoader.MAPPER.createObjectNode();
         ArrayNode instances = request.putArray("instances");
         for (JsonNode i : c.at("/input/instances")) {
+            ObjectType ot = model.objectTypeByName(i.get("objectType").asText());
             ObjectNode n = instances.addObject().put("type", i.get("objectType").asText()).put("id", i.get("label").asText());
             ObjectNode attributes = n.putObject("attributes"), characteristics = n.putObject("characteristics");
             i.path("attributes").fields().forEachRemaining(e -> attributes.put(e.getKey(),
@@ -277,11 +322,40 @@ class OpenInputsPropertyTest {
             for (JsonNode k : i.path("characteristics")) characteristics.putObject(k.asText()).put("state", "holds");
             for (JsonNode k : i.path("characteristicsAbsent")) characteristics.putObject(k.asText()).put("state", "holdsNot");
             ObjectNode roles = DescriptorLoader.MAPPER.createObjectNode();
+            Set<FixpointGivens.EmptyRole> closedSlots = new java.util.HashSet<>();
+            for (JsonNode cr : i.path("rolesClosed")) {
+                ResolvedOppositeRole hit = resolveOppositeRole(model, ot, cr.asText());
+                if (hit != null)
+                    closedSlots.add(new FixpointGivens.EmptyRole(hit.factType().name, hit.roleIndex()));
+            }
+            Set<FixpointGivens.EmptyRole> handledClosed = new java.util.HashSet<>();
             i.path("roles").fields().forEachRemaining(e -> {
-                ArrayNode targets = roles.putArray(e.getKey());
+                ArrayNode targets = DescriptorLoader.MAPPER.createArrayNode();
                 e.getValue().forEach(t -> targets.add(t.asText()));
+                ResolvedOppositeRole hit = resolveOppositeRole(model, ot, e.getKey());
+                if (hit != null && !hit.factType().reciprocal && hit.role().many()) {
+                    FixpointGivens.EmptyRole slot = new FixpointGivens.EmptyRole(hit.factType().name, hit.roleIndex());
+                    if (hit.role().complete()) {
+                        handledClosed.add(slot);
+                        roles.set(e.getKey(), targets);
+                    } else if (closedSlots.contains(slot)) {
+                        handledClosed.add(slot);
+                        roles.set(e.getKey(), OpenValues.collection(OpenValues.CLOSED, targets));
+                    } else {
+                        roles.set(e.getKey(), OpenValues.collection(OpenValues.OPEN, targets));
+                    }
+                } else {
+                    roles.set(e.getKey(), targets);
+                }
             });
             for (JsonNode r : i.path("rolesEmpty")) roles.putObject(r.asText()).put("state", "empty");
+            for (JsonNode cr : i.path("rolesClosed")) {
+                ResolvedOppositeRole hit = resolveOppositeRole(model, ot, cr.asText());
+                FixpointGivens.EmptyRole slot = hit != null
+                        ? new FixpointGivens.EmptyRole(hit.factType().name, hit.roleIndex()) : null;
+                if (slot == null || handledClosed.add(slot))
+                    roles.putObject(cr.asText()).put("state", "empty");
+            }
             if (!roles.isEmpty()) n.set("roles", roles);
         }
         return request.toString();

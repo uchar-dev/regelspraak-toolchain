@@ -323,7 +323,8 @@ function objectWithType(label, types, declared) {
 // an open attribute or characteristic, and "inconsistent (<rule> @ <LABEL>)" for an inconsistency on an object.
 // "consistent" and an inconsistency without an object name none. A label is one word (UPPER_ID).
 const KINDS_WITH_LABEL = ["attributeValue", "attributeEmpty", "attributeTimeline", "cellValue", "cellEmpty",
-                          "characteristicPresent", "characteristicAbsent", "attributeOpen", "characteristicOpen"];
+                          "characteristicPresent", "characteristicAbsent", "attributeOpen", "characteristicOpen",
+                          "roleEmpty", "roleCount", "roleTarget", "roleOpen"];
 function labelOfSource(source) {
   const m = /^inconsistent \(.* @ (\S+)\)$/.exec(source);
   if (m) return m[1];
@@ -405,6 +406,7 @@ function situationHtml(sit) {
       if (whole || matches(r.role, r.roleCanonical) || (r.labels.length && matchesLabel(...r.labels)))
         rows.push("<tr><td>" + nameOf(r, "role") + "</td><td>"
           + (r.labels.length ? r.labels.map((l) => objectWithType(l, types, r.targetType)).join(", ")
+                               + (r.closed ? ' <span class="muted">(volledig gegeven)</span>' : "")
                              : '<span class="muted">leeg</span>')
           + '</td><td class="num">' + r.line + "</td></tr>");
     if (!whole && !rows.length) continue;
